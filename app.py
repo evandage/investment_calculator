@@ -408,36 +408,18 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
             except Exception:
                 pass
 
-    for sym, secid in _EM_CN_SEC.items():
-        try:
-            p = _fetch_eastmoney(secid)
-            if p is not None:
-                out[sym] = p
-                source_by_symbol[sym] = "东方财富"
-                # 用东财最新价 + sina 的昨收，保证“当日涨跌%”与显示价格一致
-                prev_close = _fetch_sina_cn_prev_close(_SINA_CN[sym])
-                if prev_close is not None:
-                    daily_change_pct_by_symbol[sym] = (p - prev_close) / prev_close * 100.0
-            if sym not in daily_change_pct_by_symbol:
-                res = _fetch_sina_cn_price_change(_SINA_CN[sym])
-                if res is not None:
-                    _, change_pct = res
-                    daily_change_pct_by_symbol[sym] = change_pct
-        except Exception:
-            pass
-
+    # A股：只用新浪（避免“价格/涨跌%口径混用”导致的错乱）
     symbols = list(_TICKERS.values())
     for sym in ("510300.SS", "510500.SS"):
-        if sym not in out:
-            try:
-                res = _fetch_sina_cn_price_change(_SINA_CN[sym])
-                if res is not None:
-                    p, change_pct = res
-                    out[sym] = p
-                    daily_change_pct_by_symbol[sym] = change_pct
-                    source_by_symbol[sym] = "新浪A股"
-            except Exception:
-                pass
+        try:
+            res = _fetch_sina_cn_price_change(_SINA_CN[sym])
+            if res is not None:
+                p, change_pct = res
+                out[sym] = p
+                daily_change_pct_by_symbol[sym] = change_pct
+                source_by_symbol[sym] = "新浪A股"
+        except Exception:
+            pass
 
     prices = {sym: out.get(sym, _FALLBACK[sym]) for sym in symbols}
     for sym in symbols:
@@ -692,6 +674,24 @@ if _db_conf():
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
 
+if st.button(
+    "刷新市价",
+    help="腾讯财经(美股)+东方财富(A股)拉取现价；失败时用新浪美股/新浪A股作备用。约 1 分钟内会走缓存。",
+):
+    _fetch_spot_prices_meta.clear()
+    _fetch_usdcny_rate_meta.clear()
+    d = _defaults_from_fetch()
+    st.session_state.def_fx = _fetch_usdcny_rate()
+    st.session_state.def_voo = d["voo"]
+    st.session_state.def_tlt = d["tlt"]
+    st.session_state.def_gld = d["gld"]
+    st.session_state.def_hs300 = d["hs300"]
+    st.session_state.def_zz500 = d["zz500"]
+    for k in ("inp_fx", "inp_voo", "inp_tlt", "inp_gld", "inp_hs300", "inp_zz500"):
+        if k in st.session_state:
+            del st.session_state[k]
+    st.rerun()
+
 with st.expander("开始定投", expanded=False):
     rmb = st.number_input("每月投入（人民币）", value=5000.0)
     _ensure_fx_session_default()
@@ -710,23 +710,7 @@ with st.expander("开始定投", expanded=False):
     )
     col_a, col_b = st.columns([1, 1])
     with col_a:
-        if st.button(
-            "刷新市价",
-            help="腾讯财经(美股)+东方财富(A股)拉取现价；失败时用新浪美股作备用。约 2 分钟内结果会缓存。",
-        ):
-            _fetch_spot_prices_meta.clear()
-            _fetch_usdcny_rate_meta.clear()
-            d = _defaults_from_fetch()
-            st.session_state.def_fx = _fetch_usdcny_rate()
-            st.session_state.def_voo = d["voo"]
-            st.session_state.def_tlt = d["tlt"]
-            st.session_state.def_gld = d["gld"]
-            st.session_state.def_hs300 = d["hs300"]
-            st.session_state.def_zz500 = d["zz500"]
-            for k in ("inp_fx", "inp_voo", "inp_tlt", "inp_gld", "inp_hs300", "inp_zz500"):
-                if k in st.session_state:
-                    del st.session_state[k]
-            st.rerun()
+        st.empty()
 
     _ensure_price_session_defaults()
 
@@ -880,16 +864,16 @@ for sym, meta in _ASSET_META.items():
         {
             "标的": meta["label"],
             "币种": meta["currency"],
+            "当日涨跌%": round(daily_change_pct_by_symbol.get(sym, 0.0), 2),
+            "浮动盈亏": round(pnl, 2),
+            "涨跌幅%": round(pnl_pct, 2),
             "持有数量": round(shares, 3),
             "持仓成本": round(avg_cost, 4),
-            "当前价": round(current, 3),
+            "当前价": round(current, 4),
             "持仓市值": round(value, 2),
             "结转余额(CNY)": round(balances_for_view.get(sym, 0.0), 2)
             if meta["currency"] == "CNY"
             else 0.0,
-            "当日涨跌%": round(daily_change_pct_by_symbol.get(sym, 0.0), 2),
-            "浮动盈亏": round(pnl, 2),
-            "涨跌幅%": round(pnl_pct, 2),
         }
     )
 
