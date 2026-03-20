@@ -175,12 +175,48 @@ def _parse_qq_us_response(text: str) -> dict[str, float]:
     return out
 
 
+def _parse_qq_us_response_price_change(text: str) -> dict[str, dict[str, float]]:
+    out: dict[str, dict[str, float]] = {}
+    for line in text.replace("\n", "").split(";"):
+        line = line.strip()
+        if not line.startswith("v_us"):
+            continue
+        m = re.match(r'v_(us[A-Za-z]+)="([^"]*)"', line)
+        if not m:
+            continue
+        code, body = m.group(1), m.group(2)
+        parts = body.split("~")
+        # 腾讯美股字段中：3=最新价，32=涨跌幅(百分比)
+        if len(parts) > 32:
+            try:
+                price = float(parts[3])
+                change_pct = float(parts[32])
+                if price > 0:
+                    out[code] = {"price": price, "change_pct": change_pct}
+            except ValueError:
+                continue
+    return out
+
+
 def _fetch_qq_us() -> dict[str, float]:
     url = "http://qt.gtimg.cn/q=" + ",".join(_QQ_US.values())
     r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
     r.encoding = "gbk"
     raw = _parse_qq_us_response(r.text)
     return {sym: raw[qc] for sym, qc in _QQ_US.items() if qc in raw}
+
+
+def _fetch_qq_us_price_change() -> dict[str, dict[str, float]]:
+    url = "http://qt.gtimg.cn/q=" + ",".join(_QQ_US.values())
+    r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
+    r.encoding = "gbk"
+    raw = _parse_qq_us_response_price_change(r.text)
+    out: dict[str, dict[str, float]] = {}
+    for sym, qc in _QQ_US.items():
+        if qc not in raw:
+            continue
+        out[sym] = raw[qc]
+    return out
 
 
 def _fetch_sina_gb(list_code: str) -> float | None:
@@ -207,6 +243,36 @@ def _fetch_sina_gb(list_code: str) -> float | None:
         return None
 
 
+def _fetch_sina_gb_price_change(list_code: str) -> tuple[float, float] | None:
+    url = "https://hq.sinajs.cn/list=" + list_code
+    r = requests.get(
+        url,
+        timeout=_HTTP_TIMEOUT,
+        headers={
+            **_REQUEST_HEADERS,
+            "Referer": "https://finance.sina.com.cn/",
+        },
+    )
+    r.encoding = "gbk"
+    m = re.search(r'="([^"]*)"', r.text)
+    if not m or not m.group(1).strip():
+        return None
+    parts = m.group(1).split(",")
+    if len(parts) < 3:
+        return None
+    try:
+        price = float(parts[1])
+        chg_points = float(parts[2])
+        # sina gb_*: parts[2] 为涨跌额(点)，用它反推昨收来得到涨跌幅%
+        prev_close = price - chg_points
+        if price <= 0 or prev_close <= 0:
+            return None
+        change_pct = chg_points / prev_close * 100.0
+        return (price, change_pct)
+    except ValueError:
+        return None
+
+
 def _fetch_sina_cn(list_code: str) -> float | None:
     url = "https://hq.sinajs.cn/list=" + list_code
     r = requests.get(
@@ -225,8 +291,68 @@ def _fetch_sina_cn(list_code: str) -> float | None:
     if len(parts) < 4:
         return None
     try:
-        p = float(parts[3])
+        p = float(parts[1])
         return p if p > 0 else None
+    except ValueError:
+        return None
+
+
+def _fetch_sina_cn_price_change(list_code: str) -> tuple[float, float] | None:
+    url = "https://hq.sinajs.cn/list=" + list_code
+    r = requests.get(
+        url,
+        timeout=_HTTP_TIMEOUT,
+        headers={
+            **_REQUEST_HEADERS,
+            "Referer": "https://finance.sina.com.cn/",
+        },
+    )
+    r.encoding = "gbk"
+    m = re.search(r'="([^"]*)"', r.text)
+    if not m or not m.group(1).strip():
+        return None
+    parts = m.group(1).split(",")
+    if len(parts) < 3:
+        return None
+    try:
+        # sina A 股 list（常见格式）：
+        # parts[1]=当前价，parts[2]=昨收价
+        price = float(parts[1])
+        prev_close = float(parts[2])
+        if price <= 0 or prev_close <= 0:
+            return None
+        change_pct = (price - prev_close) / prev_close * 100.0
+        return (price, change_pct)
+    except ValueError:
+        return None
+
+
+def _fetch_sina_cn_prev_close(list_code: str) -> float | None:
+    """
+    sina sh* list 返回里，约定：
+    - parts[1]：现价
+    - parts[3]：昨收（用于计算涨跌幅）
+    """
+    url = "https://hq.sinajs.cn/list=" + list_code
+    r = requests.get(
+        url,
+        timeout=_HTTP_TIMEOUT,
+        headers={
+            **_REQUEST_HEADERS,
+            "Referer": "https://finance.sina.com.cn/",
+        },
+    )
+    r.encoding = "gbk"
+    m = re.search(r'="([^"]*)"', r.text)
+    if not m or not m.group(1).strip():
+        return None
+    parts = m.group(1).split(",")
+    if len(parts) < 3:
+        return None
+    try:
+        # sina A 股 list（常见格式）：parts[2]=昨收价
+        prev_close = float(parts[2])
+        return prev_close if prev_close > 0 else None
     except ValueError:
         return None
 
@@ -254,15 +380,18 @@ def _fetch_eastmoney(secid: str) -> float | None:
     return x if x > 0 else None
 
 
-@st.cache_data(ttl=120, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def _fetch_spot_prices_meta() -> dict[str, object]:
     out: dict[str, float] = {}
+    daily_change_pct_by_symbol: dict[str, float] = {}
     source_by_symbol: dict[str, str] = {}
     fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
 
     try:
-        for sym, p in _fetch_qq_us().items():
-            out[sym] = p
+        qq_raw = _fetch_qq_us_price_change()
+        for sym, item in qq_raw.items():
+            out[sym] = float(item["price"])
+            daily_change_pct_by_symbol[sym] = float(item["change_pct"])
             source_by_symbol[sym] = "腾讯美股"
     except Exception:
         pass
@@ -270,9 +399,11 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     for sym in ("VOO", "TLT", "GLD"):
         if sym not in out:
             try:
-                p = _fetch_sina_gb(_SINA_GB[sym])
-                if p is not None:
+                res = _fetch_sina_gb_price_change(_SINA_GB[sym])
+                if res is not None:
+                    p, change_pct = res
                     out[sym] = p
+                    daily_change_pct_by_symbol[sym] = change_pct
                     source_by_symbol[sym] = "新浪全球"
             except Exception:
                 pass
@@ -283,6 +414,15 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
             if p is not None:
                 out[sym] = p
                 source_by_symbol[sym] = "东方财富"
+                # 用东财最新价 + sina 的昨收，保证“当日涨跌%”与显示价格一致
+                prev_close = _fetch_sina_cn_prev_close(_SINA_CN[sym])
+                if prev_close is not None:
+                    daily_change_pct_by_symbol[sym] = (p - prev_close) / prev_close * 100.0
+            if sym not in daily_change_pct_by_symbol:
+                res = _fetch_sina_cn_price_change(_SINA_CN[sym])
+                if res is not None:
+                    _, change_pct = res
+                    daily_change_pct_by_symbol[sym] = change_pct
         except Exception:
             pass
 
@@ -290,9 +430,11 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     for sym in ("510300.SS", "510500.SS"):
         if sym not in out:
             try:
-                p = _fetch_sina_cn(_SINA_CN[sym])
-                if p is not None:
+                res = _fetch_sina_cn_price_change(_SINA_CN[sym])
+                if res is not None:
+                    p, change_pct = res
                     out[sym] = p
+                    daily_change_pct_by_symbol[sym] = change_pct
                     source_by_symbol[sym] = "新浪A股"
             except Exception:
                 pass
@@ -300,7 +442,13 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     prices = {sym: out.get(sym, _FALLBACK[sym]) for sym in symbols}
     for sym in symbols:
         source_by_symbol.setdefault(sym, "Fallback")
-    return {"prices": prices, "source_by_symbol": source_by_symbol, "fetched_at": fetched_at}
+        daily_change_pct_by_symbol.setdefault(sym, 0.0)
+    return {
+        "prices": prices,
+        "daily_change_pct_by_symbol": daily_change_pct_by_symbol,
+        "source_by_symbol": source_by_symbol,
+        "fetched_at": fetched_at,
+    }
 
 
 def _fetch_spot_prices() -> dict[str, float]:
@@ -533,134 +681,129 @@ def _ensure_fx_session_default() -> None:
     st.session_state["_fx_initialized"] = True
 
 
-st.title("📊 定投计算器")
+st.title("📊 资产配置与定投仪表盘")
 theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
 st.sidebar.caption("主题会影响盈亏颜色和图表样式")
-user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="").strip()
+user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="evan").strip()
 if _db_conf():
-    st.sidebar.caption("存储后端：Supabase（user_id: {user_id or '未填写'}）")
+    st.sidebar.caption("存储后端：Supabase")
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
 
-# 输入
-rmb = st.number_input("每月投入（人民币）", value=5000.0)
-_ensure_fx_session_default()
-fx = st.number_input("汇率（USD/CNY）", value=float(st.session_state.def_fx), key="inp_fx")
+with st.expander("开始定投", expanded=False):
+    rmb = st.number_input("每月投入（人民币）", value=5000.0)
+    _ensure_fx_session_default()
+    fx = st.number_input("汇率（USD/CNY）", value=float(st.session_state.def_fx), key="inp_fx")
 
-st.subheader("输入价格")
-spot_meta = _fetch_spot_prices_meta()
-fx_meta = _fetch_usdcny_rate_meta()
-spot_sources = spot_meta["source_by_symbol"]
-st.caption(
-    "数据来源标签："
-    f" 汇率={fx_meta['source']}（更新时间 {fx_meta['fetched_at']}）"
-    f" | VOO={spot_sources['VOO']}, TLT={spot_sources['TLT']}, GLD={spot_sources['GLD']}"
-    f" | 沪深300={spot_sources['510300.SS']}, 中证500={spot_sources['510500.SS']}"
-    f"（更新时间 {spot_meta['fetched_at']}）"
-)
-col_a, col_b = st.columns([1, 1])
-with col_a:
-    if st.button(
-        "刷新市价",
-        help="腾讯财经(美股)+东方财富(A股)拉取现价；失败时用新浪美股作备用。约 2 分钟内结果会缓存。",
-    ):
-        _fetch_spot_prices_meta.clear()
-        _fetch_usdcny_rate_meta.clear()
-        d = _defaults_from_fetch()
-        st.session_state.def_fx = _fetch_usdcny_rate()
-        st.session_state.def_voo = d["voo"]
-        st.session_state.def_tlt = d["tlt"]
-        st.session_state.def_gld = d["gld"]
-        st.session_state.def_hs300 = d["hs300"]
-        st.session_state.def_zz500 = d["zz500"]
-        for k in ("inp_fx", "inp_voo", "inp_tlt", "inp_gld", "inp_hs300", "inp_zz500"):
-            if k in st.session_state:
-                del st.session_state[k]
-        st.rerun()
-
-_ensure_price_session_defaults()
-
-voo_price = st.number_input("VOO价格", value=float(st.session_state.def_voo), key="inp_voo")
-tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
-gld_price = st.number_input("黄金GLD价格", value=float(st.session_state.def_gld), key="inp_gld")
-
-hs300_price = st.number_input("沪深300价格", value=float(st.session_state.def_hs300), key="inp_hs300")
-zz500_price = st.number_input("中证500价格", value=float(st.session_state.def_zz500), key="inp_zz500")
-
-prices_now = {
-    "VOO": voo_price,
-    "TLT": tlt_price,
-    "GLD": gld_price,
-    "510300.SS": hs300_price,
-    "510500.SS": zz500_price,
-}
-
-if st.button("计算"):
-    # 比例
-    weights_us = {"VOO": 0.4, "TLT": 0.2, "GLD": 0.1}
-
-    us_ratio = sum(weights_us.values())
-
-    usd_total_raw = (rmb * us_ratio) / fx
-    usd_total = round(usd_total_raw)
-
-    st.subheader("📈 投资结果")
-
-    # 美股
-    st.write("### 美股")
-    voo_usd = usd_total * (0.4 / us_ratio)
-    tlt_usd = usd_total * (0.2 / us_ratio)
-    gld_usd = usd_total * (0.1 / us_ratio)
-
-    st.write(f"VOO：{voo_usd:.2f} USD → {voo_usd/voo_price:.3f} 股")
-    st.write(f"TLT：{tlt_usd:.2f} USD → {tlt_usd/tlt_price:.3f} 股")
-    st.write(f"GLD：{gld_usd:.2f} USD → {gld_usd/gld_price:.3f} 股")
-
-    us_allocated_usd = voo_usd + tlt_usd + gld_usd
-    st.write(
-        f"**美股美元合计：{us_allocated_usd:.2f} USD**（本月按整数美元换汇，原始应换约 {usd_total_raw:.2f} USD）"
-    )
-
-    # A股
-    st.write("### A股")
-
-    _, balances, _ = _load_user_state(user_id)
-    hs300_amount = rmb * 0.2
-    zz500_amount = rmb * 0.1
-
-    hs300_budget = hs300_amount + balances["510300.SS"]
-    zz500_budget = zz500_amount + balances["510500.SS"]
-    hs300_lot_cost = hs300_price * 100
-    zz500_lot_cost = zz500_price * 100
-    hs300_lots = int(hs300_budget // hs300_lot_cost) if hs300_lot_cost > 0 else 0
-    zz500_lots = int(zz500_budget // zz500_lot_cost) if zz500_lot_cost > 0 else 0
-    hs300_balance_next = hs300_budget - hs300_lots * hs300_lot_cost
-    zz500_balance_next = zz500_budget - zz500_lots * zz500_lot_cost
-
-    st.write(f"沪深300：{hs300_lots*100} 股（{hs300_lots} 手）")
-    st.write(f"中证500：{zz500_lots*100} 股（{zz500_lots} 手）")
+    st.subheader("输入价格")
+    spot_meta = _fetch_spot_prices_meta()
+    fx_meta = _fetch_usdcny_rate_meta()
+    spot_sources = spot_meta["source_by_symbol"]
     st.caption(
-        f"A股余额结转：沪深300 结转 {hs300_balance_next:.2f} CNY；"
-        f"中证500 结转 {zz500_balance_next:.2f} CNY"
+        "数据来源标签："
+        f" 汇率={fx_meta['source']}（更新时间 {fx_meta['fetched_at']}）"
+        f" | VOO={spot_sources['VOO']}, TLT={spot_sources['TLT']}, GLD={spot_sources['GLD']}"
+        f" | 沪深300={spot_sources['510300.SS']}, 中证500={spot_sources['510500.SS']}"
+        f"（更新时间 {spot_meta['fetched_at']}）"
     )
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        if st.button(
+            "刷新市价",
+            help="腾讯财经(美股)+东方财富(A股)拉取现价；失败时用新浪美股作备用。约 2 分钟内结果会缓存。",
+        ):
+            _fetch_spot_prices_meta.clear()
+            _fetch_usdcny_rate_meta.clear()
+            d = _defaults_from_fetch()
+            st.session_state.def_fx = _fetch_usdcny_rate()
+            st.session_state.def_voo = d["voo"]
+            st.session_state.def_tlt = d["tlt"]
+            st.session_state.def_gld = d["gld"]
+            st.session_state.def_hs300 = d["hs300"]
+            st.session_state.def_zz500 = d["zz500"]
+            for k in ("inp_fx", "inp_voo", "inp_tlt", "inp_gld", "inp_hs300", "inp_zz500"):
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
 
-    calc_buys = {
-        "VOO": {"shares": voo_usd / voo_price, "price": voo_price},
-        "TLT": {"shares": tlt_usd / tlt_price, "price": tlt_price},
-        "GLD": {"shares": gld_usd / gld_price, "price": gld_price},
-        "510300.SS": {"shares": hs300_lots * 100.0, "price": hs300_price},
-        "510500.SS": {"shares": zz500_lots * 100.0, "price": zz500_price},
+    _ensure_price_session_defaults()
+
+    voo_price = st.number_input("VOO价格", value=float(st.session_state.def_voo), key="inp_voo")
+    tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
+    gld_price = st.number_input("黄金GLD价格", value=float(st.session_state.def_gld), key="inp_gld")
+
+    hs300_price = st.number_input("沪深300价格", value=float(st.session_state.def_hs300), key="inp_hs300")
+    zz500_price = st.number_input("中证500价格", value=float(st.session_state.def_zz500), key="inp_zz500")
+
+    prices_now = {
+        "VOO": voo_price,
+        "TLT": tlt_price,
+        "GLD": gld_price,
+        "510300.SS": hs300_price,
+        "510500.SS": zz500_price,
     }
-    if st.button("将本月定投更新到我的持仓"):
-        holdings, balances_loaded, _ = _load_user_state(user_id)
-        for sym, buy in calc_buys.items():
-            holdings[sym] = _merge_buy(holdings[sym], buy["shares"], buy["price"])
-        balances_loaded["510300.SS"] = hs300_balance_next
-        balances_loaded["510500.SS"] = zz500_balance_next
-        save_mode = _save_user_state(user_id, holdings, balances_loaded)
-        st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
+
+    if st.button("计算"):
+        weights_us = {"VOO": 0.4, "TLT": 0.2, "GLD": 0.1}
+        us_ratio = sum(weights_us.values())
+        usd_total_raw = (rmb * us_ratio) / fx
+        usd_total = round(usd_total_raw)
+
+        st.subheader("📈 投资结果")
+
+        st.write("### 美股")
+        voo_usd = usd_total * (0.4 / us_ratio)
+        tlt_usd = usd_total * (0.2 / us_ratio)
+        gld_usd = usd_total * (0.1 / us_ratio)
+
+        st.write(f"VOO：{voo_usd:.2f} USD → {voo_usd/voo_price:.3f} 股")
+        st.write(f"TLT：{tlt_usd:.2f} USD → {tlt_usd/tlt_price:.3f} 股")
+        st.write(f"GLD：{gld_usd:.2f} USD → {gld_usd/gld_price:.3f} 股")
+
+        us_allocated_usd = voo_usd + tlt_usd + gld_usd
+        st.write(
+            f"**美股美元合计：{us_allocated_usd:.2f} USD**（本月按整数美元换汇，原始应换约 {usd_total_raw:.2f} USD）"
+        )
+
+        st.write("### A股")
+
+        _, balances, _ = _load_user_state(user_id)
+        hs300_amount = rmb * 0.2
+        zz500_amount = rmb * 0.1
+
+        hs300_budget = hs300_amount + balances["510300.SS"]
+        zz500_budget = zz500_amount + balances["510500.SS"]
+        hs300_lot_cost = hs300_price * 100
+        zz500_lot_cost = zz500_price * 100
+        hs300_lots = int(hs300_budget // hs300_lot_cost) if hs300_lot_cost > 0 else 0
+        zz500_lots = int(zz500_budget // zz500_lot_cost) if zz500_lot_cost > 0 else 0
+        hs300_balance_next = hs300_budget - hs300_lots * hs300_lot_cost
+        zz500_balance_next = zz500_budget - zz500_lots * zz500_lot_cost
+
+        st.write(f"沪深300：{hs300_lots*100} 股（{hs300_lots} 手）")
+        st.write(f"中证500：{zz500_lots*100} 股（{zz500_lots} 手）")
+        st.caption(
+            f"A股余额结转：沪深300 结转 {hs300_balance_next:.2f} CNY；"
+            f"中证500 结转 {zz500_balance_next:.2f} CNY"
+        )
+
+        calc_buys = {
+            "VOO": {"shares": voo_usd / voo_price, "price": voo_price},
+            "TLT": {"shares": tlt_usd / tlt_price, "price": tlt_price},
+            "GLD": {"shares": gld_usd / gld_price, "price": gld_price},
+            "510300.SS": {"shares": hs300_lots * 100.0, "price": hs300_price},
+            "510500.SS": {"shares": zz500_lots * 100.0, "price": zz500_price},
+        }
+        if st.button("将本月定投更新到我的持仓"):
+            holdings, balances_loaded, _ = _load_user_state(user_id)
+            for sym, buy in calc_buys.items():
+                holdings[sym] = _merge_buy(holdings[sym], buy["shares"], buy["price"])
+            balances_loaded["510300.SS"] = hs300_balance_next
+            balances_loaded["510500.SS"] = zz500_balance_next
+            save_mode = _save_user_state(user_id, holdings, balances_loaded)
+            st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
 st.subheader("📦 我的持仓")
 holdings, balances_for_view, storage_mode = _load_user_state(user_id)
@@ -712,6 +855,7 @@ total_cost_cny = 0.0
 total_value_cny = 0.0
 value_cny_by_symbol: dict[str, float] = {}
 pnl_cny_by_symbol: dict[str, float] = {}
+daily_change_pct_by_symbol: dict[str, float] = spot_meta.get("daily_change_pct_by_symbol", {})  # type: ignore[assignment]
 for sym, meta in _ASSET_META.items():
     shares = float(holdings[sym]["shares"])
     avg_cost = float(holdings[sym]["avg_cost"])
@@ -743,6 +887,7 @@ for sym, meta in _ASSET_META.items():
             "结转余额(CNY)": round(balances_for_view.get(sym, 0.0), 2)
             if meta["currency"] == "CNY"
             else 0.0,
+            "当日涨跌%": round(daily_change_pct_by_symbol.get(sym, 0.0), 2),
             "浮动盈亏": round(pnl, 2),
             "涨跌幅%": round(pnl_pct, 2),
         }
@@ -779,6 +924,29 @@ st.metric(
     delta=f"{total_pnl_pct:.2f}%",
     delta_color=theme["delta_color"],
 )
+
+weighted_daily_pct = (
+    sum(
+        (value_cny_by_symbol.get(sym, 0.0) / total_value_cny) * daily_change_pct_by_symbol.get(sym, 0.0)
+        for sym in _ASSET_META
+    )
+    if total_value_cny > 0
+    else 0.0
+)
+weighted_daily_color = theme["profit_color"] if weighted_daily_pct >= 0 else theme["loss_color"]
+st.markdown(
+    f"当日加权涨跌：<span style='color:{weighted_daily_color}; font-weight:700; font-size:18px;'>{weighted_daily_pct:+.2f}%</span>",
+    unsafe_allow_html=True,
+)
+
+daily_cols = st.columns(len(_ASSET_META))
+for i, (sym, meta) in enumerate(_ASSET_META.items()):
+    d = daily_change_pct_by_symbol.get(sym, 0.0)
+    c = theme["profit_color"] if d >= 0 else theme["loss_color"]
+    daily_cols[i].markdown(
+        f"**{meta['label']}**<br><span style='color:{c}; font-weight:800; font-size:18px;'>{d:+.2f}%</span>",
+        unsafe_allow_html=True,
+    )
 
 st.subheader("📊 可视化")
 chart_col1, chart_col2 = st.columns(2)
