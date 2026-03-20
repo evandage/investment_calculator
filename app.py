@@ -488,7 +488,7 @@ def _ensure_fx_session_default() -> None:
 
 
 st.title("📊 定投计算器")
-user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="hty12").strip()
+user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="").strip()
 if _db_conf():
     st.sidebar.caption(f"存储后端：Supabase（user_id: {user_id or '未填写'}）")
 else:
@@ -633,11 +633,26 @@ with st.expander("编辑持仓（会保存）", expanded=False):
                     f"{meta['label']} 持仓成本({meta['currency']})",
                     min_value=0.0,
                     value=float(holdings[sym]["avg_cost"]),
-                    step=0.01,
+                    step=0.0001,
                     key=f"edit_cost_{sym}",
                 )
             holdings[sym]["shares"] = shares
             holdings[sym]["avg_cost"] = avg_cost
+        st.markdown("#### A股结转余额（未凑够一手的现金）")
+        balances_for_view["510300.SS"] = st.number_input(
+            "沪深300 结转余额（CNY）",
+            min_value=0.0,
+            value=float(balances_for_view.get("510300.SS", 0.0)),
+            step=0.01,
+            key="edit_balance_hs300",
+        )
+        balances_for_view["510500.SS"] = st.number_input(
+            "中证500 结转余额（CNY）",
+            min_value=0.0,
+            value=float(balances_for_view.get("510500.SS", 0.0)),
+            step=0.01,
+            key="edit_balance_zz500",
+        )
         if st.form_submit_button("保存持仓"):
             save_mode = _save_user_state(user_id, holdings, balances_for_view)
             st.success(f"持仓已保存（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
@@ -670,9 +685,12 @@ for sym, meta in _ASSET_META.items():
             "标的": meta["label"],
             "币种": meta["currency"],
             "持有数量": round(shares, 3),
-            "持仓成本": round(avg_cost, 3),
+            "持仓成本": round(avg_cost, 4),
             "当前价": round(current, 3),
             "持仓市值": round(value, 2),
+            "结转余额(CNY)": round(balances_for_view.get(sym, 0.0), 2)
+            if meta["currency"] == "CNY"
+            else 0.0,
             "浮动盈亏": round(pnl, 2),
             "涨跌幅%": round(pnl_pct, 2),
         }
@@ -681,8 +699,12 @@ for sym, meta in _ASSET_META.items():
 st.dataframe(rows, width="stretch", hide_index=True)
 total_pnl_cny = total_value_cny - total_cost_cny
 total_pnl_pct = (total_pnl_cny / total_cost_cny * 100) if total_cost_cny > 0 else 0.0
+total_balance_cny = float(balances_for_view.get("510300.SS", 0.0)) + float(
+    balances_for_view.get("510500.SS", 0.0)
+)
 st.write(f"总成本(折合CNY)：{total_cost_cny:.2f}")
 st.write(f"总市值(折合CNY)：{total_value_cny:.2f}")
+st.write(f"A股结转余额(折合CNY)：{total_balance_cny:.2f}")
 st.write(f"总浮盈亏(折合CNY)：{total_pnl_cny:.2f}（{total_pnl_pct:.2f}%）")
 
 st.subheader("🎯 持仓比例对比")
