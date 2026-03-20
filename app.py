@@ -538,17 +538,9 @@ theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
 st.sidebar.caption("主题会影响盈亏颜色和图表样式")
-user_id = st.sidebar.text_input(
-    "用户ID（用于跨设备同步）",
-    value="",
-    key="user_id_input",
-)
-if st.sidebar.button("清空用户ID（不保留本次输入）"):
-    st.session_state["user_id_input"] = ""
-    st.rerun()
-user_id = str(user_id).strip()
+user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="").strip()
 if _db_conf():
-    st.sidebar.caption("存储后端：Supabase（按 user_id 分区存储）")
+    st.sidebar.caption("存储后端：Supabase（user_id: {user_id or '未填写'}）")
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
 
