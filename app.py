@@ -3,7 +3,10 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
+import altair as alt
+import pandas as pd
 import requests
 import streamlit as st
 
@@ -58,6 +61,49 @@ _TARGET_WEIGHTS = {
     "510500.SS": 0.1,
 }
 
+_TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
+_UI_THEMES = {
+    "主题1：绿跌红涨": {
+        "delta_color": "inverse",
+        "profit_color": "#dc2626",
+        "loss_color": "#16a34a",
+        "accent": "#2563eb",
+        "card_bg": "rgba(248, 250, 252, 0.85)",
+    },
+    "主题2：绿涨红跌": {
+        "delta_color": "normal",
+        "profit_color": "#16a34a",
+        "loss_color": "#dc2626",
+        "accent": "#7c3aed",
+        "card_bg": "rgba(248, 250, 252, 0.85)",
+    },
+}
+
+
+def _apply_theme_css(theme: dict[str, str]) -> None:
+    st.markdown(
+        f"""
+        <style>
+        .stMetric {{
+            background: {theme["card_bg"]};
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 16px;
+            padding: 12px 14px;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+        }}
+        .stButton > button, .stDownloadButton > button {{
+            border-radius: 12px;
+            border: 1px solid {theme["accent"]};
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+        }}
+        div[data-testid="stCaptionContainer"] p {{
+            color: #475569;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 def _fetch_fx_from_erapi() -> float | None:
     url = "https://open.er-api.com/v6/latest/USD"
@@ -90,7 +136,7 @@ def _fetch_fx_from_qq() -> float | None:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _fetch_usdcny_rate_meta() -> dict[str, str | float]:
-    fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
     for source, fn in (
         ("ER-API", _fetch_fx_from_erapi),
         ("腾讯 USDCNY", _fetch_fx_from_qq),
@@ -212,7 +258,7 @@ def _fetch_eastmoney(secid: str) -> float | None:
 def _fetch_spot_prices_meta() -> dict[str, object]:
     out: dict[str, float] = {}
     source_by_symbol: dict[str, str] = {}
-    fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
 
     try:
         for sym, p in _fetch_qq_us().items():
@@ -428,7 +474,7 @@ def _save_to_supabase(user_id: str, holdings: dict[str, dict[str, float]], balan
             "user_id": user_id,
             "holdings": holdings,
             "balances": balances,
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.now(_TZ_SHANGHAI).isoformat(),
         }
     ]
     r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=_HTTP_TIMEOUT)
@@ -488,9 +534,21 @@ def _ensure_fx_session_default() -> None:
 
 
 st.title("📊 定投计算器")
-user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="").strip()
+theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
+theme = _UI_THEMES[theme_name]
+_apply_theme_css(theme)
+st.sidebar.caption("主题会影响盈亏颜色和图表样式")
+user_id = st.sidebar.text_input(
+    "用户ID（用于跨设备同步）",
+    value="",
+    key="user_id_input",
+)
+if st.sidebar.button("清空用户ID（不保留本次输入）"):
+    st.session_state["user_id_input"] = ""
+    st.rerun()
+user_id = str(user_id).strip()
 if _db_conf():
-    st.sidebar.caption(f"存储后端：Supabase（user_id: {user_id or '未填写'}）")
+    st.sidebar.caption("存储后端：Supabase（按 user_id 分区存储）")
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
 
@@ -661,6 +719,7 @@ rows = []
 total_cost_cny = 0.0
 total_value_cny = 0.0
 value_cny_by_symbol: dict[str, float] = {}
+pnl_cny_by_symbol: dict[str, float] = {}
 for sym, meta in _ASSET_META.items():
     shares = float(holdings[sym]["shares"])
     avg_cost = float(holdings[sym]["avg_cost"])
@@ -680,6 +739,7 @@ for sym, meta in _ASSET_META.items():
     total_cost_cny += cost_cny
     total_value_cny += value_cny
     value_cny_by_symbol[sym] = value_cny
+    pnl_cny_by_symbol[sym] = value_cny - cost_cny
     rows.append(
         {
             "标的": meta["label"],
@@ -702,12 +762,7 @@ total_pnl_pct = (total_pnl_cny / total_cost_cny * 100) if total_cost_cny > 0 els
 total_balance_cny = float(balances_for_view.get("510300.SS", 0.0)) + float(
     balances_for_view.get("510500.SS", 0.0)
 )
-st.write(f"总成本(折合CNY)：{total_cost_cny:.2f}")
-st.write(f"总市值(折合CNY)：{total_value_cny:.2f}")
-st.write(f"A股结转余额(折合CNY)：{total_balance_cny:.2f}")
-st.write(f"总浮盈亏(折合CNY)：{total_pnl_cny:.2f}（{total_pnl_pct:.2f}%）")
-
-st.subheader("🎯 持仓比例对比")
+total_assets_cny = total_value_cny + total_balance_cny
 ratio_rows = []
 for sym, meta in _ASSET_META.items():
     target = _TARGET_WEIGHTS.get(sym, 0.0)
@@ -721,4 +776,89 @@ for sym, meta in _ASSET_META.items():
         }
     )
 
+metric_cols = st.columns(4)
+metric_cols[0].metric("总成本(折合CNY)", f"{total_cost_cny:,.2f}")
+metric_cols[1].metric("持仓市值(折合CNY)", f"{total_value_cny:,.2f}")
+metric_cols[2].metric("A股结转余额(折合CNY)", f"{total_balance_cny:,.2f}")
+metric_cols[3].metric("总资产(折合CNY)", f"{total_assets_cny:,.2f}")
+st.metric(
+    "总浮盈亏(折合CNY)",
+    f"{total_pnl_cny:,.2f}",
+    delta=f"{total_pnl_pct:.2f}%",
+    delta_color=theme["delta_color"],
+)
+
+st.subheader("📊 可视化")
+chart_col1, chart_col2 = st.columns(2)
+
+value_chart_df = pd.DataFrame(
+    [
+        {"标的": _ASSET_META[sym]["label"], "当前市值(CNY)": round(value_cny_by_symbol[sym], 2)}
+        for sym in _ASSET_META
+        if value_cny_by_symbol.get(sym, 0.0) > 0
+    ]
+)
+if not value_chart_df.empty:
+    pie_chart = (
+        alt.Chart(value_chart_df)
+        .mark_arc(innerRadius=55)
+        .encode(
+            theta=alt.Theta("当前市值(CNY):Q"),
+            color=alt.Color("标的:N"),
+            tooltip=["标的:N", alt.Tooltip("当前市值(CNY):Q", format=",.2f")],
+        )
+        .properties(title="当前持仓市值占比")
+    )
+    chart_col1.altair_chart(pie_chart, width="stretch")
+else:
+    chart_col1.info("暂无持仓市值数据可供可视化。")
+
+ratio_chart_df = pd.DataFrame(ratio_rows).melt(
+    id_vars="标的",
+    value_vars=["目标比例%", "当前比例%"],
+    var_name="类型",
+    value_name="比例%",
+)
+ratio_chart = (
+    alt.Chart(ratio_chart_df)
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+    .encode(
+        x=alt.X("标的:N", sort=None),
+        xOffset="类型:N",
+        y=alt.Y("比例%:Q"),
+        color=alt.Color("类型:N", scale=alt.Scale(range=[theme["accent"], "#94a3b8"])),
+        tooltip=["标的:N", "类型:N", alt.Tooltip("比例%:Q", format=".2f")],
+    )
+    .properties(title="目标比例 vs 当前比例")
+)
+chart_col2.altair_chart(ratio_chart, width="stretch")
+
+pnl_chart_df = pd.DataFrame(
+    [
+        {
+            "标的": _ASSET_META[sym]["label"],
+            "浮盈亏(CNY)": round(pnl_cny_by_symbol[sym], 2),
+            "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
+        }
+        for sym in _ASSET_META
+    ]
+)
+pnl_chart = (
+    alt.Chart(pnl_chart_df)
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+    .encode(
+        x=alt.X("标的:N", sort=None),
+        y=alt.Y("浮盈亏(CNY):Q"),
+        color=alt.Color(
+            "方向:N",
+            scale=alt.Scale(range=[theme["profit_color"], theme["loss_color"]]),
+            legend=None,
+        ),
+        tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
+    )
+    .properties(title="各标的浮盈亏（折合CNY）")
+)
+st.altair_chart(pnl_chart, width="stretch")
+
+st.subheader("🎯 持仓比例对比")
 st.dataframe(ratio_rows, width="stretch", hide_index=True)
