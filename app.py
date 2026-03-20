@@ -291,7 +291,8 @@ def _fetch_sina_cn(list_code: str) -> float | None:
     if len(parts) < 4:
         return None
     try:
-        p = float(parts[1])
+        # 你的口径：parts[3]=当前价
+        p = float(parts[3])
         return p if p > 0 else None
     except ValueError:
         return None
@@ -312,12 +313,12 @@ def _fetch_sina_cn_price_change(list_code: str) -> tuple[float, float] | None:
     if not m or not m.group(1).strip():
         return None
     parts = m.group(1).split(",")
-    if len(parts) < 3:
+    if len(parts) < 4:
         return None
     try:
-        # sina A 股 list（常见格式）：
-        # parts[1]=当前价，parts[2]=昨收价
-        price = float(parts[1])
+        # 你的口径（已验证）：
+        # parts[2]=昨收价，parts[3]=当前价
+        price = float(parts[3])
         prev_close = float(parts[2])
         if price <= 0 or prev_close <= 0:
             return None
@@ -350,7 +351,7 @@ def _fetch_sina_cn_prev_close(list_code: str) -> float | None:
     if len(parts) < 3:
         return None
     try:
-        # sina A 股 list（常见格式）：parts[2]=昨收价
+        # 你的口径：parts[2]=昨收价
         prev_close = float(parts[2])
         return prev_close if prev_close > 0 else None
     except ValueError:
