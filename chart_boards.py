@@ -523,6 +523,17 @@ def _upsert_bars_to_supabase(
             timeout=_HTTP_TIMEOUT,
         )
         if r.status_code >= 400:
+            # 这里不直接抛异常：界面仍可展示本地拉取的图表；但必须把原因写进日志
+            # 以便确认是 service_role key / RLS / 项目 URL 是否配置正确。
+            try:
+                detail = (r.text or "").strip()
+            except Exception:
+                detail = ""
+            logging.getLogger("supabase").warning(
+                "upsert market_bars failed: status=%s detail=%s",
+                r.status_code,
+                detail[:800],
+            )
             return 0
         return len(payload)
     except requests.RequestException:
@@ -762,6 +773,8 @@ def sync_symbol_bars(symbol: str) -> dict[str, int]:
     """手动触发一次三周期同步（返回各周期当前可用条数）。"""
     out: dict[str, int] = {}
     for interval, period in (("1d", "5y"), ("15m", "5d"), ("5m", "5d")):
+        # 手动同步：绕过 fetch_ohlcv 内的最小同步间隔节流
+        _LAST_SYNC_AT[(symbol, interval)] = 0.0
         d = fetch_ohlcv(symbol, interval, period)  # fetch_ohlcv 内部会做增量写入
         out[interval] = int(len(d))
     return out
@@ -1012,8 +1025,8 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
     r14 = rsi(cl, 14)
     r14_ma = ema(r14, 9)
     atr_v = atr_series(df, 14)
-    upper = cl + 2.0 * atr_v
-    lower = cl - 2.0 * atr_v
+    upper = cl + 1.0 * atr_v
+    lower = cl - 1.0 * atr_v
     m_line, m_sig, m_hist = macd_series(cl)
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
@@ -1085,7 +1098,7 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
         go.Scatter(
             x=df.index,
             y=upper,
-            name="收盘+2ATR",
+            name="收盘+1ATR",
             line=dict(width=1, dash="dot", color=theme["atr_upper"]),
         ),
         row=1,
@@ -1096,7 +1109,7 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
         go.Scatter(
             x=df.index,
             y=lower,
-            name="收盘−2ATR",
+            name="收盘−1ATR",
             line=dict(width=1, dash="dot", color=theme["atr_lower"]),
         ),
         row=1,
@@ -1242,8 +1255,8 @@ def fig_5m_vwap_rsi7(symbol: str, display_name: str, *, chart_theme: str = "Clas
     r7 = rsi(cl, 7)
     r7_ma = ema(r7, 9)
     atr_v = atr_series(df, 14)
-    upper = cl + 2.0 * atr_v
-    lower = cl - 2.0 * atr_v
+    upper = cl + 1.0 * atr_v
+    lower = cl - 1.0 * atr_v
     m_line, m_sig, m_hist = macd_series(cl)
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
@@ -1315,7 +1328,7 @@ def fig_5m_vwap_rsi7(symbol: str, display_name: str, *, chart_theme: str = "Clas
         go.Scatter(
             x=df.index,
             y=upper,
-            name="收盘+2ATR",
+            name="收盘+1ATR",
             line=dict(width=1, dash="dot", color=theme["atr_upper"]),
         ),
         row=1,
@@ -1326,7 +1339,7 @@ def fig_5m_vwap_rsi7(symbol: str, display_name: str, *, chart_theme: str = "Clas
         go.Scatter(
             x=df.index,
             y=lower,
-            name="收盘−2ATR",
+            name="收盘−1ATR",
             line=dict(width=1, dash="dot", color=theme["atr_lower"]),
         ),
         row=1,

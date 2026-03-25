@@ -682,15 +682,41 @@ if _db_conf():
             f" 15m {sync_counts.get('15m', 0)} 条 /"
             f" 5m {sync_counts.get('5m', 0)} 条"
         )
+_interval_display_map = {
+    "日线（1d）": "1d",
+    "15分钟（15m）": "15m",
+    "5分钟（5m）": "5m",
+}
+_interval_default = list(_interval_display_map.keys())
+_interval_pick = st.sidebar.multiselect(
+    "看板加载哪些周期（不选则不拉取数据）",
+    options=list(_interval_display_map.keys()),
+    default=_interval_default,
+    key="chart_intervals_to_load",
+    help="关闭某个周期后，该周期对应的图表不会触发 fetch_ohlcv()，通常能显著减少加载时间。",
+)
+_interval_keys = [_interval_display_map[x] for x in _interval_pick]
+if not _interval_keys:
+    _interval_keys = ["1d"]
+
 _tab_d, _tab_15, _tab_5 = st.tabs(
     ["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"]
 )
 with _tab_d:
-    st.plotly_chart(fig_daily(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+    if "1d" in _interval_keys:
+        st.plotly_chart(fig_daily(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+    else:
+        st.info("未选择日线（1d），本周期不拉取数据。")
 with _tab_15:
-    st.plotly_chart(fig_15m_vwap_rsi(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+    if "15m" in _interval_keys:
+        st.plotly_chart(fig_15m_vwap_rsi(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+    else:
+        st.info("未选择15分钟（15m），本周期不拉取数据。")
 with _tab_5:
-    st.plotly_chart(fig_5m_vwap_rsi7(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+    if "5m" in _interval_keys:
+        st.plotly_chart(fig_5m_vwap_rsi7(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+    else:
+        st.info("未选择5分钟（5m），本周期不拉取数据。")
 
 st.divider()
 user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="evan").strip()
