@@ -32,6 +32,9 @@ _HTTP_TIMEOUT = (5, 45)
 
 _YF_TIMEOUT = float(os.environ.get("YFINANCE_CHART_TIMEOUT", "90"))
 _YF_RETRIES = max(1, int(os.environ.get("YFINANCE_CHART_RETRIES", "4")))
+_SUPABASE_CONF: dict[str, str] | None = None
+_LAST_SYNC_AT: dict[tuple[str, str], float] = {}
+_SYNC_MIN_SECONDS = 120
 
 # 东财美股 secid 与行情中心分类一致（与 Yahoo  ticker 不同前缀）
 _EASTMONEY_US_SECID = {
@@ -150,6 +153,12 @@ CHART_THEME_OPTIONS: tuple[str, ...] = tuple(CHART_THEMES.keys())
 
 def get_chart_theme(name: str) -> dict[str, Any]:
     return CHART_THEMES.get(name, CHART_THEMES["Classic Light"])
+
+
+def configure_market_storage(conf: dict[str, str] | None) -> None:
+    """配置 Supabase 行情存储（None 表示关闭）。"""
+    global _SUPABASE_CONF
+    _SUPABASE_CONF = conf if conf and conf.get("url") and conf.get("key") else None
 
 
 def _candlestick_kwargs(theme: dict[str, Any]) -> dict[str, Any]:
@@ -401,6 +410,125 @@ def _fetch_yfinance_ohlcv(
     return pd.DataFrame()
 
 
+def _period_for_incremental(interval: Literal["1d", "15m", "5m"]) -> str:
+    return "40d" if interval == "1d" else "5d"
+
+
+def _supabase_headers(content_type: bool = False) -> dict[str, str]:
+    if not _SUPABASE_CONF:
+        return {}
+    h = {
+        "apikey": _SUPABASE_CONF["key"],
+        "Authorization": f"Bearer {_SUPABASE_CONF['key']}",
+    }
+    if content_type:
+        h["Content-Type"] = "application/json"
+        h["Prefer"] = "resolution=merge-duplicates,return=minimal"
+    return h
+
+
+def _load_bars_from_supabase(symbol: str, interval: Literal["1d", "15m", "5m"]) -> pd.DataFrame:
+    if not _SUPABASE_CONF:
+        return pd.DataFrame()
+    url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars"
+    params = {
+        "select": "ts,open,high,low,close,volume",
+        "symbol": f"eq.{symbol}",
+        "interval": f"eq.{interval}",
+        "order": "ts.asc",
+        "limit": "10000",
+    }
+    try:
+        r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
+        if r.status_code >= 400:
+            return pd.DataFrame()
+        rows = r.json()
+    except (requests.RequestException, ValueError, TypeError):
+        return pd.DataFrame()
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    try:
+        df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce")
+        df = df.dropna(subset=["ts"])
+        out = pd.DataFrame(
+            {
+                "Open": pd.to_numeric(df["open"], errors="coerce"),
+                "High": pd.to_numeric(df["high"], errors="coerce"),
+                "Low": pd.to_numeric(df["low"], errors="coerce"),
+                "Close": pd.to_numeric(df["close"], errors="coerce"),
+                "Volume": pd.to_numeric(df["volume"], errors="coerce"),
+            },
+            index=pd.DatetimeIndex(df["ts"], name="Datetime"),
+        )
+        out = out.dropna(subset=["Open", "High", "Low", "Close"]).sort_index()
+        out = out[~out.index.duplicated(keep="last")]
+        return _normalize_plot_time_index(out, symbol)
+    except (TypeError, ValueError, KeyError):
+        return pd.DataFrame()
+
+
+def _bars_payload(
+    symbol: str,
+    interval: Literal["1d", "15m", "5m"],
+    df: pd.DataFrame,
+    source: str,
+) -> list[dict[str, Any]]:
+    if df.empty:
+        return []
+    tz = _market_tz(symbol)
+    idx = df.index
+    if idx.tz is None:
+        idx = idx.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+    else:
+        idx = idx.tz_convert(tz)
+    idx_utc = idx.tz_convert("UTC")
+    out: list[dict[str, Any]] = []
+    for ts, row in zip(idx_utc, df.itertuples()):
+        out.append(
+            {
+                "symbol": symbol,
+                "interval": interval,
+                "ts": pd.Timestamp(ts).isoformat(),
+                "open": float(row.Open),
+                "high": float(row.High),
+                "low": float(row.Low),
+                "close": float(row.Close),
+                "volume": float(getattr(row, "Volume", 0.0) or 0.0),
+                "source": source,
+            }
+        )
+    return out
+
+
+def _upsert_bars_to_supabase(
+    symbol: str,
+    interval: Literal["1d", "15m", "5m"],
+    df: pd.DataFrame,
+    source: str,
+) -> int:
+    if not _SUPABASE_CONF or df.empty:
+        return 0
+    payload = _bars_payload(symbol, interval, df, source)
+    if not payload:
+        return 0
+    url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars?on_conflict=symbol,interval,ts"
+    try:
+        r = requests.post(
+            url,
+            headers=_supabase_headers(content_type=True),
+            json=payload,
+            timeout=_HTTP_TIMEOUT,
+        )
+        if r.status_code >= 400:
+            return 0
+        return len(payload)
+    except requests.RequestException:
+        return 0
+
+
 def _market_tz(symbol: str) -> ZoneInfo:
     if symbol.endswith(".SS") or symbol.endswith(".SZ"):
         return ZoneInfo("Asia/Shanghai")
@@ -444,16 +572,39 @@ def fetch_ohlcv(
     interval: Literal["1d", "15m", "5m"],
     period: str,
 ) -> pd.DataFrame:
-    secid = _eastmoney_secid(symbol)
-    if secid is not None:
-        df = _fetch_eastmoney_ohlcv(secid, interval)
-        if not df.empty:
-            if not _eastmoney_secid_is_cn(secid):
-                df = _adjust_eastmoney_us_index(df, interval)
-            if interval != "1d":
-                df = _fix_intraday_last_bar_volume(df)
-            return _normalize_plot_time_index(df, symbol)
-    return _normalize_plot_time_index(_fetch_yfinance_ohlcv(symbol, interval, period), symbol)
+    def _fetch_from_source(fetch_period: str) -> tuple[pd.DataFrame, str]:
+        secid = _eastmoney_secid(symbol)
+        if secid is not None:
+            d = _fetch_eastmoney_ohlcv(secid, interval)
+            if not d.empty:
+                if not _eastmoney_secid_is_cn(secid):
+                    d = _adjust_eastmoney_us_index(d, interval)
+                if interval != "1d":
+                    d = _fix_intraday_last_bar_volume(d)
+                return _normalize_plot_time_index(d, symbol), "eastmoney"
+        d = _fetch_yfinance_ohlcv(symbol, interval, fetch_period)
+        if interval != "1d":
+            d = _fix_intraday_last_bar_volume(d)
+        return _normalize_plot_time_index(d, symbol), "yfinance"
+
+    if _SUPABASE_CONF:
+        cached = _load_bars_from_supabase(symbol, interval)
+        now_s = time.time()
+        key = (symbol, interval)
+        should_sync = now_s - _LAST_SYNC_AT.get(key, 0.0) >= _SYNC_MIN_SECONDS
+        need_seed = cached.empty
+        if should_sync or need_seed:
+            fetch_period = period if need_seed else _period_for_incremental(interval)
+            latest, source = _fetch_from_source(fetch_period)
+            if not latest.empty:
+                _upsert_bars_to_supabase(symbol, interval, latest, source)
+                cached = _load_bars_from_supabase(symbol, interval)
+            _LAST_SYNC_AT[key] = now_s
+        if not cached.empty:
+            return cached
+
+    direct, _ = _fetch_from_source(period)
+    return direct
 
 
 def ema(series: pd.Series, span: int) -> pd.Series:
@@ -576,7 +727,7 @@ def multiframe_signal_bundle(symbol: str) -> dict[str, Any]:
             out["daily"] = 0
             notes.append("日线：EMA20≤EMA50")
 
-    df15 = fetch_ohlcv(symbol, "15m", "60d")
+    df15 = fetch_ohlcv(symbol, "15m", "5d")
     df15, _ = slice_intraday_today_or_yesterday(df15, symbol)
     if not df15.empty:
         vw = vwap_intraday(df15)
@@ -590,7 +741,7 @@ def multiframe_signal_bundle(symbol: str) -> dict[str, Any]:
             out["m15"] = 0
             notes.append("15m：未同时满足价≥VWAP 与 RSI<72")
 
-    df5 = fetch_ohlcv(symbol, "5m", "60d")
+    df5 = fetch_ohlcv(symbol, "5m", "5d")
     df5, _ = slice_intraday_today_or_yesterday(df5, symbol)
     if not df5.empty:
         rl7 = rsi(df5["Close"], 7)
@@ -604,6 +755,15 @@ def multiframe_signal_bundle(symbol: str) -> dict[str, Any]:
     parts = [x for x in (out["daily"], out["m15"], out["m5"]) if x is not None]
     out["total"] = int(sum(parts)) if parts else 0
     out["summary"] = "；".join(notes) if notes else "数据不足"
+    return out
+
+
+def sync_symbol_bars(symbol: str) -> dict[str, int]:
+    """手动触发一次三周期同步（返回各周期当前可用条数）。"""
+    out: dict[str, int] = {}
+    for interval, period in (("1d", "5y"), ("15m", "5d"), ("5m", "5d")):
+        d = fetch_ohlcv(symbol, interval, period)  # fetch_ohlcv 内部会做增量写入
+        out[interval] = int(len(d))
     return out
 
 
@@ -628,14 +788,21 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
     e20, e50, e100, e200 = ema(c, 20), ema(c, 50), ema(c, 100), ema(c, 200)
     r14 = rsi(c, 14)
     atr_v = atr_series(df, 14)
-    upper = c + 2.0 * atr_v
-    lower = c - 2.0 * atr_v
+    upper = c + 1.0 * atr_v
+    lower = c - 1.0 * atr_v
     m_line, m_sig, m_hist = macd_series(c)
 
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
 
-    vp_price, vp_vol = _volume_profile_by_price(df, bins=26)
+    # 默认展示最近 N 根「交易日」K 线（非日历天），避免周末空白导致蜡烛挤成一坨
+    _n_daily_visible = 15
+    vis_df = df.tail(_n_daily_visible) if len(df) >= _n_daily_visible else df
+    _x_start = vis_df.index.min()
+    _x_end = vis_df.index.max()
+    _x_pad = pd.Timedelta(days=0.45)
+
+    vp_price, vp_vol = _volume_profile_by_price(vis_df, bins=26)
 
     fig = make_subplots(
         rows=3,
@@ -678,7 +845,7 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
         go.Scatter(
             x=df.index,
             y=upper,
-            name="收盘+2ATR",
+            name="收盘+1ATR",
             line=dict(width=1, dash="dot", color=theme["atr_upper"]),
         ),
         row=1,
@@ -689,7 +856,7 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
         go.Scatter(
             x=df.index,
             y=lower,
-            name="收盘−2ATR",
+            name="收盘−1ATR",
             line=dict(width=1, dash="dot", color=theme["atr_lower"]),
         ),
         row=1,
@@ -789,18 +956,34 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
         barmode="overlay",
     )
     _apply_chart_theme(fig, theme)
-    vmax = float(vol.max()) if len(vol) else 0.0
-    fig.update_yaxes(title_text="价格", row=1, col=1, title_standoff=8, secondary_y=False)
+    v_vis = vis_df["Volume"].fillna(0.0).astype(float)
+    vmax_vis = float(v_vis.max()) if len(v_vis) else 0.0
+    y_lo = float(vis_df["Low"].min())
+    y_hi = float(vis_df["High"].max())
+    atr_vis = atr_v.reindex(vis_df.index).dropna()
+    y_pad = float(atr_vis.iloc[-1]) if len(atr_vis) else max((y_hi - y_lo) * 0.06, 1e-9)
+    fig.update_yaxes(
+        title_text="价格",
+        row=1,
+        col=1,
+        title_standoff=8,
+        secondary_y=False,
+        range=[y_lo - y_pad, y_hi + y_pad],
+    )
     fig.update_yaxes(
         row=1,
         col=1,
         secondary_y=True,
         showgrid=False,
         visible=False,
-        range=[0, vmax * 4 if vmax > 0 else 1],
+        range=[0, vmax_vis * 4 if vmax_vis > 0 else 1],
     )
     fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100], title_standoff=8)
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8)
+    # 横轴：最近 N 个交易日 + 少量边距，K 线更易辨认
+    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], row=1, col=1)
+    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], row=2, col=1)
+    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], row=3, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, row=1, col=2)
     return fig
@@ -808,7 +991,7 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
 
 def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Classic Light") -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    df = fetch_ohlcv(symbol, "15m", "60d")
+    df = fetch_ohlcv(symbol, "15m", "5d")
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
     if df.empty:
         fig = go.Figure()
@@ -1038,7 +1221,7 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
 
 def fig_5m_vwap_rsi7(symbol: str, display_name: str, *, chart_theme: str = "Classic Light") -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    df = fetch_ohlcv(symbol, "5m", "60d")
+    df = fetch_ohlcv(symbol, "5m", "5d")
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
     if df.empty:
         fig = go.Figure()

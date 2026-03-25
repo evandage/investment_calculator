@@ -12,10 +12,12 @@ import streamlit as st
 
 from chart_boards import (
     CHART_THEME_OPTIONS,
+    configure_market_storage,
     fig_15m_vwap_rsi,
     fig_5m_vwap_rsi7,
     fig_daily,
     multiframe_signal_bundle,
+    sync_symbol_bars,
 )
 
 # 拉取失败时的回退价（与常见区间一致）
@@ -643,6 +645,7 @@ def _ensure_fx_session_default() -> None:
 
 
 st.title("📊 资产配置与定投仪表盘")
+configure_market_storage(_db_conf())
 theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
@@ -669,6 +672,16 @@ _chart_pick = st.selectbox(
     key="chart_board_symbol",
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]
+if _db_conf():
+    st.caption("看板数据优先读取 Supabase 缓存（增量更新）。")
+    if st.button("同步当前标的K线到云端缓存", key="sync_chart_symbol"):
+        sync_counts = sync_symbol_bars(_chart_yf)
+        st.success(
+            "已同步："
+            f" 日线 {sync_counts.get('1d', 0)} 条 /"
+            f" 15m {sync_counts.get('15m', 0)} 条 /"
+            f" 5m {sync_counts.get('5m', 0)} 条"
+        )
 _tab_d, _tab_15, _tab_5 = st.tabs(
     ["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"]
 )
