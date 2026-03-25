@@ -36,6 +36,11 @@ _SUPABASE_CONF: dict[str, str] | None = None
 _LAST_SYNC_AT: dict[tuple[str, str], float] = {}
 _SYNC_MIN_SECONDS = 120
 
+# Supabase 行情缓存保留期（避免分钟线无限增长导致切换标的变慢）
+# - 1d：需要足够长用于 EMA200/MACD/ATR 计算（这里留 ~450 天）
+# - 15m/5m：图上只看当日/昨日，缓存留一周足够
+_SUPABASE_RETENTION_DAYS: dict[str, int] = {"1d": 450, "15m": 2, "5m": 2}
+
 # 东财美股 secid 与行情中心分类一致（与 Yahoo  ticker 不同前缀）
 _EASTMONEY_US_SECID = {
     "VOO": "107.VOO",
@@ -411,7 +416,29 @@ def _fetch_yfinance_ohlcv(
 
 
 def _period_for_incremental(interval: Literal["1d", "15m", "5m"]) -> str:
-    return "40d" if interval == "1d" else "5d"
+    return "60d" if interval == "1d" else "2d"
+
+
+def _trim_df_for_storage(symbol: str, interval: Literal["1d", "15m", "5m"], df: pd.DataFrame) -> pd.DataFrame:
+    """写入 Supabase 前裁剪到保留期，避免表无限膨胀。"""
+    if df.empty:
+        return df
+    days = int(_SUPABASE_RETENTION_DAYS.get(interval, 0) or 0)
+    if days <= 0:
+        return df
+    tz = _market_tz(symbol)
+    cutoff = pd.Timestamp.now(tz=tz) - pd.Timedelta(days=days)
+    idx = df.index
+    try:
+        if idx.tz is None:
+            idx_local = idx.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+        else:
+            idx_local = idx.tz_convert(tz)
+        mask = idx_local >= cutoff
+        out = df.loc[mask].copy()
+        return out if not out.empty else df.tail(1)
+    except Exception:
+        return df
 
 
 def _supabase_headers(content_type: bool = False) -> dict[str, str]:
@@ -427,7 +454,13 @@ def _supabase_headers(content_type: bool = False) -> dict[str, str]:
     return h
 
 
-def _load_bars_from_supabase(symbol: str, interval: Literal["1d", "15m", "5m"]) -> pd.DataFrame:
+def _load_bars_from_supabase(
+    symbol: str,
+    interval: Literal["1d", "15m", "5m"],
+    *,
+    since_utc: pd.Timestamp | None = None,
+    limit: int = 10000,
+) -> pd.DataFrame:
     if not _SUPABASE_CONF:
         return pd.DataFrame()
     url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars"
@@ -435,9 +468,19 @@ def _load_bars_from_supabase(symbol: str, interval: Literal["1d", "15m", "5m"]) 
         "select": "ts,open,high,low,close,volume",
         "symbol": f"eq.{symbol}",
         "interval": f"eq.{interval}",
-        "order": "ts.asc",
-        "limit": "10000",
+        "order": "ts.desc" if since_utc is not None else "ts.asc",
+        "limit": str(max(1, int(limit))),
     }
+    if since_utc is not None:
+        try:
+            ts = pd.Timestamp(since_utc)
+            if ts.tz is None:
+                ts = ts.tz_localize("UTC")
+            else:
+                ts = ts.tz_convert("UTC")
+            params["ts"] = f"gte.{ts.isoformat()}"
+        except Exception:
+            pass
     try:
         r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
         if r.status_code >= 400:
@@ -511,7 +554,8 @@ def _upsert_bars_to_supabase(
 ) -> int:
     if not _SUPABASE_CONF or df.empty:
         return 0
-    payload = _bars_payload(symbol, interval, df, source)
+    df_trim = _trim_df_for_storage(symbol, interval, df)
+    payload = _bars_payload(symbol, interval, df_trim, source)
     if not payload:
         return 0
     url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars?on_conflict=symbol,interval,ts"
@@ -583,6 +627,24 @@ def fetch_ohlcv(
     interval: Literal["1d", "15m", "5m"],
     period: str,
 ) -> pd.DataFrame:
+    def _since_utc_for_period(p: str) -> pd.Timestamp | None:
+        # 根据保留期减少从 Supabase 拉取的无用历史，提升切换标的速度
+        try:
+            keep_days = int(_SUPABASE_RETENTION_DAYS.get(interval, 0) or 0)
+            if keep_days > 0:
+                # 多给 1 天缓冲，覆盖时区切换/周末
+                return pd.Timestamp.utcnow() - pd.Timedelta(days=keep_days + 1)
+        except Exception:
+            pass
+        try:
+            if isinstance(p, str) and p.endswith("d"):
+                days = int(p[:-1])
+                # 多给 1 天缓冲，覆盖时区切换/周末
+                return pd.Timestamp.utcnow() - pd.Timedelta(days=max(1, days + 1))
+        except Exception:
+            return None
+        return None
+
     def _fetch_from_source(fetch_period: str) -> tuple[pd.DataFrame, str]:
         secid = _eastmoney_secid(symbol)
         if secid is not None:
@@ -599,7 +661,13 @@ def fetch_ohlcv(
         return _normalize_plot_time_index(d, symbol), "yfinance"
 
     if _SUPABASE_CONF:
-        cached = _load_bars_from_supabase(symbol, interval)
+        since_utc = _since_utc_for_period(period)
+        cached = _load_bars_from_supabase(
+            symbol,
+            interval,
+            since_utc=since_utc,
+            limit=4500 if interval == "5m" else 2500,
+        )
         now_s = time.time()
         key = (symbol, interval)
         should_sync = now_s - _LAST_SYNC_AT.get(key, 0.0) >= _SYNC_MIN_SECONDS
@@ -609,7 +677,12 @@ def fetch_ohlcv(
             latest, source = _fetch_from_source(fetch_period)
             if not latest.empty:
                 _upsert_bars_to_supabase(symbol, interval, latest, source)
-                cached = _load_bars_from_supabase(symbol, interval)
+                cached = _load_bars_from_supabase(
+                    symbol,
+                    interval,
+                    since_utc=since_utc,
+                    limit=4500 if interval == "5m" else 2500,
+                )
             _LAST_SYNC_AT[key] = now_s
         if not cached.empty:
             return cached
@@ -1004,7 +1077,7 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
 
 def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Classic Light") -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    df = fetch_ohlcv(symbol, "15m", "5d")
+    df = fetch_ohlcv(symbol, "15m", "2d")
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
     if df.empty:
         fig = go.Figure()
@@ -1234,7 +1307,7 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
 
 def fig_5m_vwap_rsi7(symbol: str, display_name: str, *, chart_theme: str = "Classic Light") -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    df = fetch_ohlcv(symbol, "5m", "5d")
+    df = fetch_ohlcv(symbol, "5m", "2d")
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
     if df.empty:
         fig = go.Figure()
