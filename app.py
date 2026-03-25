@@ -658,13 +658,26 @@ chart_theme = st.sidebar.selectbox(
 )
 st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
 
+# --- 刷新市价（置顶）---
+if st.button(
+    "刷新市价",
+    help="腾讯财经(美股)拉取现价；失败时用新浪全球。A股统一使用新浪A股。约 1 分钟内会走缓存。",
+):
+    _fetch_spot_prices_meta.clear()
+    _fetch_usdcny_rate_meta.clear()
+    d = _defaults_from_fetch()
+    st.session_state.def_fx = _fetch_usdcny_rate()
+    st.session_state.def_voo = d["voo"]
+    st.session_state.def_qqq = d["qqq"]
+    st.session_state.def_tlt = d["tlt"]
+    st.session_state.def_hs300 = d["510300.SS"]
+    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_hs300"):
+        if k in st.session_state:
+            del st.session_state[k]
+    st.rerun()
+
 # --- 技术看板（K 线）---
 _chart_symbol_labels = {meta["label"]: sym for sym, meta in _ASSET_META.items()}
-st.caption(
-    "看板不会静默后台自动刷新：切换选项、点「刷新市价」或浏览器刷新页面时会重新拉取行情。"
-    " 主图含成交量与 Volume Profile；日线/分钟图含 ATR 带与 MACD。"
-    " **决策组合包**（多周期评分+再平衡）在「总浮盈亏」指标下方展开。"
-)
 _chart_pick = st.selectbox(
     "看板标的",
     options=list(_chart_symbol_labels.keys()),
@@ -673,7 +686,6 @@ _chart_pick = st.selectbox(
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]
 if _db_conf():
-    st.caption("看板数据优先读取 Supabase 缓存（增量更新）。")
     if st.button("同步当前标的K线到云端缓存", key="sync_chart_symbol"):
         sync_counts = sync_symbol_bars(_chart_yf)
         st.success(
@@ -724,23 +736,6 @@ if _db_conf():
     st.sidebar.caption("存储后端：Supabase")
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
-
-if st.button(
-    "刷新市价",
-    help="腾讯财经(美股)拉取现价；失败时用新浪全球。A股统一使用新浪A股。约 1 分钟内会走缓存。",
-):
-    _fetch_spot_prices_meta.clear()
-    _fetch_usdcny_rate_meta.clear()
-    d = _defaults_from_fetch()
-    st.session_state.def_fx = _fetch_usdcny_rate()
-    st.session_state.def_voo = d["voo"]
-    st.session_state.def_qqq = d["qqq"]
-    st.session_state.def_tlt = d["tlt"]
-    st.session_state.def_hs300 = d["hs300"]
-    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_hs300"):
-        if k in st.session_state:
-            del st.session_state[k]
-    st.rerun()
 
 with st.expander("开始定投", expanded=False):
     rmb = st.number_input("每月投入（人民币）", value=5000.0)

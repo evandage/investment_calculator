@@ -848,8 +848,10 @@ def sync_symbol_bars(symbol: str) -> dict[str, int]:
     for interval, period in (("1d", "5y"), ("15m", "5d"), ("5m", "5d")):
         # 手动同步：绕过 fetch_ohlcv 内的最小同步间隔节流
         _LAST_SYNC_AT[(symbol, interval)] = 0.0
-        d = fetch_ohlcv(symbol, interval, period)  # fetch_ohlcv 内部会做增量写入
-        out[interval] = int(len(d))
+        _ = fetch_ohlcv(symbol, interval, period)  # fetch_ohlcv 内部会做增量写入
+        # 同步按钮展示“Supabase 侧真实表行数”（在 limit 内，避免前端窗口长度误差）
+        total_df = _load_bars_from_supabase(symbol, interval, since_utc=None, limit=10000)
+        out[interval] = int(len(total_df)) if not total_df.empty else 0
     return out
 
 
