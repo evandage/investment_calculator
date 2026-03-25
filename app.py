@@ -10,7 +10,13 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from chart_boards import fig_15m_vwap_rsi, fig_5m_vwap_rsi7, fig_daily
+from chart_boards import (
+    CHART_THEME_OPTIONS,
+    fig_15m_vwap_rsi,
+    fig_5m_vwap_rsi7,
+    fig_daily,
+    multiframe_signal_bundle,
+)
 
 # 拉取失败时的回退价（与常见区间一致）
 _FALLBACK = {
@@ -56,6 +62,32 @@ _TARGET_WEIGHTS = {
     "TLT": 0.2,
     "510300.SS": 0.2,
 }
+
+
+def _rebalance_alerts(
+    value_cny_by_symbol: dict[str, float],
+    total_value_cny: float,
+    threshold: float = 0.05,
+) -> list[dict[str, Any]]:
+    """相对目标权重的偏离提示（默认阈值 5%）。"""
+    if total_value_cny <= 0:
+        return []
+    rows: list[dict[str, Any]] = []
+    for sym, tgt in _TARGET_WEIGHTS.items():
+        cur = value_cny_by_symbol.get(sym, 0.0) / total_value_cny
+        diff = cur - tgt
+        if abs(diff) >= threshold:
+            rows.append(
+                {
+                    "标的": _ASSET_META[sym]["label"],
+                    "当前%": round(cur * 100, 2),
+                    "目标%": round(tgt * 100, 2),
+                    "偏离(当前-目标)%": round(diff * 100, 2),
+                    "提示": "偏高，可考虑减/再平衡" if diff > 0 else "偏低，可考虑加/定投",
+                }
+            )
+    return rows
+
 
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _UI_THEMES = {
@@ -598,6 +630,11 @@ def _ensure_price_session_defaults() -> None:
     st.session_state["_prices_initialized"] = True
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _cached_signal_bundle(symbol: str) -> dict[str, Any]:
+    return multiframe_signal_bundle(symbol)
+
+
 def _ensure_fx_session_default() -> None:
     if st.session_state.get("_fx_initialized"):
         return
@@ -609,13 +646,21 @@ st.title("📊 资产配置与定投仪表盘")
 theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
-st.sidebar.caption("主题会影响盈亏颜色和图表样式")
+chart_theme = st.sidebar.selectbox(
+    "K线配色主题",
+    options=list(CHART_THEME_OPTIONS),
+    index=0,
+    key="chart_plot_theme",
+    help="Classic Light 浅色机构风；Trading Dark 暗色终端风；CN Quant 红涨绿跌略饱和。",
+)
+st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
 
 # --- 技术看板（K 线）---
 _chart_symbol_labels = {meta["label"]: sym for sym, meta in _ASSET_META.items()}
 st.caption(
     "看板不会静默后台自动刷新：切换选项、点「刷新市价」或浏览器刷新页面时会重新拉取行情。"
-    " 分钟图 VWAP 上下轨为 **1 倍**成交量加权标准差。"
+    " 主图含成交量与 Volume Profile；日线/分钟图含 ATR 带与 MACD。"
+    " **决策组合包**（多周期评分+再平衡）在「总浮盈亏」指标下方展开。"
 )
 _chart_pick = st.selectbox(
     "看板标的",
@@ -625,14 +670,14 @@ _chart_pick = st.selectbox(
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]
 _tab_d, _tab_15, _tab_5 = st.tabs(
-    ["日线（EMA + RSI14）", "15 分钟（VWAP + RSI14）", "5 分钟（VWAP + RSI7）"]
+    ["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"]
 )
 with _tab_d:
-    st.plotly_chart(fig_daily(_chart_yf, _chart_pick), width="stretch")
+    st.plotly_chart(fig_daily(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
 with _tab_15:
-    st.plotly_chart(fig_15m_vwap_rsi(_chart_yf, _chart_pick), width="stretch")
+    st.plotly_chart(fig_15m_vwap_rsi(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
 with _tab_5:
-    st.plotly_chart(fig_5m_vwap_rsi7(_chart_yf, _chart_pick), width="stretch")
+    st.plotly_chart(fig_5m_vwap_rsi7(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
 
 st.divider()
 user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="evan").strip()
@@ -851,6 +896,29 @@ st.metric(
     delta=f"{total_pnl_pct:.2f}%",
     delta_color=theme["delta_color"],
 )
+
+with st.expander("决策组合包（多周期评分 + 再平衡）", expanded=False):
+    _sig = _cached_signal_bundle(_chart_yf)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("日线趋势分", f"{_sig['daily']}" if _sig["daily"] is not None else "—")
+    c2.metric("15m 分", f"{_sig['m15']}" if _sig["m15"] is not None else "—")
+    c3.metric("5m 分", f"{_sig['m5']}" if _sig["m5"] is not None else "—")
+    c4.metric("合计分", str(_sig["total"]))
+    st.caption(_sig["summary"])
+    st.caption(
+        "评分规则（粗）：日线 EMA20>EMA50 记 1；"
+        "15m 价≥VWAP 且 RSI(14)<72 记 1；"
+        "5m RSI(7)<75 记 1。仅供参考。"
+    )
+    if total_value_cny > 0:
+        _alerts = _rebalance_alerts(value_cny_by_symbol, total_value_cny)
+        if _alerts:
+            st.warning("以下标的相对目标权重偏离 ≥5%，可考虑再平衡：")
+            st.dataframe(_alerts, width="stretch", hide_index=True)
+        else:
+            st.success("各标的偏离目标权重均在 5% 阈值内（或持仓过小）。")
+    else:
+        st.info("暂无持仓市值，无法计算再平衡偏离。")
 
 weighted_daily_pct = (
     sum(
