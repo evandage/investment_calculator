@@ -10,6 +10,8 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from chart_boards import fig_15m_vwap_rsi, fig_5m_vwap_rsi7, fig_daily
+
 # 拉取失败时的回退价（与常见区间一致）
 _FALLBACK = {
     "VOO": 400.0,
@@ -608,6 +610,31 @@ theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
 st.sidebar.caption("主题会影响盈亏颜色和图表样式")
+
+# --- 技术看板（K 线）---
+_chart_symbol_labels = {meta["label"]: sym for sym, meta in _ASSET_META.items()}
+st.caption(
+    "看板不会静默后台自动刷新：切换选项、点「刷新市价」或浏览器刷新页面时会重新拉取行情。"
+    " 分钟图 VWAP 上下轨为 **1 倍**成交量加权标准差。"
+)
+_chart_pick = st.selectbox(
+    "看板标的",
+    options=list(_chart_symbol_labels.keys()),
+    index=0,
+    key="chart_board_symbol",
+)
+_chart_yf = _chart_symbol_labels[_chart_pick]
+_tab_d, _tab_15, _tab_5 = st.tabs(
+    ["日线（EMA + RSI14）", "15 分钟（VWAP + RSI14）", "5 分钟（VWAP + RSI7）"]
+)
+with _tab_d:
+    st.plotly_chart(fig_daily(_chart_yf, _chart_pick), width="stretch")
+with _tab_15:
+    st.plotly_chart(fig_15m_vwap_rsi(_chart_yf, _chart_pick), width="stretch")
+with _tab_5:
+    st.plotly_chart(fig_5m_vwap_rsi7(_chart_yf, _chart_pick), width="stretch")
+
+st.divider()
 user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="evan").strip()
 if _db_conf():
     st.sidebar.caption("存储后端：Supabase")
