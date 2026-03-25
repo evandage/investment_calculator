@@ -652,7 +652,7 @@ _apply_theme_css(theme)
 chart_theme = st.sidebar.selectbox(
     "K线配色主题",
     options=list(CHART_THEME_OPTIONS),
-    index=0,
+    index=list(CHART_THEME_OPTIONS).index("Trading Dark") if "Trading Dark" in CHART_THEME_OPTIONS else 0,
     key="chart_plot_theme",
     help="Classic Light 浅色机构风；Trading Dark 暗色终端风；CN Quant 红涨绿跌略饱和。",
 )
@@ -678,10 +678,15 @@ if st.button(
 
 # --- 技术看板（K 线）---
 _chart_symbol_labels = {meta["label"]: sym for sym, meta in _ASSET_META.items()}
+_chart_label_options = list(_chart_symbol_labels.keys())
+_chart_pick_default_label = "沪深300ETF"
+_chart_pick_default_index = (
+    _chart_label_options.index(_chart_pick_default_label) if _chart_pick_default_label in _chart_label_options else 0
+)
 _chart_pick = st.selectbox(
     "看板标的",
-    options=list(_chart_symbol_labels.keys()),
-    index=0,
+    options=_chart_label_options,
+    index=_chart_pick_default_index,
     key="chart_board_symbol",
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]

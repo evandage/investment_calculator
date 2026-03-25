@@ -746,6 +746,24 @@ def macd_series(
     return line, sig, hist
 
 
+def _macd_yaxis_range(m_line: pd.Series, m_sig: pd.Series, m_hist: pd.Series, *, pad_ratio: float = 0.15) -> list[float]:
+    """自适应 MACD 子图纵轴范围（综合线/信号/柱），包含 0 并加留白。"""
+    vals = pd.concat([m_line, m_sig, m_hist], axis=0)
+    vals = vals.replace([np.inf, -np.inf], np.nan).dropna().astype(float)
+    if vals.empty:
+        return [-1.0, 1.0]
+    lo = float(vals.min())
+    hi = float(vals.max())
+    lo = min(lo, 0.0)
+    hi = max(hi, 0.0)
+    span = hi - lo
+    if span <= 0:
+        pad = max(abs(hi) * 0.2, 1.0)
+    else:
+        pad = span * pad_ratio
+    return [lo - pad, hi + pad]
+
+
 def rsi(close: pd.Series, period: int) -> pd.Series:
     delta = close.diff()
     gain = delta.where(delta > 0, 0.0)
@@ -1067,7 +1085,8 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
         range=[0, vmax_vis * 4 if vmax_vis > 0 else 1],
     )
     fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100], title_standoff=8)
-    fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8)
+    macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
+    fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     # 横轴：最近 N 个交易日 + 少量边距，K 线更易辨认
     fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], row=1, col=1)
     fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], row=2, col=1)
@@ -1301,7 +1320,8 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
         range=[0, vmax * 4 if vmax > 0 else 1],
     )
     fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100], title_standoff=8)
-    fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8)
+    macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
+    fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, row=1, col=2)
     return fig
@@ -1531,7 +1551,8 @@ def fig_5m_vwap_rsi7(symbol: str, display_name: str, *, chart_theme: str = "Clas
         range=[0, vmax * 4 if vmax > 0 else 1],
     )
     fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100], title_standoff=8)
-    fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8)
+    macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
+    fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, row=1, col=2)
     return fig
