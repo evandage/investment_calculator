@@ -658,24 +658,6 @@ chart_theme = st.sidebar.selectbox(
 )
 st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
 
-# --- 刷新市价（置顶）---
-if st.button(
-    "刷新市价",
-    help="腾讯财经(美股)拉取现价；失败时用新浪全球。A股统一使用新浪A股。约 1 分钟内会走缓存。",
-):
-    _fetch_spot_prices_meta.clear()
-    _fetch_usdcny_rate_meta.clear()
-    d = _defaults_from_fetch()
-    st.session_state.def_fx = _fetch_usdcny_rate()
-    st.session_state.def_voo = d["voo"]
-    st.session_state.def_qqq = d["qqq"]
-    st.session_state.def_tlt = d["tlt"]
-    st.session_state.def_hs300 = d["hs300"]
-    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_hs300"):
-        if k in st.session_state:
-            del st.session_state[k]
-    st.rerun()
-
 # --- 技术看板（K 线）---
 _chart_symbol_labels = {meta["label"]: sym for sym, meta in _ASSET_META.items()}
 _chart_label_options = list(_chart_symbol_labels.keys())
@@ -690,11 +672,30 @@ _chart_pick = st.selectbox(
     key="chart_board_symbol",
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]
-if _db_conf():
-    if st.button("同步当前标的K线到云端缓存", key="sync_chart_symbol"):
+
+# --- 刷新市价（并可选同步当前K线到云端）---
+if st.button(
+    "刷新市价",
+    help="拉取现价并刷新默认输入；若已配置 Supabase，还会同步当前标的K线到后端缓存。",
+):
+    _fetch_spot_prices_meta.clear()
+    _fetch_usdcny_rate_meta.clear()
+    d = _defaults_from_fetch()
+    st.session_state.def_fx = _fetch_usdcny_rate()
+    st.session_state.def_voo = d["voo"]
+    st.session_state.def_qqq = d["qqq"]
+    st.session_state.def_tlt = d["tlt"]
+    st.session_state.def_hs300 = d["hs300"]
+
+    # 删除输入框缓存值，让下方 number_input 用新的 def_* 作为默认值。
+    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_hs300"):
+        if k in st.session_state:
+            del st.session_state[k]
+
+    if _db_conf():
         sync_counts = sync_symbol_bars(_chart_yf)
         st.success(
-            "已同步："
+            "已刷新市价并同步："
             f" 日线 {sync_counts.get('1d', 0)} 条 /"
             f" 15m {sync_counts.get('15m', 0)} 条 /"
             f" 5m {sync_counts.get('5m', 0)} 条"
