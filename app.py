@@ -1,5 +1,8 @@
 import re
 import json
+import logging
+import threading
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Any
@@ -644,7 +647,6 @@ def _ensure_fx_session_default() -> None:
     st.session_state["_fx_initialized"] = True
 
 
-st.title("📊 资产配置与定投仪表盘")
 configure_market_storage(_db_conf())
 theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
 theme = _UI_THEMES[theme_name]
@@ -673,10 +675,46 @@ _chart_pick = st.selectbox(
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]
 
+
+# --- 后台同步（避免阻塞 UI）---
+_BG_SYNC_MIN_SECONDS = 300
+_BG_SYNC_RUNNING: set[str] = set()
+_BG_SYNC_LAST_AT: dict[str, float] = {}
+_BG_SYNC_LOCK = threading.Lock()
+
+
+def _bg_sync_symbol(symbol: str) -> None:
+    try:
+        sync_symbol_bars(symbol)
+    except Exception:
+        logging.getLogger("bg_sync").exception("background sync failed: %s", symbol)
+    finally:
+        with _BG_SYNC_LOCK:
+            _BG_SYNC_RUNNING.discard(symbol)
+
+
+def _maybe_start_bg_sync(symbol: str) -> None:
+    if not _db_conf():
+        return
+    now_s = time.time()
+    with _BG_SYNC_LOCK:
+        last_s = _BG_SYNC_LAST_AT.get(symbol, 0.0)
+        if symbol in _BG_SYNC_RUNNING:
+            return
+        if now_s - last_s < _BG_SYNC_MIN_SECONDS:
+            return
+        _BG_SYNC_RUNNING.add(symbol)
+        _BG_SYNC_LAST_AT[symbol] = now_s
+    t = threading.Thread(target=_bg_sync_symbol, args=(symbol,), daemon=True)
+    t.start()
+
+
+_maybe_start_bg_sync(_chart_yf)
+
 # --- 刷新市价（并可选同步当前K线到云端）---
 if st.button(
     "刷新市价",
-    help="拉取现价并刷新默认输入；若已配置 Supabase，还会同步当前标的K线到后端缓存。",
+    help="拉取现价并刷新默认输入；K线同步在后台定时进行。",
 ):
     _fetch_spot_prices_meta.clear()
     _fetch_usdcny_rate_meta.clear()
@@ -692,14 +730,11 @@ if st.button(
         if k in st.session_state:
             del st.session_state[k]
 
-    if _db_conf():
-        sync_counts = sync_symbol_bars(_chart_yf)
-        st.success(
-            "已刷新市价并同步："
-            f" 日线 {sync_counts.get('1d', 0)} 条 /"
-            f" 15m {sync_counts.get('15m', 0)} 条 /"
-            f" 5m {sync_counts.get('5m', 0)} 条"
-        )
+    st.success("已刷新市价")
+
+    # 刷新市价后，避免立刻又触发后台同步（给页面留出喘息时间）。
+    with _BG_SYNC_LOCK:
+        _BG_SYNC_LAST_AT[_chart_yf] = time.time()
 _interval_display_map = {
     "日线（1d）": "1d",
     "15分钟（15m）": "15m",
@@ -738,6 +773,7 @@ with _tab_5:
 
 st.divider()
 user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="evan").strip()
+st.title(f"hello {user_id}")
 if _db_conf():
     st.sidebar.caption("存储后端：Supabase")
 else:
