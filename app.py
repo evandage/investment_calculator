@@ -660,6 +660,15 @@ chart_theme = st.sidebar.selectbox(
 )
 st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
 
+user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="evan").strip()
+st.title(f"hello {user_id}")
+if _db_conf():
+    st.sidebar.caption("存储后端：Supabase")
+else:
+    st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
+
+holdings, balances_for_view, storage_mode = _load_user_state(user_id)
+
 # --- 技术看板（K 线）---
 _chart_symbol_labels = {meta["label"]: sym for sym, meta in _ASSET_META.items()}
 _chart_label_options = list(_chart_symbol_labels.keys())
@@ -674,6 +683,15 @@ _chart_pick = st.selectbox(
     key="chart_board_symbol",
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]
+
+# 仅当你有持仓份额时，才在看板叠加“持仓成本”线
+_chart_user_avg_cost: float | None = None
+try:
+    _chart_hold = holdings.get(_chart_yf, {})  # type: ignore[assignment]
+    if float(_chart_hold.get("shares", 0.0)) > 0:
+        _chart_user_avg_cost = float(_chart_hold.get("avg_cost", 0.0))
+except Exception:
+    _chart_user_avg_cost = None
 
 
 # --- 后台同步（避免阻塞 UI）---
@@ -757,27 +775,30 @@ _tab_d, _tab_15, _tab_5 = st.tabs(
 )
 with _tab_d:
     if "1d" in _interval_keys:
-        st.plotly_chart(fig_daily(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+        st.plotly_chart(
+            fig_daily(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost),
+            width="stretch",
+        )
     else:
         st.info("未选择日线（1d），本周期不拉取数据。")
 with _tab_15:
     if "15m" in _interval_keys:
-        st.plotly_chart(fig_15m_vwap_rsi(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+        st.plotly_chart(
+            fig_15m_vwap_rsi(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost),
+            width="stretch",
+        )
     else:
         st.info("未选择15分钟（15m），本周期不拉取数据。")
 with _tab_5:
     if "5m" in _interval_keys:
-        st.plotly_chart(fig_5m_vwap_rsi7(_chart_yf, _chart_pick, chart_theme=chart_theme), width="stretch")
+        st.plotly_chart(
+            fig_5m_vwap_rsi7(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost),
+            width="stretch",
+        )
     else:
         st.info("未选择5分钟（5m），本周期不拉取数据。")
 
 st.divider()
-user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="evan").strip()
-st.title(f"hello {user_id}")
-if _db_conf():
-    st.sidebar.caption("存储后端：Supabase")
-else:
-    st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
 
 with st.expander("开始定投", expanded=False):
     rmb = st.number_input("每月投入（人民币）", value=5000.0)
@@ -863,7 +884,6 @@ with st.expander("开始定投", expanded=False):
             st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
 st.subheader("📦 我的持仓")
-holdings, balances_for_view, storage_mode = _load_user_state(user_id)
 st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'cloud' else '本地文件'}")
 
 with st.expander("编辑持仓（会保存）", expanded=False):

@@ -1029,7 +1029,13 @@ def sync_symbol_bars(symbol: str) -> dict[str, int]:
     return out
 
 
-def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Light") -> go.Figure:
+def fig_daily(
+    symbol: str,
+    display_name: str,
+    *,
+    chart_theme: str = "Classic Light",
+    user_avg_cost: float | None = None,
+) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "1d", "5y")
     if df.empty or len(df) < 50:
@@ -1047,6 +1053,7 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
         return fig
 
     c = df["Close"]
+    last_close = float(c.iloc[-1]) if len(c) else 0.0
     e20, e50, e100, e200 = ema(c, 20), ema(c, 50), ema(c, 100), ema(c, 200)
     r14 = rsi(c, 14)
     atr_v = atr_series(df, 14)
@@ -1090,6 +1097,29 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
         col=1,
         secondary_y=False,
     )
+
+    # 叠加用户“持仓成本”水平线 + 涨跌幅标注
+    if user_avg_cost is not None and user_avg_cost > 0:
+        cost = float(user_avg_cost)
+        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
+        fig.add_hline(
+            y=cost,
+            line_dash="dashdot",
+            line_width=1.8,
+            line_color=theme["rsi_orange"],
+            row=1,
+            col=1,
+        )
+        fig.add_annotation(
+            x=_x_end,
+            y=cost,
+            xref="x1",
+            yref="y1",
+            text=f"成本 {cost:.4g}（{pct:+.2f}%）",
+            showarrow=False,
+            font=dict(color=theme["rsi_orange"], size=11),
+            bgcolor="rgba(0,0,0,0.08)",
+        )
     for name, s, color in zip(("EMA20", "EMA50", "EMA100", "EMA200"), (e20, e50, e100, e200), theme["ema"]):
         fig.add_trace(
             go.Scatter(
@@ -1114,6 +1144,29 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
         col=1,
         secondary_y=False,
     )
+
+    # 叠加用户“持仓成本”水平线 + 涨跌幅标注
+    if user_avg_cost is not None and user_avg_cost > 0:
+        cost = float(user_avg_cost)
+        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
+        fig.add_hline(
+            y=cost,
+            line_dash="dashdot",
+            line_width=1.8,
+            line_color=theme["rsi_orange"],
+            row=1,
+            col=1,
+        )
+        fig.add_annotation(
+            x=df.index.max(),
+            y=cost,
+            xref="x1",
+            yref="y1",
+            text=f"成本 {cost:.4g}（{pct:+.2f}%）",
+            showarrow=False,
+            font=dict(color=theme["rsi_orange"], size=11),
+            bgcolor="rgba(0,0,0,0.08)",
+        )
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -1222,6 +1275,9 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
     vmax_vis = float(v_vis.max()) if len(v_vis) else 0.0
     y_lo = float(vis_df["Low"].min())
     y_hi = float(vis_df["High"].max())
+    if user_avg_cost is not None and user_avg_cost > 0:
+        y_lo = min(y_lo, float(user_avg_cost))
+        y_hi = max(y_hi, float(user_avg_cost))
     atr_vis = atr_v.reindex(vis_df.index).dropna()
     y_pad = float(atr_vis.iloc[-1]) if len(atr_vis) else max((y_hi - y_lo) * 0.06, 1e-9)
     fig.update_yaxes(
@@ -1257,7 +1313,13 @@ def fig_daily(symbol: str, display_name: str, *, chart_theme: str = "Classic Lig
     return fig
 
 
-def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Classic Light") -> go.Figure:
+def fig_15m_vwap_rsi(
+    symbol: str,
+    display_name: str,
+    *,
+    chart_theme: str = "Classic Light",
+    user_avg_cost: float | None = None,
+) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "15m", "2d")
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
@@ -1277,6 +1339,7 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
 
     vw, v_hi, v_lo = vwap_and_bands(df)
     cl = df["Close"]
+    last_close = float(cl.iloc[-1]) if len(cl) else 0.0
     r14 = rsi(cl, 14)
     r14_ma = ema(r14, 9)
     atr_v = atr_series(df, 14)
@@ -1312,6 +1375,29 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
         col=1,
         secondary_y=False,
     )
+
+    # 叠加用户“持仓成本”水平线 + 涨跌幅标注
+    if user_avg_cost is not None and user_avg_cost > 0:
+        cost = float(user_avg_cost)
+        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
+        fig.add_hline(
+            y=cost,
+            line_dash="dashdot",
+            line_width=1.8,
+            line_color=theme["rsi_orange"],
+            row=1,
+            col=1,
+        )
+        fig.add_annotation(
+            x=df.index.max(),
+            y=cost,
+            xref="x1",
+            yref="y1",
+            text=f"成本 {cost:.4g}（{pct:+.2f}%）",
+            showarrow=False,
+            font=dict(color=theme["rsi_orange"], size=11),
+            bgcolor="rgba(0,0,0,0.08)",
+        )
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -1488,7 +1574,13 @@ def fig_15m_vwap_rsi(symbol: str, display_name: str, *, chart_theme: str = "Clas
     return fig
 
 
-def fig_5m_vwap_rsi7(symbol: str, display_name: str, *, chart_theme: str = "Classic Light") -> go.Figure:
+def fig_5m_vwap_rsi7(
+    symbol: str,
+    display_name: str,
+    *,
+    chart_theme: str = "Classic Light",
+    user_avg_cost: float | None = None,
+) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "5m", "2d")
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
@@ -1508,6 +1600,7 @@ def fig_5m_vwap_rsi7(symbol: str, display_name: str, *, chart_theme: str = "Clas
 
     vw, v_hi, v_lo = vwap_and_bands(df)
     cl = df["Close"]
+    last_close = float(cl.iloc[-1]) if len(cl) else 0.0
     r7 = rsi(cl, 7)
     r7_ma = ema(r7, 9)
     atr_v = atr_series(df, 14)
