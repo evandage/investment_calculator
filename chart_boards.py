@@ -328,15 +328,21 @@ def _fix_intraday_last_bar_volume(df: pd.DataFrame) -> pd.DataFrame:
 def _fetch_eastmoney_ohlcv(
     secid: str,
     interval: Literal["1d", "15m", "5m"],
+    *,
+    lmt: int | None = None,
 ) -> pd.DataFrame:
     """东方财富 K 线：日期/时间,开,收,高,低,量,额。"""
     klt = {"1d": "101", "15m": "15", "5m": "5"}[interval]
-    lmt = "1500" if interval == "1d" else "2000"
+    cap = 1500 if interval == "1d" else 2000
+    floor = 30 if interval == "1d" else 80
+    n = cap if lmt is None else int(lmt)
+    n = max(floor, min(cap, n))
+    lmt_s = str(n)
     params = {
         "secid": secid,
         "klt": klt,
         "fqt": "1",
-        "lmt": lmt,
+        "lmt": lmt_s,
         "end": "20500101",
         "fields1": "f1,f2,f3,f4,f5,f6",
         "fields2": "f51,f52,f53,f54,f55,f56,f57",
@@ -415,6 +421,53 @@ def _fetch_yfinance_ohlcv(
     return pd.DataFrame()
 
 
+def _fetch_yfinance_ohlcv_from(
+    symbol: str,
+    interval: Literal["1d", "15m", "5m"],
+    start_naive_local: pd.Timestamp,
+) -> pd.DataFrame:
+    """从 start 附近起拉取（Supabase 增量用，避免反复下载整段 period）。"""
+    import yfinance as yf
+
+    tz = _market_tz(symbol)
+    st = start_naive_local
+    if st.tzinfo is None:
+        st = st.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+    else:
+        st = st.tz_convert(tz)
+    start_day = (st - pd.Timedelta(days=1)).date()
+
+    ylog = logging.getLogger("yfinance")
+    prev = ylog.level
+    ylog.setLevel(logging.ERROR)
+    last_exc: BaseException | None = None
+    try:
+        for attempt in range(_YF_RETRIES):
+            try:
+                df = yf.download(
+                    symbol,
+                    start=start_day,
+                    interval=interval,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=False,
+                    timeout=_YF_TIMEOUT,
+                )
+            except BaseException as e:
+                last_exc = e
+                df = pd.DataFrame()
+            df = _normalize_ohlcv(df)
+            if not df.empty:
+                return df.dropna(how="all")
+            if attempt < _YF_RETRIES - 1:
+                time.sleep(1.5 * (attempt + 1))
+    finally:
+        ylog.setLevel(prev)
+    if last_exc is not None:
+        ylog.warning("yfinance %s %s from %s: %s", symbol, interval, start_day, last_exc)
+    return pd.DataFrame()
+
+
 def _period_for_incremental(interval: Literal["1d", "15m", "5m"]) -> str:
     return "60d" if interval == "1d" else "2d"
 
@@ -439,6 +492,101 @@ def _trim_df_for_storage(symbol: str, interval: Literal["1d", "15m", "5m"], df: 
         return out if not out.empty else df.tail(1)
     except Exception:
         return df
+
+
+def _eastmoney_incremental_lmt(
+    symbol: str,
+    interval: Literal["1d", "15m", "5m"],
+    cached_max_naive: pd.Timestamp,
+) -> int:
+    """据库里最后一根 K 估算东财 lmt，增量时少拉历史条数。"""
+    tz = _market_tz(symbol)
+    try:
+        cm = cached_max_naive
+        if cm.tzinfo is None:
+            cm_local = cm.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+        else:
+            cm_local = cm.tz_convert(tz)
+        now = pd.Timestamp.now(tz=tz)
+        delta_td = now - cm_local
+        if interval == "1d":
+            days = max(5, int(delta_td.total_seconds() // 86400) + 14)
+            return min(1500, days + 30)
+        mins = max(180, int(delta_td.total_seconds() // 60) + 360)
+        if interval == "15m":
+            n = mins // 15 + 100
+        else:
+            n = mins // 5 + 150
+        return min(2000, n)
+    except Exception:
+        return 1500 if interval == "1d" else 2000
+
+
+def _delta_ohlcv_vs_cache(latest: pd.DataFrame, cached: pd.DataFrame) -> pd.DataFrame:
+    """相对库里最后一根时间戳：只保留更新/新增 K 线（用于增量 upsert）。"""
+    if latest.empty or cached.empty:
+        return latest
+    mx = cached.index.max()
+    newer = latest.loc[latest.index > mx]
+    tail_update = latest.loc[latest.index == mx].tail(1)
+    parts = [newer]
+    if not tail_update.empty:
+        parts.append(tail_update)
+    out = pd.concat(parts)
+    out = out[~out.index.duplicated(keep="last")].sort_index()
+    return out
+
+
+def _merge_ohlcv_cached_delta(cached: pd.DataFrame, delta: pd.DataFrame) -> pd.DataFrame:
+    """增量写入后合并到内存，避免再 GET 全表。"""
+    if delta.empty:
+        return cached
+    if cached.empty:
+        return delta.sort_index()
+    out = pd.concat([cached, delta])
+    out = out[~out.index.duplicated(keep="last")].sort_index()
+    return out
+
+
+def _yfinance_incremental_start(
+    symbol: str,
+    cached_max_naive: pd.Timestamp,
+    interval: Literal["1d", "15m", "5m"],
+) -> pd.Timestamp:
+    tz = _market_tz(symbol)
+    mx = cached_max_naive
+    if mx.tzinfo is None:
+        mloc = mx.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+    else:
+        mloc = mx.tz_convert(tz)
+    pad = pd.Timedelta(days=7) if interval == "1d" else pd.Timedelta(hours=18)
+    return (mloc - pad).tz_localize(None)
+
+
+def _fetch_from_source(
+    symbol: str,
+    interval: Literal["1d", "15m", "5m"],
+    fetch_period: str,
+    *,
+    eastmoney_lmt: int | None = None,
+    yfinance_start_naive_local: pd.Timestamp | None = None,
+) -> tuple[pd.DataFrame, str]:
+    secid = _eastmoney_secid(symbol)
+    if secid is not None:
+        d = _fetch_eastmoney_ohlcv(secid, interval, lmt=eastmoney_lmt)
+        if not d.empty:
+            if not _eastmoney_secid_is_cn(secid):
+                d = _adjust_eastmoney_us_index(d, interval)
+            if interval != "1d":
+                d = _fix_intraday_last_bar_volume(d)
+            return _normalize_plot_time_index(d, symbol), "eastmoney"
+    if yfinance_start_naive_local is not None:
+        d = _fetch_yfinance_ohlcv_from(symbol, interval, yfinance_start_naive_local)
+    else:
+        d = _fetch_yfinance_ohlcv(symbol, interval, fetch_period)
+    if interval != "1d":
+        d = _fix_intraday_last_bar_volume(d)
+    return _normalize_plot_time_index(d, symbol), "yfinance"
 
 
 def _supabase_headers(content_type: bool = False) -> dict[str, str]:
@@ -645,49 +793,46 @@ def fetch_ohlcv(
             return None
         return None
 
-    def _fetch_from_source(fetch_period: str) -> tuple[pd.DataFrame, str]:
-        secid = _eastmoney_secid(symbol)
-        if secid is not None:
-            d = _fetch_eastmoney_ohlcv(secid, interval)
-            if not d.empty:
-                if not _eastmoney_secid_is_cn(secid):
-                    d = _adjust_eastmoney_us_index(d, interval)
-                if interval != "1d":
-                    d = _fix_intraday_last_bar_volume(d)
-                return _normalize_plot_time_index(d, symbol), "eastmoney"
-        d = _fetch_yfinance_ohlcv(symbol, interval, fetch_period)
-        if interval != "1d":
-            d = _fix_intraday_last_bar_volume(d)
-        return _normalize_plot_time_index(d, symbol), "yfinance"
-
     if _SUPABASE_CONF:
         since_utc = _since_utc_for_period(period)
-        cached = _load_bars_from_supabase(
-            symbol,
-            interval,
-            since_utc=since_utc,
-            limit=4500 if interval == "5m" else 2500,
-        )
+        lim = 4500 if interval == "5m" else 2500
+        cached = _load_bars_from_supabase(symbol, interval, since_utc=since_utc, limit=lim)
         now_s = time.time()
         key = (symbol, interval)
         should_sync = now_s - _LAST_SYNC_AT.get(key, 0.0) >= _SYNC_MIN_SECONDS
         need_seed = cached.empty
         if should_sync or need_seed:
-            fetch_period = period if need_seed else _period_for_incremental(interval)
-            latest, source = _fetch_from_source(fetch_period)
-            if not latest.empty:
-                _upsert_bars_to_supabase(symbol, interval, latest, source)
-                cached = _load_bars_from_supabase(
+            if need_seed:
+                fetch_period = period
+                latest, source = _fetch_from_source(symbol, interval, fetch_period)
+                to_store = latest
+            else:
+                fetch_period = _period_for_incremental(interval)
+                mx = cached.index.max()
+                secid = _eastmoney_secid(symbol)
+                em_lmt = _eastmoney_incremental_lmt(symbol, interval, mx) if secid else None
+                yf_start = _yfinance_incremental_start(symbol, mx, interval) if secid is None else None
+                latest, source = _fetch_from_source(
                     symbol,
                     interval,
-                    since_utc=since_utc,
-                    limit=4500 if interval == "5m" else 2500,
+                    fetch_period,
+                    eastmoney_lmt=em_lmt,
+                    yfinance_start_naive_local=yf_start,
                 )
+                to_store = _delta_ohlcv_vs_cache(latest, cached)
+            if not latest.empty:
+                wrote = 0
+                if not to_store.empty:
+                    wrote = _upsert_bars_to_supabase(symbol, interval, to_store, source)
+                if need_seed:
+                    cached = _load_bars_from_supabase(symbol, interval, since_utc=since_utc, limit=lim)
+                elif wrote > 0:
+                    cached = _merge_ohlcv_cached_delta(cached, to_store)
             _LAST_SYNC_AT[key] = now_s
         if not cached.empty:
             return cached
 
-    direct, _ = _fetch_from_source(period)
+    direct, _ = _fetch_from_source(symbol, interval, period)
     return direct
 
 
