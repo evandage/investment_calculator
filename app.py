@@ -670,7 +670,7 @@ if st.button(
     st.session_state.def_voo = d["voo"]
     st.session_state.def_qqq = d["qqq"]
     st.session_state.def_tlt = d["tlt"]
-    st.session_state.def_hs300 = d["510300.SS"]
+    st.session_state.def_hs300 = d["hs300"]
     for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_hs300"):
         if k in st.session_state:
             del st.session_state[k]
