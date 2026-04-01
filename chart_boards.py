@@ -2,7 +2,9 @@
 
 行情源：A 股（.SS/.SZ）与常用美股 ETF（VOO/QQQ/TLT）优先东方财富（国内访问快，与页内腾讯/新浪现价同源生态）；
 其余美股等仍走 yfinance（Yahoo）。
-环境变量：YFINANCE_CHART_TIMEOUT（默认 90）、YFINANCE_CHART_RETRIES（默认 4）。
+环境变量：YFINANCE_CHART_TIMEOUT（默认 90）、YFINANCE_CHART_RETRIES（默认 4）、
+YFINANCE_MIN_GAP_SECONDS（两次 yfinance 请求最小间隔，默认 15，减轻限流）、
+MARKET_SYNC_MIN_SECONDS（K 线增量同步最小间隔，默认 180）。
 """
 
 from __future__ import annotations
@@ -32,14 +34,41 @@ _HTTP_TIMEOUT = (5, 45)
 
 _YF_TIMEOUT = float(os.environ.get("YFINANCE_CHART_TIMEOUT", "90"))
 _YF_RETRIES = max(1, int(os.environ.get("YFINANCE_CHART_RETRIES", "4")))
+_YF_MIN_GAP = float(os.environ.get("YFINANCE_MIN_GAP_SECONDS", "15"))
+_YF_LAST_MONO = 0.0
 _SUPABASE_CONF: dict[str, str] | None = None
 _LAST_SYNC_AT: dict[tuple[str, str], float] = {}
-_SYNC_MIN_SECONDS = 120
+_SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")))
 
 # Supabase 行情缓存保留期（避免分钟线无限增长导致切换标的变慢）
 # - 1d：需要足够长用于 EMA200/MACD/ATR 计算（这里留 ~450 天）
 # - 15m/5m：图上只看当日/昨日，缓存留一周足够
 _SUPABASE_RETENTION_DAYS: dict[str, int] = {"1d": 450, "15m": 2, "5m": 2}
+
+
+def _yf_pace() -> None:
+    """同一进程内两次 yfinance 请求之间留出间隔，减轻 Yahoo 限流。"""
+    global _YF_LAST_MONO
+    now = time.monotonic()
+    if _YF_LAST_MONO > 0 and (now - _YF_LAST_MONO) < _YF_MIN_GAP:
+        time.sleep(_YF_MIN_GAP - (now - _YF_LAST_MONO))
+    _YF_LAST_MONO = time.monotonic()
+
+
+def _is_yf_rate_limited(exc: BaseException) -> bool:
+    name = type(exc).__name__.lower()
+    msg = str(exc).lower()
+    return "ratelimit" in name or "too many" in msg or "rate limit" in msg
+
+
+def _yf_ticker_history(import_yf: Any, symbol: str, **kwargs: Any) -> pd.DataFrame:
+    """调用 Ticker.history；旧版 yfinance 无 timeout 时自动降级。"""
+    t = import_yf.Ticker(symbol)
+    try:
+        return t.history(timeout=int(_YF_TIMEOUT), **kwargs)
+    except TypeError:
+        return t.history(**kwargs)
+
 
 # 东财美股 secid 与行情中心分类一致（与 Yahoo  ticker 不同前缀）
 _EASTMONEY_US_SECID = {
@@ -396,19 +425,25 @@ def _fetch_yfinance_ohlcv(
     last_exc: BaseException | None = None
     try:
         for attempt in range(_YF_RETRIES):
+            _yf_pace()
             try:
-                df = yf.download(
+                df = _yf_ticker_history(
+                    yf,
                     symbol,
                     period=period,
                     interval=interval,
-                    progress=False,
                     auto_adjust=True,
-                    threads=False,
-                    timeout=_YF_TIMEOUT,
                 )
             except BaseException as e:
                 last_exc = e
                 df = pd.DataFrame()
+                if _is_yf_rate_limited(e) and attempt < _YF_RETRIES - 1:
+                    wait = min(120.0, 45.0 + 35.0 * attempt)
+                    logging.getLogger("chart_boards").warning(
+                        "yfinance rate limited %s %s, retry after %.0fs", symbol, interval, wait
+                    )
+                    time.sleep(wait)
+                    continue
             df = _normalize_ohlcv(df)
             if not df.empty:
                 return df.dropna(how="all")
@@ -443,19 +478,29 @@ def _fetch_yfinance_ohlcv_from(
     last_exc: BaseException | None = None
     try:
         for attempt in range(_YF_RETRIES):
+            _yf_pace()
             try:
-                df = yf.download(
+                df = _yf_ticker_history(
+                    yf,
                     symbol,
                     start=start_day,
                     interval=interval,
-                    progress=False,
                     auto_adjust=True,
-                    threads=False,
-                    timeout=_YF_TIMEOUT,
                 )
             except BaseException as e:
                 last_exc = e
                 df = pd.DataFrame()
+                if _is_yf_rate_limited(e) and attempt < _YF_RETRIES - 1:
+                    wait = min(120.0, 45.0 + 35.0 * attempt)
+                    logging.getLogger("chart_boards").warning(
+                        "yfinance rate limited %s %s from %s, retry after %.0fs",
+                        symbol,
+                        interval,
+                        start_day,
+                        wait,
+                    )
+                    time.sleep(wait)
+                    continue
             df = _normalize_ohlcv(df)
             if not df.empty:
                 return df.dropna(how="all")
@@ -574,6 +619,9 @@ def _fetch_from_source(
     secid = _eastmoney_secid(symbol)
     if secid is not None:
         d = _fetch_eastmoney_ohlcv(secid, interval, lmt=eastmoney_lmt)
+        if d.empty:
+            time.sleep(1.2)
+            d = _fetch_eastmoney_ohlcv(secid, interval, lmt=eastmoney_lmt)
         if not d.empty:
             if not _eastmoney_secid_is_cn(secid):
                 d = _adjust_eastmoney_us_index(d, interval)
