@@ -593,11 +593,8 @@ def _save_to_supabase(user_id: str, holdings: dict[str, dict[str, float]], balan
 
 
 def _session_cloud_enabled() -> bool:
-    """用户点击登录且配置了 Supabase 时才使用云端（持仓 + K 线缓存）。"""
-    try:
-        return bool(st.session_state.get("auth_logged_in")) and _db_conf() is not None
-    except Exception:
-        return False
+    """配置了 Supabase 即使用云端（持仓 + K 线缓存），与手动登录无关。"""
+    return _db_conf() is not None
 
 
 def _load_user_state(user_id: str) -> tuple[dict[str, dict[str, float]], dict[str, float], str]:
@@ -655,11 +652,6 @@ def _ensure_fx_session_default() -> None:
     st.session_state["_fx_initialized"] = True
 
 
-if "auth_logged_in" not in st.session_state:
-    st.session_state.auth_logged_in = False
-if "auth_user_id" not in st.session_state:
-    st.session_state.auth_user_id = ""
-
 theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
@@ -672,42 +664,21 @@ chart_theme = st.sidebar.selectbox(
 )
 st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
 
-st.sidebar.markdown("**云端同步**")
-_uid_draft = st.sidebar.text_input(
-    "用户ID",
+cloud_user_id = st.sidebar.text_input(
+    "用户ID（用于跨设备同步）",
     value="evan",
-    key="login_uid_draft",
-    disabled=bool(st.session_state.auth_logged_in),
-    help="未登录时数据只保存在本地 holdings.json / balances.json；登录后才读写 Supabase。",
-)
-if st.session_state.auth_logged_in:
-    st.sidebar.caption(f"已登录：`{st.session_state.auth_user_id}`")
-    if st.sidebar.button("退出登录", key="btn_logout"):
-        st.session_state.auth_logged_in = False
-        st.session_state.auth_user_id = ""
-        st.rerun()
+    key="sidebar_user_id",
+    help="配置了 Supabase 时读写云端 portfolio；否则使用本地 JSON。",
+).strip()
+
+configure_market_storage(_db_conf())
+
+st.title(f"hello {cloud_user_id or 'guest'}")
+
+if _db_conf():
+    st.sidebar.caption("存储后端：Supabase")
 else:
-    if st.sidebar.button("登录并启用云端", key="btn_login"):
-        uid = str(_uid_draft).strip()
-        if uid:
-            st.session_state.auth_user_id = uid
-            st.session_state.auth_logged_in = True
-            st.rerun()
-        else:
-            st.sidebar.warning("请输入用户ID")
-
-configure_market_storage(_db_conf() if _session_cloud_enabled() else None)
-
-cloud_user_id = str(st.session_state.auth_user_id).strip() if st.session_state.auth_logged_in else ""
-_display_name = cloud_user_id or str(_uid_draft).strip() or "guest"
-st.title(f"hello {_display_name}")
-
-if _session_cloud_enabled():
-    st.sidebar.caption("存储后端：Supabase（已登录）")
-elif st.session_state.auth_logged_in and not _db_conf():
-    st.sidebar.caption("已登录但未配置 Supabase Secrets → 使用本地 JSON")
-else:
-    st.sidebar.caption("未登录 → 使用本地 JSON（holdings.json / balances.json）")
+    st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
 
 holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
 
