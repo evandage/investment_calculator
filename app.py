@@ -856,13 +856,44 @@ if _nj > 0:
         _done = 0
         for _fut in as_completed(_fut_map):
             _kind, _lab = _fut_map[_fut]
-            _fig = _fut.result()
-            if _kind == "1d":
-                _fig_d = _fig
-            elif _kind == "15m":
-                _fig_15 = _fig
-            else:
-                _fig_5 = _fig
+            try:
+                _fig = _fut.result()
+                if _kind == "1d":
+                    _fig_d = _fig
+                elif _kind == "15m":
+                    _fig_15 = _fig
+                else:
+                    _fig_5 = _fig
+            except Exception as e:
+                # 并行任务失败时不让整页崩溃；打印日志并串行补一次。
+                print(f"[investment_calculator] 并行绘图失败 {_lab}: {e}", flush=True)
+                try:
+                    if _kind == "1d":
+                        _fig_d = fig_daily(
+                            _chart_yf,
+                            _chart_pick,
+                            chart_theme=chart_theme,
+                            user_avg_cost=_chart_user_avg_cost,
+                            cache_only=_kline_co,
+                        )
+                    elif _kind == "15m":
+                        _fig_15 = fig_15m_vwap_rsi(
+                            _chart_yf,
+                            _chart_pick,
+                            chart_theme=chart_theme,
+                            user_avg_cost=_chart_user_avg_cost,
+                            cache_only=_kline_co,
+                        )
+                    else:
+                        _fig_5 = fig_5m_vwap_rsi7(
+                            _chart_yf,
+                            _chart_pick,
+                            chart_theme=chart_theme,
+                            user_avg_cost=_chart_user_avg_cost,
+                            cache_only=_kline_co,
+                        )
+                except Exception as e2:
+                    print(f"[investment_calculator] 串行补偿失败 {_lab}: {e2}", flush=True)
             _chart_load_progress(_prog_slot, _done, _nj, _lab)
             _done += 1
     try:
