@@ -40,6 +40,7 @@ _YF_LAST_MONO = 0.0
 _YF_PACE_LOCK = threading.Lock()
 _SUPABASE_CONF: dict[str, str] | None = None
 _SUPABASE_SESSION: requests.Session | None = None
+_SUPABASE_READ_ONLY = bool(int(os.environ.get("SUPABASE_READ_ONLY", "0")))
 _LAST_SYNC_AT: dict[tuple[str, str], float] = {}
 _SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")))
 
@@ -195,10 +196,12 @@ def get_chart_theme(name: str) -> dict[str, Any]:
     return CHART_THEMES.get(name, CHART_THEMES["Classic Light"])
 
 
-def configure_market_storage(conf: dict[str, str] | None) -> None:
+def configure_market_storage(conf: dict[str, str] | None, *, read_only: bool | None = None) -> None:
     """配置 Supabase 行情存储（None 表示关闭）。"""
-    global _SUPABASE_CONF, _SUPABASE_SESSION
+    global _SUPABASE_CONF, _SUPABASE_SESSION, _SUPABASE_READ_ONLY
     _SUPABASE_CONF = conf if conf and conf.get("url") and conf.get("key") else None
+    if read_only is not None:
+        _SUPABASE_READ_ONLY = bool(read_only)
     _SUPABASE_SESSION = None
     if _SUPABASE_CONF:
         s = requests.Session()
@@ -918,6 +921,8 @@ def fetch_ohlcv(
         since_utc = _since_utc_for_period(period)
         lim = _SUPABASE_READ_LIMIT.get(interval, 2500)
         cached = _load_bars_from_supabase(symbol, interval, since_utc=since_utc, limit=lim)
+        if _SUPABASE_READ_ONLY:
+            return cached
         now_s = time.time()
         key = (symbol, interval)
         should_sync = now_s - _LAST_SYNC_AT.get(key, 0.0) >= _SYNC_MIN_SECONDS

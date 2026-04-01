@@ -673,11 +673,12 @@ cloud_user_id = st.sidebar.text_input(
     help="配置了 Supabase 时读写云端 portfolio；否则使用本地 JSON。",
 ).strip()
 
-configure_market_storage(_db_conf())
+_db = _db_conf()
+configure_market_storage(_db, read_only=bool(_db))
 
 st.title(f"hello {cloud_user_id or 'guest'}")
 
-if _db_conf():
+if _db:
     st.sidebar.caption("存储后端：Supabase")
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
@@ -821,6 +822,7 @@ def _chart_load_progress(slot: Any, step: int, total: int, label: str) -> None:
 
 _prog_slot = st.empty()
 _fig_d = _fig_15 = _fig_5 = None
+_chart_errs: dict[str, str] = {}
 _nj = int("1d" in _interval_keys) + int("15m" in _interval_keys) + int("5m" in _interval_keys)
 if _nj > 0:
     if _kline_co:
@@ -904,6 +906,7 @@ if _nj > 0:
                         )
                 except Exception as e2:
                     print(f"[investment_calculator] 串行补偿失败 {_lab}: {e2}", flush=True)
+                    _chart_errs[_kind] = str(e2)
             _chart_load_progress(_prog_slot, _done, _nj, _lab)
             _done += 1
     try:
@@ -920,16 +923,22 @@ _tab_d, _tab_15, _tab_5 = st.tabs(
 with _tab_d:
     if "1d" in _interval_keys and _fig_d is not None:
         st.plotly_chart(_fig_d, width="stretch")
+    elif "1d" in _interval_keys:
+        st.warning(f"日线图加载失败：{_chart_errs.get('1d', '未知错误（请看 Cloud logs）')}")
     else:
         st.info("未选择日线（1d），本周期不拉取数据。")
 with _tab_15:
     if "15m" in _interval_keys and _fig_15 is not None:
         st.plotly_chart(_fig_15, width="stretch")
+    elif "15m" in _interval_keys:
+        st.warning(f"15m 图加载失败：{_chart_errs.get('15m', '未知错误（请看 Cloud logs）')}")
     else:
         st.info("未选择15分钟（15m），本周期不拉取数据。")
 with _tab_5:
     if "5m" in _interval_keys and _fig_5 is not None:
         st.plotly_chart(_fig_5, width="stretch")
+    elif "5m" in _interval_keys:
+        st.warning(f"5m 图加载失败：{_chart_errs.get('5m', '未知错误（请看 Cloud logs）')}")
     else:
         st.info("未选择5分钟（5m），本周期不拉取数据。")
 
