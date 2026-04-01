@@ -592,13 +592,21 @@ def _save_to_supabase(user_id: str, holdings: dict[str, dict[str, float]], balan
     return r.status_code < 400
 
 
+def _session_cloud_enabled() -> bool:
+    """用户点击登录且配置了 Supabase 时才使用云端（持仓 + K 线缓存）。"""
+    try:
+        return bool(st.session_state.get("auth_logged_in")) and _db_conf() is not None
+    except Exception:
+        return False
+
+
 def _load_user_state(user_id: str) -> tuple[dict[str, dict[str, float]], dict[str, float], str]:
-    if user_id:
+    if user_id and _session_cloud_enabled():
         cloud = _load_from_supabase(user_id)
         if cloud is not None:
             h, b = cloud
             return h, b, "cloud"
-    # Cloud 未配置或读失败时，回退本地
+    # 未登录、未配置云端或读失败：本地 JSON
     return _load_holdings(), _load_balances(), "local"
 
 
@@ -607,7 +615,7 @@ def _save_user_state(
     holdings: dict[str, dict[str, float]],
     balances: dict[str, float],
 ) -> str:
-    if user_id and _save_to_supabase(user_id, holdings, balances):
+    if user_id and _session_cloud_enabled() and _save_to_supabase(user_id, holdings, balances):
         return "cloud"
     _save_holdings(holdings)
     _save_balances(balances)
@@ -647,7 +655,11 @@ def _ensure_fx_session_default() -> None:
     st.session_state["_fx_initialized"] = True
 
 
-configure_market_storage(_db_conf())
+if "auth_logged_in" not in st.session_state:
+    st.session_state.auth_logged_in = False
+if "auth_user_id" not in st.session_state:
+    st.session_state.auth_user_id = ""
+
 theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
@@ -656,18 +668,48 @@ chart_theme = st.sidebar.selectbox(
     options=list(CHART_THEME_OPTIONS),
     index=list(CHART_THEME_OPTIONS).index("Trading Dark") if "Trading Dark" in CHART_THEME_OPTIONS else 0,
     key="chart_plot_theme",
-    help="Classic Light 浅色机构风；Trading Dark 暗色终端风；CN Quant 红涨绿跌略饱和。",
+    help="Classic Light 浅色机构风；Trading Dark 暗色终端风（绿涨红跌）；CN Quant 红涨绿跌略饱和。",
 )
 st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
 
-user_id = st.sidebar.text_input("用户ID（用于跨设备同步）", value="evan").strip()
-st.title(f"hello {user_id}")
-if _db_conf():
-    st.sidebar.caption("存储后端：Supabase")
+st.sidebar.markdown("**云端同步**")
+_uid_draft = st.sidebar.text_input(
+    "用户ID",
+    value="evan",
+    key="login_uid_draft",
+    disabled=bool(st.session_state.auth_logged_in),
+    help="未登录时数据只保存在本地 holdings.json / balances.json；登录后才读写 Supabase。",
+)
+if st.session_state.auth_logged_in:
+    st.sidebar.caption(f"已登录：`{st.session_state.auth_user_id}`")
+    if st.sidebar.button("退出登录", key="btn_logout"):
+        st.session_state.auth_logged_in = False
+        st.session_state.auth_user_id = ""
+        st.rerun()
 else:
-    st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
+    if st.sidebar.button("登录并启用云端", key="btn_login"):
+        uid = str(_uid_draft).strip()
+        if uid:
+            st.session_state.auth_user_id = uid
+            st.session_state.auth_logged_in = True
+            st.rerun()
+        else:
+            st.sidebar.warning("请输入用户ID")
 
-holdings, balances_for_view, storage_mode = _load_user_state(user_id)
+configure_market_storage(_db_conf() if _session_cloud_enabled() else None)
+
+cloud_user_id = str(st.session_state.auth_user_id).strip() if st.session_state.auth_logged_in else ""
+_display_name = cloud_user_id or str(_uid_draft).strip() or "guest"
+st.title(f"hello {_display_name}")
+
+if _session_cloud_enabled():
+    st.sidebar.caption("存储后端：Supabase（已登录）")
+elif st.session_state.auth_logged_in and not _db_conf():
+    st.sidebar.caption("已登录但未配置 Supabase Secrets → 使用本地 JSON")
+else:
+    st.sidebar.caption("未登录 → 使用本地 JSON（holdings.json / balances.json）")
+
+holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
 
 # --- 技术看板（K 线）---
 _chart_symbol_labels = {meta["label"]: sym for sym, meta in _ASSET_META.items()}
@@ -684,12 +726,15 @@ _chart_pick = st.selectbox(
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]
 
-# 仅当你有持仓份额时，才在看板叠加“持仓成本”线
+# 持仓成本线：有有效持仓价才画；若已登录云端但本次未从 Supabase 读到数据（回退本地），不画以免误导
+_chart_holdings_ok = (not _session_cloud_enabled()) or (storage_mode == "cloud")
 _chart_user_avg_cost: float | None = None
 try:
     _chart_hold = holdings.get(_chart_yf, {})  # type: ignore[assignment]
-    if float(_chart_hold.get("shares", 0.0)) > 0:
-        _chart_user_avg_cost = float(_chart_hold.get("avg_cost", 0.0))
+    _sh = float(_chart_hold.get("shares", 0.0))
+    _ac = float(_chart_hold.get("avg_cost", 0.0))
+    if _chart_holdings_ok and _sh > 0 and _ac > 0:
+        _chart_user_avg_cost = _ac
 except Exception:
     _chart_user_avg_cost = None
 
@@ -712,7 +757,7 @@ def _bg_sync_symbol(symbol: str) -> None:
 
 
 def _maybe_start_bg_sync(symbol: str) -> None:
-    if not _db_conf():
+    if not _session_cloud_enabled():
         return
     now_s = time.time()
     with _BG_SYNC_LOCK:
@@ -859,7 +904,7 @@ with st.expander("开始定投", expanded=False):
 
         st.write("### A股")
 
-        _, balances, _ = _load_user_state(user_id)
+        _, balances, _ = _load_user_state(cloud_user_id)
         hs300_amount = rmb * 0.2
         hs300_budget = hs300_amount + balances["510300.SS"]
         hs300_lot_cost = hs300_price * 100
@@ -876,11 +921,11 @@ with st.expander("开始定投", expanded=False):
             "510300.SS": {"shares": hs300_lots * 100.0, "price": hs300_price},
         }
         if st.button("将本月定投更新到我的持仓"):
-            holdings, balances_loaded, _ = _load_user_state(user_id)
+            holdings, balances_loaded, _ = _load_user_state(cloud_user_id)
             for sym, buy in calc_buys.items():
                 holdings[sym] = _merge_buy(holdings[sym], buy["shares"], buy["price"])
             balances_loaded["510300.SS"] = hs300_balance_next
-            save_mode = _save_user_state(user_id, holdings, balances_loaded)
+            save_mode = _save_user_state(cloud_user_id, holdings, balances_loaded)
             st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
 st.subheader("📦 我的持仓")
@@ -917,7 +962,7 @@ with st.expander("编辑持仓（会保存）", expanded=False):
             key="edit_balance_hs300",
         )
         if st.form_submit_button("保存持仓"):
-            save_mode = _save_user_state(user_id, holdings, balances_for_view)
+            save_mode = _save_user_state(cloud_user_id, holdings, balances_for_view)
             st.success(f"持仓已保存（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
 rows = []
