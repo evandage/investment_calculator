@@ -1334,6 +1334,15 @@ def fig_daily(
 
     c = df["Close"]
     last_close = float(c.iloc[-1]) if len(c) else 0.0
+    p_min = float(df["Low"].min())
+    p_max = float(df["High"].max())
+
+    def _cost_visible(cost: float) -> bool:
+        if cost <= 0:
+            return False
+        # 防止异常成本线把价格轴拉爆，导致K线“看不见”。
+        return (p_min * 0.5) <= cost <= (p_max * 1.5)
+
     e20, e50, e100, e200 = ema(c, 20), ema(c, 50), ema(c, 100), ema(c, 200)
     r14 = rsi(c, 14)
     atr_v = atr_series(df, 14)
@@ -1379,7 +1388,7 @@ def fig_daily(
     )
 
     # 叠加用户“持仓成本”水平线 + 涨跌幅标注
-    if user_avg_cost is not None and user_avg_cost > 0:
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
         cost = float(user_avg_cost)
         pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
         fig.add_hline(
@@ -1425,28 +1434,6 @@ def fig_daily(
         secondary_y=False,
     )
 
-    # 叠加用户“持仓成本”水平线 + 涨跌幅标注
-    if user_avg_cost is not None and user_avg_cost > 0:
-        cost = float(user_avg_cost)
-        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
-        fig.add_hline(
-            y=cost,
-            line_dash="dashdot",
-            line_width=1.8,
-            line_color=theme["rsi_orange"],
-            row=1,
-            col=1,
-        )
-        fig.add_annotation(
-            x=df.index.max(),
-            y=cost,
-            xref="x1",
-            yref="y1",
-            text=f"成本 {cost:.4g}（{pct:+.2f}%）",
-            showarrow=False,
-            font=dict(color=theme["rsi_orange"], size=11),
-            bgcolor="rgba(0,0,0,0.08)",
-        )
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -1555,7 +1542,7 @@ def fig_daily(
     vmax_vis = float(v_vis.max()) if len(v_vis) else 0.0
     y_lo = float(vis_df["Low"].min())
     y_hi = float(vis_df["High"].max())
-    if user_avg_cost is not None and user_avg_cost > 0:
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
         y_lo = min(y_lo, float(user_avg_cost))
         y_hi = max(y_hi, float(user_avg_cost))
     atr_vis = atr_v.reindex(vis_df.index).dropna()
@@ -1621,6 +1608,14 @@ def fig_15m_vwap_rsi(
     vw, v_hi, v_lo = vwap_and_bands(df)
     cl = df["Close"]
     last_close = float(cl.iloc[-1]) if len(cl) else 0.0
+    p_min = float(df["Low"].min())
+    p_max = float(df["High"].max())
+
+    def _cost_visible(cost: float) -> bool:
+        if cost <= 0:
+            return False
+        return (p_min * 0.5) <= cost <= (p_max * 1.5)
+
     r14 = rsi(cl, 14)
     r14_ma = ema(r14, 9)
     atr_v = atr_series(df, 14)
@@ -1658,7 +1653,7 @@ def fig_15m_vwap_rsi(
     )
 
     # 叠加用户“持仓成本”水平线 + 涨跌幅标注
-    if user_avg_cost is not None and user_avg_cost > 0:
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
         cost = float(user_avg_cost)
         pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
         fig.add_hline(
@@ -1838,7 +1833,20 @@ def fig_15m_vwap_rsi(
     )
     _apply_chart_theme(fig, theme)
     vmax = float(vol.max()) if len(vol) else 0.0
-    fig.update_yaxes(title_text="价格", row=1, col=1, title_standoff=8, secondary_y=False)
+    y_lo = float(df["Low"].min())
+    y_hi = float(df["High"].max())
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+        y_lo = min(y_lo, float(user_avg_cost))
+        y_hi = max(y_hi, float(user_avg_cost))
+    y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
+    fig.update_yaxes(
+        title_text="价格",
+        row=1,
+        col=1,
+        title_standoff=8,
+        secondary_y=False,
+        range=[y_lo - y_pad, y_hi + y_pad],
+    )
     fig.update_yaxes(
         row=1,
         col=1,
@@ -1883,6 +1891,14 @@ def fig_5m_vwap_rsi7(
     vw, v_hi, v_lo = vwap_and_bands(df)
     cl = df["Close"]
     last_close = float(cl.iloc[-1]) if len(cl) else 0.0
+    p_min = float(df["Low"].min())
+    p_max = float(df["High"].max())
+
+    def _cost_visible(cost: float) -> bool:
+        if cost <= 0:
+            return False
+        return (p_min * 0.5) <= cost <= (p_max * 1.5)
+
     r7 = rsi(cl, 7)
     r7_ma = ema(r7, 9)
     atr_v = atr_series(df, 14)
@@ -1918,6 +1934,27 @@ def fig_5m_vwap_rsi7(
         col=1,
         secondary_y=False,
     )
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+        cost = float(user_avg_cost)
+        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
+        fig.add_hline(
+            y=cost,
+            line_dash="dashdot",
+            line_width=1.8,
+            line_color=theme["rsi_orange"],
+            row=1,
+            col=1,
+        )
+        fig.add_annotation(
+            x=df.index.max(),
+            y=cost,
+            xref="x1",
+            yref="y1",
+            text=f"成本 {cost:.4g}（{pct:+.2f}%）",
+            showarrow=False,
+            font=dict(color=theme["rsi_orange"], size=11),
+            bgcolor="rgba(0,0,0,0.08)",
+        )
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -2077,7 +2114,20 @@ def fig_5m_vwap_rsi7(
     )
     _apply_chart_theme(fig, theme)
     vmax = float(vol.max()) if len(vol) else 0.0
-    fig.update_yaxes(title_text="价格", row=1, col=1, title_standoff=8, secondary_y=False)
+    y_lo = float(df["Low"].min())
+    y_hi = float(df["High"].max())
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+        y_lo = min(y_lo, float(user_avg_cost))
+        y_hi = max(y_hi, float(user_avg_cost))
+    y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
+    fig.update_yaxes(
+        title_text="价格",
+        row=1,
+        col=1,
+        title_standoff=8,
+        secondary_y=False,
+        range=[y_lo - y_pad, y_hi + y_pad],
+    )
     fig.update_yaxes(
         row=1,
         col=1,
