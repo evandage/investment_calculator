@@ -1652,28 +1652,6 @@ def fig_15m_vwap_rsi(
         secondary_y=False,
     )
 
-    # 叠加用户“持仓成本”水平线 + 涨跌幅标注
-    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
-        cost = float(user_avg_cost)
-        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
-        fig.add_hline(
-            y=cost,
-            line_dash="dashdot",
-            line_width=1.8,
-            line_color=theme["rsi_orange"],
-            row=1,
-            col=1,
-        )
-        fig.add_annotation(
-            x=df.index.max(),
-            y=cost,
-            xref="x1",
-            yref="y1",
-            text=f"成本 {cost:.4g}（{pct:+.2f}%）",
-            showarrow=False,
-            font=dict(color=theme["rsi_orange"], size=11),
-            bgcolor="rgba(0,0,0,0.08)",
-        )
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -1835,9 +1813,6 @@ def fig_15m_vwap_rsi(
     vmax = float(vol.max()) if len(vol) else 0.0
     y_lo = float(df["Low"].min())
     y_hi = float(df["High"].max())
-    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
-        y_lo = min(y_lo, float(user_avg_cost))
-        y_hi = max(y_hi, float(user_avg_cost))
     y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
     fig.update_yaxes(
         title_text="价格",
@@ -1926,27 +1901,6 @@ def fig_5m_vwap_rsi7(
         col=1,
         secondary_y=False,
     )
-    if user_avg_cost is not None and float(user_avg_cost) > 0:
-        cost = float(user_avg_cost)
-        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
-        fig.add_hline(
-            y=cost,
-            line_dash="dashdot",
-            line_width=1.8,
-            line_color=theme["rsi_orange"],
-            row=1,
-            col=1,
-        )
-        fig.add_annotation(
-            x=df.index.max(),
-            y=cost,
-            xref="x1",
-            yref="y1",
-            text=f"成本 {cost:.4g}（{pct:+.2f}%）",
-            showarrow=False,
-            font=dict(color=theme["rsi_orange"], size=11),
-            bgcolor="rgba(0,0,0,0.08)",
-        )
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -2108,9 +2062,6 @@ def fig_5m_vwap_rsi7(
     vmax = float(vol.max()) if len(vol) else 0.0
     y_lo = float(df["Low"].min())
     y_hi = float(df["High"].max())
-    if user_avg_cost is not None and float(user_avg_cost) > 0:
-        y_lo = min(y_lo, float(user_avg_cost))
-        y_hi = max(y_hi, float(user_avg_cost))
     y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
     fig.update_yaxes(
         title_text="价格",
