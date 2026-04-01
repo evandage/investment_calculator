@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from datetime import timedelta
 from typing import Any, Literal
@@ -36,7 +37,9 @@ _YF_TIMEOUT = float(os.environ.get("YFINANCE_CHART_TIMEOUT", "90"))
 _YF_RETRIES = max(1, int(os.environ.get("YFINANCE_CHART_RETRIES", "4")))
 _YF_MIN_GAP = float(os.environ.get("YFINANCE_MIN_GAP_SECONDS", "15"))
 _YF_LAST_MONO = 0.0
+_YF_PACE_LOCK = threading.Lock()
 _SUPABASE_CONF: dict[str, str] | None = None
+_SUPABASE_SESSION: requests.Session | None = None
 _LAST_SYNC_AT: dict[tuple[str, str], float] = {}
 _SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")))
 
@@ -44,15 +47,18 @@ _SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")
 # - 1d：需要足够长用于 EMA200/MACD/ATR 计算（这里留 ~450 天）
 # - 15m/5m：图上只看当日/昨日，缓存留一周足够
 _SUPABASE_RETENTION_DAYS: dict[str, int] = {"1d": 450, "15m": 2, "5m": 2}
+# 单次 GET market_bars 行数上限（过大则 JSON 解析与传输慢；日线 EMA200 约 300 根即可）
+_SUPABASE_READ_LIMIT: dict[str, int] = {"1d": 900, "15m": 1600, "5m": 3600}
 
 
 def _yf_pace() -> None:
     """同一进程内两次 yfinance 请求之间留出间隔，减轻 Yahoo 限流。"""
     global _YF_LAST_MONO
-    now = time.monotonic()
-    if _YF_LAST_MONO > 0 and (now - _YF_LAST_MONO) < _YF_MIN_GAP:
-        time.sleep(_YF_MIN_GAP - (now - _YF_LAST_MONO))
-    _YF_LAST_MONO = time.monotonic()
+    with _YF_PACE_LOCK:
+        now = time.monotonic()
+        if _YF_LAST_MONO > 0 and (now - _YF_LAST_MONO) < _YF_MIN_GAP:
+            time.sleep(_YF_MIN_GAP - (now - _YF_LAST_MONO))
+        _YF_LAST_MONO = time.monotonic()
 
 
 def _is_yf_rate_limited(exc: BaseException) -> bool:
@@ -191,8 +197,18 @@ def get_chart_theme(name: str) -> dict[str, Any]:
 
 def configure_market_storage(conf: dict[str, str] | None) -> None:
     """配置 Supabase 行情存储（None 表示关闭）。"""
-    global _SUPABASE_CONF
+    global _SUPABASE_CONF, _SUPABASE_SESSION
     _SUPABASE_CONF = conf if conf and conf.get("url") and conf.get("key") else None
+    _SUPABASE_SESSION = None
+    if _SUPABASE_CONF:
+        s = requests.Session()
+        s.headers.update(
+            {
+                "apikey": _SUPABASE_CONF["key"],
+                "Authorization": f"Bearer {_SUPABASE_CONF['key']}",
+            }
+        )
+        _SUPABASE_SESSION = s
 
 
 def _candlestick_kwargs(theme: dict[str, Any]) -> dict[str, Any]:
@@ -678,7 +694,10 @@ def _load_bars_from_supabase(
         except Exception:
             pass
     try:
-        r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
+        if _SUPABASE_SESSION is not None:
+            r = _SUPABASE_SESSION.get(url, params=params, timeout=_HTTP_TIMEOUT)
+        else:
+            r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
         if r.status_code >= 400:
             return pd.DataFrame()
         rows = r.json()
@@ -756,12 +775,20 @@ def _upsert_bars_to_supabase(
         return 0
     url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars?on_conflict=symbol,interval,ts"
     try:
-        r = requests.post(
-            url,
-            headers=_supabase_headers(content_type=True),
-            json=payload,
-            timeout=_HTTP_TIMEOUT,
-        )
+        if _SUPABASE_SESSION is not None:
+            r = _SUPABASE_SESSION.post(
+                url,
+                headers=_supabase_headers(content_type=True),
+                json=payload,
+                timeout=_HTTP_TIMEOUT,
+            )
+        else:
+            r = requests.post(
+                url,
+                headers=_supabase_headers(content_type=True),
+                json=payload,
+                timeout=_HTTP_TIMEOUT,
+            )
         if r.status_code >= 400:
             # 这里不直接抛异常：界面仍可展示本地拉取的图表；但必须把原因写进日志
             # 以便确认是 service_role key / RLS / 项目 URL 是否配置正确。
@@ -822,6 +849,8 @@ def fetch_ohlcv(
     symbol: str,
     interval: Literal["1d", "15m", "5m"],
     period: str,
+    *,
+    cache_only: bool = False,
 ) -> pd.DataFrame:
     def _since_utc_for_period(p: str) -> pd.Timestamp | None:
         # 根据保留期减少从 Supabase 拉取的无用历史，提升切换标的速度
@@ -841,9 +870,15 @@ def fetch_ohlcv(
             return None
         return None
 
+    # 仅读 Supabase、不打外网（用于先快速出图，再由下一轮 rerun 做完整同步）
+    if cache_only and _SUPABASE_CONF:
+        since_utc = _since_utc_for_period(period)
+        lim = _SUPABASE_READ_LIMIT.get(interval, 2500)
+        return _load_bars_from_supabase(symbol, interval, since_utc=since_utc, limit=lim)
+
     if _SUPABASE_CONF:
         since_utc = _since_utc_for_period(period)
-        lim = 4500 if interval == "5m" else 2500
+        lim = _SUPABASE_READ_LIMIT.get(interval, 2500)
         cached = _load_bars_from_supabase(symbol, interval, since_utc=since_utc, limit=lim)
         now_s = time.time()
         key = (symbol, interval)
@@ -1083,9 +1118,10 @@ def fig_daily(
     *,
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
+    cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    df = fetch_ohlcv(symbol, "1d", "5y")
+    df = fetch_ohlcv(symbol, "1d", "5y", cache_only=cache_only)
     if df.empty or len(df) < 50:
         fig = go.Figure()
         fig.add_annotation(
@@ -1367,9 +1403,10 @@ def fig_15m_vwap_rsi(
     *,
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
+    cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    df = fetch_ohlcv(symbol, "15m", "2d")
+    df = fetch_ohlcv(symbol, "15m", "2d", cache_only=cache_only)
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
     if df.empty:
         fig = go.Figure()
@@ -1628,9 +1665,10 @@ def fig_5m_vwap_rsi7(
     *,
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
+    cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    df = fetch_ohlcv(symbol, "5m", "2d")
+    df = fetch_ohlcv(symbol, "5m", "2d", cache_only=cache_only)
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
     if df.empty:
         fig = go.Figure()

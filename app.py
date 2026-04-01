@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
 from typing import Any
@@ -743,8 +744,6 @@ def _maybe_start_bg_sync(symbol: str) -> None:
     t.start()
 
 
-_maybe_start_bg_sync(_chart_yf)
-
 # --- 刷新市价（并可选同步当前K线到云端）---
 if st.button(
     "刷新市价",
@@ -786,6 +785,17 @@ _interval_keys = [_interval_display_map[x] for x in _interval_pick]
 if not _interval_keys:
     _interval_keys = ["1d"]
 
+# 配置了 Supabase 时：第一轮只读库快速出图，随后 st.rerun 再拉外网同步并刷新
+_use_kline_two_phase = _db_conf() is not None
+_k_qk = f"{_chart_yf}|{','.join(sorted(_interval_keys))}"
+if _use_kline_two_phase:
+    if st.session_state.get("_kline_qk") != _k_qk:
+        st.session_state._kline_qk = _k_qk
+        st.session_state._kline_pass = "stale"
+    _kline_co = st.session_state.get("_kline_pass") == "stale"
+else:
+    _kline_co = False
+
 def _chart_load_progress(slot: Any, step: int, total: int, label: str) -> None:
     """页面进度条 + 服务端 print（Streamlit Cloud 日志可见）。"""
     if total <= 0:
@@ -799,31 +809,68 @@ def _chart_load_progress(slot: Any, step: int, total: int, label: str) -> None:
         slot.progress(frac)
 
 
-_chart_jobs: list[tuple[str, str]] = []
-if "1d" in _interval_keys:
-    _chart_jobs.append(("日线（1d）", "1d"))
-if "15m" in _interval_keys:
-    _chart_jobs.append(("15m（15m）", "15m"))
-if "5m" in _interval_keys:
-    _chart_jobs.append(("5m（5m）", "5m"))
-
 _prog_slot = st.empty()
 _fig_d = _fig_15 = _fig_5 = None
-_nj = len(_chart_jobs)
+_nj = int("1d" in _interval_keys) + int("15m" in _interval_keys) + int("5m" in _interval_keys)
 if _nj > 0:
-    for _i, (_lab, _kind) in enumerate(_chart_jobs):
-        _chart_load_progress(_prog_slot, _i, _nj, _lab)
-        if _kind == "1d":
-            _fig_d = fig_daily(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost)
-        elif _kind == "15m":
-            _fig_15 = fig_15m_vwap_rsi(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost)
-        else:
-            _fig_5 = fig_5m_vwap_rsi7(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost)
+    if _kline_co:
+        st.caption("📦 以下为数据库中的缓存 K 线；随后将自动同步最新行情并刷新图表。")
     try:
-        _prog_slot.progress(1.0, text="看板数据加载完成")
+        _prog0 = "先从数据库加载缓存 K 线…" if _kline_co else "并行加载看板各周期…"
+        _prog_slot.progress(0.0, text=_prog0)
+    except TypeError:
+        _prog_slot.progress(0)
+    _fut_map: dict[Any, tuple[str, str]] = {}
+    _workers = min(3, _nj)
+    with ThreadPoolExecutor(max_workers=_workers) as _pool:
+        if "1d" in _interval_keys:
+            _f = _pool.submit(
+                fig_daily,
+                _chart_yf,
+                _chart_pick,
+                chart_theme=chart_theme,
+                user_avg_cost=_chart_user_avg_cost,
+                cache_only=_kline_co,
+            )
+            _fut_map[_f] = ("1d", "日线（1d）")
+        if "15m" in _interval_keys:
+            _f = _pool.submit(
+                fig_15m_vwap_rsi,
+                _chart_yf,
+                _chart_pick,
+                chart_theme=chart_theme,
+                user_avg_cost=_chart_user_avg_cost,
+                cache_only=_kline_co,
+            )
+            _fut_map[_f] = ("15m", "15m（15m）")
+        if "5m" in _interval_keys:
+            _f = _pool.submit(
+                fig_5m_vwap_rsi7,
+                _chart_yf,
+                _chart_pick,
+                chart_theme=chart_theme,
+                user_avg_cost=_chart_user_avg_cost,
+                cache_only=_kline_co,
+            )
+            _fut_map[_f] = ("5m", "5m（5m）")
+        _done = 0
+        for _fut in as_completed(_fut_map):
+            _kind, _lab = _fut_map[_fut]
+            _fig = _fut.result()
+            if _kind == "1d":
+                _fig_d = _fig
+            elif _kind == "15m":
+                _fig_15 = _fig
+            else:
+                _fig_5 = _fig
+            _chart_load_progress(_prog_slot, _done, _nj, _lab)
+            _done += 1
+    try:
+        _done_msg = "缓存已渲染" if _kline_co else "看板数据加载完成"
+        _prog_slot.progress(1.0, text=_done_msg)
     except TypeError:
         _prog_slot.progress(1.0)
-    print("[investment_calculator] 看板数据加载完成", flush=True)
+    print(f"[investment_calculator] {_done_msg}", flush=True)
     _prog_slot.empty()
 
 _tab_d, _tab_15, _tab_5 = st.tabs(
@@ -844,6 +891,14 @@ with _tab_5:
         st.plotly_chart(_fig_5, width="stretch")
     else:
         st.info("未选择5分钟（5m），本周期不拉取数据。")
+
+if _use_kline_two_phase and _kline_co:
+    st.session_state._kline_pass = "live"
+    if _nj > 0:
+        st.rerun()
+
+if not (_use_kline_two_phase and st.session_state.get("_kline_pass") == "stale"):
+    _maybe_start_bg_sync(_chart_yf)
 
 st.divider()
 
