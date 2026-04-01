@@ -803,6 +803,38 @@ def probe_market_inventory(limit: int = 1000) -> list[dict[str, Any]]:
         return []
 
 
+def probe_symbol_interval_raw_rows(
+    symbol: str,
+    intervals: list[Literal["1d", "15m", "5m"]],
+) -> dict[str, int]:
+    """直接用 REST 原始返回统计当前 symbol 各周期行数（不经过 DataFrame 解析）。"""
+    out: dict[str, int] = {k: 0 for k in intervals}
+    if not _SUPABASE_CONF:
+        return out
+    url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars"
+    for iv in intervals:
+        params = {
+            "select": "ts",
+            "symbol": f"eq.{symbol}",
+            "interval": f"eq.{iv}",
+            "order": "ts.desc",
+            "limit": "200",
+        }
+        try:
+            if _SUPABASE_SESSION is not None:
+                r = _SUPABASE_SESSION.get(url, params=params, timeout=_HTTP_TIMEOUT)
+            else:
+                r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
+            if r.status_code >= 400:
+                out[iv] = -1
+                continue
+            rows = r.json()
+            out[iv] = len(rows) if isinstance(rows, list) else 0
+        except Exception:
+            out[iv] = -1
+    return out
+
+
 def probe_market_cache_status(
     symbol: str,
     intervals: list[Literal["1d", "15m", "5m"]],

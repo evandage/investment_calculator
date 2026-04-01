@@ -19,6 +19,7 @@ from chart_boards import (
     fig_5m_vwap_rsi7,
     fig_daily,
     probe_market_inventory,
+    probe_symbol_interval_raw_rows,
     multiframe_signal_bundle,
     probe_market_cache_status,
     probe_recent_market_rows,
@@ -789,8 +790,11 @@ if _db_conf():
         _hit_text = " / ".join(
             [f"{k}:{'有缓存' if _hits.get(k, False) else '空'}({int(_rows.get(k, 0))}条)" for k in _interval_keys]
         )
+        _raw_rows = probe_symbol_interval_raw_rows(_chart_yf, _interval_keys)  # type: ignore[arg-type]
+        _raw_text = " / ".join([f"{k}:{int(_raw_rows.get(k, 0))}条" for k in _interval_keys])
         _ts_text = " / ".join([f"{k}:{_lts.get(k, '-') or '-'}" for k in _interval_keys])
         st.caption(f"Supabase 连通正常；{_chart_yf} 有效缓存：{_hit_text}")
+        st.caption(f"原始REST行数（同symbol/interval）：{_raw_text}")
         st.caption(f"各周期最新时间：{_ts_text}")
         if all(int(_rows.get(k, 0)) <= 0 for k in _interval_keys):
             _recent = probe_recent_market_rows(limit=12)
