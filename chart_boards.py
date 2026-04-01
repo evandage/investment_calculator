@@ -722,22 +722,57 @@ def _load_bars_from_supabase(
     df = pd.DataFrame(rows)
     if df.empty:
         return df
+
+    def _pick_col(frame: pd.DataFrame, name: str) -> str | None:
+        if name in frame.columns:
+            return name
+        target = name.lower()
+        for c in frame.columns:
+            if str(c).lower() == target:
+                return str(c)
+        return None
+
     try:
-        df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce")
-        df = df.dropna(subset=["ts"])
+        col_ts = _pick_col(df, "ts")
+        col_open = _pick_col(df, "open")
+        col_high = _pick_col(df, "high")
+        col_low = _pick_col(df, "low")
+        col_close = _pick_col(df, "close")
+        col_volume = _pick_col(df, "volume")
+        if not col_ts or not col_open or not col_high or not col_low or not col_close:
+            return pd.DataFrame()
+
+        ts = pd.to_datetime(df[col_ts], utc=True, errors="coerce")
+        base = pd.DataFrame(
+            {
+                "Open": pd.to_numeric(df[col_open], errors="coerce"),
+                "High": pd.to_numeric(df[col_high], errors="coerce"),
+                "Low": pd.to_numeric(df[col_low], errors="coerce"),
+                "Close": pd.to_numeric(df[col_close], errors="coerce"),
+                "Volume": pd.to_numeric(df[col_volume], errors="coerce") if col_volume else 0.0,
+            }
+        )
+        base["ts"] = ts
+        base = base.dropna(subset=["ts", "Open", "High", "Low", "Close"])
+        if base.empty:
+            return pd.DataFrame()
+
         out = pd.DataFrame(
             {
-                "Open": pd.to_numeric(df["open"], errors="coerce"),
-                "High": pd.to_numeric(df["high"], errors="coerce"),
-                "Low": pd.to_numeric(df["low"], errors="coerce"),
-                "Close": pd.to_numeric(df["close"], errors="coerce"),
-                "Volume": pd.to_numeric(df["volume"], errors="coerce"),
+                "Open": base["Open"],
+                "High": base["High"],
+                "Low": base["Low"],
+                "Close": base["Close"],
+                "Volume": base["Volume"],
             },
-            index=pd.DatetimeIndex(df["ts"], name="Datetime"),
-        )
-        out = out.dropna(subset=["Open", "High", "Low", "Close"]).sort_index()
+            index=pd.DatetimeIndex(base["ts"], name="Datetime"),
+        ).sort_index()
         out = out[~out.index.duplicated(keep="last")]
-        return _normalize_plot_time_index(out, symbol)
+        try:
+            return _normalize_plot_time_index(out, symbol)
+        except Exception:
+            # 解析成功时宁可返回原始时区索引，也不要误报“无数据”
+            return out
     except (TypeError, ValueError, KeyError):
         return pd.DataFrame()
 
