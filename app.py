@@ -1,8 +1,5 @@
 import re
 import json
-import logging
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
@@ -22,7 +19,6 @@ from chart_boards import (
     fig_daily,
     multiframe_signal_bundle,
     probe_market_cache_status,
-    sync_symbol_bars,
 )
 
 # 拉取失败时的回退价（与常见区间一致）
@@ -713,39 +709,6 @@ except Exception:
     _chart_user_avg_cost = None
 
 
-# --- 后台同步（避免阻塞 UI）---
-_BG_SYNC_MIN_SECONDS = 300
-_BG_SYNC_RUNNING: set[str] = set()
-_BG_SYNC_LAST_AT: dict[str, float] = {}
-_BG_SYNC_LOCK = threading.Lock()
-
-
-def _bg_sync_symbol(symbol: str) -> None:
-    try:
-        sync_symbol_bars(symbol)
-    except Exception:
-        logging.getLogger("bg_sync").exception("background sync failed: %s", symbol)
-    finally:
-        with _BG_SYNC_LOCK:
-            _BG_SYNC_RUNNING.discard(symbol)
-
-
-def _maybe_start_bg_sync(symbol: str) -> None:
-    if not _session_cloud_enabled():
-        return
-    now_s = time.time()
-    with _BG_SYNC_LOCK:
-        last_s = _BG_SYNC_LAST_AT.get(symbol, 0.0)
-        if symbol in _BG_SYNC_RUNNING:
-            return
-        if now_s - last_s < _BG_SYNC_MIN_SECONDS:
-            return
-        _BG_SYNC_RUNNING.add(symbol)
-        _BG_SYNC_LAST_AT[symbol] = now_s
-    t = threading.Thread(target=_bg_sync_symbol, args=(symbol,), daemon=True)
-    t.start()
-
-
 # --- 刷新市价（并可选同步当前K线到云端）---
 if st.button(
     "刷新市价",
@@ -766,10 +729,6 @@ if st.button(
             del st.session_state[k]
 
     st.success("已刷新市价")
-
-    # 刷新市价后，避免立刻又触发后台同步（给页面留出喘息时间）。
-    with _BG_SYNC_LOCK:
-        _BG_SYNC_LAST_AT[_chart_yf] = time.time()
 _interval_display_map = {
     "日线（1d）": "1d",
     "15分钟（15m）": "15m",
@@ -787,22 +746,20 @@ _interval_keys = [_interval_display_map[x] for x in _interval_pick]
 if not _interval_keys:
     _interval_keys = ["1d"]
 
-# 配置了 Supabase 时：第一轮只读库快速出图，随后 st.rerun 再拉外网同步并刷新
-_use_kline_two_phase = _db_conf() is not None
-_k_qk = f"{_chart_yf}|{','.join(sorted(_interval_keys))}"
-if _use_kline_two_phase:
-    if st.session_state.get("_kline_qk") != _k_qk:
-        st.session_state._kline_qk = _k_qk
-        st.session_state._kline_pass = "stale"
-    _kline_co = st.session_state.get("_kline_pass") == "stale"
-else:
-    _kline_co = False
+# 前端只读 Supabase 画图：不在页面线程里做同步
 
 if _db_conf():
     _probe = probe_market_cache_status(_chart_yf, _interval_keys)  # type: ignore[arg-type]
     if _probe.get("reachable"):
-        _hit_text = " / ".join([f"{k}:{'有缓存' if v else '空'}" for k, v in _probe.get("hits", {}).items()])
-        st.caption(f"Supabase 连通正常；{_chart_yf} 缓存命中：{_hit_text}")
+        _hits = _probe.get("hits", {})
+        _rows = _probe.get("rows", {})
+        _lts = _probe.get("latest_ts", {})
+        _hit_text = " / ".join(
+            [f"{k}:{'有缓存' if _hits.get(k, False) else '空'}({int(_rows.get(k, 0))}条)" for k in _interval_keys]
+        )
+        _ts_text = " / ".join([f"{k}:{_lts.get(k, '-') or '-'}" for k in _interval_keys])
+        st.caption(f"Supabase 连通正常；{_chart_yf} 有效缓存：{_hit_text}")
+        st.caption(f"各周期最新时间：{_ts_text}")
     else:
         _err = _probe.get("error", "unknown")
         st.warning(f"Supabase 连通探测失败：{_err}")
@@ -825,10 +782,8 @@ _fig_d = _fig_15 = _fig_5 = None
 _chart_errs: dict[str, str] = {}
 _nj = int("1d" in _interval_keys) + int("15m" in _interval_keys) + int("5m" in _interval_keys)
 if _nj > 0:
-    if _kline_co:
-        st.caption("📦 以下为数据库中的缓存 K 线；随后将自动同步最新行情并刷新图表。")
     try:
-        _prog0 = "先从数据库加载缓存 K 线…" if _kline_co else "并行加载看板各周期…"
+        _prog0 = "从 Supabase 加载看板各周期…"
         _prog_slot.progress(0.0, text=_prog0)
     except TypeError:
         _prog_slot.progress(0)
@@ -842,7 +797,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=_kline_co,
+                cache_only=False,
             )
             _fut_map[_f] = ("1d", "日线（1d）")
         if "15m" in _interval_keys:
@@ -852,7 +807,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=_kline_co,
+                cache_only=False,
             )
             _fut_map[_f] = ("15m", "15m（15m）")
         if "5m" in _interval_keys:
@@ -862,7 +817,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=_kline_co,
+                cache_only=False,
             )
             _fut_map[_f] = ("5m", "5m（5m）")
         _done = 0
@@ -886,7 +841,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=_kline_co,
+                            cache_only=False,
                         )
                     elif _kind == "15m":
                         _fig_15 = fig_15m_vwap_rsi(
@@ -894,7 +849,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=_kline_co,
+                            cache_only=False,
                         )
                     else:
                         _fig_5 = fig_5m_vwap_rsi7(
@@ -902,7 +857,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=_kline_co,
+                            cache_only=False,
                         )
                 except Exception as e2:
                     print(f"[investment_calculator] 串行补偿失败 {_lab}: {e2}", flush=True)
@@ -910,7 +865,7 @@ if _nj > 0:
             _chart_load_progress(_prog_slot, _done, _nj, _lab)
             _done += 1
     try:
-        _done_msg = "缓存阶段完成（可能为空缓存）" if _kline_co else "看板数据加载完成"
+        _done_msg = "看板数据加载完成"
         _prog_slot.progress(1.0, text=_done_msg)
     except TypeError:
         _prog_slot.progress(1.0)
@@ -942,13 +897,7 @@ with _tab_5:
     else:
         st.info("未选择5分钟（5m），本周期不拉取数据。")
 
-if _use_kline_two_phase and _kline_co:
-    st.session_state._kline_pass = "live"
-    if _nj > 0:
-        st.rerun()
-
-if not (_use_kline_two_phase and st.session_state.get("_kline_pass") == "stale"):
-    _maybe_start_bg_sync(_chart_yf)
+# 前端不负责同步外部行情，避免阻塞与不确定性；由独立 sync worker 负责写 Supabase
 
 st.divider()
 
