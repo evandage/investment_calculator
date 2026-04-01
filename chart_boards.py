@@ -728,6 +728,44 @@ def _load_bars_from_supabase(
         return pd.DataFrame()
 
 
+def probe_market_cache_status(
+    symbol: str,
+    intervals: list[Literal["1d", "15m", "5m"]],
+) -> dict[str, Any]:
+    """探测 Supabase 连通性与各周期是否命中缓存（轻量查询，limit=1）。"""
+    out: dict[str, Any] = {
+        "enabled": bool(_SUPABASE_CONF),
+        "reachable": False,
+        "error": "",
+        "hits": {k: False for k in intervals},
+    }
+    if not _SUPABASE_CONF:
+        return out
+    url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars"
+    try:
+        for iv in intervals:
+            params = {
+                "select": "ts",
+                "symbol": f"eq.{symbol}",
+                "interval": f"eq.{iv}",
+                "order": "ts.desc",
+                "limit": "1",
+            }
+            if _SUPABASE_SESSION is not None:
+                r = _SUPABASE_SESSION.get(url, params=params, timeout=_HTTP_TIMEOUT)
+            else:
+                r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
+            if r.status_code >= 400:
+                out["error"] = f"HTTP {r.status_code}"
+                return out
+            rows = r.json()
+            out["hits"][iv] = bool(rows)
+        out["reachable"] = True
+    except Exception as e:
+        out["error"] = str(e)
+    return out
+
+
 def _bars_payload(
     symbol: str,
     interval: Literal["1d", "15m", "5m"],

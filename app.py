@@ -21,6 +21,7 @@ from chart_boards import (
     fig_5m_vwap_rsi7,
     fig_daily,
     multiframe_signal_bundle,
+    probe_market_cache_status,
     sync_symbol_bars,
 )
 
@@ -796,6 +797,15 @@ if _use_kline_two_phase:
 else:
     _kline_co = False
 
+if _db_conf():
+    _probe = probe_market_cache_status(_chart_yf, _interval_keys)  # type: ignore[arg-type]
+    if _probe.get("reachable"):
+        _hit_text = " / ".join([f"{k}:{'有缓存' if v else '空'}" for k, v in _probe.get("hits", {}).items()])
+        st.caption(f"Supabase 连通正常；{_chart_yf} 缓存命中：{_hit_text}")
+    else:
+        _err = _probe.get("error", "unknown")
+        st.warning(f"Supabase 连通探测失败：{_err}")
+
 def _chart_load_progress(slot: Any, step: int, total: int, label: str) -> None:
     """页面进度条 + 服务端 print（Streamlit Cloud 日志可见）。"""
     if total <= 0:
@@ -897,7 +907,7 @@ if _nj > 0:
             _chart_load_progress(_prog_slot, _done, _nj, _lab)
             _done += 1
     try:
-        _done_msg = "缓存已渲染" if _kline_co else "看板数据加载完成"
+        _done_msg = "缓存阶段完成（可能为空缓存）" if _kline_co else "看板数据加载完成"
         _prog_slot.progress(1.0, text=_done_msg)
     except TypeError:
         _prog_slot.progress(1.0)
