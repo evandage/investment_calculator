@@ -729,8 +729,8 @@ _chart_pick = st.selectbox(
 )
 _chart_yf = _chart_symbol_labels[_chart_pick]
 
-# 持仓成本线：有有效持仓价才画；若已登录云端但本次未从 Supabase 读到数据（回退本地），不画以免误导
-_chart_holdings_ok = (not _session_cloud_enabled()) or (storage_mode == "cloud")
+# 持仓成本线：只要当前持仓里有有效成本，就画线（不再依赖 cloud/local 来源）
+_chart_holdings_ok = True
 _chart_user_avg_cost: float | None = None
 try:
     _chart_hold = holdings.get(_chart_yf, {})  # type: ignore[assignment]
@@ -761,7 +761,7 @@ if st.button(
         if k in st.session_state:
             del st.session_state[k]
 
-    st.success("已刷新市价")
+    st.success("已刷新市价（K线看板仅读 Supabase 缓存）")
 _interval_display_map = {
     "日线（1d）": "1d",
     "15分钟（15m）": "15m",
@@ -793,27 +793,27 @@ if _db_conf():
         _raw_rows = probe_symbol_interval_raw_rows(_chart_yf, _interval_keys)  # type: ignore[arg-type]
         _raw_text = " / ".join([f"{k}:{int(_raw_rows.get(k, 0))}条" for k in _interval_keys])
         _ts_text = " / ".join([f"{k}:{_lts.get(k, '-') or '-'}" for k in _interval_keys])
-        st.caption(f"Supabase 连通正常；{_chart_yf} 有效缓存：{_hit_text}")
-        st.caption(f"原始REST行数（同symbol/interval）：{_raw_text}")
-        st.caption(f"各周期最新时间：{_ts_text}")
+        st.sidebar.caption(f"Supabase 连通正常；{_chart_yf} 有效缓存：{_hit_text}")
+        st.sidebar.caption(f"原始REST行数（同symbol/interval）：{_raw_text}")
+        st.sidebar.caption(f"各周期最新时间：{_ts_text}")
         if all(int(_rows.get(k, 0)) <= 0 for k in _interval_keys):
             _recent = probe_recent_market_rows(limit=12)
             if _recent:
                 _sample = " | ".join(
                     [f"{x.get('symbol','?')}/{x.get('interval','?')}@{x.get('ts','?')}" for x in _recent[:6]]
                 )
-                st.warning(f"当前标的查询为空；库里最近记录样本：{_sample}")
+                st.sidebar.warning(f"当前标的查询为空；库里最近记录样本：{_sample}")
             else:
-                st.warning("当前标的查询为空；且未能读取到 market_bars 最近记录样本。")
+                st.sidebar.warning("当前标的查询为空；且未能读取到 market_bars 最近记录样本。")
             _inv = probe_market_inventory(limit=1000)
             if _inv:
                 _inv_text = " | ".join(
                     [f"{x.get('symbol','?')}/{x.get('interval','?')}:{x.get('rows',0)}条@{x.get('latest_ts','-')}" for x in _inv]
                 )
-                st.caption(f"当前 Key 可读到的库内窗口概览：{_inv_text}")
+                st.sidebar.caption(f"当前 Key 可读到的库内窗口概览：{_inv_text}")
     else:
         _err = _probe.get("error", "unknown")
-        st.warning(f"Supabase 连通探测失败：{_err}")
+        st.sidebar.warning(f"Supabase 连通探测失败：{_err}")
 
 def _chart_load_progress(slot: Any, step: int, total: int, label: str) -> None:
     """页面进度条 + 服务端 print（Streamlit Cloud 日志可见）。"""
@@ -848,7 +848,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=False,
+                cache_only=True,
             )
             _fut_map[_f] = ("1d", "日线（1d）")
         if "15m" in _interval_keys:
@@ -858,7 +858,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=False,
+                cache_only=True,
             )
             _fut_map[_f] = ("15m", "15m（15m）")
         if "5m" in _interval_keys:
@@ -868,7 +868,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=False,
+                cache_only=True,
             )
             _fut_map[_f] = ("5m", "5m（5m）")
         _done = 0
@@ -892,7 +892,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=False,
+                            cache_only=True,
                         )
                     elif _kind == "15m":
                         _fig_15 = fig_15m_vwap_rsi(
@@ -900,7 +900,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=False,
+                            cache_only=True,
                         )
                     else:
                         _fig_5 = fig_5m_vwap_rsi7(
@@ -908,7 +908,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=False,
+                            cache_only=True,
                         )
                 except Exception as e2:
                     print(f"[investment_calculator] 串行补偿失败 {_lab}: {e2}", flush=True)

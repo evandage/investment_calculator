@@ -1891,14 +1891,6 @@ def fig_5m_vwap_rsi7(
     vw, v_hi, v_lo = vwap_and_bands(df)
     cl = df["Close"]
     last_close = float(cl.iloc[-1]) if len(cl) else 0.0
-    p_min = float(df["Low"].min())
-    p_max = float(df["High"].max())
-
-    def _cost_visible(cost: float) -> bool:
-        if cost <= 0:
-            return False
-        return (p_min * 0.5) <= cost <= (p_max * 1.5)
-
     r7 = rsi(cl, 7)
     r7_ma = ema(r7, 9)
     atr_v = atr_series(df, 14)
@@ -1934,7 +1926,7 @@ def fig_5m_vwap_rsi7(
         col=1,
         secondary_y=False,
     )
-    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+    if user_avg_cost is not None and float(user_avg_cost) > 0:
         cost = float(user_avg_cost)
         pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
         fig.add_hline(
@@ -2116,7 +2108,7 @@ def fig_5m_vwap_rsi7(
     vmax = float(vol.max()) if len(vol) else 0.0
     y_lo = float(df["Low"].min())
     y_hi = float(df["High"].max())
-    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+    if user_avg_cost is not None and float(user_avg_cost) > 0:
         y_lo = min(y_lo, float(user_avg_cost))
         y_hi = max(y_hi, float(user_avg_cost))
     y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
