@@ -1,5 +1,6 @@
 import re
 import json
+import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
@@ -515,6 +516,28 @@ def _db_conf() -> dict[str, str] | None:
     return {"url": url, "key": key}
 
 
+def _supabase_key_kind(key: str) -> str:
+    k = str(key or "").strip()
+    if not k:
+        return "none"
+    if k.startswith("sb_publishable_"):
+        return "publishable"
+    parts = k.split(".")
+    if len(parts) == 3:
+        try:
+            payload = parts[1]
+            payload += "=" * ((4 - len(payload) % 4) % 4)
+            raw = base64.urlsafe_b64decode(payload.encode("ascii"))
+            obj = json.loads(raw.decode("utf-8"))
+            role = str(obj.get("role", "")).strip()
+            if role:
+                return f"jwt:{role}"
+            return "jwt"
+        except Exception:
+            return "jwt?"
+    return "unknown"
+
+
 def _normalize_holdings(raw: Any) -> dict[str, dict[str, float]]:
     holdings = _default_holdings()
     if not isinstance(raw, dict):
@@ -676,6 +699,13 @@ st.title(f"hello {cloud_user_id or 'guest'}")
 
 if _db:
     st.sidebar.caption("存储后端：Supabase")
+    try:
+        _host = _db["url"].replace("https://", "").replace("http://", "").split("/")[0]
+        _ref = _host.split(".")[0]
+    except Exception:
+        _ref = "?"
+    _k_kind = _supabase_key_kind(_db.get("key", ""))
+    st.sidebar.caption(f"Supabase ref={_ref} | key={_k_kind}")
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
 
