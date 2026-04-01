@@ -18,6 +18,7 @@ from chart_boards import (
     fig_15m_vwap_rsi,
     fig_5m_vwap_rsi7,
     fig_daily,
+    probe_market_inventory,
     multiframe_signal_bundle,
     probe_market_cache_status,
     probe_recent_market_rows,
@@ -800,6 +801,12 @@ if _db_conf():
                 st.warning(f"当前标的查询为空；库里最近记录样本：{_sample}")
             else:
                 st.warning("当前标的查询为空；且未能读取到 market_bars 最近记录样本。")
+            _inv = probe_market_inventory(limit=1000)
+            if _inv:
+                _inv_text = " | ".join(
+                    [f"{x.get('symbol','?')}/{x.get('interval','?')}:{x.get('rows',0)}条@{x.get('latest_ts','-')}" for x in _inv]
+                )
+                st.caption(f"当前 Key 可读到的库内窗口概览：{_inv_text}")
     else:
         _err = _probe.get("error", "unknown")
         st.warning(f"Supabase 连通探测失败：{_err}")

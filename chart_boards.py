@@ -765,6 +765,44 @@ def probe_recent_market_rows(limit: int = 20) -> list[dict[str, Any]]:
         return []
 
 
+def probe_market_inventory(limit: int = 1000) -> list[dict[str, Any]]:
+    """返回 market_bars 在给定窗口内的 (symbol, interval, rows, latest_ts) 概览。"""
+    if not _SUPABASE_CONF:
+        return []
+    url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars"
+    params = {
+        "select": "symbol,interval,ts",
+        "order": "ts.desc",
+        "limit": str(max(1, int(limit))),
+    }
+    try:
+        if _SUPABASE_SESSION is not None:
+            r = _SUPABASE_SESSION.get(url, params=params, timeout=_HTTP_TIMEOUT)
+        else:
+            r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
+        if r.status_code >= 400:
+            return []
+        rows = r.json()
+        if not isinstance(rows, list) or not rows:
+            return []
+        out: dict[tuple[str, str], dict[str, Any]] = {}
+        for x in rows:
+            sym = str(x.get("symbol", "") or "")
+            iv = str(x.get("interval", "") or "")
+            ts = str(x.get("ts", "") or "")
+            if not sym or not iv:
+                continue
+            k = (sym, iv)
+            if k not in out:
+                out[k] = {"symbol": sym, "interval": iv, "rows": 0, "latest_ts": ts}
+            out[k]["rows"] = int(out[k]["rows"]) + 1
+            if ts and (not out[k]["latest_ts"] or ts > str(out[k]["latest_ts"])):
+                out[k]["latest_ts"] = ts
+        return sorted(out.values(), key=lambda i: (i["symbol"], i["interval"]))
+    except Exception:
+        return []
+
+
 def probe_market_cache_status(
     symbol: str,
     intervals: list[Literal["1d", "15m", "5m"]],
@@ -779,6 +817,25 @@ def probe_market_cache_status(
         "latest_ts": {k: "" for k in intervals},
     }
     if not _SUPABASE_CONF:
+        return out
+    # 先做一次最小化连通/权限探测，避免把 401/403 误报成“空数据”。
+    try:
+        ping_url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars"
+        ping_params = {"select": "symbol", "limit": "1"}
+        if _SUPABASE_SESSION is not None:
+            ping = _SUPABASE_SESSION.get(ping_url, params=ping_params, timeout=_HTTP_TIMEOUT)
+        else:
+            ping = requests.get(ping_url, params=ping_params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
+        if ping.status_code >= 400:
+            detail = ""
+            try:
+                detail = (ping.text or "").strip()
+            except Exception:
+                detail = ""
+            out["error"] = f"http {ping.status_code}: {detail[:220] or 'request failed'}"
+            return out
+    except Exception as e:
+        out["error"] = str(e)
         return out
     try:
         for iv in intervals:
