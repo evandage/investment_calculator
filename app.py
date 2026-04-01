@@ -786,31 +786,62 @@ _interval_keys = [_interval_display_map[x] for x in _interval_pick]
 if not _interval_keys:
     _interval_keys = ["1d"]
 
+def _chart_load_progress(slot: Any, step: int, total: int, label: str) -> None:
+    """页面进度条 + 服务端 print（Streamlit Cloud 日志可见）。"""
+    if total <= 0:
+        return
+    frac = min(1.0, (step + 1) / total)
+    msg = f"正在加载看板：{label}（{step + 1}/{total}）"
+    print(f"[investment_calculator] {msg}", flush=True)
+    try:
+        slot.progress(frac, text=msg)
+    except TypeError:
+        slot.progress(frac)
+
+
+_chart_jobs: list[tuple[str, str]] = []
+if "1d" in _interval_keys:
+    _chart_jobs.append(("日线（1d）", "1d"))
+if "15m" in _interval_keys:
+    _chart_jobs.append(("15m（15m）", "15m"))
+if "5m" in _interval_keys:
+    _chart_jobs.append(("5m（5m）", "5m"))
+
+_prog_slot = st.empty()
+_fig_d = _fig_15 = _fig_5 = None
+_nj = len(_chart_jobs)
+if _nj > 0:
+    for _i, (_lab, _kind) in enumerate(_chart_jobs):
+        _chart_load_progress(_prog_slot, _i, _nj, _lab)
+        if _kind == "1d":
+            _fig_d = fig_daily(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost)
+        elif _kind == "15m":
+            _fig_15 = fig_15m_vwap_rsi(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost)
+        else:
+            _fig_5 = fig_5m_vwap_rsi7(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost)
+    try:
+        _prog_slot.progress(1.0, text="看板数据加载完成")
+    except TypeError:
+        _prog_slot.progress(1.0)
+    print("[investment_calculator] 看板数据加载完成", flush=True)
+    _prog_slot.empty()
+
 _tab_d, _tab_15, _tab_5 = st.tabs(
     ["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"]
 )
 with _tab_d:
-    if "1d" in _interval_keys:
-        st.plotly_chart(
-            fig_daily(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost),
-            width="stretch",
-        )
+    if "1d" in _interval_keys and _fig_d is not None:
+        st.plotly_chart(_fig_d, width="stretch")
     else:
         st.info("未选择日线（1d），本周期不拉取数据。")
 with _tab_15:
-    if "15m" in _interval_keys:
-        st.plotly_chart(
-            fig_15m_vwap_rsi(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost),
-            width="stretch",
-        )
+    if "15m" in _interval_keys and _fig_15 is not None:
+        st.plotly_chart(_fig_15, width="stretch")
     else:
         st.info("未选择15分钟（15m），本周期不拉取数据。")
 with _tab_5:
-    if "5m" in _interval_keys:
-        st.plotly_chart(
-            fig_5m_vwap_rsi7(_chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost),
-            width="stretch",
-        )
+    if "5m" in _interval_keys and _fig_5 is not None:
+        st.plotly_chart(_fig_5, width="stretch")
     else:
         st.info("未选择5分钟（5m），本周期不拉取数据。")
 

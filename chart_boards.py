@@ -829,14 +829,14 @@ def fetch_ohlcv(
             keep_days = int(_SUPABASE_RETENTION_DAYS.get(interval, 0) or 0)
             if keep_days > 0:
                 # 多给 1 天缓冲，覆盖时区切换/周末
-                return pd.Timestamp.utcnow() - pd.Timedelta(days=keep_days + 1)
+                return pd.Timestamp.now("UTC") - pd.Timedelta(days=keep_days + 1)
         except Exception:
             pass
         try:
             if isinstance(p, str) and p.endswith("d"):
                 days = int(p[:-1])
                 # 多给 1 天缓冲，覆盖时区切换/周末
-                return pd.Timestamp.utcnow() - pd.Timedelta(days=max(1, days + 1))
+                return pd.Timestamp.now("UTC") - pd.Timedelta(days=max(1, days + 1))
         except Exception:
             return None
         return None
