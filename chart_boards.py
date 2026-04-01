@@ -759,13 +759,13 @@ def _load_bars_from_supabase(
 
         out = pd.DataFrame(
             {
-                "Open": base["Open"],
-                "High": base["High"],
-                "Low": base["Low"],
-                "Close": base["Close"],
-                "Volume": base["Volume"],
+                "Open": base["Open"].to_numpy(),
+                "High": base["High"].to_numpy(),
+                "Low": base["Low"].to_numpy(),
+                "Close": base["Close"].to_numpy(),
+                "Volume": base["Volume"].to_numpy(),
             },
-            index=pd.DatetimeIndex(base["ts"], name="Datetime"),
+            index=pd.DatetimeIndex(base["ts"].to_numpy(), name="Datetime"),
         ).sort_index()
         out = out[~out.index.duplicated(keep="last")]
         try:
