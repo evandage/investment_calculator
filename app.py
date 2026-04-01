@@ -20,6 +20,7 @@ from chart_boards import (
     fig_daily,
     multiframe_signal_bundle,
     probe_market_cache_status,
+    probe_recent_market_rows,
 )
 
 # 拉取失败时的回退价（与常见区间一致）
@@ -790,6 +791,15 @@ if _db_conf():
         _ts_text = " / ".join([f"{k}:{_lts.get(k, '-') or '-'}" for k in _interval_keys])
         st.caption(f"Supabase 连通正常；{_chart_yf} 有效缓存：{_hit_text}")
         st.caption(f"各周期最新时间：{_ts_text}")
+        if all(int(_rows.get(k, 0)) <= 0 for k in _interval_keys):
+            _recent = probe_recent_market_rows(limit=12)
+            if _recent:
+                _sample = " | ".join(
+                    [f"{x.get('symbol','?')}/{x.get('interval','?')}@{x.get('ts','?')}" for x in _recent[:6]]
+                )
+                st.warning(f"当前标的查询为空；库里最近记录样本：{_sample}")
+            else:
+                st.warning("当前标的查询为空；且未能读取到 market_bars 最近记录样本。")
     else:
         _err = _probe.get("error", "unknown")
         st.warning(f"Supabase 连通探测失败：{_err}")

@@ -702,6 +702,17 @@ def _load_bars_from_supabase(
         else:
             r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
         if r.status_code >= 400:
+            try:
+                detail = (r.text or "").strip()
+            except Exception:
+                detail = ""
+            logging.getLogger("supabase").warning(
+                "load market_bars failed: status=%s symbol=%s interval=%s detail=%s",
+                r.status_code,
+                symbol,
+                interval,
+                detail[:500],
+            )
             return pd.DataFrame()
         rows = r.json()
     except (requests.RequestException, ValueError, TypeError):
@@ -729,6 +740,29 @@ def _load_bars_from_supabase(
         return _normalize_plot_time_index(out, symbol)
     except (TypeError, ValueError, KeyError):
         return pd.DataFrame()
+
+
+def probe_recent_market_rows(limit: int = 20) -> list[dict[str, Any]]:
+    """返回 market_bars 最近若干条 (symbol, interval, ts) 供前端诊断显示。"""
+    if not _SUPABASE_CONF:
+        return []
+    url = f"{_SUPABASE_CONF['url']}/rest/v1/market_bars"
+    params = {
+        "select": "symbol,interval,ts",
+        "order": "ts.desc",
+        "limit": str(max(1, int(limit))),
+    }
+    try:
+        if _SUPABASE_SESSION is not None:
+            r = _SUPABASE_SESSION.get(url, params=params, timeout=_HTTP_TIMEOUT)
+        else:
+            r = requests.get(url, params=params, headers=_supabase_headers(), timeout=_HTTP_TIMEOUT)
+        if r.status_code >= 400:
+            return []
+        rows = r.json()
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
 
 
 def probe_market_cache_status(
