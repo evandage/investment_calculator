@@ -31,6 +31,7 @@ _FALLBACK = {
     "QQQ": 500.0,
     "TLT": 90.0,
     "510300.SS": 4.0,
+    "510500.SS": 6.0,
 }
 
 _TICKERS = {
@@ -38,6 +39,7 @@ _TICKERS = {
     "qqq": "QQQ",
     "tlt": "TLT",
     "hs300": "510300.SS",  # 华泰柏瑞沪深300ETF
+    "zz500": "510500.SS",  # 南方中证500ETF
 }
 
 _REQUEST_HEADERS = {
@@ -53,7 +55,7 @@ _HTTP_TIMEOUT = (5, 15)
 # 美股：腾讯财经批量接口；失败则用新浪全球行情
 _QQ_US = {"VOO": "usVOO", "QQQ": "usQQQ", "TLT": "usTLT"}
 _SINA_GB = {"VOO": "gb_voo", "QQQ": "gb_qqq", "TLT": "gb_tlt"}
-_SINA_CN = {"510300.SS": "sh510300"}
+_SINA_CN = {"510300.SS": "sh510300", "510500.SS": "sh510500"}
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
@@ -62,12 +64,14 @@ _ASSET_META = {
     "QQQ": {"label": "QQQ", "currency": "USD"},
     "TLT": {"label": "债券(TLT)", "currency": "USD"},
     "510300.SS": {"label": "沪深300ETF", "currency": "CNY"},
+    "510500.SS": {"label": "中证500ETF", "currency": "CNY"},
 }
 _TARGET_WEIGHTS = {
-    "VOO": 0.4,
+    "VOO": 0.2,
     "QQQ": 0.2,
     "TLT": 0.2,
     "510300.SS": 0.2,
+    "510500.SS": 0.2,
 }
 
 
@@ -393,7 +397,7 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
 
     # A股：只用新浪（避免“价格/涨跌%口径混用”导致的错乱）
     symbols = list(_TICKERS.values())
-    for sym in ("510300.SS",):
+    for sym in ("510300.SS", "510500.SS"):
         try:
             res = _fetch_sina_cn_price_change(_SINA_CN[sym])
             if res is not None:
@@ -479,7 +483,7 @@ def _merge_buy(
 
 
 def _default_balances() -> dict[str, float]:
-    return {"510300.SS": 0.0}
+    return {"510300.SS": 0.0, "510500.SS": 0.0}
 
 
 def _load_balances() -> dict[str, float]:
@@ -650,6 +654,7 @@ def _defaults_from_fetch() -> dict[str, float]:
         "qqq": raw["QQQ"],
         "tlt": raw["TLT"],
         "hs300": raw["510300.SS"],
+        "zz500": raw["510500.SS"],
     }
 
 
@@ -661,6 +666,7 @@ def _ensure_price_session_defaults() -> None:
     st.session_state.setdefault("def_qqq", d["qqq"])
     st.session_state.setdefault("def_tlt", d["tlt"])
     st.session_state.setdefault("def_hs300", d["hs300"])
+    st.session_state.setdefault("def_zz500", d["zz500"])
     st.session_state["_prices_initialized"] = True
 
 
@@ -755,9 +761,10 @@ if st.button(
     st.session_state.def_qqq = d["qqq"]
     st.session_state.def_tlt = d["tlt"]
     st.session_state.def_hs300 = d["hs300"]
+    st.session_state.def_zz500 = d["zz500"]
 
     # 删除输入框缓存值，让下方 number_input 用新的 def_* 作为默认值。
-    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_hs300"):
+    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_hs300", "inp_zz500"):
         if k in st.session_state:
             del st.session_state[k]
 
@@ -965,7 +972,7 @@ with st.expander("开始定投", expanded=False):
         "数据来源标签："
         f" 汇率={fx_meta['source']}（更新时间 {fx_meta['fetched_at']}）"
         f" | VOO={spot_sources['VOO']}, QQQ={spot_sources['QQQ']}, 债券(TLT)={spot_sources['TLT']}"
-        f" | 沪深300={spot_sources['510300.SS']}"
+        f" | 沪深300={spot_sources['510300.SS']}, 中证500={spot_sources['510500.SS']}"
         f"（更新时间 {spot_meta['fetched_at']}）"
     )
     col_a, col_b = st.columns([1, 1])
@@ -979,16 +986,18 @@ with st.expander("开始定投", expanded=False):
     tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
 
     hs300_price = st.number_input("沪深300价格", value=float(st.session_state.def_hs300), key="inp_hs300")
+    zz500_price = st.number_input("中证500价格", value=float(st.session_state.def_zz500), key="inp_zz500")
 
     prices_now = {
         "VOO": voo_price,
         "QQQ": qqq_price,
         "TLT": tlt_price,
         "510300.SS": hs300_price,
+        "510500.SS": zz500_price,
     }
 
     if st.button("计算"):
-        weights_us = {"VOO": 0.4, "QQQ": 0.2, "TLT": 0.2}
+        weights_us = {"VOO": 0.2, "QQQ": 0.2, "TLT": 0.2}
         us_ratio = sum(weights_us.values())
         usd_total_raw = (rmb * us_ratio) / fx
         usd_total = round(usd_total_raw)
@@ -996,7 +1005,7 @@ with st.expander("开始定投", expanded=False):
         st.subheader("📈 投资结果")
 
         st.write("### 美股")
-        voo_usd = usd_total * (0.4 / us_ratio)
+        voo_usd = usd_total * (0.2 / us_ratio)
         tlt_usd = usd_total * (0.2 / us_ratio)
         qqq_usd = usd_total * (0.2 / us_ratio)
 
@@ -1017,21 +1026,32 @@ with st.expander("开始定投", expanded=False):
         hs300_lot_cost = hs300_price * 100
         hs300_lots = int(hs300_budget // hs300_lot_cost) if hs300_lot_cost > 0 else 0
         hs300_balance_next = hs300_budget - hs300_lots * hs300_lot_cost
+        zz500_amount = rmb * 0.2
+        zz500_budget = zz500_amount + balances["510500.SS"]
+        zz500_lot_cost = zz500_price * 100
+        zz500_lots = int(zz500_budget // zz500_lot_cost) if zz500_lot_cost > 0 else 0
+        zz500_balance_next = zz500_budget - zz500_lots * zz500_lot_cost
 
         st.write(f"沪深300：{hs300_lots*100} 股（{hs300_lots} 手）")
-        st.caption(f"A股余额结转：沪深300 结转 {hs300_balance_next:.2f} CNY")
+        st.write(f"中证500：{zz500_lots*100} 股（{zz500_lots} 手）")
+        st.caption(
+            f"A股余额结转：沪深300 结转 {hs300_balance_next:.2f} CNY | "
+            f"中证500 结转 {zz500_balance_next:.2f} CNY"
+        )
 
         calc_buys = {
             "VOO": {"shares": voo_usd / voo_price, "price": voo_price},
             "QQQ": {"shares": qqq_usd / qqq_price, "price": qqq_price},
             "TLT": {"shares": tlt_usd / tlt_price, "price": tlt_price},
             "510300.SS": {"shares": hs300_lots * 100.0, "price": hs300_price},
+            "510500.SS": {"shares": zz500_lots * 100.0, "price": zz500_price},
         }
         if st.button("将本月定投更新到我的持仓"):
             holdings, balances_loaded, _ = _load_user_state(cloud_user_id)
             for sym, buy in calc_buys.items():
                 holdings[sym] = _merge_buy(holdings[sym], buy["shares"], buy["price"])
             balances_loaded["510300.SS"] = hs300_balance_next
+            balances_loaded["510500.SS"] = zz500_balance_next
             save_mode = _save_user_state(cloud_user_id, holdings, balances_loaded)
             st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
@@ -1067,6 +1087,13 @@ with st.expander("编辑持仓（会保存）", expanded=False):
             value=float(balances_for_view.get("510300.SS", 0.0)),
             step=0.01,
             key="edit_balance_hs300",
+        )
+        balances_for_view["510500.SS"] = st.number_input(
+            "中证500 结转余额（CNY）",
+            min_value=0.0,
+            value=float(balances_for_view.get("510500.SS", 0.0)),
+            step=0.01,
+            key="edit_balance_zz500",
         )
         if st.form_submit_button("保存持仓"):
             save_mode = _save_user_state(cloud_user_id, holdings, balances_for_view)
@@ -1118,7 +1145,7 @@ for sym, meta in _ASSET_META.items():
 st.dataframe(rows, width="stretch", hide_index=True)
 total_pnl_cny = total_value_cny - total_cost_cny
 total_pnl_pct = (total_pnl_cny / total_cost_cny * 100) if total_cost_cny > 0 else 0.0
-total_balance_cny = float(balances_for_view.get("510300.SS", 0.0))
+total_balance_cny = float(sum(float(v) for v in balances_for_view.values()))
 total_assets_cny = total_value_cny + total_balance_cny
 ratio_rows = []
 for sym, meta in _ASSET_META.items():

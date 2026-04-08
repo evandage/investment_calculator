@@ -1,12 +1,14 @@
+cd "e:\investment_calculator"
+sc.exe stop InvestmentSyncWorker
+sc.exe delete InvestmentSyncWorker
 
-SUPABASE_URL=https://pnanlztvnfjguwvkzdlv.supabase.co
-SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuYW5senR2bmZqZ3V3dmt6ZGx2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzk3ODM2MywiZXhwIjoyMDg5NTU0MzYzfQ.SxKemlUrc_WunSt1Uzt9IDpIl2tTXNf6XNGy8Vl06VM
-
-
-nssm install InvestmentSyncWorker "E:\investment_calculator\.venv\Scripts\python.exe" "E:\investment_calculator\sync_market_worker.py --interval 60"
+nssm install InvestmentSyncWorker "E:\investment_calculator\.venv\Scripts\python.exe" "E:\investment_calculator\sync_market_worker.py --interval 150"
 nssm set InvestmentSyncWorker AppDirectory "E:\investment_calculator"
-nssm set InvestmentSyncWorker AppEnvironmentExtra "SUPABASE_URL=https://pnanlztvnfjguwvkzdlv.supabase.co" "SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuYW5senR2bmZqZ3V3dmt6ZGx2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzk3ODM2MywiZXhwIjoyMDg5NTU0MzYzfQ.SxKemlUrc_WunSt1Uzt9IDpIl2tTXNf6XNGy8Vl06VM" "MARKET_SYNC_MIN_SECONDS=180"
+nssm set InvestmentSyncWorker AppEnvironmentExtra "SUPABASE_URL=https://pnanlztvnfjguwvkzdlv.supabase.co" "SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuYW5senR2bmZqZ3V3dmt6ZGx2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzk3ODM2MywiZXhwIjoyMDg5NTU0MzYzfQ.SxKemlUrc_WunSt1Uzt9IDpIl2tTXNf6XNGy8Vl06VM" "MARKET_SYNC_MIN_SECONDS=150"
 nssm set InvestmentSyncWorker Start SERVICE_AUTO_START
 nssm set InvestmentSyncWorker AppStdout "E:\investment_calculator\sync_worker_service.log"
 nssm set InvestmentSyncWorker AppStderr "E:\investment_calculator\sync_worker_service.log"
 nssm start InvestmentSyncWorker
+
+sc.exe query InvestmentSyncWorker
+Get-Content "E:\investment_calculator\sync_worker_service.log" -Wait
