@@ -30,6 +30,7 @@ _FALLBACK = {
     "VOO": 400.0,
     "QQQ": 500.0,
     "TLT": 90.0,
+    "IEI": 115.0,
     "510300.SS": 4.0,
     "510500.SS": 6.0,
 }
@@ -38,6 +39,7 @@ _TICKERS = {
     "voo": "VOO",
     "qqq": "QQQ",
     "tlt": "TLT",
+    "iei": "IEI",
     "hs300": "510300.SS",  # 华泰柏瑞沪深300ETF
     "zz500": "510500.SS",  # 南方中证500ETF
 }
@@ -53,8 +55,8 @@ _REQUEST_HEADERS = {
 _HTTP_TIMEOUT = (5, 15)
 
 # 美股：腾讯财经批量接口；失败则用新浪全球行情
-_QQ_US = {"VOO": "usVOO", "QQQ": "usQQQ", "TLT": "usTLT"}
-_SINA_GB = {"VOO": "gb_voo", "QQQ": "gb_qqq", "TLT": "gb_tlt"}
+_QQ_US = {"VOO": "usVOO", "QQQ": "usQQQ", "TLT": "usTLT", "IEI": "usIEI"}
+_SINA_GB = {"VOO": "gb_voo", "QQQ": "gb_qqq", "TLT": "gb_tlt", "IEI": "gb_iei"}
 _SINA_CN = {"510300.SS": "sh510300", "510500.SS": "sh510500"}
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
@@ -63,13 +65,15 @@ _ASSET_META = {
     "VOO": {"label": "VOO", "currency": "USD"},
     "QQQ": {"label": "QQQ", "currency": "USD"},
     "TLT": {"label": "债券(TLT)", "currency": "USD"},
+    "IEI": {"label": "债券(IEI)", "currency": "USD"},
     "510300.SS": {"label": "沪深300ETF", "currency": "CNY"},
     "510500.SS": {"label": "中证500ETF", "currency": "CNY"},
 }
 _TARGET_WEIGHTS = {
     "VOO": 0.2,
     "QQQ": 0.2,
-    "TLT": 0.2,
+    "TLT": 0.1,
+    "IEI": 0.1,
     "510300.SS": 0.2,
     "510500.SS": 0.2,
 }
@@ -383,7 +387,7 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     except Exception:
         pass
 
-    for sym in ("VOO", "QQQ", "TLT"):
+    for sym in ("VOO", "QQQ", "TLT", "IEI"):
         if sym not in out:
             try:
                 res = _fetch_sina_gb_price_change(_SINA_GB[sym])
@@ -653,21 +657,21 @@ def _defaults_from_fetch() -> dict[str, float]:
         "voo": raw["VOO"],
         "qqq": raw["QQQ"],
         "tlt": raw["TLT"],
+        "iei": raw["IEI"],
         "hs300": raw["510300.SS"],
         "zz500": raw["510500.SS"],
     }
 
 
 def _ensure_price_session_defaults() -> None:
-    if st.session_state.get("_prices_initialized"):
-        return
     d = _defaults_from_fetch()
     st.session_state.setdefault("def_voo", d["voo"])
     st.session_state.setdefault("def_qqq", d["qqq"])
     st.session_state.setdefault("def_tlt", d["tlt"])
+    st.session_state.setdefault("def_iei", d["iei"])
     st.session_state.setdefault("def_hs300", d["hs300"])
     st.session_state.setdefault("def_zz500", d["zz500"])
-    st.session_state["_prices_initialized"] = True
+    st.session_state.setdefault("_prices_initialized", True)
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -760,11 +764,12 @@ if st.button(
     st.session_state.def_voo = d["voo"]
     st.session_state.def_qqq = d["qqq"]
     st.session_state.def_tlt = d["tlt"]
+    st.session_state.def_iei = d["iei"]
     st.session_state.def_hs300 = d["hs300"]
     st.session_state.def_zz500 = d["zz500"]
 
     # 删除输入框缓存值，让下方 number_input 用新的 def_* 作为默认值。
-    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_hs300", "inp_zz500"):
+    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_iei", "inp_hs300", "inp_zz500"):
         if k in st.session_state:
             del st.session_state[k]
 
@@ -971,7 +976,7 @@ with st.expander("开始定投", expanded=False):
     st.caption(
         "数据来源标签："
         f" 汇率={fx_meta['source']}（更新时间 {fx_meta['fetched_at']}）"
-        f" | VOO={spot_sources['VOO']}, QQQ={spot_sources['QQQ']}, 债券(TLT)={spot_sources['TLT']}"
+        f" | VOO={spot_sources['VOO']}, QQQ={spot_sources['QQQ']}, TLT={spot_sources['TLT']}, IEI={spot_sources['IEI']}"
         f" | 沪深300={spot_sources['510300.SS']}, 中证500={spot_sources['510500.SS']}"
         f"（更新时间 {spot_meta['fetched_at']}）"
     )
@@ -984,6 +989,7 @@ with st.expander("开始定投", expanded=False):
     voo_price = st.number_input("VOO价格", value=float(st.session_state.def_voo), key="inp_voo")
     qqq_price = st.number_input("QQQ价格", value=float(st.session_state.def_qqq), key="inp_qqq")
     tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
+    iei_price = st.number_input("IEI价格", value=float(st.session_state.def_iei), key="inp_iei")
 
     hs300_price = st.number_input("沪深300价格", value=float(st.session_state.def_hs300), key="inp_hs300")
     zz500_price = st.number_input("中证500价格", value=float(st.session_state.def_zz500), key="inp_zz500")
@@ -992,12 +998,13 @@ with st.expander("开始定投", expanded=False):
         "VOO": voo_price,
         "QQQ": qqq_price,
         "TLT": tlt_price,
+        "IEI": iei_price,
         "510300.SS": hs300_price,
         "510500.SS": zz500_price,
     }
 
     if st.button("计算"):
-        weights_us = {"VOO": 0.2, "QQQ": 0.2, "TLT": 0.2}
+        weights_us = {"VOO": 0.2, "QQQ": 0.2, "TLT": 0.1, "IEI": 0.1}
         us_ratio = sum(weights_us.values())
         usd_total_raw = (rmb * us_ratio) / fx
         usd_total = round(usd_total_raw)
@@ -1006,14 +1013,16 @@ with st.expander("开始定投", expanded=False):
 
         st.write("### 美股")
         voo_usd = usd_total * (0.2 / us_ratio)
-        tlt_usd = usd_total * (0.2 / us_ratio)
         qqq_usd = usd_total * (0.2 / us_ratio)
+        tlt_usd = usd_total * (0.1 / us_ratio)
+        iei_usd = usd_total * (0.1 / us_ratio)
 
         st.write(f"VOO：{voo_usd:.2f} USD → {voo_usd/voo_price:.3f} 股")
         st.write(f"QQQ：{qqq_usd:.2f} USD → {qqq_usd/qqq_price:.3f} 股")
         st.write(f"TLT：{tlt_usd:.2f} USD → {tlt_usd/tlt_price:.3f} 股")
+        st.write(f"IEI：{iei_usd:.2f} USD → {iei_usd/iei_price:.3f} 股")
 
-        us_allocated_usd = voo_usd + qqq_usd + tlt_usd
+        us_allocated_usd = voo_usd + qqq_usd + tlt_usd + iei_usd
         st.write(
             f"**美股美元合计：{us_allocated_usd:.2f} USD**（本月按整数美元换汇，原始应换约 {usd_total_raw:.2f} USD）"
         )
@@ -1043,6 +1052,7 @@ with st.expander("开始定投", expanded=False):
             "VOO": {"shares": voo_usd / voo_price, "price": voo_price},
             "QQQ": {"shares": qqq_usd / qqq_price, "price": qqq_price},
             "TLT": {"shares": tlt_usd / tlt_price, "price": tlt_price},
+            "IEI": {"shares": iei_usd / iei_price, "price": iei_price},
             "510300.SS": {"shares": hs300_lots * 100.0, "price": hs300_price},
             "510500.SS": {"shares": zz500_lots * 100.0, "price": zz500_price},
         }

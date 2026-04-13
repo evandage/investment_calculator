@@ -1,6 +1,6 @@
 """K 线看板：日线 EMA+RSI、15m/5m VWAP+RSI。
 
-行情源：A 股（.SS/.SZ）与常用美股 ETF（VOO/QQQ/TLT）优先东方财富（国内访问快，与页内腾讯/新浪现价同源生态）；
+行情源：A 股（.SS/.SZ）与常用美股 ETF（VOO/QQQ/TLT/IEI）优先东方财富（国内访问快，与页内腾讯/新浪现价同源生态）；
 其余美股等仍走 yfinance（Yahoo）。
 环境变量：YFINANCE_CHART_TIMEOUT（默认 90）、YFINANCE_CHART_RETRIES（默认 4）、
 YFINANCE_MIN_GAP_SECONDS（两次 yfinance 请求最小间隔，默认 15，减轻限流）、
@@ -82,6 +82,7 @@ _EASTMONEY_US_SECID = {
     "VOO": "107.VOO",
     "QQQ": "105.QQQ",
     "TLT": "105.TLT",
+    "IEI": "105.IEI",
 }
 
 _CH_FONT_FAMILY = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
