@@ -1,10 +1,13 @@
 import re
 import json
 import base64
+from io import StringIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
 import altair as alt
@@ -686,6 +689,114 @@ def _ensure_fx_session_default() -> None:
     st.session_state["_fx_initialized"] = True
 
 
+def _fmt_dt(dt: datetime | None) -> str:
+    if dt is None:
+        return "-"
+    try:
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(_TZ_SHANGHAI).replace(tzinfo=None)
+    except Exception:
+        pass
+    return dt.strftime("%Y-%m-%d")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_rss_items(url: str, limit: int = 20) -> list[dict[str, str]]:
+    try:
+        r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
+        r.raise_for_status()
+        root = ET.fromstring(r.text)
+        out: list[dict[str, str]] = []
+        for it in root.findall("./channel/item"):
+            title = (it.findtext("title") or "").strip()
+            link = (it.findtext("link") or "").strip()
+            pub = (it.findtext("pubDate") or "").strip()
+            desc = (it.findtext("description") or "").strip()
+            out.append({"title": title, "link": link, "pubDate": pub, "description": desc})
+            if len(out) >= max(1, int(limit)):
+                break
+        return out
+    except Exception:
+        return []
+
+
+def _parse_rss_dt(s: str) -> datetime | None:
+    try:
+        return parsedate_to_datetime(s)
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _latest_fomc_statement() -> dict[str, str]:
+    items = _fetch_rss_items("https://www.federalreserve.gov/feeds/press_monetary.xml", limit=40)
+    keys = ("fomc", "statement", "federal reserve issues fomc statement")
+    for x in items:
+        t = x.get("title", "").lower()
+        if any(k in t for k in keys):
+            d = _fmt_dt(_parse_rss_dt(x.get("pubDate", "")))
+            return {"date": d, "title": x.get("title", "-"), "link": x.get("link", "")}
+    if items:
+        x = items[0]
+        return {
+            "date": _fmt_dt(_parse_rss_dt(x.get("pubDate", ""))),
+            "title": x.get("title", "-"),
+            "link": x.get("link", ""),
+        }
+    return {"date": "-", "title": "暂无可用数据", "link": ""}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _recent_powell_speeches(limit: int = 3) -> list[dict[str, str]]:
+    items = _fetch_rss_items("https://www.federalreserve.gov/feeds/speeches.xml", limit=80)
+    out: list[dict[str, str]] = []
+    for x in items:
+        blob = f"{x.get('title','')} {x.get('description','')}".lower()
+        if "powell" not in blob and "jerome h. powell" not in blob:
+            continue
+        out.append(
+            {
+                "date": _fmt_dt(_parse_rss_dt(x.get("pubDate", ""))),
+                "title": x.get("title", "-"),
+                "link": x.get("link", ""),
+            }
+        )
+        if len(out) >= max(1, int(limit)):
+            break
+    return out
+
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def _fred_inflation_snapshot(series_id: str) -> dict[str, str | float]:
+    csv_url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    try:
+        r = requests.get(csv_url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
+        r.raise_for_status()
+        df = pd.read_csv(StringIO(r.text))
+        if df.empty or "DATE" not in df.columns or series_id not in df.columns:
+            raise ValueError("empty")
+        s = pd.to_numeric(df[series_id], errors="coerce")
+        d = pd.to_datetime(df["DATE"], errors="coerce")
+        data = pd.DataFrame({"date": d, "value": s}).dropna().sort_values("date")
+        if len(data) < 13:
+            raise ValueError("not enough data")
+        latest = float(data.iloc[-1]["value"])
+        prev_12m = float(data.iloc[-13]["value"])
+        yoy = (latest / prev_12m - 1.0) * 100.0 if prev_12m > 0 else 0.0
+        latest_date = pd.Timestamp(data.iloc[-1]["date"]).strftime("%Y-%m")
+        return {"series": series_id, "date": latest_date, "value": latest, "yoy": yoy}
+    except Exception:
+        return {"series": series_id, "date": "-", "value": 0.0, "yoy": 0.0}
+
+
+def _inflation_comment(yoy: float, metric_name: str) -> str:
+    if yoy >= 3.0:
+        return f"{metric_name}同比仍偏高，通胀黏性较强。"
+    if yoy >= 2.2:
+        return f"{metric_name}同比回落中，但仍略高于美联储2%目标。"
+    return f"{metric_name}同比接近2%目标区间，通胀压力相对温和。"
+
+
 theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
@@ -1302,3 +1413,39 @@ st.altair_chart(pnl_chart, width="stretch")
 
 st.subheader("🎯 持仓比例对比")
 st.dataframe(ratio_rows, width="stretch", hide_index=True)
+
+st.divider()
+st.subheader("🧭 宏观跟踪（美联储与通胀）")
+
+_fomc = _latest_fomc_statement()
+st.markdown(
+    f"**最近 FOMC 声明**：{_fomc['date']} · "
+    f"[{_fomc['title']}]({_fomc['link']})"
+    if _fomc.get("link")
+    else f"**最近 FOMC 声明**：{_fomc['date']} · {_fomc['title']}"
+)
+
+_powell = _recent_powell_speeches(limit=3)
+st.markdown("**鲍威尔近期讲话**")
+if _powell:
+    for x in _powell:
+        if x.get("link"):
+            st.markdown(f"- {x['date']} · [{x['title']}]({x['link']})")
+        else:
+            st.markdown(f"- {x['date']} · {x['title']}")
+else:
+    st.caption("暂未读取到鲍威尔近期讲话。")
+
+_cpi = _fred_inflation_snapshot("CPIAUCSL")
+_pce = _fred_inflation_snapshot("PCEPI")
+st.markdown("**通胀指标（CPI / PCE）**")
+st.markdown(
+    f"- CPI（CPIAUCSL）最新：{_cpi['date']}，同比 **{float(_cpi['yoy']):.2f}%**；"
+    f"{_inflation_comment(float(_cpi['yoy']), 'CPI')} "
+    f"[数据源](https://fred.stlouisfed.org/series/CPIAUCSL)"
+)
+st.markdown(
+    f"- PCE（PCEPI）最新：{_pce['date']}，同比 **{float(_pce['yoy']):.2f}%**；"
+    f"{_inflation_comment(float(_pce['yoy']), 'PCE')} "
+    f"[数据源](https://fred.stlouisfed.org/series/PCEPI)"
+)
