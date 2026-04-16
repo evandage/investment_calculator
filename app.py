@@ -34,8 +34,8 @@ _FALLBACK = {
     "QQQ": 500.0,
     "TLT": 90.0,
     "IEI": 115.0,
-    "510300.SS": 4.0,
-    "510500.SS": 6.0,
+    "001015": 1.0,
+    "007994": 1.0,
 }
 
 _TICKERS = {
@@ -43,8 +43,8 @@ _TICKERS = {
     "qqq": "QQQ",
     "tlt": "TLT",
     "iei": "IEI",
-    "hs300": "510300.SS",  # 华泰柏瑞沪深300ETF
-    "zz500": "510500.SS",  # 南方中证500ETF
+    "hs300": "001015",  # 华夏沪深300指数增强A
+    "zz500": "007994",  # 华夏中证500指数增强
 }
 
 _REQUEST_HEADERS = {
@@ -60,7 +60,7 @@ _HTTP_TIMEOUT = (5, 15)
 # 美股：腾讯财经批量接口；失败则用新浪全球行情
 _QQ_US = {"VOO": "usVOO", "QQQ": "usQQQ", "TLT": "usTLT", "IEI": "usIEI"}
 _SINA_GB = {"VOO": "gb_voo", "QQQ": "gb_qqq", "TLT": "gb_tlt", "IEI": "gb_iei"}
-_SINA_CN = {"510300.SS": "sh510300", "510500.SS": "sh510500"}
+_FUND_CODES = {"001015": "001015", "007994": "007994"}
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
@@ -69,16 +69,16 @@ _ASSET_META = {
     "QQQ": {"label": "QQQ", "currency": "USD"},
     "TLT": {"label": "债券(TLT)", "currency": "USD"},
     "IEI": {"label": "债券(IEI)", "currency": "USD"},
-    "510300.SS": {"label": "沪深300ETF", "currency": "CNY"},
-    "510500.SS": {"label": "中证500ETF", "currency": "CNY"},
+    "001015": {"label": "华夏沪深300指数增强A(001015)", "currency": "CNY"},
+    "007994": {"label": "华夏中证500指数增强(007994)", "currency": "CNY"},
 }
 _TARGET_WEIGHTS = {
     "VOO": 0.2,
     "QQQ": 0.2,
     "TLT": 0.1,
     "IEI": 0.1,
-    "510300.SS": 0.2,
-    "510500.SS": 0.2,
+    "001015": 0.2,
+    "007994": 0.2,
 }
 
 
@@ -374,6 +374,28 @@ def _fetch_sina_cn_price_change(list_code: str) -> tuple[float, float] | None:
         return None
 
 
+def _fetch_fund_price_change(code: str) -> tuple[float, float] | None:
+    """东方财富基金估值：返回(最新估值, 估算涨跌幅%)。"""
+    url = f"https://fundgz.1234567.com.cn/js/{code}.js"
+    r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
+    text = r.text.strip()
+    m = re.search(r"\((\{.*\})\)", text)
+    if not m:
+        return None
+    try:
+        obj = json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return None
+    try:
+        price = float(obj.get("gsz") or obj.get("dwjz") or 0.0)
+        change_pct = float(obj.get("gszzl") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if price <= 0:
+        return None
+    return price, change_pct
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def _fetch_spot_prices_meta() -> dict[str, object]:
     out: dict[str, float] = {}
@@ -402,16 +424,16 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
             except Exception:
                 pass
 
-    # A股：只用新浪（避免“价格/涨跌%口径混用”导致的错乱）
+    # 基金：用东方财富基金估值接口
     symbols = list(_TICKERS.values())
-    for sym in ("510300.SS", "510500.SS"):
+    for sym in ("001015", "007994"):
         try:
-            res = _fetch_sina_cn_price_change(_SINA_CN[sym])
+            res = _fetch_fund_price_change(_FUND_CODES[sym])
             if res is not None:
                 p, change_pct = res
                 out[sym] = p
                 daily_change_pct_by_symbol[sym] = change_pct
-                source_by_symbol[sym] = "新浪A股"
+                source_by_symbol[sym] = "东财基金估值"
         except Exception:
             pass
 
@@ -490,7 +512,7 @@ def _merge_buy(
 
 
 def _default_balances() -> dict[str, float]:
-    return {"510300.SS": 0.0, "510500.SS": 0.0}
+    return {"001015": 0.0, "007994": 0.0}
 
 
 def _load_balances() -> dict[str, float]:
@@ -661,8 +683,8 @@ def _defaults_from_fetch() -> dict[str, float]:
         "qqq": raw["QQQ"],
         "tlt": raw["TLT"],
         "iei": raw["IEI"],
-        "hs300": raw["510300.SS"],
-        "zz500": raw["510500.SS"],
+        "hs300": raw["001015"],
+        "zz500": raw["007994"],
     }
 
 
@@ -836,9 +858,16 @@ else:
 holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
 
 # --- 技术看板（K 线）---
-_chart_symbol_labels = {meta["label"]: sym for sym, meta in _ASSET_META.items()}
+_chart_symbol_labels = {
+    "VOO": "VOO",
+    "QQQ": "QQQ",
+    "债券(TLT)": "TLT",
+    "债券(IEI)": "IEI",
+    "沪深300ETF(510300)": "510300.SS",
+    "中证500ETF(510500)": "510500.SS",
+}
 _chart_label_options = list(_chart_symbol_labels.keys())
-_chart_pick_default_label = "沪深300ETF"
+_chart_pick_default_label = "沪深300ETF(510300)"
 _chart_pick_default_index = (
     _chart_label_options.index(_chart_pick_default_label) if _chart_pick_default_label in _chart_label_options else 0
 )
@@ -1088,7 +1117,7 @@ with st.expander("开始定投", expanded=False):
         "数据来源标签："
         f" 汇率={fx_meta['source']}（更新时间 {fx_meta['fetched_at']}）"
         f" | VOO={spot_sources['VOO']}, QQQ={spot_sources['QQQ']}, TLT={spot_sources['TLT']}, IEI={spot_sources['IEI']}"
-        f" | 沪深300={spot_sources['510300.SS']}, 中证500={spot_sources['510500.SS']}"
+        f" | 001015={spot_sources['001015']}, 007994={spot_sources['007994']}"
         f"（更新时间 {spot_meta['fetched_at']}）"
     )
     col_a, col_b = st.columns([1, 1])
@@ -1102,16 +1131,24 @@ with st.expander("开始定投", expanded=False):
     tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
     iei_price = st.number_input("IEI价格", value=float(st.session_state.def_iei), key="inp_iei")
 
-    hs300_price = st.number_input("沪深300价格", value=float(st.session_state.def_hs300), key="inp_hs300")
-    zz500_price = st.number_input("中证500价格", value=float(st.session_state.def_zz500), key="inp_zz500")
+    hs300_price = st.number_input(
+        "001015 华夏沪深300指数增强A 净值",
+        value=float(st.session_state.def_hs300),
+        key="inp_hs300",
+    )
+    zz500_price = st.number_input(
+        "007994 华夏中证500指数增强 净值",
+        value=float(st.session_state.def_zz500),
+        key="inp_zz500",
+    )
 
     prices_now = {
         "VOO": voo_price,
         "QQQ": qqq_price,
         "TLT": tlt_price,
         "IEI": iei_price,
-        "510300.SS": hs300_price,
-        "510500.SS": zz500_price,
+        "001015": hs300_price,
+        "007994": zz500_price,
     }
 
     if st.button("计算"):
@@ -1138,41 +1175,30 @@ with st.expander("开始定投", expanded=False):
             f"**美股美元合计：{us_allocated_usd:.2f} USD**（本月按整数美元换汇，原始应换约 {usd_total_raw:.2f} USD）"
         )
 
-        st.write("### A股")
+        st.write("### 基金")
 
-        _, balances, _ = _load_user_state(cloud_user_id)
         hs300_amount = rmb * 0.2
-        hs300_budget = hs300_amount + balances["510300.SS"]
-        hs300_lot_cost = hs300_price * 100
-        hs300_lots = int(hs300_budget // hs300_lot_cost) if hs300_lot_cost > 0 else 0
-        hs300_balance_next = hs300_budget - hs300_lots * hs300_lot_cost
         zz500_amount = rmb * 0.2
-        zz500_budget = zz500_amount + balances["510500.SS"]
-        zz500_lot_cost = zz500_price * 100
-        zz500_lots = int(zz500_budget // zz500_lot_cost) if zz500_lot_cost > 0 else 0
-        zz500_balance_next = zz500_budget - zz500_lots * zz500_lot_cost
+        hs300_units = (hs300_amount / hs300_price) if hs300_price > 0 else 0.0
+        zz500_units = (zz500_amount / zz500_price) if zz500_price > 0 else 0.0
 
-        st.write(f"沪深300：{hs300_lots*100} 股（{hs300_lots} 手）")
-        st.write(f"中证500：{zz500_lots*100} 股（{zz500_lots} 手）")
-        st.caption(
-            f"A股余额结转：沪深300 结转 {hs300_balance_next:.2f} CNY | "
-            f"中证500 结转 {zz500_balance_next:.2f} CNY"
-        )
+        st.write(f"001015：{hs300_amount:.2f} CNY → {hs300_units:.3f} 份")
+        st.write(f"007994：{zz500_amount:.2f} CNY → {zz500_units:.3f} 份")
 
         calc_buys = {
             "VOO": {"shares": voo_usd / voo_price, "price": voo_price},
             "QQQ": {"shares": qqq_usd / qqq_price, "price": qqq_price},
             "TLT": {"shares": tlt_usd / tlt_price, "price": tlt_price},
             "IEI": {"shares": iei_usd / iei_price, "price": iei_price},
-            "510300.SS": {"shares": hs300_lots * 100.0, "price": hs300_price},
-            "510500.SS": {"shares": zz500_lots * 100.0, "price": zz500_price},
+            "001015": {"shares": hs300_units, "price": hs300_price},
+            "007994": {"shares": zz500_units, "price": zz500_price},
         }
         if st.button("将本月定投更新到我的持仓"):
             holdings, balances_loaded, _ = _load_user_state(cloud_user_id)
             for sym, buy in calc_buys.items():
                 holdings[sym] = _merge_buy(holdings[sym], buy["shares"], buy["price"])
-            balances_loaded["510300.SS"] = hs300_balance_next
-            balances_loaded["510500.SS"] = zz500_balance_next
+            balances_loaded["001015"] = 0.0
+            balances_loaded["007994"] = 0.0
             save_mode = _save_user_state(cloud_user_id, holdings, balances_loaded)
             st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
@@ -1201,18 +1227,18 @@ with st.expander("编辑持仓（会保存）", expanded=False):
                 )
             holdings[sym]["shares"] = shares
             holdings[sym]["avg_cost"] = avg_cost
-        st.markdown("#### A股结转余额（未凑够一手的现金）")
-        balances_for_view["510300.SS"] = st.number_input(
-            "沪深300 结转余额（CNY）",
+        st.markdown("#### 基金结转余额（可选，默认不使用）")
+        balances_for_view["001015"] = st.number_input(
+            "001015 结转余额（CNY）",
             min_value=0.0,
-            value=float(balances_for_view.get("510300.SS", 0.0)),
+            value=float(balances_for_view.get("001015", 0.0)),
             step=0.01,
             key="edit_balance_hs300",
         )
-        balances_for_view["510500.SS"] = st.number_input(
-            "中证500 结转余额（CNY）",
+        balances_for_view["007994"] = st.number_input(
+            "007994 结转余额（CNY）",
             min_value=0.0,
-            value=float(balances_for_view.get("510500.SS", 0.0)),
+            value=float(balances_for_view.get("007994", 0.0)),
             step=0.01,
             key="edit_balance_zz500",
         )
@@ -1340,49 +1366,114 @@ for i, (sym, meta) in enumerate(_ASSET_META.items()):
     )
 
 st.subheader("📊 可视化")
-chart_col1, chart_col2 = st.columns(2)
+usd_symbols = ("VOO", "QQQ", "TLT", "IEI")
+cny_symbols = ("001015", "007994")
 
-value_chart_df = pd.DataFrame(
+bond_current = value_cny_by_symbol.get("TLT", 0.0) + value_cny_by_symbol.get("IEI", 0.0)
+voo_current = value_cny_by_symbol.get("VOO", 0.0)
+qqq_current = value_cny_by_symbol.get("QQQ", 0.0)
+
+ratio_denominator = total_value_cny if total_value_cny > 0 else 0.0
+voo_ratio = (voo_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+qqq_ratio = (qqq_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+tlt_ratio = (value_cny_by_symbol.get("TLT", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+iei_ratio = (value_cny_by_symbol.get("IEI", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+bond_ratio = (bond_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+
+voo_target = _TARGET_WEIGHTS["VOO"] * 100.0
+qqq_target = _TARGET_WEIGHTS["QQQ"] * 100.0
+bond_target = (_TARGET_WEIGHTS["TLT"] + _TARGET_WEIGHTS["IEI"]) * 100.0
+
+group1_df = pd.DataFrame(
     [
-        {"标的": _ASSET_META[sym]["label"], "当前市值(CNY)": round(value_cny_by_symbol[sym], 2)}
-        for sym in _ASSET_META
-        if value_cny_by_symbol.get(sym, 0.0) > 0
+        {"标的组": "VOO", "类型": "当前比例%", "成分": "VOO", "比例%": round(voo_ratio, 2)},
+        {"标的组": "VOO", "类型": "目标比例%", "成分": "目标", "比例%": round(voo_target, 2)},
+        {"标的组": "QQQ", "类型": "当前比例%", "成分": "QQQ", "比例%": round(qqq_ratio, 2)},
+        {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2)},
+        {"标的组": "债券", "类型": "当前比例%", "成分": "TLT", "比例%": round(tlt_ratio, 2)},
+        {"标的组": "债券", "类型": "当前比例%", "成分": "IEI", "比例%": round(iei_ratio, 2)},
+        {"标的组": "债券", "类型": "目标比例%", "成分": "目标", "比例%": round(bond_target, 2)},
     ]
 )
-if not value_chart_df.empty:
-    pie_chart = (
-        alt.Chart(value_chart_df)
-        .mark_arc(innerRadius=55)
-        .encode(
-            theta=alt.Theta("当前市值(CNY):Q"),
-            color=alt.Color("标的:N"),
-            tooltip=["标的:N", alt.Tooltip("当前市值(CNY):Q", format=",.2f")],
-        )
-        .properties(title="当前持仓市值占比")
-    )
-    chart_col1.altair_chart(pie_chart, width="stretch")
-else:
-    chart_col1.info("暂无持仓市值数据可供可视化。")
 
-ratio_chart_df = pd.DataFrame(ratio_rows).melt(
-    id_vars="标的",
-    value_vars=["目标比例%", "当前比例%"],
-    var_name="类型",
-    value_name="比例%",
-)
-ratio_chart = (
-    alt.Chart(ratio_chart_df)
+group1_chart = (
+    alt.Chart(group1_df)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的:N", sort=None),
-        xOffset="类型:N",
-        y=alt.Y("比例%:Q"),
-        color=alt.Color("类型:N", scale=alt.Scale(range=[theme["accent"], "#94a3b8"])),
-        tooltip=["标的:N", "类型:N", alt.Tooltip("比例%:Q", format=".2f")],
+        x=alt.X("标的组:N", sort=["VOO", "QQQ", "债券"]),
+        xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
+        y=alt.Y("比例%:Q", title="比例(%)"),
+        color=alt.Color(
+            "成分:N",
+            sort=["VOO", "QQQ", "TLT", "IEI", "目标"],
+            scale=alt.Scale(
+                domain=["VOO", "QQQ", "TLT", "IEI", "目标"],
+                range=[theme["accent"], "#60a5fa", "#f59e0b", "#fbbf24", "#94a3b8"],
+            ),
+        ),
+        order=alt.Order("成分:N", sort="ascending"),
+        tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f")],
     )
-    .properties(title="目标比例 vs 当前比例")
+    .properties(title="VOO / QQQ / 债券（债券当前柱由 TLT+IEI 堆叠）")
 )
-chart_col2.altair_chart(ratio_chart, width="stretch")
+st.altair_chart(group1_chart, width="stretch")
+
+hs300_ratio = (value_cny_by_symbol.get("001015", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+zz500_ratio = (value_cny_by_symbol.get("007994", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+hs300_target = _TARGET_WEIGHTS["001015"] * 100.0
+zz500_target = _TARGET_WEIGHTS["007994"] * 100.0
+
+group2_df = pd.DataFrame(
+    [
+        {"标的组": "沪深300", "类型": "当前比例%", "比例%": round(hs300_ratio, 2)},
+        {"标的组": "沪深300", "类型": "目标比例%", "比例%": round(hs300_target, 2)},
+        {"标的组": "中证500", "类型": "当前比例%", "比例%": round(zz500_ratio, 2)},
+        {"标的组": "中证500", "类型": "目标比例%", "比例%": round(zz500_target, 2)},
+    ]
+)
+group2_chart = (
+    alt.Chart(group2_df)
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+    .encode(
+        x=alt.X("标的组:N", sort=["沪深300", "中证500"]),
+        xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
+        y=alt.Y("比例%:Q", title="比例(%)"),
+        color=alt.Color("类型:N", scale=alt.Scale(range=[theme["accent"], "#94a3b8"])),
+        tooltip=["标的组:N", "类型:N", alt.Tooltip("比例%:Q", format=".2f")],
+    )
+    .properties(title="沪深300 / 中证500（当前 vs 目标）")
+)
+st.altair_chart(group2_chart, width="stretch")
+
+usd_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in usd_symbols)
+cny_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in cny_symbols) + total_balance_cny
+currency_denominator = total_assets_cny if total_assets_cny > 0 else 0.0
+usd_ratio = (usd_value_cny / currency_denominator * 100.0) if currency_denominator > 0 else 0.0
+cny_ratio = (cny_value_cny / currency_denominator * 100.0) if currency_denominator > 0 else 0.0
+usd_target = sum(_TARGET_WEIGHTS[sym] for sym in usd_symbols) * 100.0
+cny_target = sum(_TARGET_WEIGHTS[sym] for sym in cny_symbols) * 100.0
+
+group3_df = pd.DataFrame(
+    [
+        {"资产币种": "美元资产", "类型": "当前比例%", "比例%": round(usd_ratio, 2)},
+        {"资产币种": "美元资产", "类型": "目标比例%", "比例%": round(usd_target, 2)},
+        {"资产币种": "人民币资产", "类型": "当前比例%", "比例%": round(cny_ratio, 2)},
+        {"资产币种": "人民币资产", "类型": "目标比例%", "比例%": round(cny_target, 2)},
+    ]
+)
+group3_chart = (
+    alt.Chart(group3_df)
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+    .encode(
+        x=alt.X("资产币种:N", sort=["美元资产", "人民币资产"]),
+        xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
+        y=alt.Y("比例%:Q", title="比例(%)"),
+        color=alt.Color("类型:N", scale=alt.Scale(range=[theme["accent"], "#94a3b8"])),
+        tooltip=["资产币种:N", "类型:N", alt.Tooltip("比例%:Q", format=".2f")],
+    )
+    .properties(title="美元资产 / 人民币资产（当前 vs 目标）")
+)
+st.altair_chart(group3_chart, width="stretch")
 
 pnl_chart_df = pd.DataFrame(
     [
