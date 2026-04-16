@@ -73,12 +73,16 @@ _ASSET_META = {
     "007994": {"label": "华夏中证500指数增强(007994)", "currency": "CNY"},
 }
 _TARGET_WEIGHTS = {
-    "VOO": 0.2,
-    "QQQ": 0.2,
-    "TLT": 0.1,
-    "IEI": 0.1,
-    "001015": 0.2,
-    "007994": 0.2,
+    # 分层目标：
+    # 1) 美元资产:人民币资产 = 6:4
+    # 2) 美元内部 VOO:QQQ:债券 = 6:3:1（债券在 TLT/IEI 各半）
+    # 3) 人民币内部 001015:007994 = 1:1
+    "VOO": 0.36,
+    "QQQ": 0.18,
+    "TLT": 0.03,
+    "IEI": 0.03,
+    "001015": 0.20,
+    "007994": 0.20,
 }
 
 
@@ -1152,7 +1156,12 @@ with st.expander("开始定投", expanded=False):
     }
 
     if st.button("计算"):
-        weights_us = {"VOO": 0.2, "QQQ": 0.2, "TLT": 0.1, "IEI": 0.1}
+        weights_us = {
+            "VOO": _TARGET_WEIGHTS["VOO"],
+            "QQQ": _TARGET_WEIGHTS["QQQ"],
+            "TLT": _TARGET_WEIGHTS["TLT"],
+            "IEI": _TARGET_WEIGHTS["IEI"],
+        }
         us_ratio = sum(weights_us.values())
         usd_total_raw = (rmb * us_ratio) / fx
         usd_total = round(usd_total_raw)
@@ -1160,10 +1169,10 @@ with st.expander("开始定投", expanded=False):
         st.subheader("📈 投资结果")
 
         st.write("### 美股")
-        voo_usd = usd_total * (0.2 / us_ratio)
-        qqq_usd = usd_total * (0.2 / us_ratio)
-        tlt_usd = usd_total * (0.1 / us_ratio)
-        iei_usd = usd_total * (0.1 / us_ratio)
+        voo_usd = usd_total * (weights_us["VOO"] / us_ratio)
+        qqq_usd = usd_total * (weights_us["QQQ"] / us_ratio)
+        tlt_usd = usd_total * (weights_us["TLT"] / us_ratio)
+        iei_usd = usd_total * (weights_us["IEI"] / us_ratio)
 
         st.write(f"VOO：{voo_usd:.2f} USD → {voo_usd/voo_price:.3f} 股")
         st.write(f"QQQ：{qqq_usd:.2f} USD → {qqq_usd/qqq_price:.3f} 股")
@@ -1177,8 +1186,8 @@ with st.expander("开始定投", expanded=False):
 
         st.write("### 基金")
 
-        hs300_amount = rmb * 0.2
-        zz500_amount = rmb * 0.2
+        hs300_amount = rmb * _TARGET_WEIGHTS["001015"]
+        zz500_amount = rmb * _TARGET_WEIGHTS["007994"]
         hs300_units = (hs300_amount / hs300_price) if hs300_price > 0 else 0.0
         zz500_units = (zz500_amount / zz500_price) if zz500_price > 0 else 0.0
 
