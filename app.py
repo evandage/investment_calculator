@@ -439,6 +439,39 @@ def _fetch_spot_prices() -> dict[str, float]:
     return dict(_fetch_spot_prices_meta()["prices"])
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _fetch_vix_meta() -> dict[str, float | str]:
+    """获取美股 CBOE VIX 当前值与当日涨跌幅。"""
+    fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        import yfinance as yf
+
+        t = yf.Ticker("^VIX")
+        h = t.history(period="5d", interval="1d", auto_adjust=False)
+        if h is not None and not h.empty and "Close" in h.columns:
+            c = pd.to_numeric(h["Close"], errors="coerce").dropna()
+            if len(c) >= 2:
+                cur = float(c.iloc[-1])
+                prev = float(c.iloc[-2])
+                pct = ((cur / prev - 1.0) * 100.0) if prev > 0 else 0.0
+                return {"vix": cur, "change_pct": pct, "source": "yfinance CBOE ^VIX", "fetched_at": fetched_at}
+            if len(c) == 1:
+                return {"vix": float(c.iloc[-1]), "change_pct": 0.0, "source": "yfinance CBOE ^VIX", "fetched_at": fetched_at}
+    except Exception:
+        pass
+    return {"vix": 20.0, "change_pct": 0.0, "source": "Fallback(20.0)", "fetched_at": fetched_at}
+
+
+def _vix_regime(vix: float) -> tuple[str, str]:
+    if vix < 15:
+        return ("低波动", "市场情绪偏乐观，风险偏好较高；注意防止过度乐观。")
+    if vix < 20:
+        return ("中性偏稳", "常态区间，市场波动温和，可按计划分批配置。")
+    if vix < 30:
+        return ("偏高波动", "不确定性上升，建议控制单次仓位、分批进场。")
+    return ("高波动/恐慌", "风险事件阶段，优先仓位管理与现金流，避免一次性重仓。")
+
+
 @st.cache_data(ttl=21600, show_spinner=False)
 def _fetch_us_etf_pe_drawdown(symbol: str) -> dict[str, float | None]:
     """返回美股ETF估值与回撤指标：pe(若可得)、回撤%(近60日高点回撤，负值为回撤)。"""
@@ -942,6 +975,7 @@ if st.button(
 ):
     _fetch_spot_prices_meta.clear()
     _fetch_usdcny_rate_meta.clear()
+    _fetch_vix_meta.clear()
     d = _defaults_from_fetch()
     st.session_state.def_fx = _fetch_usdcny_rate()
     st.session_state.def_voo = d["voo"]
@@ -1611,3 +1645,15 @@ else:
         st.dataframe(pd.DataFrame(rebalance_rows), width="stretch", hide_index=True)
     else:
         st.success("当前美元资产已不低于目标权重，暂无必须新增买入项。")
+
+    st.markdown("#### 美股 VIX（CBOE）参考")
+    _vix_meta = _fetch_vix_meta()
+    _vix_val = float(_vix_meta["vix"])
+    _vix_chg = float(_vix_meta["change_pct"])
+    _vix_tag, _vix_note = _vix_regime(_vix_val)
+    st.markdown(
+        f"当前：`{_vix_val:.2f}`（{_vix_chg:+.2f}%）｜区间判定：**{_vix_tag}**  \n"
+        f"{_vix_note}  \n"
+        "参考区间：`<15 低波动` · `15-20 中性` · `20-30 偏高波动` · `>=30 高波动/恐慌`"
+    )
+    st.caption(f"VIX 数据源：{_vix_meta['source']}（更新时间 {_vix_meta['fetched_at']}）")
