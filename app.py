@@ -15,6 +15,13 @@ import pandas as pd
 import requests
 import streamlit as st
 
+st.set_page_config(
+    page_title="Investment Dashboard",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 from chart_boards import (
     CHART_THEME_OPTIONS,
     configure_market_storage,
@@ -116,20 +123,85 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
     st.markdown(
         f"""
         <style>
-        .stMetric {{
-            background: {theme["card_bg"]};
-            border: 1px solid rgba(148, 163, 184, 0.22);
-            border-radius: 16px;
-            padding: 12px 14px;
-            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        .stApp {{
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: {theme.get("page_bg", "transparent")};
         }}
+        
+        /* Modern metric cards */
+        [data-testid="stMetric"] {{
+            background: {theme["card_bg"]};
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            border-radius: 16px;
+            padding: 16px 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }}
+        [data-testid="stMetric"]:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+        }}
+        [data-testid="stMetricValue"] {{
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--text-color);
+        }}
+        [data-testid="stMetricLabel"] {{
+            font-weight: 600;
+            color: var(--text-color);
+            opacity: 0.75;
+            font-size: 0.95rem;
+        }}
+        
+        /* Button styling */
         .stButton > button, .stDownloadButton > button {{
             border-radius: 12px;
-            border: 1px solid {theme["accent"]};
-            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+            border: none;
+            background: linear-gradient(135deg, {theme["accent"]} 0%, #3b82f6 100%);
+            color: white !important;
+            font-weight: 600;
+            padding: 0.5rem 1.5rem;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+            transition: all 0.2s ease;
         }}
+        .stButton > button:hover {{
+            transform: scale(1.02);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+        }}
+        
+        /* Expander / container styling */
+        [data-testid="stExpander"] {{
+            background: {theme["card_bg"]};
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }}
+        [data-testid="stExpander"] summary {{
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--text-color);
+        }}
+        
+        /* Dataframes */
+        [data-testid="stDataFrame"] {{
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+        }}
+        
+        /* Headers */
+        h1, h2, h3, h4 {{
+            font-weight: 800 !important;
+            letter-spacing: -0.025em !important;
+        }}
+        
         div[data-testid="stCaptionContainer"] p {{
-            color: #475569;
+            color: #64748b;
         }}
         </style>
         """,
@@ -917,7 +989,7 @@ cloud_user_id = st.sidebar.text_input(
 _db = _db_conf()
 configure_market_storage(_db, read_only=bool(_db))
 
-st.title(f"hello {cloud_user_id or 'guest'}")
+st.title(f"👋 Hello, {cloud_user_id or 'Guest'}")
 
 if _db:
     st.sidebar.caption("存储后端：Supabase")
@@ -1182,11 +1254,15 @@ with _tab_5:
 st.divider()
 
 with st.expander("开始定投", expanded=False):
-    rmb = st.number_input("每月投入（人民币）", value=5000.0)
-    _ensure_fx_session_default()
-    fx = st.number_input("汇率（USD/CNY）", value=float(st.session_state.def_fx), key="inp_fx")
+    st.subheader("💵 开始定投")
+    in_col1, in_col2 = st.columns(2)
+    with in_col1:
+        rmb = st.number_input("每月投入（人民币）", value=5000.0)
+    with in_col2:
+        _ensure_fx_session_default()
+        fx = st.number_input("汇率（USD/CNY）", value=float(st.session_state.def_fx), key="inp_fx")
 
-    st.subheader("输入价格")
+    st.markdown("#### 输入价格")
     spot_meta = _fetch_spot_prices_meta()
     fx_meta = _fetch_usdcny_rate_meta()
     spot_sources = spot_meta["source_by_symbol"]
@@ -1197,27 +1273,27 @@ with st.expander("开始定投", expanded=False):
         f" | 001015={spot_sources['001015']}, 007994={spot_sources['007994']}"
         f"（更新时间 {spot_meta['fetched_at']}）"
     )
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
-        st.empty()
-
+    
     _ensure_price_session_defaults()
-
-    voo_price = st.number_input("VOO价格", value=float(st.session_state.def_voo), key="inp_voo")
-    qqq_price = st.number_input("QQQ价格", value=float(st.session_state.def_qqq), key="inp_qqq")
-    tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
-    iei_price = st.number_input("IEI价格", value=float(st.session_state.def_iei), key="inp_iei")
-
-    hs300_price = st.number_input(
-        "001015 华夏沪深300指数增强A 净值",
-        value=float(st.session_state.def_hs300),
-        key="inp_hs300",
-    )
-    zz500_price = st.number_input(
-        "007994 华夏中证500指数增强 净值",
-        value=float(st.session_state.def_zz500),
-        key="inp_zz500",
-    )
+    
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        voo_price = st.number_input("VOO价格", value=float(st.session_state.def_voo), key="inp_voo")
+        qqq_price = st.number_input("QQQ价格", value=float(st.session_state.def_qqq), key="inp_qqq")
+    with col_p2:
+        tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
+        iei_price = st.number_input("IEI价格", value=float(st.session_state.def_iei), key="inp_iei")
+    with col_p3:
+        hs300_price = st.number_input(
+            "001015 沪深300 净值",
+            value=float(st.session_state.def_hs300),
+            key="inp_hs300",
+        )
+        zz500_price = st.number_input(
+            "007994 中证500 净值",
+            value=float(st.session_state.def_zz500),
+            key="inp_zz500",
+        )
 
     prices_now = {
         "VOO": voo_price,
@@ -1241,9 +1317,9 @@ with st.expander("开始定投", expanded=False):
         usd_month_raw = (rmb * us_ratio) / fx
         usd_total = balances["cash_usd"] + usd_month_raw
 
+        st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📈 投资结果")
 
-        st.write("### 美股")
         voo_budget_usd = usd_total * (weights_us["VOO"] / us_ratio)
         qqq_budget_usd = usd_total * (weights_us["QQQ"] / us_ratio)
         tlt_budget_usd = usd_total * (weights_us["TLT"] / us_ratio)
@@ -1259,17 +1335,6 @@ with st.expander("开始定投", expanded=False):
         )
         cash_usd_next = max(0.0, usd_total - us_allocated_usd)
 
-        st.write(f"VOO：预算 {voo_budget_usd:.2f} USD → 计划买 {voo_shares} 股")
-        st.write(f"QQQ：预算 {qqq_budget_usd:.2f} USD → 计划买 {qqq_shares} 股")
-        st.write(f"TLT：预算 {tlt_budget_usd:.2f} USD → 计划买 {tlt_shares} 股")
-        st.write(f"IEI：预算 {iei_budget_usd:.2f} USD → 计划买 {iei_shares} 股")
-        st.write(
-            f"**美股可用美元：{usd_total:.2f} USD（含已有现金 {balances['cash_usd']:.2f}）"
-            f"，本次买入占用 {us_allocated_usd:.2f} USD，结转 {cash_usd_next:.2f} USD**"
-        )
-
-        st.write("### 基金")
-
         cny_total = balances["cash_cny"] + rmb * cny_ratio
         hs300_amount = cny_total * (_TARGET_WEIGHTS["001015"] / cny_ratio) if cny_ratio > 0 else 0.0
         zz500_amount = cny_total * (_TARGET_WEIGHTS["007994"] / cny_ratio) if cny_ratio > 0 else 0.0
@@ -1277,12 +1342,26 @@ with st.expander("开始定投", expanded=False):
         zz500_units = (zz500_amount / zz500_price) if zz500_price > 0 else 0.0
         cash_cny_next = max(0.0, cny_total - hs300_amount - zz500_amount)
 
-        st.write(f"001015：{hs300_amount:.2f} CNY → {hs300_units:.3f} 份")
-        st.write(f"007994：{zz500_amount:.2f} CNY → {zz500_units:.3f} 份")
-        st.write(
-            f"**人民币可用现金：{cny_total:.2f} CNY（含已有现金 {balances['cash_cny']:.2f}），"
-            f"本次买入后结转 {cash_cny_next:.2f} CNY**"
-        )
+        res_c1, res_c2 = st.columns(2)
+        with res_c1:
+            st.markdown("#### 🇺🇸 美股配置")
+            st.info(f"**可用美元：** {usd_total:.2f} USD （含已有现金 {balances['cash_usd']:.2f}）\n\n"
+                    f"**本次买入：** -{us_allocated_usd:.2f} USD\n\n"
+                    f"**结转现金：** {cash_usd_next:.2f} USD")
+            
+            st.markdown(f"- **VOO**：预算 {voo_budget_usd:.2f} USD → 买 **{voo_shares}** 股")
+            st.markdown(f"- **QQQ**：预算 {qqq_budget_usd:.2f} USD → 买 **{qqq_shares}** 股")
+            st.markdown(f"- **TLT**：预算 {tlt_budget_usd:.2f} USD → 买 **{tlt_shares}** 股")
+            st.markdown(f"- **IEI**：预算 {iei_budget_usd:.2f} USD → 买 **{iei_shares}** 股")
+
+        with res_c2:
+            st.markdown("#### 🇨🇳 A股配置")
+            st.info(f"**可用人民币：** {cny_total:.2f} CNY （含已有现金 {balances['cash_cny']:.2f}）\n\n"
+                    f"**本次买入：** -{hs300_amount + zz500_amount:.2f} CNY\n\n"
+                    f"**结转现金：** {cash_cny_next:.2f} CNY")
+            
+            st.markdown(f"- **001015**：{hs300_amount:.2f} CNY → 买 **{hs300_units:.3f}** 份")
+            st.markdown(f"- **007994**：{zz500_amount:.2f} CNY → 买 **{zz500_units:.3f}** 份")
 
         calc_buys = {
             "VOO": {"shares": float(voo_shares), "price": voo_price},
@@ -1405,18 +1484,21 @@ for sym, meta in _ASSET_META.items():
         }
     )
 
-metric_cols = st.columns(4)
-metric_cols[0].metric("总成本(折合CNY)", f"{total_cost_cny:,.2f}")
-metric_cols[1].metric("持仓市值(折合CNY)", f"{total_value_cny:,.2f}")
-metric_cols[2].metric("现金余额(折合CNY)", f"{total_balance_cny:,.2f}")
-metric_cols[3].metric("总资产(折合CNY)", f"{total_assets_cny:,.2f}")
-st.caption(f"现金明细：USD {cash_usd:,.2f} ｜ CNY {cash_cny:,.2f}")
-st.metric(
+metric_cols = st.columns(5)
+metric_cols[0].metric("总成本(折合CNY)", f"¥ {total_cost_cny:,.2f}")
+metric_cols[1].metric("持仓市值(折合CNY)", f"¥ {total_value_cny:,.2f}")
+metric_cols[2].metric("现金余额(折合CNY)", f"¥ {total_balance_cny:,.2f}")
+metric_cols[3].metric("总资产(折合CNY)", f"¥ {total_assets_cny:,.2f}")
+metric_cols[4].metric(
     "总浮盈亏(折合CNY)",
-    f"{total_pnl_cny:,.2f}",
+    f"¥ {total_pnl_cny:,.2f}",
     delta=f"{total_pnl_pct:.2f}%",
     delta_color=theme["delta_color"],
 )
+st.caption(f"💵 现金明细：USD {cash_usd:,.2f} ｜ CNY {cash_cny:,.2f}")
+
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("### 📊 今日表现")
 
 weighted_daily_pct = (
     sum(
@@ -1428,7 +1510,7 @@ weighted_daily_pct = (
 )
 weighted_daily_color = theme["profit_color"] if weighted_daily_pct >= 0 else theme["loss_color"]
 st.markdown(
-    f"当日加权涨跌：<span style='color:{weighted_daily_color}; font-weight:700; font-size:18px;'>{weighted_daily_pct:+.2f}%</span>",
+    f"**当日加权涨跌**：<span style='color:{weighted_daily_color}; font-weight:700; font-size:18px;'>{weighted_daily_pct:+.2f}%</span>",
     unsafe_allow_html=True,
 )
 
@@ -1441,7 +1523,8 @@ for i, (sym, meta) in enumerate(_ASSET_META.items()):
         unsafe_allow_html=True,
     )
 
-st.subheader("📊 可视化")
+st.markdown("<br>", unsafe_allow_html=True)
+st.subheader("📈 资产分布与盈亏")
 usd_symbols = ("VOO", "QQQ", "TLT", "IEI")
 cny_symbols = ("001015", "007994")
 
@@ -1519,7 +1602,10 @@ group2_chart = (
     )
     .properties(title="沪深300 / 中证500 当前占比", width=420, height=260)
 )
-st.altair_chart(group2_chart, width="stretch")
+chart_col1, chart_col2 = st.columns(2)
+
+with chart_col1:
+    st.altair_chart(group2_chart, width="stretch")
 
 usd_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in usd_symbols) + cash_usd * fx
 cny_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in cny_symbols) + cash_cny
@@ -1549,7 +1635,8 @@ group3_chart = (
     )
     .properties(title="美元资产 / 人民币资产当前占比", width=420, height=260)
 )
-st.altair_chart(group3_chart, width="stretch")
+with chart_col2:
+    st.altair_chart(group3_chart, width="stretch")
 
 pnl_chart_df = pd.DataFrame(
     [
