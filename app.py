@@ -1,6 +1,5 @@
 import re
 import json
-import math
 import base64
 from io import StringIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -83,6 +82,14 @@ _TARGET_WEIGHTS = {
     "IEI": 0.03,
     "001015": 0.20,
     "007994": 0.20,
+}
+
+# 美元资产 PE 参考区间（经验口径，仅作辅助，不构成投资建议）
+_USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
+    "VOO": (18.0, 24.0),
+    "QQQ": (22.0, 32.0),
+    "TLT": (14.0, 24.0),
+    "IEI": (12.0, 22.0),
 }
 
 
@@ -1544,69 +1551,63 @@ st.subheader("🧮 再平衡买入建议")
 if total_assets_cny <= 0:
     st.info("总资产为 0，暂无法生成再平衡建议。")
 else:
+    st.caption("仅针对美元资产（VOO/QQQ/TLT/IEI）。基金部分按你的固定定投节奏，不纳入这里。")
     rebalance_rows: list[dict[str, Any]] = []
-    us_month_budget = (rmb * (sum(_TARGET_WEIGHTS[s] for s in ("VOO", "QQQ", "TLT", "IEI")))) / fx if fx > 0 else 0.0
-    for sym, meta in _ASSET_META.items():
-        tgt_cny = total_assets_cny * _TARGET_WEIGHTS[sym]
+    for sym in ("VOO", "QQQ", "TLT", "IEI"):
+        meta = _ASSET_META[sym]
+        tgt_w = _TARGET_WEIGHTS[sym]
         cur_cny = value_cny_by_symbol.get(sym, 0.0)
-        gap_cny = tgt_cny - cur_cny
+        # 若要“买入后仍达到目标权重”，单标的所需新增资金需解：
+        # (cur + x) / (total + x) = target  => x = (target*total - cur) / (1-target)
+        num = tgt_w * total_assets_cny - cur_cny
+        den = 1.0 - tgt_w
+        gap_cny = (num / den) if den > 0 else 0.0
         if gap_cny <= 0:
             continue
         px = float(prices_now[sym])
-        if meta["currency"] == "USD":
-            q = _fetch_us_etf_pe_drawdown(sym)
-            pe = q.get("pe")
-            dd = q.get("drawdown_pct")
-            gap_usd = gap_cny / fx if fx > 0 else 0.0
-            need_shares = (gap_usd / px) if px > 0 else 0.0
-            whole_shares = int(gap_usd // px) if px > 0 else 0
-            short_one_share = max(0.0, px - gap_usd) if whole_shares < 1 else 0.0
-            months_hint = math.ceil(short_one_share / us_month_budget) if short_one_share > 0 and us_month_budget > 0 else 0
-            share_hint = (
-                f"距离1股还差 {short_one_share:.2f} USD，约需再攒 {months_hint} 个月"
-                if short_one_share > 0 and sym in ("VOO", "QQQ")
-                else ""
-            )
-            pe_txt = f"{float(pe):.1f}" if isinstance(pe, (int, float)) else "N/A"
-            dd_txt = f"{float(dd):.2f}%" if isinstance(dd, (int, float)) else "N/A"
-            if isinstance(dd, (int, float)) and float(dd) <= -10:
-                market_hint = "近期回撤较大，可分批偏积极补仓"
-            elif isinstance(pe, (int, float)) and float(pe) >= 30:
-                market_hint = "估值偏高，建议分3-4批慢慢买"
-            elif isinstance(pe, (int, float)) and float(pe) >= 24:
-                market_hint = "估值略贵，建议分批买入"
-            else:
-                market_hint = "估值/位置中性，按目标缺口逐步补仓"
-            if sym == "QQQ" and isinstance(dd, (int, float)) and float(dd) <= -12:
-                market_hint = "QQQ 回撤明显，可作为优先补仓对象（仍分批）"
-            hint = f"{market_hint}；{share_hint}" if share_hint else market_hint
-            rebalance_rows.append(
-                {
-                    "标的": meta["label"],
-                    "目标缺口(CNY)": round(gap_cny, 2),
-                    "目标缺口(USD)": round(gap_usd, 2),
-                    "PE": pe_txt,
-                    "近60日回撤": dd_txt,
-                    "按当前价需买": round(need_shares, 3),
-                    "可整股买入": whole_shares,
-                    "说明": hint,
-                }
-            )
+        q = _fetch_us_etf_pe_drawdown(sym)
+        pe = q.get("pe")
+        dd = q.get("drawdown_pct")
+        gap_usd = gap_cny / fx if fx > 0 else 0.0
+        need_shares = (gap_usd / px) if px > 0 else 0.0
+        whole_shares_need = int(gap_usd // px) if px > 0 else 0
+        affordable_shares = int(cash_usd // px) if px > 0 else 0
+        usd_needed_for_one = max(0.0, px - cash_usd) if sym in ("VOO", "QQQ") and affordable_shares < 1 else 0.0
+
+        pe_txt = f"{float(pe):.1f}" if isinstance(pe, (int, float)) else "N/A"
+        pe_band = _USD_ASSET_PE_BANDS.get(sym)
+        pe_band_txt = f"{pe_band[0]:.0f} - {pe_band[1]:.0f}" if pe_band else "N/A"
+        dd_txt = f"{float(dd):.2f}%" if isinstance(dd, (int, float)) else "N/A"
+        if isinstance(dd, (int, float)) and float(dd) <= -10:
+            market_hint = "近期回撤较大，可分批偏积极补仓"
+        elif isinstance(pe, (int, float)) and float(pe) >= 30:
+            market_hint = "估值偏高，建议分3-4批慢慢买"
+        elif isinstance(pe, (int, float)) and float(pe) >= 24:
+            market_hint = "估值略贵，建议分批买入"
         else:
-            need_units = (gap_cny / px) if px > 0 else 0.0
-            rebalance_rows.append(
-                {
-                    "标的": meta["label"],
-                    "目标缺口(CNY)": round(gap_cny, 2),
-                    "目标缺口(USD)": 0.0,
-                    "PE": "N/A",
-                    "近60日回撤": "N/A",
-                    "按当前价需买": round(need_units, 3),
-                    "可整股买入": "-",
-                    "说明": "基金估值口径下 PE 不稳定，建议按目标缺口分批定投",
-                }
-            )
+            market_hint = "估值/位置中性，按目标缺口逐步补仓"
+        if sym == "QQQ" and isinstance(dd, (int, float)) and float(dd) <= -12:
+            market_hint = "QQQ 回撤明显，可优先于其他美元资产补仓（仍分批）"
+        cash_hint = (
+            f"你当前美元现金可买 {affordable_shares} 股；距离买1股还差 {usd_needed_for_one:.2f} USD"
+            if sym in ("VOO", "QQQ") and affordable_shares < 1
+            else f"你当前美元现金可买 {affordable_shares} 股"
+        )
+        rebalance_rows.append(
+            {
+                "标的": meta["label"],
+                "目标缺口(CNY,买后口径)": round(gap_cny, 2),
+                "目标缺口(USD,买后口径)": round(gap_usd, 2),
+                "PE": pe_txt,
+                "参考PE区间": pe_band_txt,
+                "近60日回撤": dd_txt,
+                "按当前价需买(股)": round(need_shares, 3),
+                "整股需求(股)": whole_shares_need,
+                "现金可买(股)": affordable_shares,
+                "说明": f"{market_hint}；{cash_hint}",
+            }
+        )
     if rebalance_rows:
         st.dataframe(pd.DataFrame(rebalance_rows), width="stretch", hide_index=True)
     else:
-        st.success("当前各资产已不低于目标权重，暂无必须新增买入项。")
+        st.success("当前美元资产已不低于目标权重，暂无必须新增买入项。")
