@@ -977,6 +977,13 @@ chart_theme = st.sidebar.selectbox(
     help="Classic Light 浅色机构风；Trading Dark 暗色终端风（绿涨红跌）；CN Quant 红涨绿跌略饱和。",
 )
 st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
+chart_data_mode = st.sidebar.selectbox(
+    "看板数据模式",
+    options=["实时拉取（默认）", "数据库缓存（Supabase）"],
+    index=0,
+    key="chart_data_mode",
+    help="实时拉取：页面直接请求行情源；数据库缓存：仅读 Supabase 里的 K 线缓存。",
+)
 
 cloud_user_id = st.sidebar.text_input(
     "用户ID（用于跨设备同步）",
@@ -986,7 +993,11 @@ cloud_user_id = st.sidebar.text_input(
 ).strip()
 
 _db = _db_conf()
-configure_market_storage(_db, read_only=bool(_db))
+chart_cache_only = chart_data_mode == "数据库缓存（Supabase）"
+if chart_cache_only and not _db:
+    st.sidebar.warning("未配置 Supabase，已自动切换为实时拉取模式。")
+    chart_cache_only = False
+configure_market_storage(_db if chart_cache_only else None, read_only=chart_cache_only)
 
 st.title(f"👋 Hello, {cloud_user_id or 'Guest'}")
 
@@ -1061,7 +1072,7 @@ if st.button(
         if k in st.session_state:
             del st.session_state[k]
 
-    st.success("已刷新市价（K线看板仅读 Supabase 缓存）")
+    st.success(f"已刷新市价（K线看板模式：{chart_data_mode}）")
 _interval_display_map = {
     "日线（1d）": "1d",
     "15分钟（15m）": "15m",
@@ -1081,7 +1092,7 @@ if not _interval_keys:
 
 # 前端只读 Supabase 画图：不在页面线程里做同步
 
-if _db_conf():
+if chart_cache_only:
     _probe = probe_market_cache_status(_chart_yf, _interval_keys)  # type: ignore[arg-type]
     if _probe.get("reachable"):
         _hits = _probe.get("hits", {})
@@ -1134,7 +1145,7 @@ _chart_errs: dict[str, str] = {}
 _nj = int("1d" in _interval_keys) + int("15m" in _interval_keys) + int("5m" in _interval_keys)
 if _nj > 0:
     try:
-        _prog0 = "从 Supabase 加载看板各周期…"
+        _prog0 = "从 Supabase 加载看板各周期…" if chart_cache_only else "实时拉取看板各周期…"
         _prog_slot.progress(0.0, text=_prog0)
     except TypeError:
         _prog_slot.progress(0)
@@ -1148,7 +1159,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=True,
+                cache_only=chart_cache_only,
             )
             _fut_map[_f] = ("1d", "日线（1d）")
         if "15m" in _interval_keys:
@@ -1158,7 +1169,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=True,
+                cache_only=chart_cache_only,
             )
             _fut_map[_f] = ("15m", "15m（15m）")
         if "5m" in _interval_keys:
@@ -1168,7 +1179,7 @@ if _nj > 0:
                 _chart_pick,
                 chart_theme=chart_theme,
                 user_avg_cost=_chart_user_avg_cost,
-                cache_only=True,
+                cache_only=chart_cache_only,
             )
             _fut_map[_f] = ("5m", "5m（5m）")
         _done = 0
@@ -1192,7 +1203,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=True,
+                            cache_only=chart_cache_only,
                         )
                     elif _kind == "15m":
                         _fig_15 = fig_15m_vwap_rsi(
@@ -1200,7 +1211,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=True,
+                            cache_only=chart_cache_only,
                         )
                     else:
                         _fig_5 = fig_5m_vwap_rsi7(
@@ -1208,7 +1219,7 @@ if _nj > 0:
                             _chart_pick,
                             chart_theme=chart_theme,
                             user_avg_cost=_chart_user_avg_cost,
-                            cache_only=True,
+                            cache_only=chart_cache_only,
                         )
                 except Exception as e2:
                     print(f"[investment_calculator] 串行补偿失败 {_lab}: {e2}", flush=True)
