@@ -1385,7 +1385,7 @@ st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'c
 with st.expander("编辑持仓（会保存）", expanded=False):
     with st.form("holdings_edit_form"):
         for sym, meta in _ASSET_META.items():
-            c1, c2 = st.columns([1, 1])
+            c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
                 shares = st.number_input(
                     f"{meta['label']} 持有数量",
@@ -1396,14 +1396,28 @@ with st.expander("编辑持仓（会保存）", expanded=False):
                 )
             with c2:
                 avg_cost = st.number_input(
-                    f"{meta['label']} 持仓成本({meta['currency']})",
+                    f"单位成本({meta['currency']})",
                     min_value=0.0,
                     value=float(holdings[sym]["avg_cost"]),
                     step=0.0001,
+                    format="%.4f",
                     key=f"edit_cost_{sym}",
                 )
+            with c3:
+                total_cost_input = st.number_input(
+                    f"或填总成本({meta['currency']})",
+                    min_value=0.0,
+                    value=0.0,
+                    step=100.0,
+                    format="%.4f",
+                    key=f"edit_total_cost_{sym}",
+                    help="若此处填写大于0的金额，将优先按 [总成本 ÷ 持有数量] 自动计算单位成本并覆盖保存。"
+                )
             holdings[sym]["shares"] = shares
-            holdings[sym]["avg_cost"] = avg_cost
+            if total_cost_input > 0:
+                holdings[sym]["avg_cost"] = (total_cost_input / shares) if shares > 0 else 0.0
+            else:
+                holdings[sym]["avg_cost"] = avg_cost
         st.markdown("#### 现金余额（会保存）")
         balances_for_view["cash_usd"] = st.number_input(
             "现金美元（USD）",
@@ -1457,7 +1471,7 @@ for sym, meta in _ASSET_META.items():
             "浮动盈亏": round(pnl, 2),
             "涨跌幅%": round(pnl_pct, 2),
             "持有数量": round(shares, 3),
-            "持仓成本": round(avg_cost, 4),
+            "持仓成本": round(avg_cost, 2),
             "当前价": round(current, 4),
             "持仓市值": round(value, 2),
         }

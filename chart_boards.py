@@ -1405,7 +1405,7 @@ def fig_daily(
             y=cost,
             xref="x1",
             yref="y1",
-            text=f"成本 {cost:.4g}（{pct:+.2f}%）",
+            text=f"成本 {cost:.2f}（{pct:+.2f}%）",
             showarrow=False,
             font=dict(color=theme["rsi_orange"], size=11),
             bgcolor="rgba(0,0,0,0.08)",
