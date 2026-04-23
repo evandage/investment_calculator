@@ -1,6 +1,7 @@
 import re
 import json
 import base64
+import importlib
 from io import StringIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -22,22 +23,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from chart_boards import (
-    CHART_THEME_OPTIONS,
-    configure_market_storage,
-    fig_15m_vwap_rsi,
-    fig_5m_vwap_rsi7,
-    fig_daily,
-    probe_market_inventory,
-    probe_symbol_interval_raw_rows,
-    probe_market_cache_status,
-    probe_recent_market_rows,
-)
-
 # 拉取失败时的回退价（与常见区间一致）
 _FALLBACK = {
     "VOO": 400.0,
     "QQQ": 500.0,
+    "AVGO": 1700.0,
+    "NVDA": 1200.0,
+    "GOOGL": 180.0,
+    "MSFT": 420.0,
     "TLT": 90.0,
     "IEI": 115.0,
     "001015": 1.0,
@@ -47,6 +40,10 @@ _FALLBACK = {
 _TICKERS = {
     "voo": "VOO",
     "qqq": "QQQ",
+    "avgo": "AVGO",
+    "nvda": "NVDA",
+    "googl": "GOOGL",
+    "msft": "MSFT",
     "tlt": "TLT",
     "iei": "IEI",
     "hs300": "001015",  # 华夏沪深300指数增强A
@@ -64,8 +61,26 @@ _REQUEST_HEADERS = {
 _HTTP_TIMEOUT = (5, 15)
 
 # 美股：腾讯财经批量接口；失败则用新浪全球行情
-_QQ_US = {"VOO": "usVOO", "QQQ": "usQQQ", "TLT": "usTLT", "IEI": "usIEI"}
-_SINA_GB = {"VOO": "gb_voo", "QQQ": "gb_qqq", "TLT": "gb_tlt", "IEI": "gb_iei"}
+_QQ_US = {
+    "VOO": "usVOO",
+    "QQQ": "usQQQ",
+    "AVGO": "usAVGO",
+    "NVDA": "usNVDA",
+    "GOOGL": "usGOOGL",
+    "MSFT": "usMSFT",
+    "TLT": "usTLT",
+    "IEI": "usIEI",
+}
+_SINA_GB = {
+    "VOO": "gb_voo",
+    "QQQ": "gb_qqq",
+    "AVGO": "gb_avgo",
+    "NVDA": "gb_nvda",
+    "GOOGL": "gb_googl",
+    "MSFT": "gb_msft",
+    "TLT": "gb_tlt",
+    "IEI": "gb_iei",
+}
 _FUND_CODES = {"001015": "001015", "007994": "007994"}
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
@@ -73,6 +88,10 @@ _BALANCE_FILE = Path(__file__).with_name("balances.json")
 _ASSET_META = {
     "VOO": {"label": "VOO", "currency": "USD"},
     "QQQ": {"label": "QQQ", "currency": "USD"},
+    "AVGO": {"label": "AVGO", "currency": "USD"},
+    "NVDA": {"label": "NVDA", "currency": "USD"},
+    "GOOGL": {"label": "GOOGL", "currency": "USD"},
+    "MSFT": {"label": "MSFT", "currency": "USD"},
     "TLT": {"label": "债券(TLT)", "currency": "USD"},
     "IEI": {"label": "债券(IEI)", "currency": "USD"},
     "001015": {"label": "华夏沪深300指数增强A(001015)", "currency": "CNY"},
@@ -80,10 +99,14 @@ _ASSET_META = {
 }
 _TARGET_WEIGHTS = {
     # 目标比例：
-    # 美元资产: VOO 25%, QQQ 15%, 债券 20%（TLT/IEI各10%）
+    # 美元资产: VOO 20%, QQQ 10%, 新增四标的合计10%（AVGO/NVDA/GOOGL/MSFT=4:2:2:2）, 债券 20%（TLT/IEI各10%）
     # 人民币资产: 沪深300(001015) 20%, 中证500(007994) 20%
-    "VOO": 0.25,
-    "QQQ": 0.15,
+    "VOO": 0.20,
+    "QQQ": 0.10,
+    "AVGO": 0.04,
+    "NVDA": 0.02,
+    "GOOGL": 0.02,
+    "MSFT": 0.02,
     "TLT": 0.10,
     "IEI": 0.10,
     "001015": 0.20,
@@ -94,6 +117,10 @@ _TARGET_WEIGHTS = {
 _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "VOO": (18.0, 24.0),
     "QQQ": (22.0, 32.0),
+    "AVGO": (24.0, 34.0),
+    "NVDA": (28.0, 45.0),
+    "GOOGL": (18.0, 28.0),
+    "MSFT": (24.0, 36.0),
     "TLT": (14.0, 24.0),
     "IEI": (12.0, 22.0),
 }
@@ -469,7 +496,7 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     except Exception:
         pass
 
-    for sym in ("VOO", "QQQ", "TLT", "IEI"):
+    for sym in ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "TLT", "IEI"):
         if sym not in out:
             try:
                 res = _fetch_sina_gb_price_change(_SINA_GB[sym])
@@ -833,6 +860,10 @@ def _defaults_from_fetch() -> dict[str, float]:
     return {
         "voo": raw["VOO"],
         "qqq": raw["QQQ"],
+        "avgo": raw["AVGO"],
+        "nvda": raw["NVDA"],
+        "googl": raw["GOOGL"],
+        "msft": raw["MSFT"],
         "tlt": raw["TLT"],
         "iei": raw["IEI"],
         "hs300": raw["001015"],
@@ -844,6 +875,10 @@ def _ensure_price_session_defaults() -> None:
     d = _defaults_from_fetch()
     st.session_state.setdefault("def_voo", d["voo"])
     st.session_state.setdefault("def_qqq", d["qqq"])
+    st.session_state.setdefault("def_avgo", d["avgo"])
+    st.session_state.setdefault("def_nvda", d["nvda"])
+    st.session_state.setdefault("def_googl", d["googl"])
+    st.session_state.setdefault("def_msft", d["msft"])
     st.session_state.setdefault("def_tlt", d["tlt"])
     st.session_state.setdefault("def_iei", d["iei"])
     st.session_state.setdefault("def_hs300", d["hs300"])
@@ -966,24 +1001,33 @@ def _inflation_comment(yoy: float, metric_name: str) -> str:
     return f"{metric_name}同比接近2%目标区间，通胀压力相对温和。"
 
 
+@st.cache_resource(show_spinner=False)
+def _load_chart_boards_api() -> dict[str, Any]:
+    mod = importlib.import_module("chart_boards")
+    return {
+        "CHART_THEME_OPTIONS": getattr(mod, "CHART_THEME_OPTIONS"),
+        "configure_market_storage": getattr(mod, "configure_market_storage"),
+        "fig_15m_vwap_rsi": getattr(mod, "fig_15m_vwap_rsi"),
+        "fig_5m_vwap_rsi7": getattr(mod, "fig_5m_vwap_rsi7"),
+        "fig_daily": getattr(mod, "fig_daily"),
+        "probe_market_inventory": getattr(mod, "probe_market_inventory"),
+        "probe_symbol_interval_raw_rows": getattr(mod, "probe_symbol_interval_raw_rows"),
+        "probe_market_cache_status": getattr(mod, "probe_market_cache_status"),
+        "probe_recent_market_rows": getattr(mod, "probe_recent_market_rows"),
+    }
+
+
 theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
-chart_theme = st.sidebar.selectbox(
-    "K线配色主题",
-    options=list(CHART_THEME_OPTIONS),
-    index=list(CHART_THEME_OPTIONS).index("Trading Dark") if "Trading Dark" in CHART_THEME_OPTIONS else 0,
-    key="chart_plot_theme",
-    help="Classic Light 浅色机构风；Trading Dark 暗色终端风（绿涨红跌）；CN Quant 红涨绿跌略饱和。",
+chart_board_enabled = st.sidebar.toggle(
+    "启用技术看板",
+    value=False,
+    key="chart_board_enabled",
+    help="默认关闭。开启后才会加载技术看板模块与K线数据。",
 )
-st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
-chart_data_mode = st.sidebar.selectbox(
-    "看板数据模式",
-    options=["实时拉取（默认）", "数据库缓存（Supabase）"],
-    index=0,
-    key="chart_data_mode",
-    help="实时拉取：页面直接请求行情源；数据库缓存：仅读 Supabase 里的 K 线缓存。",
-)
+if not chart_board_enabled:
+    st.sidebar.caption("技术看板未启用：不会加载看板模块，也不会拉取看板数据。")
 
 cloud_user_id = st.sidebar.text_input(
     "用户ID（用于跨设备同步）",
@@ -993,11 +1037,6 @@ cloud_user_id = st.sidebar.text_input(
 ).strip()
 
 _db = _db_conf()
-chart_cache_only = chart_data_mode == "数据库缓存（Supabase）"
-if chart_cache_only and not _db:
-    st.sidebar.warning("未配置 Supabase，已自动切换为实时拉取模式。")
-    chart_cache_only = False
-configure_market_storage(_db if chart_cache_only else None, read_only=chart_cache_only)
 
 st.title(f"👋 Hello, {cloud_user_id or 'Guest'}")
 
@@ -1015,40 +1054,6 @@ else:
 
 holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
 
-# --- 技术看板（K 线）---
-_chart_symbol_labels = {
-    "VOO": "VOO",
-    "QQQ": "QQQ",
-    "债券(TLT)": "TLT",
-    "债券(IEI)": "IEI",
-    "沪深300ETF(510300)": "510300.SS",
-    "中证500ETF(510500)": "510500.SS",
-}
-_chart_label_options = list(_chart_symbol_labels.keys())
-_chart_pick_default_label = "沪深300ETF(510300)"
-_chart_pick_default_index = (
-    _chart_label_options.index(_chart_pick_default_label) if _chart_pick_default_label in _chart_label_options else 0
-)
-_chart_pick = st.selectbox(
-    "看板标的",
-    options=_chart_label_options,
-    index=_chart_pick_default_index,
-    key="chart_board_symbol",
-)
-_chart_yf = _chart_symbol_labels[_chart_pick]
-
-# 持仓成本线：只要当前持仓里有有效成本，就画线（不再依赖 cloud/local 来源）
-_chart_holdings_ok = True
-_chart_user_avg_cost: float | None = None
-try:
-    _chart_hold = holdings.get(_chart_yf, {})  # type: ignore[assignment]
-    _sh = float(_chart_hold.get("shares", 0.0))
-    _ac = float(_chart_hold.get("avg_cost", 0.0))
-    if _chart_holdings_ok and _sh > 0 and _ac > 0:
-        _chart_user_avg_cost = _ac
-except Exception:
-    _chart_user_avg_cost = None
-
 
 # --- 刷新市价（并可选同步当前K线到云端）---
 if st.button(
@@ -1062,333 +1067,55 @@ if st.button(
     st.session_state.def_fx = _fetch_usdcny_rate()
     st.session_state.def_voo = d["voo"]
     st.session_state.def_qqq = d["qqq"]
+    st.session_state.def_avgo = d["avgo"]
+    st.session_state.def_nvda = d["nvda"]
+    st.session_state.def_googl = d["googl"]
+    st.session_state.def_msft = d["msft"]
     st.session_state.def_tlt = d["tlt"]
     st.session_state.def_iei = d["iei"]
     st.session_state.def_hs300 = d["hs300"]
     st.session_state.def_zz500 = d["zz500"]
 
     # 删除输入框缓存值，让下方 number_input 用新的 def_* 作为默认值。
-    for k in ("inp_fx", "inp_voo", "inp_qqq", "inp_tlt", "inp_iei", "inp_hs300", "inp_zz500"):
+    for k in (
+        "inp_fx",
+        "inp_voo",
+        "inp_qqq",
+        "inp_avgo",
+        "inp_nvda",
+        "inp_googl",
+        "inp_msft",
+        "inp_tlt",
+        "inp_iei",
+        "inp_hs300",
+        "inp_zz500",
+    ):
         if k in st.session_state:
             del st.session_state[k]
 
-    st.success(f"已刷新市价（K线看板模式：{chart_data_mode}）")
-_interval_display_map = {
-    "日线（1d）": "1d",
-    "15分钟（15m）": "15m",
-    "5分钟（5m）": "5m",
+    st.success("已刷新市价")
+
+_ensure_fx_session_default()
+_ensure_price_session_defaults()
+spot_meta = _fetch_spot_prices_meta()
+fx_meta = _fetch_usdcny_rate_meta()
+fx = float(st.session_state.get("inp_fx", st.session_state.def_fx))
+prices_now = {
+    "VOO": float(st.session_state.get("inp_voo", st.session_state.def_voo)),
+    "QQQ": float(st.session_state.get("inp_qqq", st.session_state.def_qqq)),
+    "AVGO": float(st.session_state.get("inp_avgo", st.session_state.def_avgo)),
+    "NVDA": float(st.session_state.get("inp_nvda", st.session_state.def_nvda)),
+    "GOOGL": float(st.session_state.get("inp_googl", st.session_state.def_googl)),
+    "MSFT": float(st.session_state.get("inp_msft", st.session_state.def_msft)),
+    "TLT": float(st.session_state.get("inp_tlt", st.session_state.def_tlt)),
+    "IEI": float(st.session_state.get("inp_iei", st.session_state.def_iei)),
+    "001015": float(st.session_state.get("inp_hs300", st.session_state.def_hs300)),
+    "007994": float(st.session_state.get("inp_zz500", st.session_state.def_zz500)),
 }
-_interval_default = list(_interval_display_map.keys())
-_interval_pick = st.sidebar.multiselect(
-    "看板加载哪些周期（不选则不拉取数据）",
-    options=list(_interval_display_map.keys()),
-    default=_interval_default,
-    key="chart_intervals_to_load",
-    help="关闭某个周期后，该周期对应的图表不会触发 fetch_ohlcv()，通常能显著减少加载时间。",
-)
-_interval_keys = [_interval_display_map[x] for x in _interval_pick]
-if not _interval_keys:
-    _interval_keys = ["1d"]
-
-# 前端只读 Supabase 画图：不在页面线程里做同步
-
-if chart_cache_only:
-    _probe = probe_market_cache_status(_chart_yf, _interval_keys)  # type: ignore[arg-type]
-    if _probe.get("reachable"):
-        _hits = _probe.get("hits", {})
-        _rows = _probe.get("rows", {})
-        _lts = _probe.get("latest_ts", {})
-        _hit_text = " / ".join(
-            [f"{k}:{'有缓存' if _hits.get(k, False) else '空'}({int(_rows.get(k, 0))}条)" for k in _interval_keys]
-        )
-        _raw_rows = probe_symbol_interval_raw_rows(_chart_yf, _interval_keys)  # type: ignore[arg-type]
-        _raw_text = " / ".join([f"{k}:{int(_raw_rows.get(k, 0))}条" for k in _interval_keys])
-        _ts_text = " / ".join([f"{k}:{_lts.get(k, '-') or '-'}" for k in _interval_keys])
-        st.sidebar.caption(f"Supabase 连通正常；{_chart_yf} 有效缓存：{_hit_text}")
-        st.sidebar.caption(f"原始REST行数（同symbol/interval）：{_raw_text}")
-        st.sidebar.caption(f"各周期最新时间：{_ts_text}")
-        if all(int(_rows.get(k, 0)) <= 0 for k in _interval_keys):
-            _recent = probe_recent_market_rows(limit=12)
-            if _recent:
-                _sample = " | ".join(
-                    [f"{x.get('symbol','?')}/{x.get('interval','?')}@{x.get('ts','?')}" for x in _recent[:6]]
-                )
-                st.sidebar.warning(f"当前标的查询为空；库里最近记录样本：{_sample}")
-            else:
-                st.sidebar.warning("当前标的查询为空；且未能读取到 market_bars 最近记录样本。")
-            _inv = probe_market_inventory(limit=1000)
-            if _inv:
-                _inv_text = " | ".join(
-                    [f"{x.get('symbol','?')}/{x.get('interval','?')}:{x.get('rows',0)}条@{x.get('latest_ts','-')}" for x in _inv]
-                )
-                st.sidebar.caption(f"当前 Key 可读到的库内窗口概览：{_inv_text}")
-    else:
-        _err = _probe.get("error", "unknown")
-        st.sidebar.warning(f"Supabase 连通探测失败：{_err}")
-
-def _chart_load_progress(slot: Any, step: int, total: int, label: str) -> None:
-    """页面进度条 + 服务端 print（Streamlit Cloud 日志可见）。"""
-    if total <= 0:
-        return
-    frac = min(1.0, (step + 1) / total)
-    msg = f"正在加载看板：{label}（{step + 1}/{total}）"
-    print(f"[investment_calculator] {msg}", flush=True)
-    try:
-        slot.progress(frac, text=msg)
-    except TypeError:
-        slot.progress(frac)
-
-
-_prog_slot = st.empty()
-_fig_d = _fig_15 = _fig_5 = None
-_chart_errs: dict[str, str] = {}
-_nj = int("1d" in _interval_keys) + int("15m" in _interval_keys) + int("5m" in _interval_keys)
-if _nj > 0:
-    try:
-        _prog0 = "从 Supabase 加载看板各周期…" if chart_cache_only else "实时拉取看板各周期…"
-        _prog_slot.progress(0.0, text=_prog0)
-    except TypeError:
-        _prog_slot.progress(0)
-    _fut_map: dict[Any, tuple[str, str]] = {}
-    _workers = min(3, _nj)
-    with ThreadPoolExecutor(max_workers=_workers) as _pool:
-        if "1d" in _interval_keys:
-            _f = _pool.submit(
-                fig_daily,
-                _chart_yf,
-                _chart_pick,
-                chart_theme=chart_theme,
-                user_avg_cost=_chart_user_avg_cost,
-                cache_only=chart_cache_only,
-            )
-            _fut_map[_f] = ("1d", "日线（1d）")
-        if "15m" in _interval_keys:
-            _f = _pool.submit(
-                fig_15m_vwap_rsi,
-                _chart_yf,
-                _chart_pick,
-                chart_theme=chart_theme,
-                user_avg_cost=_chart_user_avg_cost,
-                cache_only=chart_cache_only,
-            )
-            _fut_map[_f] = ("15m", "15m（15m）")
-        if "5m" in _interval_keys:
-            _f = _pool.submit(
-                fig_5m_vwap_rsi7,
-                _chart_yf,
-                _chart_pick,
-                chart_theme=chart_theme,
-                user_avg_cost=_chart_user_avg_cost,
-                cache_only=chart_cache_only,
-            )
-            _fut_map[_f] = ("5m", "5m（5m）")
-        _done = 0
-        for _fut in as_completed(_fut_map):
-            _kind, _lab = _fut_map[_fut]
-            try:
-                _fig = _fut.result()
-                if _kind == "1d":
-                    _fig_d = _fig
-                elif _kind == "15m":
-                    _fig_15 = _fig
-                else:
-                    _fig_5 = _fig
-            except Exception as e:
-                # 并行任务失败时不让整页崩溃；打印日志并串行补一次。
-                print(f"[investment_calculator] 并行绘图失败 {_lab}: {e}", flush=True)
-                try:
-                    if _kind == "1d":
-                        _fig_d = fig_daily(
-                            _chart_yf,
-                            _chart_pick,
-                            chart_theme=chart_theme,
-                            user_avg_cost=_chart_user_avg_cost,
-                            cache_only=chart_cache_only,
-                        )
-                    elif _kind == "15m":
-                        _fig_15 = fig_15m_vwap_rsi(
-                            _chart_yf,
-                            _chart_pick,
-                            chart_theme=chart_theme,
-                            user_avg_cost=_chart_user_avg_cost,
-                            cache_only=chart_cache_only,
-                        )
-                    else:
-                        _fig_5 = fig_5m_vwap_rsi7(
-                            _chart_yf,
-                            _chart_pick,
-                            chart_theme=chart_theme,
-                            user_avg_cost=_chart_user_avg_cost,
-                            cache_only=chart_cache_only,
-                        )
-                except Exception as e2:
-                    print(f"[investment_calculator] 串行补偿失败 {_lab}: {e2}", flush=True)
-                    _chart_errs[_kind] = str(e2)
-            _chart_load_progress(_prog_slot, _done, _nj, _lab)
-            _done += 1
-    try:
-        _done_msg = "看板数据加载完成"
-        _prog_slot.progress(1.0, text=_done_msg)
-    except TypeError:
-        _prog_slot.progress(1.0)
-    print(f"[investment_calculator] {_done_msg}", flush=True)
-    _prog_slot.empty()
-
-_tab_d, _tab_15, _tab_5 = st.tabs(
-    ["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"]
-)
-with _tab_d:
-    if "1d" in _interval_keys and _fig_d is not None:
-        st.plotly_chart(_fig_d, width="stretch")
-    elif "1d" in _interval_keys:
-        st.warning(f"日线图加载失败：{_chart_errs.get('1d', '未知错误（请看 Cloud logs）')}")
-    else:
-        st.info("未选择日线（1d），本周期不拉取数据。")
-with _tab_15:
-    if "15m" in _interval_keys and _fig_15 is not None:
-        st.plotly_chart(_fig_15, width="stretch")
-    elif "15m" in _interval_keys:
-        st.warning(f"15m 图加载失败：{_chart_errs.get('15m', '未知错误（请看 Cloud logs）')}")
-    else:
-        st.info("未选择15分钟（15m），本周期不拉取数据。")
-with _tab_5:
-    if "5m" in _interval_keys and _fig_5 is not None:
-        st.plotly_chart(_fig_5, width="stretch")
-    elif "5m" in _interval_keys:
-        st.warning(f"5m 图加载失败：{_chart_errs.get('5m', '未知错误（请看 Cloud logs）')}")
-    else:
-        st.info("未选择5分钟（5m），本周期不拉取数据。")
 
 # 前端不负责同步外部行情，避免阻塞与不确定性；由独立 sync worker 负责写 Supabase
 
 st.divider()
-
-with st.expander("开始定投", expanded=False):
-    st.subheader("💵 开始定投")
-    in_col1, in_col2 = st.columns(2)
-    with in_col1:
-        rmb = st.number_input("每月投入（人民币）", value=5000.0)
-    with in_col2:
-        _ensure_fx_session_default()
-        fx = st.number_input("汇率（USD/CNY）", value=float(st.session_state.def_fx), key="inp_fx")
-
-    st.markdown("#### 输入价格")
-    spot_meta = _fetch_spot_prices_meta()
-    fx_meta = _fetch_usdcny_rate_meta()
-    spot_sources = spot_meta["source_by_symbol"]
-    st.caption(
-        "数据来源标签："
-        f" 汇率={fx_meta['source']}（更新时间 {fx_meta['fetched_at']}）"
-        f" | VOO={spot_sources['VOO']}, QQQ={spot_sources['QQQ']}, TLT={spot_sources['TLT']}, IEI={spot_sources['IEI']}"
-        f" | 001015={spot_sources['001015']}, 007994={spot_sources['007994']}"
-        f"（更新时间 {spot_meta['fetched_at']}）"
-    )
-    
-    _ensure_price_session_defaults()
-    
-    col_p1, col_p2, col_p3 = st.columns(3)
-    with col_p1:
-        voo_price = st.number_input("VOO价格", value=float(st.session_state.def_voo), key="inp_voo")
-        qqq_price = st.number_input("QQQ价格", value=float(st.session_state.def_qqq), key="inp_qqq")
-    with col_p2:
-        tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
-        iei_price = st.number_input("IEI价格", value=float(st.session_state.def_iei), key="inp_iei")
-    with col_p3:
-        hs300_price = st.number_input(
-            "001015 沪深300 净值",
-            value=float(st.session_state.def_hs300),
-            key="inp_hs300",
-        )
-        zz500_price = st.number_input(
-            "007994 中证500 净值",
-            value=float(st.session_state.def_zz500),
-            key="inp_zz500",
-        )
-
-    prices_now = {
-        "VOO": voo_price,
-        "QQQ": qqq_price,
-        "TLT": tlt_price,
-        "IEI": iei_price,
-        "001015": hs300_price,
-        "007994": zz500_price,
-    }
-
-    if st.button("计算"):
-        weights_us = {
-            "VOO": _TARGET_WEIGHTS["VOO"],
-            "QQQ": _TARGET_WEIGHTS["QQQ"],
-            "TLT": _TARGET_WEIGHTS["TLT"],
-            "IEI": _TARGET_WEIGHTS["IEI"],
-        }
-        _, balances, _ = _load_user_state(cloud_user_id)
-        us_ratio = sum(weights_us.values())
-        cny_ratio = _TARGET_WEIGHTS["001015"] + _TARGET_WEIGHTS["007994"]
-        usd_month_raw = (rmb * us_ratio) / fx
-        usd_total = balances["cash_usd"] + usd_month_raw
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("📈 投资结果")
-
-        voo_budget_usd = usd_total * (weights_us["VOO"] / us_ratio)
-        qqq_budget_usd = usd_total * (weights_us["QQQ"] / us_ratio)
-        tlt_budget_usd = usd_total * (weights_us["TLT"] / us_ratio)
-        iei_budget_usd = usd_total * (weights_us["IEI"] / us_ratio)
-
-        # 美股按整股估算，剩余现金滚入下月
-        voo_shares = int(voo_budget_usd // voo_price) if voo_price > 0 else 0
-        qqq_shares = int(qqq_budget_usd // qqq_price) if qqq_price > 0 else 0
-        tlt_shares = int(tlt_budget_usd // tlt_price) if tlt_price > 0 else 0
-        iei_shares = int(iei_budget_usd // iei_price) if iei_price > 0 else 0
-        us_allocated_usd = (
-            voo_shares * voo_price + qqq_shares * qqq_price + tlt_shares * tlt_price + iei_shares * iei_price
-        )
-        cash_usd_next = max(0.0, usd_total - us_allocated_usd)
-
-        cny_total = balances["cash_cny"] + rmb * cny_ratio
-        hs300_amount = cny_total * (_TARGET_WEIGHTS["001015"] / cny_ratio) if cny_ratio > 0 else 0.0
-        zz500_amount = cny_total * (_TARGET_WEIGHTS["007994"] / cny_ratio) if cny_ratio > 0 else 0.0
-        hs300_units = (hs300_amount / hs300_price) if hs300_price > 0 else 0.0
-        zz500_units = (zz500_amount / zz500_price) if zz500_price > 0 else 0.0
-        cash_cny_next = max(0.0, cny_total - hs300_amount - zz500_amount)
-
-        res_c1, res_c2 = st.columns(2)
-        with res_c1:
-            st.markdown("#### 🇺🇸 美股配置")
-            st.info(f"**可用美元：** {usd_total:.2f} USD （含已有现金 {balances['cash_usd']:.2f}）\n\n"
-                    f"**本次买入：** -{us_allocated_usd:.2f} USD\n\n"
-                    f"**结转现金：** {cash_usd_next:.2f} USD")
-            
-            st.markdown(f"- **VOO**：预算 {voo_budget_usd:.2f} USD → 买 **{voo_shares}** 股")
-            st.markdown(f"- **QQQ**：预算 {qqq_budget_usd:.2f} USD → 买 **{qqq_shares}** 股")
-            st.markdown(f"- **TLT**：预算 {tlt_budget_usd:.2f} USD → 买 **{tlt_shares}** 股")
-            st.markdown(f"- **IEI**：预算 {iei_budget_usd:.2f} USD → 买 **{iei_shares}** 股")
-
-        with res_c2:
-            st.markdown("#### 🇨🇳 A股配置")
-            st.info(f"**可用人民币：** {cny_total:.2f} CNY （含已有现金 {balances['cash_cny']:.2f}）\n\n"
-                    f"**本次买入：** -{hs300_amount + zz500_amount:.2f} CNY\n\n"
-                    f"**结转现金：** {cash_cny_next:.2f} CNY")
-            
-            st.markdown(f"- **001015**：{hs300_amount:.2f} CNY → 买 **{hs300_units:.3f}** 份")
-            st.markdown(f"- **007994**：{zz500_amount:.2f} CNY → 买 **{zz500_units:.3f}** 份")
-
-        calc_buys = {
-            "VOO": {"shares": float(voo_shares), "price": voo_price},
-            "QQQ": {"shares": float(qqq_shares), "price": qqq_price},
-            "TLT": {"shares": float(tlt_shares), "price": tlt_price},
-            "IEI": {"shares": float(iei_shares), "price": iei_price},
-            "001015": {"shares": hs300_units, "price": hs300_price},
-            "007994": {"shares": zz500_units, "price": zz500_price},
-        }
-        if st.button("将本月定投更新到我的持仓"):
-            holdings, balances_loaded, _ = _load_user_state(cloud_user_id)
-            for sym, buy in calc_buys.items():
-                holdings[sym] = _merge_buy(holdings[sym], buy["shares"], buy["price"])
-            balances_loaded["cash_usd"] = cash_usd_next
-            balances_loaded["cash_cny"] = cash_cny_next
-            save_mode = _save_user_state(cloud_user_id, holdings, balances_loaded)
-            st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
 st.subheader("📦 我的持仓")
 st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'cloud' else '本地文件'}")
@@ -1533,8 +1260,27 @@ weighted_daily_pct = (
     else 0.0
 )
 weighted_daily_color = theme["profit_color"] if weighted_daily_pct >= 0 else theme["loss_color"]
+# 汇总全持仓当日涨跌金额（先按各资产原币计算，再统一折算 CNY）。
+total_daily_change_cny = 0.0
+for sym, meta in _ASSET_META.items():
+    d = float(daily_change_pct_by_symbol.get(sym, 0.0))
+    d_ratio = d / 100.0
+    shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
+    current_px = float(prices_now.get(sym, 0.0))
+    current_value_native = shares_now * current_px
+    if abs(1.0 + d_ratio) > 1e-9:
+        daily_amount_native = current_value_native - (current_value_native / (1.0 + d_ratio))
+    else:
+        daily_amount_native = 0.0
+    if meta["currency"] == "USD":
+        total_daily_change_cny += daily_amount_native * fx
+    else:
+        total_daily_change_cny += daily_amount_native
+total_daily_change_usd = (total_daily_change_cny / fx) if fx > 0 else 0.0
 st.markdown(
-    f"**当日加权涨跌**：<span style='color:{weighted_daily_color}; font-weight:700; font-size:18px;'>{weighted_daily_pct:+.2f}%</span>",
+    f"**当日加权涨跌**：<span style='color:{weighted_daily_color}; font-weight:700; font-size:18px;'>{weighted_daily_pct:+.2f}%</span>"
+    f" ｜ <span style='color:{weighted_daily_color}; font-weight:700;'>总额 CNY {total_daily_change_cny:+,.2f}</span>"
+    f"（≈ USD {total_daily_change_usd:+,.2f}）",
     unsafe_allow_html=True,
 )
 
@@ -1542,14 +1288,29 @@ daily_cols = st.columns(len(_ASSET_META))
 for i, (sym, meta) in enumerate(_ASSET_META.items()):
     d = daily_change_pct_by_symbol.get(sym, 0.0)
     c = theme["profit_color"] if d >= 0 else theme["loss_color"]
+    shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
+    current_px = float(prices_now.get(sym, 0.0))
+    current_value_native = shares_now * current_px
+    d_ratio = d / 100.0
+    # 用当前市值反推昨日市值，得到更贴近真实的当日波动金额。
+    if abs(1.0 + d_ratio) > 1e-9:
+        daily_amount_native = current_value_native - (current_value_native / (1.0 + d_ratio))
+    else:
+        daily_amount_native = 0.0
+    if meta["currency"] == "USD":
+        daily_amount_text = f"USD {daily_amount_native:+,.2f}<br>≈ CNY {daily_amount_native * fx:+,.2f}"
+    else:
+        daily_amount_text = f"CNY {daily_amount_native:+,.2f}"
     daily_cols[i].markdown(
-        f"**{meta['label']}**<br><span style='color:{c}; font-weight:800; font-size:18px;'>{d:+.2f}%</span>",
+        f"**{meta['label']}**"
+        f"<br><span style='color:{c}; font-weight:800; font-size:18px;'>{d:+.2f}%</span>"
+        f"<br><span style='color:{c}; font-weight:600; font-size:13px;'>{daily_amount_text}</span>",
         unsafe_allow_html=True,
     )
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📈 资产分布与盈亏")
-usd_symbols = ("VOO", "QQQ", "TLT", "IEI")
+usd_symbols = ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "TLT", "IEI")
 cny_symbols = ("001015", "007994")
 
 bond_current = value_cny_by_symbol.get("TLT", 0.0) + value_cny_by_symbol.get("IEI", 0.0)
@@ -1559,12 +1320,20 @@ qqq_current = value_cny_by_symbol.get("QQQ", 0.0)
 ratio_denominator = total_value_cny if total_value_cny > 0 else 0.0
 voo_ratio = (voo_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 qqq_ratio = (qqq_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+avgo_ratio = (value_cny_by_symbol.get("AVGO", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+nvda_ratio = (value_cny_by_symbol.get("NVDA", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+googl_ratio = (value_cny_by_symbol.get("GOOGL", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+msft_ratio = (value_cny_by_symbol.get("MSFT", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+new4_ratio = avgo_ratio + nvda_ratio + googl_ratio + msft_ratio
 tlt_ratio = (value_cny_by_symbol.get("TLT", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 iei_ratio = (value_cny_by_symbol.get("IEI", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 bond_ratio = (bond_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 
 voo_target = _TARGET_WEIGHTS["VOO"] * 100.0
 qqq_target = _TARGET_WEIGHTS["QQQ"] * 100.0
+new4_target = (
+    _TARGET_WEIGHTS["AVGO"] + _TARGET_WEIGHTS["NVDA"] + _TARGET_WEIGHTS["GOOGL"] + _TARGET_WEIGHTS["MSFT"]
+) * 100.0
 bond_target = (_TARGET_WEIGHTS["TLT"] + _TARGET_WEIGHTS["IEI"]) * 100.0
 
 group1_df = pd.DataFrame(
@@ -1573,8 +1342,9 @@ group1_df = pd.DataFrame(
         {"标的组": "VOO", "类型": "目标比例%", "成分": "目标", "比例%": round(voo_target, 2)},
         {"标的组": "QQQ", "类型": "当前比例%", "成分": "QQQ", "比例%": round(qqq_ratio, 2)},
         {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2)},
-        {"标的组": "债券", "类型": "当前比例%", "成分": "TLT", "比例%": round(tlt_ratio, 2)},
-        {"标的组": "债券", "类型": "当前比例%", "成分": "IEI", "比例%": round(iei_ratio, 2)},
+        {"标的组": "科技组合", "类型": "当前比例%", "成分": "科技组合", "比例%": round(new4_ratio, 2)},
+        {"标的组": "科技组合", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2)},
+        {"标的组": "债券", "类型": "当前比例%", "成分": "债券", "比例%": round(bond_ratio, 2)},
         {"标的组": "债券", "类型": "目标比例%", "成分": "目标", "比例%": round(bond_target, 2)},
     ]
 )
@@ -1583,23 +1353,70 @@ group1_chart = (
     alt.Chart(group1_df)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的组:N", sort=["VOO", "QQQ", "债券"]),
+        x=alt.X("标的组:N", sort=["VOO", "QQQ", "科技组合", "债券"]),
         xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
         y=alt.Y("比例%:Q", title="比例(%)"),
         color=alt.Color(
             "成分:N",
-            sort=["VOO", "QQQ", "TLT", "IEI", "目标"],
+            sort=["VOO", "QQQ", "科技组合", "债券", "目标"],
             scale=alt.Scale(
-                domain=["VOO", "QQQ", "TLT", "IEI", "目标"],
-                range=[theme["accent"], "#60a5fa", "#f59e0b", "#fbbf24", "#94a3b8"],
+                domain=["VOO", "QQQ", "科技组合", "债券", "目标"],
+                range=[theme["accent"], "#60a5fa", "#8b5cf6", "#f59e0b", "#94a3b8"],
             ),
         ),
         order=alt.Order("成分:N", sort="ascending"),
         tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f")],
     )
-    .properties(title="VOO / QQQ / 债券（债券当前柱由 TLT+IEI 堆叠）")
+    .properties(title="VOO / QQQ / 科技组合 / 债券 当前与目标对比")
 )
 st.altair_chart(group1_chart, width="stretch")
+
+tech_denominator = avgo_ratio + nvda_ratio + googl_ratio + msft_ratio
+tech_split_df = pd.DataFrame(
+    [
+        {
+            "标的": "AVGO",
+            "类型": "当前占科技组合%",
+            "比例%": round((avgo_ratio / tech_denominator * 100.0) if tech_denominator > 0 else 0.0, 2),
+        },
+        {"标的": "AVGO", "类型": "目标占科技组合%", "比例%": 40.0},
+        {
+            "标的": "NVDA",
+            "类型": "当前占科技组合%",
+            "比例%": round((nvda_ratio / tech_denominator * 100.0) if tech_denominator > 0 else 0.0, 2),
+        },
+        {"标的": "NVDA", "类型": "目标占科技组合%", "比例%": 20.0},
+        {
+            "标的": "GOOGL",
+            "类型": "当前占科技组合%",
+            "比例%": round((googl_ratio / tech_denominator * 100.0) if tech_denominator > 0 else 0.0, 2),
+        },
+        {"标的": "GOOGL", "类型": "目标占科技组合%", "比例%": 20.0},
+        {
+            "标的": "MSFT",
+            "类型": "当前占科技组合%",
+            "比例%": round((msft_ratio / tech_denominator * 100.0) if tech_denominator > 0 else 0.0, 2),
+        },
+        {"标的": "MSFT", "类型": "目标占科技组合%", "比例%": 20.0},
+    ]
+)
+tech_split_chart = (
+    alt.Chart(tech_split_df)
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+    .encode(
+        x=alt.X("标的:N", sort=["AVGO", "NVDA", "GOOGL", "MSFT"]),
+        xOffset=alt.XOffset("类型:N", sort=["当前占科技组合%", "目标占科技组合%"]),
+        y=alt.Y("比例%:Q", title="比例(%)"),
+        color=alt.Color(
+            "类型:N",
+            sort=["当前占科技组合%", "目标占科技组合%"],
+            scale=alt.Scale(range=["#8b5cf6", "#94a3b8"]),
+        ),
+        tooltip=["标的:N", "类型:N", alt.Tooltip("比例%:Q", format=".2f")],
+    )
+    .properties(title="科技组合内部占比（目标：AVGO/NVDA/GOOGL/MSFT = 4:2:2:2）")
+)
+st.altair_chart(tech_split_chart, width="stretch")
 
 hs300_ratio = (value_cny_by_symbol.get("001015", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 zz500_ratio = (value_cny_by_symbol.get("007994", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
@@ -1768,3 +1585,269 @@ else:
         "参考区间：`<15 低波动` · `15-20 中性` · `20-30 偏高波动` · `>=30 高波动/恐慌`"
     )
     st.caption(f"VIX 数据源：{_vix_meta['source']}（更新时间 {_vix_meta['fetched_at']}）")
+
+st.divider()
+
+with st.expander("开始定投", expanded=False):
+    st.subheader("💵 开始定投")
+    in_col1, in_col2 = st.columns(2)
+    with in_col1:
+        rmb = st.number_input("每月投入（人民币）", value=5000.0)
+    with in_col2:
+        fx = st.number_input("汇率（USD/CNY）", value=float(st.session_state.def_fx), key="inp_fx")
+
+    spot_sources = spot_meta["source_by_symbol"]
+    st.caption(
+        "数据来源标签："
+        f" 汇率={fx_meta['source']}（更新时间 {fx_meta['fetched_at']}）"
+        f" | VOO={spot_sources['VOO']}, QQQ={spot_sources['QQQ']}, AVGO={spot_sources['AVGO']}, NVDA={spot_sources['NVDA']}"
+        f" | GOOGL={spot_sources['GOOGL']}, MSFT={spot_sources['MSFT']}, TLT={spot_sources['TLT']}, IEI={spot_sources['IEI']}"
+        f" | 001015={spot_sources['001015']}, 007994={spot_sources['007994']}"
+        f"（更新时间 {spot_meta['fetched_at']}）"
+    )
+
+    st.markdown("#### 输入价格")
+    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+    with col_p1:
+        voo_price = st.number_input("VOO价格", value=float(st.session_state.def_voo), key="inp_voo")
+        qqq_price = st.number_input("QQQ价格", value=float(st.session_state.def_qqq), key="inp_qqq")
+    with col_p2:
+        avgo_price = st.number_input("AVGO价格", value=float(st.session_state.def_avgo), key="inp_avgo")
+        nvda_price = st.number_input("NVDA价格", value=float(st.session_state.def_nvda), key="inp_nvda")
+    with col_p3:
+        googl_price = st.number_input("GOOGL价格", value=float(st.session_state.def_googl), key="inp_googl")
+        msft_price = st.number_input("MSFT价格", value=float(st.session_state.def_msft), key="inp_msft")
+    with col_p4:
+        tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
+        iei_price = st.number_input("IEI价格", value=float(st.session_state.def_iei), key="inp_iei")
+        hs300_price = st.number_input("001015 沪深300 净值", value=float(st.session_state.def_hs300), key="inp_hs300")
+        zz500_price = st.number_input("007994 中证500 净值", value=float(st.session_state.def_zz500), key="inp_zz500")
+
+    prices_now_calc = {
+        "VOO": voo_price,
+        "QQQ": qqq_price,
+        "AVGO": avgo_price,
+        "NVDA": nvda_price,
+        "GOOGL": googl_price,
+        "MSFT": msft_price,
+        "TLT": tlt_price,
+        "IEI": iei_price,
+        "001015": hs300_price,
+        "007994": zz500_price,
+    }
+
+    if st.button("计算"):
+        weights_us = {
+            "VOO": _TARGET_WEIGHTS["VOO"],
+            "QQQ": _TARGET_WEIGHTS["QQQ"],
+            "AVGO": _TARGET_WEIGHTS["AVGO"],
+            "NVDA": _TARGET_WEIGHTS["NVDA"],
+            "GOOGL": _TARGET_WEIGHTS["GOOGL"],
+            "MSFT": _TARGET_WEIGHTS["MSFT"],
+            "TLT": _TARGET_WEIGHTS["TLT"],
+            "IEI": _TARGET_WEIGHTS["IEI"],
+        }
+        _, balances, _ = _load_user_state(cloud_user_id)
+        us_ratio = sum(weights_us.values())
+        cny_ratio = _TARGET_WEIGHTS["001015"] + _TARGET_WEIGHTS["007994"]
+        usd_month_raw = (rmb * us_ratio) / fx
+        usd_total = balances["cash_usd"] + usd_month_raw
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📈 投资结果")
+
+        voo_budget_usd = usd_total * (weights_us["VOO"] / us_ratio)
+        qqq_budget_usd = usd_total * (weights_us["QQQ"] / us_ratio)
+        avgo_budget_usd = usd_total * (weights_us["AVGO"] / us_ratio)
+        nvda_budget_usd = usd_total * (weights_us["NVDA"] / us_ratio)
+        googl_budget_usd = usd_total * (weights_us["GOOGL"] / us_ratio)
+        msft_budget_usd = usd_total * (weights_us["MSFT"] / us_ratio)
+        tlt_budget_usd = usd_total * (weights_us["TLT"] / us_ratio)
+        iei_budget_usd = usd_total * (weights_us["IEI"] / us_ratio)
+
+        # 美股按整股估算，剩余现金滚入下月
+        voo_shares = int(voo_budget_usd // prices_now_calc["VOO"]) if prices_now_calc["VOO"] > 0 else 0
+        qqq_shares = int(qqq_budget_usd // prices_now_calc["QQQ"]) if prices_now_calc["QQQ"] > 0 else 0
+        avgo_shares = int(avgo_budget_usd // prices_now_calc["AVGO"]) if prices_now_calc["AVGO"] > 0 else 0
+        nvda_shares = int(nvda_budget_usd // prices_now_calc["NVDA"]) if prices_now_calc["NVDA"] > 0 else 0
+        googl_shares = int(googl_budget_usd // prices_now_calc["GOOGL"]) if prices_now_calc["GOOGL"] > 0 else 0
+        msft_shares = int(msft_budget_usd // prices_now_calc["MSFT"]) if prices_now_calc["MSFT"] > 0 else 0
+        tlt_shares = int(tlt_budget_usd // prices_now_calc["TLT"]) if prices_now_calc["TLT"] > 0 else 0
+        iei_shares = int(iei_budget_usd // prices_now_calc["IEI"]) if prices_now_calc["IEI"] > 0 else 0
+        us_allocated_usd = (
+            voo_shares * prices_now_calc["VOO"]
+            + qqq_shares * prices_now_calc["QQQ"]
+            + avgo_shares * prices_now_calc["AVGO"]
+            + nvda_shares * prices_now_calc["NVDA"]
+            + googl_shares * prices_now_calc["GOOGL"]
+            + msft_shares * prices_now_calc["MSFT"]
+            + tlt_shares * prices_now_calc["TLT"]
+            + iei_shares * prices_now_calc["IEI"]
+        )
+        cash_usd_next = max(0.0, usd_total - us_allocated_usd)
+
+        cny_total = balances["cash_cny"] + rmb * cny_ratio
+        hs300_amount = cny_total * (_TARGET_WEIGHTS["001015"] / cny_ratio) if cny_ratio > 0 else 0.0
+        zz500_amount = cny_total * (_TARGET_WEIGHTS["007994"] / cny_ratio) if cny_ratio > 0 else 0.0
+        hs300_units = (hs300_amount / prices_now_calc["001015"]) if prices_now_calc["001015"] > 0 else 0.0
+        zz500_units = (zz500_amount / prices_now_calc["007994"]) if prices_now_calc["007994"] > 0 else 0.0
+        cash_cny_next = max(0.0, cny_total - hs300_amount - zz500_amount)
+
+        res_c1, res_c2 = st.columns(2)
+        with res_c1:
+            st.markdown("#### 🇺🇸 美股配置")
+            st.info(f"**可用美元：** {usd_total:.2f} USD （含已有现金 {balances['cash_usd']:.2f}）\n\n"
+                    f"**本次买入：** -{us_allocated_usd:.2f} USD\n\n"
+                    f"**结转现金：** {cash_usd_next:.2f} USD")
+            
+            st.markdown(f"- **VOO**：预算 {voo_budget_usd:.2f} USD → 买 **{voo_shares}** 股")
+            st.markdown(f"- **QQQ**：预算 {qqq_budget_usd:.2f} USD → 买 **{qqq_shares}** 股")
+            st.markdown(f"- **AVGO**：预算 {avgo_budget_usd:.2f} USD → 买 **{avgo_shares}** 股")
+            st.markdown(f"- **NVDA**：预算 {nvda_budget_usd:.2f} USD → 买 **{nvda_shares}** 股")
+            st.markdown(f"- **GOOGL**：预算 {googl_budget_usd:.2f} USD → 买 **{googl_shares}** 股")
+            st.markdown(f"- **MSFT**：预算 {msft_budget_usd:.2f} USD → 买 **{msft_shares}** 股")
+            st.markdown(f"- **TLT**：预算 {tlt_budget_usd:.2f} USD → 买 **{tlt_shares}** 股")
+            st.markdown(f"- **IEI**：预算 {iei_budget_usd:.2f} USD → 买 **{iei_shares}** 股")
+
+        with res_c2:
+            st.markdown("#### 🇨🇳 A股配置")
+            st.info(f"**可用人民币：** {cny_total:.2f} CNY （含已有现金 {balances['cash_cny']:.2f}）\n\n"
+                    f"**本次买入：** -{hs300_amount + zz500_amount:.2f} CNY\n\n"
+                    f"**结转现金：** {cash_cny_next:.2f} CNY")
+            
+            st.markdown(f"- **001015**：{hs300_amount:.2f} CNY → 买 **{hs300_units:.3f}** 份")
+            st.markdown(f"- **007994**：{zz500_amount:.2f} CNY → 买 **{zz500_units:.3f}** 份")
+
+        calc_buys = {
+            "VOO": {"shares": float(voo_shares), "price": voo_price},
+            "QQQ": {"shares": float(qqq_shares), "price": qqq_price},
+            "AVGO": {"shares": float(avgo_shares), "price": avgo_price},
+            "NVDA": {"shares": float(nvda_shares), "price": nvda_price},
+            "GOOGL": {"shares": float(googl_shares), "price": googl_price},
+            "MSFT": {"shares": float(msft_shares), "price": msft_price},
+            "TLT": {"shares": float(tlt_shares), "price": tlt_price},
+            "IEI": {"shares": float(iei_shares), "price": iei_price},
+            "001015": {"shares": hs300_units, "price": hs300_price},
+            "007994": {"shares": zz500_units, "price": zz500_price},
+        }
+        if st.button("将本月定投更新到我的持仓"):
+            holdings, balances_loaded, _ = _load_user_state(cloud_user_id)
+            for sym, buy in calc_buys.items():
+                holdings[sym] = _merge_buy(holdings[sym], buy["shares"], buy["price"])
+            balances_loaded["cash_usd"] = cash_usd_next
+            balances_loaded["cash_cny"] = cash_cny_next
+            save_mode = _save_user_state(cloud_user_id, holdings, balances_loaded)
+            st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
+
+st.divider()
+
+if chart_board_enabled:
+    _chart_symbol_labels = {
+        "VOO": "VOO",
+        "QQQ": "QQQ",
+        "债券(TLT)": "TLT",
+        "债券(IEI)": "IEI",
+        "沪深300ETF(510300)": "510300.SS",
+        "中证500ETF(510500)": "510500.SS",
+    }
+    _chart_label_options = list(_chart_symbol_labels.keys())
+    _chart_pick_default_label = "沪深300ETF(510300)"
+    _chart_pick_default_index = (
+        _chart_label_options.index(_chart_pick_default_label) if _chart_pick_default_label in _chart_label_options else 0
+    )
+    _chart_pick = st.selectbox(
+        "看板标的",
+        options=_chart_label_options,
+        index=_chart_pick_default_index,
+        key="chart_board_symbol",
+    )
+    _chart_yf = _chart_symbol_labels[_chart_pick]
+    _chart_user_avg_cost: float | None = None
+    try:
+        _chart_hold = holdings.get(_chart_yf, {})  # type: ignore[assignment]
+        _sh = float(_chart_hold.get("shares", 0.0))
+        _ac = float(_chart_hold.get("avg_cost", 0.0))
+        if _sh > 0 and _ac > 0:
+            _chart_user_avg_cost = _ac
+    except Exception:
+        _chart_user_avg_cost = None
+
+    _chart_api = _load_chart_boards_api()
+    chart_theme_options = list(_chart_api["CHART_THEME_OPTIONS"])
+    chart_theme = st.sidebar.selectbox(
+        "K线配色主题",
+        options=chart_theme_options,
+        index=chart_theme_options.index("Trading Dark") if "Trading Dark" in chart_theme_options else 0,
+        key="chart_plot_theme",
+        help="Classic Light 浅色机构风；Trading Dark 暗色终端风（绿涨红跌）；CN Quant 红涨绿跌略饱和。",
+    )
+    st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
+    chart_data_mode = st.sidebar.selectbox(
+        "看板数据模式",
+        options=["实时拉取（默认）", "数据库缓存（Supabase）"],
+        index=0,
+        key="chart_data_mode",
+        help="实时拉取：页面直接请求行情源；数据库缓存：仅读 Supabase 里的 K 线缓存。",
+    )
+
+    chart_cache_only = chart_data_mode == "数据库缓存（Supabase）"
+    if chart_cache_only and not _db:
+        st.sidebar.warning("未配置 Supabase，已自动切换为实时拉取模式。")
+        chart_cache_only = False
+    _chart_api["configure_market_storage"](_db if chart_cache_only else None, read_only=chart_cache_only)
+
+    _interval_display_map = {"日线（1d）": "1d", "15分钟（15m）": "15m", "5分钟（5m）": "5m"}
+    _interval_pick = st.sidebar.multiselect(
+        "看板加载哪些周期（不选则不拉取数据）",
+        options=list(_interval_display_map.keys()),
+        default=list(_interval_display_map.keys()),
+        key="chart_intervals_to_load",
+        help="关闭某个周期后，该周期对应的图表不会触发 fetch_ohlcv()，通常能显著减少加载时间。",
+    )
+    _interval_keys = [_interval_display_map[x] for x in _interval_pick] or ["1d"]
+
+    _prog_slot = st.empty()
+    _fig_d = _fig_15 = _fig_5 = None
+    _chart_errs: dict[str, str] = {}
+    _nj = int("1d" in _interval_keys) + int("15m" in _interval_keys) + int("5m" in _interval_keys)
+    if _nj > 0:
+        _fut_map: dict[Any, tuple[str, str]] = {}
+        with ThreadPoolExecutor(max_workers=min(3, _nj)) as _pool:
+            if "1d" in _interval_keys:
+                _fut_map[_pool.submit(_chart_api["fig_daily"], _chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost, cache_only=chart_cache_only)] = ("1d", "日线（1d）")
+            if "15m" in _interval_keys:
+                _fut_map[_pool.submit(_chart_api["fig_15m_vwap_rsi"], _chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost, cache_only=chart_cache_only)] = ("15m", "15m（15m）")
+            if "5m" in _interval_keys:
+                _fut_map[_pool.submit(_chart_api["fig_5m_vwap_rsi7"], _chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost, cache_only=chart_cache_only)] = ("5m", "5m（5m）")
+            for _fut in as_completed(_fut_map):
+                _kind, _lab = _fut_map[_fut]
+                try:
+                    _fig = _fut.result()
+                    if _kind == "1d":
+                        _fig_d = _fig
+                    elif _kind == "15m":
+                        _fig_15 = _fig
+                    else:
+                        _fig_5 = _fig
+                except Exception as e:
+                    _chart_errs[_kind] = str(e)
+        _prog_slot.empty()
+
+    _tab_d, _tab_15, _tab_5 = st.tabs(["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"])
+    with _tab_d:
+        if "1d" in _interval_keys and _fig_d is not None:
+            st.plotly_chart(_fig_d, width="stretch")
+        elif "1d" in _interval_keys:
+            st.warning(f"日线图加载失败：{_chart_errs.get('1d', '未知错误')}")
+    with _tab_15:
+        if "15m" in _interval_keys and _fig_15 is not None:
+            st.plotly_chart(_fig_15, width="stretch")
+        elif "15m" in _interval_keys:
+            st.warning(f"15m 图加载失败：{_chart_errs.get('15m', '未知错误')}")
+    with _tab_5:
+        if "5m" in _interval_keys and _fig_5 is not None:
+            st.plotly_chart(_fig_5, width="stretch")
+        elif "5m" in _interval_keys:
+            st.warning(f"5m 图加载失败：{_chart_errs.get('5m', '未知错误')}")
+else:
+    st.info("技术看板已关闭。点击侧边栏“启用技术看板”后才会加载看板模块与K线数据。")
