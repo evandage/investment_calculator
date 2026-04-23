@@ -1117,61 +1117,62 @@ prices_now = {
 
 st.divider()
 
-with st.expander("编辑持仓（会保存）", expanded=False):
-    with st.form("holdings_edit_form"):
-        for sym, meta in _ASSET_META.items():
-            c1, c2, c3 = st.columns([1, 1, 1])
-            with c1:
-                shares = st.number_input(
-                    f"{meta['label']} 持有数量",
-                    min_value=0.0,
-                    value=float(holdings[sym]["shares"]),
-                    step=0.0001,
-                    format="%.4f",
-                    key=f"edit_shares_{sym}",
-                )
-            with c2:
-                avg_cost = st.number_input(
-                    f"单位成本({meta['currency']})",
-                    min_value=0.0,
-                    value=float(holdings[sym]["avg_cost"]),
-                    step=0.0001,
-                    format="%.4f",
-                    key=f"edit_cost_{sym}",
-                )
-            with c3:
-                total_cost_input = st.number_input(
-                    f"或填总成本({meta['currency']})",
-                    min_value=0.0,
-                    value=0.0,
-                    step=100.0,
-                    format="%.4f",
-                    key=f"edit_total_cost_{sym}",
-                    help="若此处填写大于0的金额，将优先按 [总成本 ÷ 持有数量] 自动计算单位成本并覆盖保存。"
-                )
-            holdings[sym]["shares"] = shares
-            if total_cost_input > 0:
-                holdings[sym]["avg_cost"] = (total_cost_input / shares) if shares > 0 else 0.0
-            else:
-                holdings[sym]["avg_cost"] = avg_cost
-        st.markdown("#### 现金余额（会保存）")
-        balances_for_view["cash_usd"] = st.number_input(
-            "现金美元（USD）",
-            min_value=0.0,
-            value=float(balances_for_view.get("cash_usd", 0.0)),
-            step=0.01,
-            key="edit_balance_cash_usd",
-        )
-        balances_for_view["cash_cny"] = st.number_input(
-            "剩余人民币（CNY）",
-            min_value=0.0,
-            value=float(balances_for_view.get("cash_cny", 0.0)),
-            step=0.01,
-            key="edit_balance_cash_cny",
-        )
-        if st.form_submit_button("保存持仓"):
-            save_mode = _save_user_state(cloud_user_id, holdings, balances_for_view)
-            st.success(f"持仓已保存（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
+def _render_holdings_editor() -> None:
+    with st.expander("编辑持仓（会保存）", expanded=False):
+        with st.form("holdings_edit_form"):
+            for sym, meta in _ASSET_META.items():
+                c1, c2, c3 = st.columns([1, 1, 1])
+                with c1:
+                    shares = st.number_input(
+                        f"{meta['label']} 持有数量",
+                        min_value=0.0,
+                        value=float(holdings[sym]["shares"]),
+                        step=0.0001,
+                        format="%.4f",
+                        key=f"edit_shares_{sym}",
+                    )
+                with c2:
+                    avg_cost = st.number_input(
+                        f"单位成本({meta['currency']})",
+                        min_value=0.0,
+                        value=float(holdings[sym]["avg_cost"]),
+                        step=0.0001,
+                        format="%.4f",
+                        key=f"edit_cost_{sym}",
+                    )
+                with c3:
+                    total_cost_input = st.number_input(
+                        f"或填总成本({meta['currency']})",
+                        min_value=0.0,
+                        value=0.0,
+                        step=100.0,
+                        format="%.4f",
+                        key=f"edit_total_cost_{sym}",
+                        help="若此处填写大于0的金额，将优先按 [总成本 ÷ 持有数量] 自动计算单位成本并覆盖保存。"
+                    )
+                holdings[sym]["shares"] = shares
+                if total_cost_input > 0:
+                    holdings[sym]["avg_cost"] = (total_cost_input / shares) if shares > 0 else 0.0
+                else:
+                    holdings[sym]["avg_cost"] = avg_cost
+            st.markdown("#### 现金余额（会保存）")
+            balances_for_view["cash_usd"] = st.number_input(
+                "现金美元（USD）",
+                min_value=0.0,
+                value=float(balances_for_view.get("cash_usd", 0.0)),
+                step=0.01,
+                key="edit_balance_cash_usd",
+            )
+            balances_for_view["cash_cny"] = st.number_input(
+                "剩余人民币（CNY）",
+                min_value=0.0,
+                value=float(balances_for_view.get("cash_cny", 0.0)),
+                step=0.01,
+                key="edit_balance_cash_cny",
+            )
+            if st.form_submit_button("保存持仓"):
+                save_mode = _save_user_state(cloud_user_id, holdings, balances_for_view)
+                st.success(f"持仓已保存（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
 rows = []
 total_cost_cny = 0.0
@@ -1255,33 +1256,36 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-_daily_items = list(_ASSET_META.items())
-_daily_cols_per_row = 3
-for row_start in range(0, len(_daily_items), _daily_cols_per_row):
-    row_cols = st.columns(_daily_cols_per_row)
-    row_items = _daily_items[row_start : row_start + _daily_cols_per_row]
-    for j, (sym, meta) in enumerate(row_items):
-        d = daily_change_pct_by_symbol.get(sym, 0.0)
-        c = theme["profit_color"] if d >= 0 else theme["loss_color"]
-        shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
-        current_px = float(prices_now.get(sym, 0.0))
-        current_value_native = shares_now * current_px
-        d_ratio = d / 100.0
-        # 用当前市值反推昨日市值，得到更贴近真实的当日波动金额。
-        if abs(1.0 + d_ratio) > 1e-9:
-            daily_amount_native = current_value_native - (current_value_native / (1.0 + d_ratio))
-        else:
-            daily_amount_native = 0.0
-        if meta["currency"] == "USD":
-            daily_amount_text = f"USD {daily_amount_native:+,.2f}<br>≈ CNY {daily_amount_native * fx:+,.2f}"
-        else:
-            daily_amount_text = f"CNY {daily_amount_native:+,.2f}"
-        row_cols[j].markdown(
-            f"**{meta['label']}**"
-            f"<br><span style='color:{c}; font-weight:800; font-size:18px;'>{d:+.2f}%</span>"
-            f"<br><span style='color:{c}; font-weight:600; font-size:13px;'>{daily_amount_text}</span>",
-            unsafe_allow_html=True,
-        )
+_daily_cards: list[str] = []
+for sym, meta in _ASSET_META.items():
+    d = daily_change_pct_by_symbol.get(sym, 0.0)
+    c = theme["profit_color"] if d >= 0 else theme["loss_color"]
+    shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
+    current_px = float(prices_now.get(sym, 0.0))
+    current_value_native = shares_now * current_px
+    d_ratio = d / 100.0
+    # 用当前市值反推昨日市值，得到更贴近真实的当日波动金额。
+    if abs(1.0 + d_ratio) > 1e-9:
+        daily_amount_native = current_value_native - (current_value_native / (1.0 + d_ratio))
+    else:
+        daily_amount_native = 0.0
+    if meta["currency"] == "USD":
+        daily_amount_text = f"USD {daily_amount_native:+,.2f}<br>≈ CNY {daily_amount_native * fx:+,.2f}"
+    else:
+        daily_amount_text = f"CNY {daily_amount_native:+,.2f}"
+    _daily_cards.append(
+        "<div style='border:1px solid rgba(148,163,184,0.25); border-radius:12px; padding:10px 12px;'>"
+        f"<div style='font-weight:700;'>{meta['label']}</div>"
+        f"<div style='color:{c}; font-weight:800; font-size:18px; margin-top:4px;'>{d:+.2f}%</div>"
+        f"<div style='color:{c}; font-weight:600; font-size:13px; margin-top:2px;'>{daily_amount_text}</div>"
+        "</div>"
+    )
+st.markdown(
+    "<div style='display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;'>"
+    + "".join(_daily_cards)
+    + "</div>",
+    unsafe_allow_html=True,
+)
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📈 资产分布与盈亏")
@@ -1484,6 +1488,7 @@ st.altair_chart(pnl_chart, width="stretch")
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📦 我的持仓")
 st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'cloud' else '本地文件'}")
+_render_holdings_editor()
 st.dataframe(rows, width="stretch", hide_index=True)
 metric_cols = st.columns(5)
 metric_cols[0].metric("总成本(折合CNY)", f"¥ {total_cost_cny:,.2f}")
@@ -1559,12 +1564,24 @@ else:
             "action": action,
             "expensive": expensive,
         }
-    rebalance_df = pd.DataFrame(rebalance_rows).sort_values(
-        by=["优先级分数", "目标缺口(CNY)"], ascending=[False, False]
-    )
+    rebalance_df = pd.DataFrame(rebalance_rows)
+    rebalance_df = rebalance_df[
+        ["标的", "币种", "建议动作", "优先级分数", "目标缺口(CNY)", "目标缺口(原币)", "按当前价需买", "PE", "近60日回撤", "说明"]
+    ].sort_values(by=["优先级分数", "目标缺口(CNY)"], ascending=[False, False])
     if not rebalance_df.empty:
         rebalance_df.insert(0, "优先级", range(1, len(rebalance_df) + 1))
-    st.dataframe(rebalance_df, width="stretch", hide_index=True)
+    st.dataframe(
+        rebalance_df,
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "优先级": st.column_config.NumberColumn("优先级", format="%d"),
+            "优先级分数": st.column_config.NumberColumn("优先级分数", format="%.2f"),
+            "目标缺口(CNY)": st.column_config.NumberColumn("目标缺口(CNY)", format="%.2f"),
+            "目标缺口(原币)": st.column_config.NumberColumn("目标缺口(原币)", format="%.2f"),
+            "按当前价需买": st.column_config.NumberColumn("按当前价需买", format="%.3f"),
+        },
+    )
 
     st.markdown("#### 根据再平衡建议执行本月定投")
     cfg_c1, cfg_c2 = st.columns(2)
