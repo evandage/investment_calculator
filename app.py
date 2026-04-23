@@ -260,12 +260,12 @@ def _lerp_color(hex_a: str, hex_b: str, t: float) -> str:
 
 
 def _change_color_by_pct(pct: float, cap_pct: float = 4.0) -> str:
-    """涨跌幅颜色梯度：涨越多越深绿，跌越多越深红。"""
+    """涨跌幅颜色梯度：绝对涨跌越大颜色越亮，越小越暗。"""
     p = float(pct)
     intensity = min(1.0, abs(p) / max(0.1, float(cap_pct)))
     if p >= 0:
-        return _lerp_color("#86efac", "#166534", intensity)
-    return _lerp_color("#fca5a5", "#991b1b", intensity)
+        return _lerp_color("#166534", "#86efac", intensity)
+    return _lerp_color("#991b1b", "#fca5a5", intensity)
 
 
 def _fetch_fx_from_erapi() -> float | None:
