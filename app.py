@@ -1117,9 +1117,6 @@ prices_now = {
 
 st.divider()
 
-st.subheader("📦 我的持仓")
-st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'cloud' else '本地文件'}")
-
 with st.expander("编辑持仓（会保存）", expanded=False):
     with st.form("holdings_edit_form"):
         for sym, meta in _ASSET_META.items():
@@ -1129,7 +1126,8 @@ with st.expander("编辑持仓（会保存）", expanded=False):
                     f"{meta['label']} 持有数量",
                     min_value=0.0,
                     value=float(holdings[sym]["shares"]),
-                    step=1.0 if sym.endswith(".SS") else 0.01,
+                    step=0.0001,
+                    format="%.4f",
                     key=f"edit_shares_{sym}",
                 )
             with c2:
@@ -1215,40 +1213,13 @@ for sym, meta in _ASSET_META.items():
         }
     )
 
-st.dataframe(rows, width="stretch", hide_index=True)
 total_pnl_cny = total_value_cny - total_cost_cny
 total_pnl_pct = (total_pnl_cny / total_cost_cny * 100) if total_cost_cny > 0 else 0.0
 cash_usd = float(balances_for_view.get("cash_usd", 0.0))
 cash_cny = float(balances_for_view.get("cash_cny", 0.0))
 total_balance_cny = cash_usd * fx + cash_cny
 total_assets_cny = total_value_cny + total_balance_cny
-ratio_rows = []
-for sym, meta in _ASSET_META.items():
-    target = _TARGET_WEIGHTS.get(sym, 0.0)
-    current = (value_cny_by_symbol.get(sym, 0.0) / total_value_cny) if total_value_cny > 0 else 0.0
-    ratio_rows.append(
-        {
-            "标的": meta["label"],
-            "目标比例%": round(target * 100, 2),
-            "当前比例%": round(current * 100, 2),
-            "偏离(当前-目标)%": round((current - target) * 100, 2),
-        }
-    )
 
-metric_cols = st.columns(5)
-metric_cols[0].metric("总成本(折合CNY)", f"¥ {total_cost_cny:,.2f}")
-metric_cols[1].metric("持仓市值(折合CNY)", f"¥ {total_value_cny:,.2f}")
-metric_cols[2].metric("现金余额(折合CNY)", f"¥ {total_balance_cny:,.2f}")
-metric_cols[3].metric("总资产(折合CNY)", f"¥ {total_assets_cny:,.2f}")
-metric_cols[4].metric(
-    "总浮盈亏(折合CNY)",
-    f"¥ {total_pnl_cny:,.2f}",
-    delta=f"{total_pnl_pct:.2f}%",
-    delta_color=theme["delta_color"],
-)
-st.caption(f"💵 现金明细：USD {cash_usd:,.2f} ｜ CNY {cash_cny:,.2f}")
-
-st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("### 📊 今日表现")
 
 weighted_daily_pct = (
@@ -1284,29 +1255,33 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-daily_cols = st.columns(len(_ASSET_META))
-for i, (sym, meta) in enumerate(_ASSET_META.items()):
-    d = daily_change_pct_by_symbol.get(sym, 0.0)
-    c = theme["profit_color"] if d >= 0 else theme["loss_color"]
-    shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
-    current_px = float(prices_now.get(sym, 0.0))
-    current_value_native = shares_now * current_px
-    d_ratio = d / 100.0
-    # 用当前市值反推昨日市值，得到更贴近真实的当日波动金额。
-    if abs(1.0 + d_ratio) > 1e-9:
-        daily_amount_native = current_value_native - (current_value_native / (1.0 + d_ratio))
-    else:
-        daily_amount_native = 0.0
-    if meta["currency"] == "USD":
-        daily_amount_text = f"USD {daily_amount_native:+,.2f}<br>≈ CNY {daily_amount_native * fx:+,.2f}"
-    else:
-        daily_amount_text = f"CNY {daily_amount_native:+,.2f}"
-    daily_cols[i].markdown(
-        f"**{meta['label']}**"
-        f"<br><span style='color:{c}; font-weight:800; font-size:18px;'>{d:+.2f}%</span>"
-        f"<br><span style='color:{c}; font-weight:600; font-size:13px;'>{daily_amount_text}</span>",
-        unsafe_allow_html=True,
-    )
+_daily_items = list(_ASSET_META.items())
+_daily_cols_per_row = 3
+for row_start in range(0, len(_daily_items), _daily_cols_per_row):
+    row_cols = st.columns(_daily_cols_per_row)
+    row_items = _daily_items[row_start : row_start + _daily_cols_per_row]
+    for j, (sym, meta) in enumerate(row_items):
+        d = daily_change_pct_by_symbol.get(sym, 0.0)
+        c = theme["profit_color"] if d >= 0 else theme["loss_color"]
+        shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
+        current_px = float(prices_now.get(sym, 0.0))
+        current_value_native = shares_now * current_px
+        d_ratio = d / 100.0
+        # 用当前市值反推昨日市值，得到更贴近真实的当日波动金额。
+        if abs(1.0 + d_ratio) > 1e-9:
+            daily_amount_native = current_value_native - (current_value_native / (1.0 + d_ratio))
+        else:
+            daily_amount_native = 0.0
+        if meta["currency"] == "USD":
+            daily_amount_text = f"USD {daily_amount_native:+,.2f}<br>≈ CNY {daily_amount_native * fx:+,.2f}"
+        else:
+            daily_amount_text = f"CNY {daily_amount_native:+,.2f}"
+        row_cols[j].markdown(
+            f"**{meta['label']}**"
+            f"<br><span style='color:{c}; font-weight:800; font-size:18px;'>{d:+.2f}%</span>"
+            f"<br><span style='color:{c}; font-weight:600; font-size:13px;'>{daily_amount_text}</span>",
+            unsafe_allow_html=True,
+        )
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📈 资产分布与盈亏")
@@ -1506,73 +1481,161 @@ pnl_chart = (
 )
 st.altair_chart(pnl_chart, width="stretch")
 
-st.subheader("🎯 持仓比例对比")
-st.dataframe(ratio_rows, width="stretch", hide_index=True)
+st.markdown("<br>", unsafe_allow_html=True)
+st.subheader("📦 我的持仓")
+st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'cloud' else '本地文件'}")
+st.dataframe(rows, width="stretch", hide_index=True)
+metric_cols = st.columns(5)
+metric_cols[0].metric("总成本(折合CNY)", f"¥ {total_cost_cny:,.2f}")
+metric_cols[1].metric("持仓市值(折合CNY)", f"¥ {total_value_cny:,.2f}")
+metric_cols[2].metric("现金余额(折合CNY)", f"¥ {total_balance_cny:,.2f}")
+metric_cols[3].metric("总资产(折合CNY)", f"¥ {total_assets_cny:,.2f}")
+metric_cols[4].metric(
+    "总浮盈亏(折合CNY)",
+    f"¥ {total_pnl_cny:,.2f}",
+    delta=f"{total_pnl_pct:.2f}%",
+    delta_color=theme["delta_color"],
+)
+st.caption(f"💵 现金明细：USD {cash_usd:,.2f} ｜ CNY {cash_cny:,.2f}")
 
 st.subheader("🧮 再平衡买入建议")
 if total_assets_cny <= 0:
     st.info("总资产为 0，暂无法生成再平衡建议。")
 else:
-    st.caption("仅针对美元资产（VOO/QQQ/TLT/IEI）。基金部分按你的固定定投节奏，不纳入这里。")
+    st.caption("已覆盖全部标的：按目标缺口、估值与回撤综合给出买入优先级；偏贵标的会降级。")
     rebalance_rows: list[dict[str, Any]] = []
-    for sym in ("VOO", "QQQ", "TLT", "IEI"):
-        meta = _ASSET_META[sym]
-        tgt_w = _TARGET_WEIGHTS[sym]
+    suggestion_map: dict[str, dict[str, Any]] = {}
+    for sym, meta in _ASSET_META.items():
+        tgt_w = _TARGET_WEIGHTS.get(sym, 0.0)
         cur_cny = value_cny_by_symbol.get(sym, 0.0)
-        # 若要“买入后仍达到目标权重”，单标的所需新增资金需解：
-        # (cur + x) / (total + x) = target  => x = (target*total - cur) / (1-target)
         num = tgt_w * total_assets_cny - cur_cny
         den = 1.0 - tgt_w
         gap_cny = (num / den) if den > 0 else 0.0
-        if gap_cny <= 0:
-            continue
-        px = float(prices_now[sym])
-        q = _fetch_us_etf_pe_drawdown(sym)
+        q = _fetch_us_etf_pe_drawdown(sym) if meta["currency"] == "USD" else {"pe": None, "drawdown_pct": None}
         pe = q.get("pe")
         dd = q.get("drawdown_pct")
-        gap_usd = gap_cny / fx if fx > 0 else 0.0
-        need_shares = (gap_usd / px) if px > 0 else 0.0
-        whole_shares_need = int(gap_usd // px) if px > 0 else 0
-        affordable_shares = int(cash_usd // px) if px > 0 else 0
-        usd_needed_for_one = max(0.0, px - cash_usd) if sym in ("VOO", "QQQ") and affordable_shares < 1 else 0.0
-
-        pe_txt = f"{float(pe):.1f}" if isinstance(pe, (int, float)) else "N/A"
         pe_band = _USD_ASSET_PE_BANDS.get(sym)
-        pe_band_txt = f"{pe_band[0]:.0f} - {pe_band[1]:.0f}" if pe_band else "N/A"
-        dd_txt = f"{float(dd):.2f}%" if isinstance(dd, (int, float)) else "N/A"
+        expensive = False
+        if isinstance(pe, (int, float)) and pe_band is not None and float(pe) >= pe_band[1]:
+            expensive = True
+        if isinstance(pe, (int, float)) and float(pe) >= 35.0:
+            expensive = True
+        priority_score = max(0.0, gap_cny)
+        if expensive:
+            priority_score *= 0.55
         if isinstance(dd, (int, float)) and float(dd) <= -10:
-            market_hint = "近期回撤较大，可分批偏积极补仓"
-        elif isinstance(pe, (int, float)) and float(pe) >= 30:
-            market_hint = "估值偏高，建议分3-4批慢慢买"
-        elif isinstance(pe, (int, float)) and float(pe) >= 24:
-            market_hint = "估值略贵，建议分批买入"
-        else:
-            market_hint = "估值/位置中性，按目标缺口逐步补仓"
-        if sym == "QQQ" and isinstance(dd, (int, float)) and float(dd) <= -12:
-            market_hint = "QQQ 回撤明显，可优先于其他美元资产补仓（仍分批）"
-        cash_hint = (
-            f"你当前美元现金可买 {affordable_shares} 股；距离买1股还差 {usd_needed_for_one:.2f} USD"
-            if sym in ("VOO", "QQQ") and affordable_shares < 1
-            else f"你当前美元现金可买 {affordable_shares} 股"
-        )
+            priority_score *= 1.15
+        action = "暂不买入"
+        note = "已高于目标或接近目标"
+        if gap_cny > 0:
+            if expensive:
+                action = "观察"
+                note = "估值偏贵，建议少量/暂缓"
+            else:
+                action = "优先买入"
+                note = "低于目标权重，适合补仓"
+        gap_native = (gap_cny / fx) if meta["currency"] == "USD" and fx > 0 else gap_cny
+        px = float(prices_now.get(sym, 0.0))
+        need_units = (gap_native / px) if px > 0 else 0.0
+        pe_txt = f"{float(pe):.1f}" if isinstance(pe, (int, float)) else "N/A"
+        dd_txt = f"{float(dd):.2f}%" if isinstance(dd, (int, float)) else "N/A"
         rebalance_rows.append(
             {
                 "标的": meta["label"],
-                "目标缺口(CNY,买后口径)": round(gap_cny, 2),
-                "目标缺口(USD,买后口径)": round(gap_usd, 2),
+                "币种": meta["currency"],
+                "建议动作": action,
+                "优先级分数": round(priority_score, 2),
+                "目标缺口(CNY)": round(gap_cny, 2),
+                "目标缺口(原币)": round(gap_native, 2),
+                "按当前价需买": round(need_units, 3),
                 "PE": pe_txt,
-                "参考PE区间": pe_band_txt,
                 "近60日回撤": dd_txt,
-                "按当前价需买(股)": round(need_shares, 3),
-                "整股需求(股)": whole_shares_need,
-                "现金可买(股)": affordable_shares,
-                "说明": f"{market_hint}；{cash_hint}",
+                "说明": note,
             }
         )
-    if rebalance_rows:
-        st.dataframe(pd.DataFrame(rebalance_rows), width="stretch", hide_index=True)
-    else:
-        st.success("当前美元资产已不低于目标权重，暂无必须新增买入项。")
+        suggestion_map[sym] = {
+            "gap_cny": gap_cny,
+            "priority_score": priority_score,
+            "action": action,
+            "expensive": expensive,
+        }
+    rebalance_df = pd.DataFrame(rebalance_rows).sort_values(
+        by=["优先级分数", "目标缺口(CNY)"], ascending=[False, False]
+    )
+    if not rebalance_df.empty:
+        rebalance_df.insert(0, "优先级", range(1, len(rebalance_df) + 1))
+    st.dataframe(rebalance_df, width="stretch", hide_index=True)
+
+    st.markdown("#### 根据再平衡建议执行本月定投")
+    cfg_c1, cfg_c2 = st.columns(2)
+    with cfg_c1:
+        monthly_rmb = st.number_input("本月投入（CNY）", min_value=0.0, value=5000.0, step=100.0, key="rebalance_rmb")
+    with cfg_c2:
+        rebalance_fx = st.number_input("汇率（USD/CNY）", min_value=0.01, value=float(fx), step=0.0001, format="%.4f", key="rebalance_fx")
+
+    if st.button("按优先级生成本月买入计划", key="rebalance_plan_btn"):
+        _, balances_plan, _ = _load_user_state(cloud_user_id)
+        usd_symbols = [s for s, m in _ASSET_META.items() if m["currency"] == "USD"]
+        cny_symbols = [s for s, m in _ASSET_META.items() if m["currency"] == "CNY"]
+        usd_ratio = sum(_TARGET_WEIGHTS[s] for s in usd_symbols)
+        cny_ratio = sum(_TARGET_WEIGHTS[s] for s in cny_symbols)
+        usd_budget_total = balances_plan["cash_usd"] + (monthly_rmb * usd_ratio / rebalance_fx if rebalance_fx > 0 else 0.0)
+        cny_budget_total = balances_plan["cash_cny"] + monthly_rmb * cny_ratio
+
+        usd_candidates = [s for s in usd_symbols if suggestion_map[s]["gap_cny"] > 0 and not suggestion_map[s]["expensive"]]
+        if not usd_candidates:
+            usd_candidates = [s for s in usd_symbols if suggestion_map[s]["gap_cny"] > 0]
+        cny_candidates = [s for s in cny_symbols if suggestion_map[s]["gap_cny"] > 0]
+
+        usd_weight_sum = sum(max(0.0, suggestion_map[s]["priority_score"]) for s in usd_candidates)
+        cny_weight_sum = sum(max(0.0, suggestion_map[s]["priority_score"]) for s in cny_candidates)
+
+        plan_buys: dict[str, dict[str, float]] = {s: {"shares": 0.0, "price": float(prices_now[s])} for s in _ASSET_META}
+        usd_spent = 0.0
+        cny_spent = 0.0
+
+        for s in usd_candidates:
+            px = float(prices_now[s])
+            if px <= 0:
+                continue
+            w = max(0.0, suggestion_map[s]["priority_score"])
+            alloc = usd_budget_total * (w / usd_weight_sum) if usd_weight_sum > 0 else 0.0
+            shares = int(alloc // px)
+            spent = shares * px
+            plan_buys[s]["shares"] = float(shares)
+            usd_spent += spent
+
+        for s in cny_candidates:
+            px = float(prices_now[s])
+            if px <= 0:
+                continue
+            w = max(0.0, suggestion_map[s]["priority_score"])
+            alloc = cny_budget_total * (w / cny_weight_sum) if cny_weight_sum > 0 else 0.0
+            units = alloc / px
+            spent = units * px
+            plan_buys[s]["shares"] = float(units)
+            cny_spent += spent
+
+        cash_usd_next = max(0.0, usd_budget_total - usd_spent)
+        cash_cny_next = max(0.0, cny_budget_total - cny_spent)
+
+        st.info(
+            f"美元预算 {usd_budget_total:.2f}（买入 {usd_spent:.2f}，结余 {cash_usd_next:.2f}） | "
+            f"人民币预算 {cny_budget_total:.2f}（买入 {cny_spent:.2f}，结余 {cash_cny_next:.2f}）"
+        )
+        for s, buy in plan_buys.items():
+            if buy["shares"] > 0:
+                unit_txt = "股" if _ASSET_META[s]["currency"] == "USD" else "份"
+                st.markdown(f"- **{_ASSET_META[s]['label']}**：买入 **{buy['shares']:.3f}** {unit_txt} @ {buy['price']:.4f}")
+
+        if st.button("将该买入计划更新到我的持仓", key="rebalance_apply_btn"):
+            holdings_apply, balances_apply, _ = _load_user_state(cloud_user_id)
+            for s, buy in plan_buys.items():
+                holdings_apply[s] = _merge_buy(holdings_apply[s], buy["shares"], buy["price"])
+            balances_apply["cash_usd"] = cash_usd_next
+            balances_apply["cash_cny"] = cash_cny_next
+            save_mode = _save_user_state(cloud_user_id, holdings_apply, balances_apply)
+            st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
     st.markdown("#### 美股 VIX（CBOE）参考")
     _vix_meta = _fetch_vix_meta()
@@ -1587,157 +1650,6 @@ else:
     st.caption(f"VIX 数据源：{_vix_meta['source']}（更新时间 {_vix_meta['fetched_at']}）")
 
 st.divider()
-
-with st.expander("开始定投", expanded=False):
-    st.subheader("💵 开始定投")
-    in_col1, in_col2 = st.columns(2)
-    with in_col1:
-        rmb = st.number_input("每月投入（人民币）", value=5000.0)
-    with in_col2:
-        fx = st.number_input("汇率（USD/CNY）", value=float(st.session_state.def_fx), key="inp_fx")
-
-    spot_sources = spot_meta["source_by_symbol"]
-    st.caption(
-        "数据来源标签："
-        f" 汇率={fx_meta['source']}（更新时间 {fx_meta['fetched_at']}）"
-        f" | VOO={spot_sources['VOO']}, QQQ={spot_sources['QQQ']}, AVGO={spot_sources['AVGO']}, NVDA={spot_sources['NVDA']}"
-        f" | GOOGL={spot_sources['GOOGL']}, MSFT={spot_sources['MSFT']}, TLT={spot_sources['TLT']}, IEI={spot_sources['IEI']}"
-        f" | 001015={spot_sources['001015']}, 007994={spot_sources['007994']}"
-        f"（更新时间 {spot_meta['fetched_at']}）"
-    )
-
-    st.markdown("#### 输入价格")
-    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
-    with col_p1:
-        voo_price = st.number_input("VOO价格", value=float(st.session_state.def_voo), key="inp_voo")
-        qqq_price = st.number_input("QQQ价格", value=float(st.session_state.def_qqq), key="inp_qqq")
-    with col_p2:
-        avgo_price = st.number_input("AVGO价格", value=float(st.session_state.def_avgo), key="inp_avgo")
-        nvda_price = st.number_input("NVDA价格", value=float(st.session_state.def_nvda), key="inp_nvda")
-    with col_p3:
-        googl_price = st.number_input("GOOGL价格", value=float(st.session_state.def_googl), key="inp_googl")
-        msft_price = st.number_input("MSFT价格", value=float(st.session_state.def_msft), key="inp_msft")
-    with col_p4:
-        tlt_price = st.number_input("TLT价格", value=float(st.session_state.def_tlt), key="inp_tlt")
-        iei_price = st.number_input("IEI价格", value=float(st.session_state.def_iei), key="inp_iei")
-        hs300_price = st.number_input("001015 沪深300 净值", value=float(st.session_state.def_hs300), key="inp_hs300")
-        zz500_price = st.number_input("007994 中证500 净值", value=float(st.session_state.def_zz500), key="inp_zz500")
-
-    prices_now_calc = {
-        "VOO": voo_price,
-        "QQQ": qqq_price,
-        "AVGO": avgo_price,
-        "NVDA": nvda_price,
-        "GOOGL": googl_price,
-        "MSFT": msft_price,
-        "TLT": tlt_price,
-        "IEI": iei_price,
-        "001015": hs300_price,
-        "007994": zz500_price,
-    }
-
-    if st.button("计算"):
-        weights_us = {
-            "VOO": _TARGET_WEIGHTS["VOO"],
-            "QQQ": _TARGET_WEIGHTS["QQQ"],
-            "AVGO": _TARGET_WEIGHTS["AVGO"],
-            "NVDA": _TARGET_WEIGHTS["NVDA"],
-            "GOOGL": _TARGET_WEIGHTS["GOOGL"],
-            "MSFT": _TARGET_WEIGHTS["MSFT"],
-            "TLT": _TARGET_WEIGHTS["TLT"],
-            "IEI": _TARGET_WEIGHTS["IEI"],
-        }
-        _, balances, _ = _load_user_state(cloud_user_id)
-        us_ratio = sum(weights_us.values())
-        cny_ratio = _TARGET_WEIGHTS["001015"] + _TARGET_WEIGHTS["007994"]
-        usd_month_raw = (rmb * us_ratio) / fx
-        usd_total = balances["cash_usd"] + usd_month_raw
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("📈 投资结果")
-
-        voo_budget_usd = usd_total * (weights_us["VOO"] / us_ratio)
-        qqq_budget_usd = usd_total * (weights_us["QQQ"] / us_ratio)
-        avgo_budget_usd = usd_total * (weights_us["AVGO"] / us_ratio)
-        nvda_budget_usd = usd_total * (weights_us["NVDA"] / us_ratio)
-        googl_budget_usd = usd_total * (weights_us["GOOGL"] / us_ratio)
-        msft_budget_usd = usd_total * (weights_us["MSFT"] / us_ratio)
-        tlt_budget_usd = usd_total * (weights_us["TLT"] / us_ratio)
-        iei_budget_usd = usd_total * (weights_us["IEI"] / us_ratio)
-
-        # 美股按整股估算，剩余现金滚入下月
-        voo_shares = int(voo_budget_usd // prices_now_calc["VOO"]) if prices_now_calc["VOO"] > 0 else 0
-        qqq_shares = int(qqq_budget_usd // prices_now_calc["QQQ"]) if prices_now_calc["QQQ"] > 0 else 0
-        avgo_shares = int(avgo_budget_usd // prices_now_calc["AVGO"]) if prices_now_calc["AVGO"] > 0 else 0
-        nvda_shares = int(nvda_budget_usd // prices_now_calc["NVDA"]) if prices_now_calc["NVDA"] > 0 else 0
-        googl_shares = int(googl_budget_usd // prices_now_calc["GOOGL"]) if prices_now_calc["GOOGL"] > 0 else 0
-        msft_shares = int(msft_budget_usd // prices_now_calc["MSFT"]) if prices_now_calc["MSFT"] > 0 else 0
-        tlt_shares = int(tlt_budget_usd // prices_now_calc["TLT"]) if prices_now_calc["TLT"] > 0 else 0
-        iei_shares = int(iei_budget_usd // prices_now_calc["IEI"]) if prices_now_calc["IEI"] > 0 else 0
-        us_allocated_usd = (
-            voo_shares * prices_now_calc["VOO"]
-            + qqq_shares * prices_now_calc["QQQ"]
-            + avgo_shares * prices_now_calc["AVGO"]
-            + nvda_shares * prices_now_calc["NVDA"]
-            + googl_shares * prices_now_calc["GOOGL"]
-            + msft_shares * prices_now_calc["MSFT"]
-            + tlt_shares * prices_now_calc["TLT"]
-            + iei_shares * prices_now_calc["IEI"]
-        )
-        cash_usd_next = max(0.0, usd_total - us_allocated_usd)
-
-        cny_total = balances["cash_cny"] + rmb * cny_ratio
-        hs300_amount = cny_total * (_TARGET_WEIGHTS["001015"] / cny_ratio) if cny_ratio > 0 else 0.0
-        zz500_amount = cny_total * (_TARGET_WEIGHTS["007994"] / cny_ratio) if cny_ratio > 0 else 0.0
-        hs300_units = (hs300_amount / prices_now_calc["001015"]) if prices_now_calc["001015"] > 0 else 0.0
-        zz500_units = (zz500_amount / prices_now_calc["007994"]) if prices_now_calc["007994"] > 0 else 0.0
-        cash_cny_next = max(0.0, cny_total - hs300_amount - zz500_amount)
-
-        res_c1, res_c2 = st.columns(2)
-        with res_c1:
-            st.markdown("#### 🇺🇸 美股配置")
-            st.info(f"**可用美元：** {usd_total:.2f} USD （含已有现金 {balances['cash_usd']:.2f}）\n\n"
-                    f"**本次买入：** -{us_allocated_usd:.2f} USD\n\n"
-                    f"**结转现金：** {cash_usd_next:.2f} USD")
-            
-            st.markdown(f"- **VOO**：预算 {voo_budget_usd:.2f} USD → 买 **{voo_shares}** 股")
-            st.markdown(f"- **QQQ**：预算 {qqq_budget_usd:.2f} USD → 买 **{qqq_shares}** 股")
-            st.markdown(f"- **AVGO**：预算 {avgo_budget_usd:.2f} USD → 买 **{avgo_shares}** 股")
-            st.markdown(f"- **NVDA**：预算 {nvda_budget_usd:.2f} USD → 买 **{nvda_shares}** 股")
-            st.markdown(f"- **GOOGL**：预算 {googl_budget_usd:.2f} USD → 买 **{googl_shares}** 股")
-            st.markdown(f"- **MSFT**：预算 {msft_budget_usd:.2f} USD → 买 **{msft_shares}** 股")
-            st.markdown(f"- **TLT**：预算 {tlt_budget_usd:.2f} USD → 买 **{tlt_shares}** 股")
-            st.markdown(f"- **IEI**：预算 {iei_budget_usd:.2f} USD → 买 **{iei_shares}** 股")
-
-        with res_c2:
-            st.markdown("#### 🇨🇳 A股配置")
-            st.info(f"**可用人民币：** {cny_total:.2f} CNY （含已有现金 {balances['cash_cny']:.2f}）\n\n"
-                    f"**本次买入：** -{hs300_amount + zz500_amount:.2f} CNY\n\n"
-                    f"**结转现金：** {cash_cny_next:.2f} CNY")
-            
-            st.markdown(f"- **001015**：{hs300_amount:.2f} CNY → 买 **{hs300_units:.3f}** 份")
-            st.markdown(f"- **007994**：{zz500_amount:.2f} CNY → 买 **{zz500_units:.3f}** 份")
-
-        calc_buys = {
-            "VOO": {"shares": float(voo_shares), "price": voo_price},
-            "QQQ": {"shares": float(qqq_shares), "price": qqq_price},
-            "AVGO": {"shares": float(avgo_shares), "price": avgo_price},
-            "NVDA": {"shares": float(nvda_shares), "price": nvda_price},
-            "GOOGL": {"shares": float(googl_shares), "price": googl_price},
-            "MSFT": {"shares": float(msft_shares), "price": msft_price},
-            "TLT": {"shares": float(tlt_shares), "price": tlt_price},
-            "IEI": {"shares": float(iei_shares), "price": iei_price},
-            "001015": {"shares": hs300_units, "price": hs300_price},
-            "007994": {"shares": zz500_units, "price": zz500_price},
-        }
-        if st.button("将本月定投更新到我的持仓"):
-            holdings, balances_loaded, _ = _load_user_state(cloud_user_id)
-            for sym, buy in calc_buys.items():
-                holdings[sym] = _merge_buy(holdings[sym], buy["shares"], buy["price"])
-            balances_loaded["cash_usd"] = cash_usd_next
-            balances_loaded["cash_cny"] = cash_cny_next
-            save_mode = _save_user_state(cloud_user_id, holdings, balances_loaded)
-            st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
 st.divider()
 
