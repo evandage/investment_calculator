@@ -129,9 +129,9 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _UI_THEMES = {
     "主题1：绿跌红涨": {
-        "delta_color": "inverse",
-        "profit_color": "#dc2626",
-        "loss_color": "#16a34a",
+        "delta_color": "normal",
+        "profit_color": "#16a34a",
+        "loss_color": "#dc2626",
         "accent": "#2563eb",
         "card_bg": "rgba(248, 250, 252, 0.85)",
     },
