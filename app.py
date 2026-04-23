@@ -235,6 +235,39 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
     )
 
 
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    s = hex_color.strip().lstrip("#")
+    if len(s) != 6:
+        return (0, 0, 0)
+    try:
+        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+    except ValueError:
+        return (0, 0, 0)
+
+
+def _rgb_to_hex(r: int, g: int, b: int) -> str:
+    return f"#{max(0, min(255, r)):02x}{max(0, min(255, g)):02x}{max(0, min(255, b)):02x}"
+
+
+def _lerp_color(hex_a: str, hex_b: str, t: float) -> str:
+    t = max(0.0, min(1.0, float(t)))
+    ra, ga, ba = _hex_to_rgb(hex_a)
+    rb, gb, bb = _hex_to_rgb(hex_b)
+    r = int(round(ra + (rb - ra) * t))
+    g = int(round(ga + (gb - ga) * t))
+    b = int(round(ba + (bb - ba) * t))
+    return _rgb_to_hex(r, g, b)
+
+
+def _change_color_by_pct(pct: float, cap_pct: float = 4.0) -> str:
+    """涨跌幅颜色梯度：涨越多越深绿，跌越多越深红。"""
+    p = float(pct)
+    intensity = min(1.0, abs(p) / max(0.1, float(cap_pct)))
+    if p >= 0:
+        return _lerp_color("#86efac", "#166534", intensity)
+    return _lerp_color("#fca5a5", "#991b1b", intensity)
+
+
 def _fetch_fx_from_erapi() -> float | None:
     url = "https://open.er-api.com/v6/latest/USD"
     r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
@@ -1231,7 +1264,7 @@ weighted_daily_pct = (
     if total_value_cny > 0
     else 0.0
 )
-weighted_daily_color = theme["profit_color"] if weighted_daily_pct >= 0 else theme["loss_color"]
+weighted_daily_color = _change_color_by_pct(weighted_daily_pct)
 # 汇总全持仓当日涨跌金额（先按各资产原币计算，再统一折算 CNY）。
 total_daily_change_cny = 0.0
 for sym, meta in _ASSET_META.items():
@@ -1259,7 +1292,7 @@ st.markdown(
 _daily_cards: list[str] = []
 for sym, meta in _ASSET_META.items():
     d = daily_change_pct_by_symbol.get(sym, 0.0)
-    c = theme["profit_color"] if d >= 0 else theme["loss_color"]
+    c = _change_color_by_pct(d)
     shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
     current_px = float(prices_now.get(sym, 0.0))
     current_value_native = shares_now * current_px
@@ -1289,6 +1322,34 @@ st.markdown(
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📈 资产分布与盈亏")
+
+pnl_chart_df = pd.DataFrame(
+    [
+        {
+            "标的": _ASSET_META[sym]["label"],
+            "浮盈亏(CNY)": round(pnl_cny_by_symbol[sym], 2),
+            "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
+        }
+        for sym in _ASSET_META
+    ]
+)
+pnl_chart = (
+    alt.Chart(pnl_chart_df)
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+    .encode(
+        x=alt.X("标的:N", sort=None),
+        y=alt.Y("浮盈亏(CNY):Q"),
+        color=alt.Color(
+            "方向:N",
+            scale=alt.Scale(domain=["盈利", "亏损"], range=["#16a34a", "#dc2626"]),
+            legend=None,
+        ),
+        tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
+    )
+    .properties(title="各标的浮盈亏（折合CNY）")
+)
+st.altair_chart(pnl_chart, width="stretch")
+
 usd_symbols = ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "TLT", "IEI")
 cny_symbols = ("001015", "007994")
 
@@ -1457,33 +1518,6 @@ group3_chart = (
 )
 with chart_col2:
     st.altair_chart(group3_chart, width="stretch")
-
-pnl_chart_df = pd.DataFrame(
-    [
-        {
-            "标的": _ASSET_META[sym]["label"],
-            "浮盈亏(CNY)": round(pnl_cny_by_symbol[sym], 2),
-            "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
-        }
-        for sym in _ASSET_META
-    ]
-)
-pnl_chart = (
-    alt.Chart(pnl_chart_df)
-    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
-    .encode(
-        x=alt.X("标的:N", sort=None),
-        y=alt.Y("浮盈亏(CNY):Q"),
-        color=alt.Color(
-            "方向:N",
-            scale=alt.Scale(range=[theme["profit_color"], theme["loss_color"]]),
-            legend=None,
-        ),
-        tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
-    )
-    .properties(title="各标的浮盈亏（折合CNY）")
-)
-st.altair_chart(pnl_chart, width="stretch")
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📦 我的持仓")
