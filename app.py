@@ -20,7 +20,7 @@ st.set_page_config(
     page_title="Investment Dashboard",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # 拉取失败时的回退价（与常见区间一致）
@@ -128,19 +128,101 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
 
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _UI_THEMES = {
-    "主题1：绿跌红涨": {
+    "浅色：绿跌红涨": {
         "delta_color": "normal",
-        "profit_color": "#16a34a",
-        "loss_color": "#dc2626",
+        "up_base": "#7f1d1d",
+        "up_peak": "#ef4444",
+        "down_base": "#14532d",
+        "down_peak": "#22c55e",
         "accent": "#2563eb",
-        "card_bg": "rgba(248, 250, 252, 0.85)",
+        "text": "#0f172a",
+        "muted_text": "#475569",
+        "page_bg": "#f8fafc",
+        "app_bg": "linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(239, 246, 255, 0.92) 48%, rgba(255, 247, 237, 0.9)), repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.08) 0 1px, transparent 1px 48px), repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.06) 0 1px, transparent 1px 48px)",
+        "header_bg": "rgba(248, 250, 252, 0.76)",
+        "sidebar_bg": "rgba(248, 250, 252, 0.92)",
+        "card_bg": "rgba(255, 255, 255, 0.78)",
+        "panel_bg": "rgba(255, 255, 255, 0.72)",
+        "border": "rgba(148, 163, 184, 0.22)",
+        "shadow": "0 14px 32px rgba(15, 23, 42, 0.08)",
+        "hover_shadow": "0 18px 38px rgba(15, 23, 42, 0.12)",
+        "button_bg": "linear-gradient(135deg, #2563eb 0%, #0ea5e9 52%, #f59e0b 100%)",
+        "button_text": "#ffffff",
+        "button_border": "rgba(255, 255, 255, 0.18)",
+        "button_shadow": "0 8px 22px rgba(37, 99, 235, 0.28)",
+        "control_bg": "rgba(255, 255, 255, 0.86)",
     },
-    "主题2：绿涨红跌": {
+    "浅色：绿涨红跌": {
         "delta_color": "normal",
-        "profit_color": "#16a34a",
-        "loss_color": "#dc2626",
+        "up_base": "#166534",
+        "up_peak": "#22c55e",
+        "down_base": "#991b1b",
+        "down_peak": "#ef4444",
         "accent": "#7c3aed",
-        "card_bg": "rgba(248, 250, 252, 0.85)",
+        "text": "#0f172a",
+        "muted_text": "#475569",
+        "page_bg": "#f8fafc",
+        "app_bg": "linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(245, 243, 255, 0.92) 48%, rgba(236, 253, 245, 0.88)), repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.08) 0 1px, transparent 1px 48px), repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.06) 0 1px, transparent 1px 48px)",
+        "header_bg": "rgba(248, 250, 252, 0.76)",
+        "sidebar_bg": "rgba(248, 250, 252, 0.92)",
+        "card_bg": "rgba(255, 255, 255, 0.78)",
+        "panel_bg": "rgba(255, 255, 255, 0.72)",
+        "border": "rgba(148, 163, 184, 0.22)",
+        "shadow": "0 14px 32px rgba(15, 23, 42, 0.08)",
+        "hover_shadow": "0 18px 38px rgba(15, 23, 42, 0.12)",
+        "button_bg": "linear-gradient(135deg, #7c3aed 0%, #0ea5e9 52%, #22c55e 100%)",
+        "button_text": "#ffffff",
+        "button_border": "rgba(255, 255, 255, 0.18)",
+        "button_shadow": "0 8px 22px rgba(124, 58, 237, 0.28)",
+        "control_bg": "rgba(255, 255, 255, 0.86)",
+    },
+    "深色：绿跌红涨": {
+        "delta_color": "normal",
+        "up_base": "#fecaca",
+        "up_peak": "#f87171",
+        "down_base": "#bbf7d0",
+        "down_peak": "#4ade80",
+        "accent": "#38bdf8",
+        "text": "#e5edf8",
+        "muted_text": "#a8b4c7",
+        "page_bg": "#07111f",
+        "app_bg": "linear-gradient(135deg, #07111f 0%, #111827 48%, #1f2937 100%), repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.08) 0 1px, transparent 1px 48px), repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.06) 0 1px, transparent 1px 48px)",
+        "header_bg": "rgba(7, 17, 31, 0.78)",
+        "sidebar_bg": "rgba(15, 23, 42, 0.94)",
+        "card_bg": "rgba(15, 23, 42, 0.78)",
+        "panel_bg": "rgba(15, 23, 42, 0.68)",
+        "border": "rgba(148, 163, 184, 0.26)",
+        "shadow": "0 18px 42px rgba(0, 0, 0, 0.28)",
+        "hover_shadow": "0 22px 48px rgba(0, 0, 0, 0.36)",
+        "button_bg": "linear-gradient(135deg, #38bdf8 0%, #6366f1 52%, #f97316 100%)",
+        "button_text": "#f8fafc",
+        "button_border": "rgba(226, 232, 240, 0.22)",
+        "button_shadow": "0 10px 26px rgba(56, 189, 248, 0.22)",
+        "control_bg": "rgba(15, 23, 42, 0.78)",
+    },
+    "深色：绿涨红跌": {
+        "delta_color": "normal",
+        "up_base": "#bbf7d0",
+        "up_peak": "#4ade80",
+        "down_base": "#fecaca",
+        "down_peak": "#f87171",
+        "accent": "#a78bfa",
+        "text": "#e5edf8",
+        "muted_text": "#a8b4c7",
+        "page_bg": "#07111f",
+        "app_bg": "linear-gradient(135deg, #07111f 0%, #111827 48%, #182235 100%), repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.08) 0 1px, transparent 1px 48px), repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.06) 0 1px, transparent 1px 48px)",
+        "header_bg": "rgba(7, 17, 31, 0.78)",
+        "sidebar_bg": "rgba(15, 23, 42, 0.94)",
+        "card_bg": "rgba(15, 23, 42, 0.78)",
+        "panel_bg": "rgba(15, 23, 42, 0.68)",
+        "border": "rgba(148, 163, 184, 0.26)",
+        "shadow": "0 18px 42px rgba(0, 0, 0, 0.28)",
+        "hover_shadow": "0 22px 48px rgba(0, 0, 0, 0.36)",
+        "button_bg": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 52%, #22c55e 100%)",
+        "button_text": "#f8fafc",
+        "button_border": "rgba(226, 232, 240, 0.22)",
+        "button_shadow": "0 10px 26px rgba(167, 139, 250, 0.22)",
+        "control_bg": "rgba(15, 23, 42, 0.78)",
     },
 }
 
@@ -153,85 +235,331 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
         
         .stApp {{
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: {theme.get("page_bg", "transparent")};
+            --app-text: {theme["text"]};
+            --app-muted-text: {theme["muted_text"]};
+            --app-card-bg: {theme["card_bg"]};
+            --app-panel-bg: {theme["panel_bg"]};
+            --app-border: {theme["border"]};
+            --app-shadow: {theme["shadow"]};
+            --app-hover-shadow: {theme["hover_shadow"]};
+            --app-control-bg: {theme["control_bg"]};
+            color: var(--app-text);
+            background: {theme["app_bg"]};
+            background-color: {theme.get("page_bg", "#f8fafc")};
+        }}
+
+        .stApp [data-testid="stAppViewContainer"],
+        .stApp main,
+        .stApp p,
+        .stApp label,
+        .stApp span,
+        .stApp div {{
+            color: inherit;
+        }}
+
+        .block-container {{
+            max-width: 1180px;
+            padding-top: 3.25rem;
+            padding-bottom: 2rem;
+        }}
+
+        [data-testid="stHeader"] {{
+            background: {theme["header_bg"]};
+            backdrop-filter: blur(16px);
+        }}
+
+        [data-testid="stSidebar"] {{
+            background: {theme["sidebar_bg"]};
+            border-right: 1px solid var(--app-border);
+            color: var(--app-text);
         }}
         
         /* Modern metric cards */
         [data-testid="stMetric"] {{
-            background: {theme["card_bg"]};
-            border: 1px solid rgba(148, 163, 184, 0.15);
-            border-radius: 16px;
-            padding: 16px 20px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            position: relative;
+            overflow: hidden;
+            min-height: 116px;
+            background:
+                linear-gradient(var(--app-card-bg), var(--app-card-bg)) padding-box,
+                linear-gradient(135deg, rgba(37, 99, 235, 0.34), rgba(245, 158, 11, 0.22)) border-box;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 15px 16px;
+            box-shadow: var(--app-shadow);
             transition: transform 0.2s ease, box-shadow 0.2s ease;
         }}
         [data-testid="stMetric"]:hover {{
             transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+            box-shadow: var(--app-hover-shadow);
         }}
         [data-testid="stMetricValue"] {{
-            font-size: 1.8rem;
+            font-size: clamp(1.25rem, 2.5vw, 1.8rem);
             font-weight: 800;
-            color: var(--text-color);
+            color: var(--app-text);
+            line-height: 1.1;
         }}
         [data-testid="stMetricLabel"] {{
             font-weight: 600;
-            color: var(--text-color);
-            opacity: 0.75;
+            color: var(--app-muted-text);
+            opacity: 0.92;
             font-size: 0.95rem;
         }}
         
         /* Button styling */
         .stButton > button, .stDownloadButton > button {{
-            border-radius: 12px;
-            border: none;
-            background: linear-gradient(135deg, {theme["accent"]} 0%, #3b82f6 100%);
-            color: white !important;
+            border-radius: 8px;
+            border: 1px solid {theme["button_border"]};
+            background: {theme["button_bg"]};
+            color: {theme["button_text"]} !important;
             font-weight: 600;
             padding: 0.5rem 1.5rem;
-            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+            box-shadow: {theme["button_shadow"]};
             transition: all 0.2s ease;
         }}
         .stButton > button:hover {{
             transform: scale(1.02);
-            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+            border-color: {theme["button_border"]};
+            color: {theme["button_text"]} !important;
+            box-shadow: var(--app-hover-shadow);
+        }}
+
+        .stButton > button *,
+        .stDownloadButton > button * {{
+            color: {theme["button_text"]} !important;
         }}
         
         /* Expander / container styling */
         [data-testid="stExpander"] {{
-            background: {theme["card_bg"]};
-            border-radius: 16px;
-            border: 1px solid rgba(148, 163, 184, 0.2);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            background: var(--app-card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--app-border);
+            box-shadow: var(--app-shadow);
             overflow: hidden;
             margin-bottom: 1rem;
         }}
         [data-testid="stExpander"] summary {{
             font-weight: 700;
             font-size: 1.1rem;
-            color: var(--text-color);
+            color: var(--app-text);
         }}
         
         /* Dataframes */
         [data-testid="stDataFrame"] {{
-            border-radius: 12px;
+            border-radius: 8px;
             overflow: hidden;
-            border: 1px solid rgba(148, 163, 184, 0.2);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+            border: 1px solid var(--app-border);
+            box-shadow: var(--app-shadow);
+        }}
+
+        .stTextInput input,
+        .stNumberInput input,
+        .stSelectbox [data-baseweb="select"] > div,
+        .stMultiSelect [data-baseweb="select"] > div,
+        .stDateInput input,
+        .stTextArea textarea {{
+            background: var(--app-control-bg) !important;
+            color: var(--app-text) !important;
+            border-color: var(--app-border) !important;
+        }}
+
+        .daily-summary {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin: 0.25rem 0 0.85rem;
+            padding: 12px 14px;
+            border: 1px solid var(--app-border);
+            border-radius: 8px;
+            background: var(--app-panel-bg);
+            box-shadow: var(--app-shadow);
+            color: var(--app-text);
+        }}
+
+        .daily-summary strong {{
+            font-weight: 800;
+        }}
+
+        .daily-card-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
+            margin-bottom: 0.75rem;
+        }}
+
+        .daily-card {{
+            position: relative;
+            overflow: hidden;
+            min-height: 104px;
+            border: 1px solid var(--app-border);
+            border-radius: 8px;
+            padding: 12px;
+            background: var(--app-panel-bg);
+            box-shadow: var(--app-shadow);
+            color: var(--app-text);
+        }}
+
+        .daily-card::before {{
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-top: 3px solid var(--daily-color);
+            opacity: 0.85;
+            pointer-events: none;
+        }}
+
+        .daily-card-title {{
+            min-height: 2.4em;
+            color: var(--daily-color) !important;
+            font-weight: 800;
+            line-height: 1.2;
+            word-break: break-word;
+        }}
+
+        .daily-card-pct {{
+            color: var(--daily-color) !important;
+            font-weight: 800;
+            font-size: 1.1rem;
+            margin-top: 6px;
+        }}
+
+        .daily-card-amount {{
+            color: var(--daily-color) !important;
+            font-weight: 650;
+            font-size: 0.83rem;
+            line-height: 1.35;
+            margin-top: 2px;
         }}
         
         /* Headers */
         h1, h2, h3, h4 {{
             font-weight: 800 !important;
-            letter-spacing: -0.025em !important;
+            letter-spacing: 0 !important;
+            color: var(--app-text) !important;
+        }}
+
+        .stMarkdown,
+        .stMarkdown p,
+        .stCaptionContainer,
+        [data-testid="stMarkdownContainer"] {{
+            color: var(--app-text);
         }}
         
         div[data-testid="stCaptionContainer"] p {{
-            color: #64748b;
+            color: var(--app-muted-text);
+        }}
+
+        [data-testid="stVegaLiteChart"],
+        [data-testid="stVegaLiteChart"] > div,
+        .vega-embed {{
+            background: transparent !important;
+        }}
+
+        [data-testid="stVegaLiteChart"] {{
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid var(--app-border);
+            border-radius: 8px;
+            padding: 10px;
+            background: var(--app-panel-bg) !important;
+            box-shadow: var(--app-shadow);
+            overflow: hidden;
+        }}
+
+        [data-testid="stVegaLiteChart"] svg {{
+            background: transparent !important;
+            max-width: 100%;
+        }}
+
+        [data-testid="column"] {{
+            min-width: 0;
+        }}
+
+        @media (max-width: 720px) {{
+            .block-container {{
+                padding: 3rem 0.75rem 1.5rem;
+            }}
+
+            h1 {{
+                font-size: 1.55rem !important;
+            }}
+
+            h2, h3 {{
+                font-size: 1.18rem !important;
+            }}
+
+            [data-testid="stMetric"] {{
+                min-height: 96px;
+                padding: 12px;
+            }}
+
+            [data-testid="stMetricLabel"] {{
+                font-size: 0.82rem;
+            }}
+
+            .daily-summary {{
+                display: block;
+                padding: 11px 12px;
+            }}
+
+            .daily-card-grid {{
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }}
+
+            .daily-card {{
+                min-height: 112px;
+                padding: 10px;
+            }}
+
+            .daily-card-title {{
+                font-size: 0.86rem;
+            }}
+
+            .daily-card-pct {{
+                font-size: 1rem;
+            }}
+
+            .daily-card-amount {{
+                font-size: 0.76rem;
+            }}
+
+            .stButton > button, .stDownloadButton > button {{
+                width: 100%;
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }}
+        }}
+
+        @media (max-width: 420px) {{
+            .daily-card-grid {{
+                grid-template-columns: 1fr;
+            }}
         }}
         </style>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def _theme_altair_chart(chart: alt.Chart, theme: dict[str, str]) -> alt.Chart:
+    return (
+        chart.configure(background="transparent")
+        .configure_view(stroke=None, fill="transparent")
+        .configure_title(color=theme["text"], fontSize=15, fontWeight=700, anchor="start")
+        .configure_axis(
+            labelColor=theme["muted_text"],
+            titleColor=theme["muted_text"],
+            gridColor=theme["border"],
+            domainColor=theme["border"],
+            tickColor=theme["border"],
+        )
+        .configure_legend(
+            labelColor=theme["muted_text"],
+            titleColor=theme["muted_text"],
+            orient="bottom",
+        )
     )
 
 
@@ -259,13 +587,14 @@ def _lerp_color(hex_a: str, hex_b: str, t: float) -> str:
     return _rgb_to_hex(r, g, b)
 
 
-def _change_color_by_pct(pct: float, cap_pct: float = 4.0) -> str:
+def _change_color_by_pct(pct: float, cap_pct: float = 4.0, theme: dict[str, str] | None = None) -> str:
     """涨跌幅颜色梯度：绝对涨跌越大颜色越亮，越小越暗。"""
     p = float(pct)
     intensity = min(1.0, abs(p) / max(0.1, float(cap_pct)))
+    palette = theme or {}
     if p >= 0:
-        return _lerp_color("#166534", "#86efac", intensity)
-    return _lerp_color("#991b1b", "#fca5a5", intensity)
+        return _lerp_color(palette.get("up_base", "#166534"), palette.get("up_peak", "#86efac"), intensity)
+    return _lerp_color(palette.get("down_base", "#991b1b"), palette.get("down_peak", "#fca5a5"), intensity)
 
 
 def _fetch_fx_from_erapi() -> float | None:
@@ -1148,8 +1477,6 @@ prices_now = {
 
 # 前端不负责同步外部行情，避免阻塞与不确定性；由独立 sync worker 负责写 Supabase
 
-st.divider()
-
 def _render_holdings_editor() -> None:
     with st.expander("编辑持仓（会保存）", expanded=False):
         with st.form("holdings_edit_form"):
@@ -1264,7 +1591,7 @@ weighted_daily_pct = (
     if total_value_cny > 0
     else 0.0
 )
-weighted_daily_color = _change_color_by_pct(weighted_daily_pct)
+weighted_daily_color = _change_color_by_pct(weighted_daily_pct, theme=theme)
 # 汇总全持仓当日涨跌金额（先按各资产原币计算，再统一折算 CNY）。
 total_daily_change_cny = 0.0
 for sym, meta in _ASSET_META.items():
@@ -1283,16 +1610,17 @@ for sym, meta in _ASSET_META.items():
         total_daily_change_cny += daily_amount_native
 total_daily_change_usd = (total_daily_change_cny / fx) if fx > 0 else 0.0
 st.markdown(
-    f"**当日加权涨跌**：<span style='color:{weighted_daily_color}; font-weight:700; font-size:18px;'>{weighted_daily_pct:+.2f}%</span>"
-    f" ｜ <span style='color:{weighted_daily_color}; font-weight:700;'>总额 CNY {total_daily_change_cny:+,.2f}</span>"
-    f"（≈ USD {total_daily_change_usd:+,.2f}）",
+    "<div class='daily-summary'>"
+    f"<span><strong>当日加权涨跌</strong>：<span style='color:{weighted_daily_color}; font-weight:800; font-size:18px;'>{weighted_daily_pct:+.2f}%</span></span>"
+    f"<span style='color:{weighted_daily_color}; font-weight:800;'>CNY {total_daily_change_cny:+,.2f} · USD {total_daily_change_usd:+,.2f}</span>"
+    "</div>",
     unsafe_allow_html=True,
 )
 
 _daily_cards: list[str] = []
 for sym, meta in _ASSET_META.items():
     d = daily_change_pct_by_symbol.get(sym, 0.0)
-    c = _change_color_by_pct(d)
+    c = _change_color_by_pct(d, theme=theme)
     shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
     current_px = float(prices_now.get(sym, 0.0))
     current_value_native = shares_now * current_px
@@ -1307,14 +1635,14 @@ for sym, meta in _ASSET_META.items():
     else:
         daily_amount_text = f"CNY {daily_amount_native:+,.2f}"
     _daily_cards.append(
-        "<div style='border:1px solid rgba(148,163,184,0.25); border-radius:12px; padding:10px 12px;'>"
-        f"<div style='font-weight:700;'>{meta['label']}</div>"
-        f"<div style='color:{c}; font-weight:800; font-size:18px; margin-top:4px;'>{d:+.2f}%</div>"
-        f"<div style='color:{c}; font-weight:600; font-size:13px; margin-top:2px;'>{daily_amount_text}</div>"
+        f"<div class='daily-card' style='--daily-color:{c};'>"
+        f"<div class='daily-card-title'>{meta['label']}</div>"
+        f"<div class='daily-card-pct'>{d:+.2f}%</div>"
+        f"<div class='daily-card-amount'>{daily_amount_text}</div>"
         "</div>"
     )
 st.markdown(
-    "<div style='display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;'>"
+    "<div class='daily-card-grid'>"
     + "".join(_daily_cards)
     + "</div>",
     unsafe_allow_html=True,
@@ -1348,7 +1676,7 @@ pnl_chart = (
     )
     .properties(title="各标的浮盈亏（折合CNY）")
 )
-st.altair_chart(pnl_chart, width="stretch")
+st.altair_chart(_theme_altair_chart(pnl_chart, theme), width="stretch")
 
 usd_symbols = ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "TLT", "IEI")
 cny_symbols = ("001015", "007994")
@@ -1409,7 +1737,7 @@ group1_chart = (
     )
     .properties(title="VOO / QQQ / 科技组合 / 债券 当前与目标对比")
 )
-st.altair_chart(group1_chart, width="stretch")
+st.altair_chart(_theme_altair_chart(group1_chart, theme), width="stretch")
 
 tech_denominator = avgo_ratio + nvda_ratio + googl_ratio + msft_ratio
 tech_split_df = pd.DataFrame(
@@ -1456,7 +1784,7 @@ tech_split_chart = (
     )
     .properties(title="科技组合内部占比（目标：AVGO/NVDA/GOOGL/MSFT = 4:2:2:2）")
 )
-st.altair_chart(tech_split_chart, width="stretch")
+st.altair_chart(_theme_altair_chart(tech_split_chart, theme), width="stretch")
 
 hs300_ratio = (value_cny_by_symbol.get("001015", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 zz500_ratio = (value_cny_by_symbol.get("007994", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
@@ -1481,12 +1809,12 @@ group2_chart = (
         ),
         tooltip=["标的组:N", alt.Tooltip("比例%:Q", format=".2f")],
     )
-    .properties(title="沪深300 / 中证500 当前占比", width=420, height=260)
+    .properties(title="沪深300 / 中证500 当前占比", width="container", height=260)
 )
 chart_col1, chart_col2 = st.columns(2)
 
 with chart_col1:
-    st.altair_chart(group2_chart, width="stretch")
+    st.altair_chart(_theme_altair_chart(group2_chart, theme), width="stretch")
 
 usd_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in usd_symbols) + cash_usd * fx
 cny_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in cny_symbols) + cash_cny
@@ -1514,10 +1842,10 @@ group3_chart = (
         ),
         tooltip=["资产币种:N", alt.Tooltip("比例%:Q", format=".2f")],
     )
-    .properties(title="美元资产 / 人民币资产当前占比", width=420, height=260)
+    .properties(title="美元资产 / 人民币资产当前占比", width="container", height=260)
 )
 with chart_col2:
-    st.altair_chart(group3_chart, width="stretch")
+    st.altair_chart(_theme_altair_chart(group3_chart, theme), width="stretch")
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📦 我的持仓")
