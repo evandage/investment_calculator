@@ -286,6 +286,7 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             border-radius: 8px;
             padding: 15px 16px;
             box-shadow: var(--app-shadow);
+            text-align: center;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
         }}
         [data-testid="stMetric"]:hover {{
@@ -306,7 +307,10 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
         }}
         
         /* Button styling */
-        .stButton > button, .stDownloadButton > button {{
+        .stButton > button,
+        .stDownloadButton > button,
+        [data-testid="stButton"] button,
+        [data-testid="stDownloadButton"] button {{
             border-radius: 8px;
             border: 1px solid {theme["button_border"]};
             background: {theme["button_bg"]};
@@ -314,9 +318,13 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             font-weight: 600;
             padding: 0.5rem 1.5rem;
             box-shadow: {theme["button_shadow"]};
+            text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
             transition: all 0.2s ease;
         }}
-        .stButton > button:hover {{
+        .stButton > button:hover,
+        .stDownloadButton > button:hover,
+        [data-testid="stButton"] button:hover,
+        [data-testid="stDownloadButton"] button:hover {{
             transform: scale(1.02);
             border-color: {theme["button_border"]};
             color: {theme["button_text"]} !important;
@@ -324,8 +332,15 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
         }}
 
         .stButton > button *,
-        .stDownloadButton > button * {{
+        .stDownloadButton > button *,
+        [data-testid="stButton"] button *,
+        [data-testid="stButton"] button p,
+        [data-testid="stButton"] button span,
+        [data-testid="stDownloadButton"] button *,
+        [data-testid="stDownloadButton"] button p,
+        [data-testid="stDownloadButton"] button span {{
             color: {theme["button_text"]} !important;
+            -webkit-text-fill-color: {theme["button_text"]} !important;
         }}
         
         /* Expander / container styling */
@@ -365,7 +380,7 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
         .daily-summary {{
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: center;
             gap: 10px;
             margin: 0.25rem 0 0.85rem;
             padding: 12px 14px;
@@ -376,6 +391,18 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             color: var(--app-text);
         }}
 
+        .daily-summary-main,
+        .daily-summary-values {{
+            display: inline-flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 6px;
+        }}
+
+        .daily-summary-values {{
+            margin-left: 6px;
+        }}
+
         .daily-summary strong {{
             font-weight: 800;
         }}
@@ -383,12 +410,17 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
         .daily-card-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 10px;
+            gap: 12px;
             margin-bottom: 0.75rem;
+            align-items: stretch;
         }}
 
         .daily-card {{
             position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             overflow: hidden;
             min-height: 104px;
             border: 1px solid var(--app-border);
@@ -397,6 +429,7 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             background: var(--app-panel-bg);
             box-shadow: var(--app-shadow);
             color: var(--app-text);
+            text-align: center;
         }}
 
         .daily-card::before {{
@@ -412,6 +445,7 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             min-height: 2.4em;
             color: var(--daily-color) !important;
             font-weight: 800;
+            font-size: 1.02rem;
             line-height: 1.2;
             word-break: break-word;
         }}
@@ -499,8 +533,16 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             }}
 
             .daily-summary {{
-                display: block;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                gap: 4px;
                 padding: 11px 12px;
+            }}
+
+            .daily-summary-values {{
+                margin-left: 0;
             }}
 
             .daily-card-grid {{
@@ -514,7 +556,7 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             }}
 
             .daily-card-title {{
-                font-size: 0.86rem;
+                font-size: 0.95rem;
             }}
 
             .daily-card-pct {{
@@ -1611,8 +1653,8 @@ for sym, meta in _ASSET_META.items():
 total_daily_change_usd = (total_daily_change_cny / fx) if fx > 0 else 0.0
 st.markdown(
     "<div class='daily-summary'>"
-    f"<span><strong>当日加权涨跌</strong>：<span style='color:{weighted_daily_color}; font-weight:800; font-size:18px;'>{weighted_daily_pct:+.2f}%</span></span>"
-    f"<span style='color:{weighted_daily_color}; font-weight:800;'>CNY {total_daily_change_cny:+,.2f} · USD {total_daily_change_usd:+,.2f}</span>"
+    f"<span class='daily-summary-main'><strong>当日加权涨跌</strong>：<span style='color:{weighted_daily_color}; font-weight:800; font-size:18px;'>{weighted_daily_pct:+.2f}%</span></span>"
+    f"<span class='daily-summary-values' style='color:{weighted_daily_color}; font-weight:800;'>CNY {total_daily_change_cny:+,.2f} · USD {total_daily_change_usd:+,.2f}</span>"
     "</div>",
     unsafe_allow_html=True,
 )
