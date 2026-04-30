@@ -120,6 +120,19 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "IEI": (12.0, 22.0),
 }
 
+_DCA_DRAWDOWN_RULES: dict[str, tuple[tuple[float, str], ...]] = {
+    "VOO": ((-15.0, "明显加大，可用部分备用资金"), (-10.0, "明显加大"), (-5.0, "多买一点")),
+    "MSFT": ((-25.0, "重加"), (-15.0, "中加"), (-8.0, "小加")),
+    "GOOGL": ((-25.0, "重加"), (-18.0, "中加"), (-10.0, "小加")),
+    "NVDA": ((-30.0, "重加"), (-20.0, "中加"), (-12.0, "小加")),
+    "AVGO": ((-28.0, "重加"), (-18.0, "中加"), (-10.0, "小加")),
+}
+
+_DCA_DRAWDOWN_RULE_TEXT = (
+    "回撤定投规则：VOO 参考 S&P 500：-5% 多买一点、-10% 明显加大、-15% 可用部分备用资金；"
+    "卫星仓位按个股阈值：MSFT -8/-15/-25，GOOGL -10/-18/-25，NVDA -12/-20/-30，AVGO -10/-18/-28。"
+)
+
 
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _UI_THEMES = {
@@ -978,43 +991,110 @@ def _vix_regime(vix: float) -> tuple[str, str]:
 @st.cache_data(ttl=21600, show_spinner=False)
 def _fetch_us_etf_pe_drawdown(symbol: str) -> dict[str, float | None]:
     """返回美股ETF估值与回撤指标：pe(若可得)、回撤%(近60日高点回撤，负值为回撤)。"""
-    try:
-        import yfinance as yf
-    except Exception:
-        return {"pe": None, "drawdown_pct": None}
-
     pe_val: float | None = None
     dd_val: float | None = None
     try:
-        t = yf.Ticker(symbol)
-        info = {}
-        try:
-            info = t.get_info() or {}
-        except Exception:
-            info = {}
-        for k in ("trailingPE", "forwardPE"):
-            v = info.get(k)
-            try:
-                fv = float(v)
-                if fv > 0:
-                    pe_val = fv
-                    break
-            except (TypeError, ValueError):
-                continue
-
-        hist = t.history(period="1y", interval="1d", auto_adjust=True)
-        if hist is not None and not hist.empty and "Close" in hist.columns:
-            c = pd.to_numeric(hist["Close"], errors="coerce").dropna()
-            if len(c) > 20:
-                win = c.tail(60) if len(c) >= 60 else c
-                peak = float(win.max())
-                last = float(win.iloc[-1])
-                if peak > 0:
-                    dd_val = (last / peak - 1.0) * 100.0
+        import yfinance as yf
     except Exception:
-        return {"pe": pe_val, "drawdown_pct": dd_val}
+        yf = None  # type: ignore[assignment]
+
+    if yf is not None:
+        try:
+            t = yf.Ticker(symbol)
+            info = {}
+            try:
+                info = t.get_info() or {}
+            except Exception:
+                info = {}
+            for k in ("trailingPE", "forwardPE"):
+                v = info.get(k)
+                try:
+                    fv = float(v)
+                    if fv > 0:
+                        pe_val = fv
+                        break
+                except (TypeError, ValueError):
+                    continue
+
+            hist = t.history(period="1y", interval="1d", auto_adjust=True)
+            if hist is not None and not hist.empty and "Close" in hist.columns:
+                c = pd.to_numeric(hist["Close"], errors="coerce").dropna()
+                if len(c) > 20:
+                    win = c.tail(60) if len(c) >= 60 else c
+                    peak = float(win.max())
+                    last = float(win.iloc[-1])
+                    if peak > 0:
+                        dd_val = (last / peak - 1.0) * 100.0
+        except Exception:
+            pass
+
+    if dd_val is None:
+        try:
+            end_ts = int(datetime.now(_TZ_SHANGHAI).timestamp())
+            start_ts = end_ts - 370 * 24 * 60 * 60
+            url = (
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                f"?period1={start_ts}&period2={end_ts}&interval=1d&events=history"
+            )
+            r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
+            r.raise_for_status()
+            result = (r.json().get("chart", {}).get("result") or [None])[0]
+            closes = ((result or {}).get("indicators", {}).get("quote") or [{}])[0].get("close", [])
+            if closes:
+                c = pd.to_numeric(pd.Series(closes), errors="coerce").dropna()
+                if len(c) > 20:
+                    win = c.tail(60) if len(c) >= 60 else c
+                    peak = float(win.max())
+                    last = float(win.iloc[-1])
+                    if peak > 0:
+                        dd_val = (last / peak - 1.0) * 100.0
+        except Exception:
+            pass
 
     return {"pe": pe_val, "drawdown_pct": dd_val}
+
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def _fetch_fund_drawdown(code: str) -> float | None:
+    """用东方财富历史净值估算近60条记录高点回撤。"""
+    url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=120"
+    try:
+        r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
+        r.raise_for_status()
+        matches = re.findall(r"<tr>\\s*<td>([^<]+)</td>\\s*<td[^>]*>([^<]+)</td>", r.text)
+        values: list[float] = []
+        for _, nav in matches:
+            try:
+                values.append(float(nav))
+            except (TypeError, ValueError):
+                continue
+        if len(values) <= 1:
+            return None
+        win = values[:60]
+        peak = max(win)
+        last = values[0]
+        return (last / peak - 1.0) * 100.0 if peak > 0 else None
+    except Exception:
+        return None
+
+
+def _fetch_asset_drawdown(sym: str, meta: dict[str, str]) -> float | None:
+    if meta["currency"] == "USD":
+        q = _fetch_us_etf_pe_drawdown(sym)
+        dd = q.get("drawdown_pct")
+        return float(dd) if isinstance(dd, (int, float)) else None
+    if sym in _FUND_CODES:
+        return _fetch_fund_drawdown(_FUND_CODES[sym])
+    return None
+
+
+def _drawdown_dca_signal(symbol: str, drawdown_pct: float | None) -> str:
+    if not isinstance(drawdown_pct, (int, float)):
+        return "暂无回撤数据"
+    for threshold, label in _DCA_DRAWDOWN_RULES.get(symbol, ()):
+        if float(drawdown_pct) <= threshold:
+            return label
+    return "按计划观察"
 
 
 def _default_holdings() -> dict[str, dict[str, float]]:
@@ -1584,6 +1664,7 @@ total_value_cny = 0.0
 value_cny_by_symbol: dict[str, float] = {}
 pnl_cny_by_symbol: dict[str, float] = {}
 daily_change_pct_by_symbol: dict[str, float] = spot_meta.get("daily_change_pct_by_symbol", {})  # type: ignore[assignment]
+drawdown_pct_by_symbol: dict[str, float | None] = {}
 for sym, meta in _ASSET_META.items():
     shares = float(holdings[sym]["shares"])
     avg_cost = float(holdings[sym]["avg_cost"])
@@ -1604,11 +1685,14 @@ for sym, meta in _ASSET_META.items():
     total_value_cny += value_cny
     value_cny_by_symbol[sym] = value_cny
     pnl_cny_by_symbol[sym] = value_cny - cost_cny
+    row_drawdown = _fetch_asset_drawdown(sym, meta)
+    drawdown_pct_by_symbol[sym] = row_drawdown
     rows.append(
         {
             "标的": meta["label"],
             "币种": meta["currency"],
             "当日涨跌%": round(daily_change_pct_by_symbol.get(sym, 0.0), 2),
+            "近60日高点回撤%": round(float(row_drawdown), 2) if isinstance(row_drawdown, (int, float)) else None,
             "浮动盈亏": round(pnl, 2),
             "涨跌幅%": round(pnl_pct, 2),
             "持有数量": round(shares, 3),
@@ -1951,7 +2035,16 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📦 我的持仓")
 st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'cloud' else '本地文件'}")
 _render_holdings_editor()
-st.dataframe(rows, width="stretch", hide_index=True)
+st.dataframe(
+    rows,
+    width="stretch",
+    hide_index=True,
+    column_config={
+        "当日涨跌%": st.column_config.NumberColumn("当日涨跌%", format="%.2f%%"),
+        "近60日高点回撤%": st.column_config.NumberColumn("近60日高点回撤%", format="%.2f%%"),
+        "涨跌幅%": st.column_config.NumberColumn("涨跌幅%", format="%.2f%%"),
+    },
+)
 metric_cols = st.columns(5)
 metric_cols[0].metric("总成本(折合CNY)", f"¥ {total_cost_cny:,.2f}")
 metric_cols[1].metric("持仓市值(折合CNY)", f"¥ {total_value_cny:,.2f}")
@@ -1966,10 +2059,11 @@ metric_cols[4].metric(
 st.caption(f"💵 现金明细：USD {cash_usd:,.2f} ｜ CNY {cash_cny:,.2f}")
 
 st.subheader("🧮 再平衡买入建议")
+st.caption(_DCA_DRAWDOWN_RULE_TEXT)
 if total_assets_cny <= 0:
     st.info("总资产为 0，暂无法生成再平衡建议。")
 else:
-    st.caption("已覆盖全部标的：按目标缺口、估值与回撤综合给出买入优先级；偏贵标的会降级。")
+    st.caption("按目标缺口和近高回撤给出买入优先级；表格只保留执行定投时最常用的信息。")
     rebalance_rows: list[dict[str, Any]] = []
     suggestion_map: dict[str, dict[str, Any]] = {}
     for sym, meta in _ASSET_META.items():
@@ -1978,9 +2072,10 @@ else:
         num = tgt_w * total_assets_cny - cur_cny
         den = 1.0 - tgt_w
         gap_cny = (num / den) if den > 0 else 0.0
-        q = _fetch_us_etf_pe_drawdown(sym) if meta["currency"] == "USD" else {"pe": None, "drawdown_pct": None}
+        q = _fetch_us_etf_pe_drawdown(sym) if meta["currency"] == "USD" else {"pe": None}
         pe = q.get("pe")
-        dd = q.get("drawdown_pct")
+        dd = drawdown_pct_by_symbol.get(sym)
+        dca_signal = _drawdown_dca_signal(sym, dd if isinstance(dd, (int, float)) else None)
         pe_band = _USD_ASSET_PE_BANDS.get(sym)
         expensive = False
         if isinstance(pe, (int, float)) and pe_band is not None and float(pe) >= pe_band[1]:
@@ -2001,22 +2096,21 @@ else:
             else:
                 action = "优先买入"
                 note = "低于目标权重，适合补仓"
+        if dca_signal not in ("按计划观察", "暂无回撤数据"):
+            note = f"{note}；回撤信号：{dca_signal}"
         gap_native = (gap_cny / fx) if meta["currency"] == "USD" and fx > 0 else gap_cny
         px = float(prices_now.get(sym, 0.0))
         need_units = (gap_native / px) if px > 0 else 0.0
-        pe_txt = f"{float(pe):.1f}" if isinstance(pe, (int, float)) else "N/A"
         dd_txt = f"{float(dd):.2f}%" if isinstance(dd, (int, float)) else "N/A"
         rebalance_rows.append(
             {
                 "标的": meta["label"],
-                "币种": meta["currency"],
                 "建议动作": action,
                 "优先级分数": round(priority_score, 2),
                 "目标缺口(CNY)": round(gap_cny, 2),
-                "目标缺口(原币)": round(gap_native, 2),
                 "按当前价需买": round(need_units, 3),
-                "PE": pe_txt,
                 "近60日回撤": dd_txt,
+                "回撤定投档位": dca_signal,
                 "说明": note,
             }
         )
@@ -2028,19 +2122,18 @@ else:
         }
     rebalance_df = pd.DataFrame(rebalance_rows)
     rebalance_df = rebalance_df[
-        ["标的", "币种", "建议动作", "优先级分数", "目标缺口(CNY)", "目标缺口(原币)", "按当前价需买", "PE", "近60日回撤", "说明"]
+        ["标的", "建议动作", "目标缺口(CNY)", "按当前价需买", "近60日回撤", "回撤定投档位", "说明", "优先级分数"]
     ].sort_values(by=["优先级分数", "目标缺口(CNY)"], ascending=[False, False])
     if not rebalance_df.empty:
         rebalance_df.insert(0, "优先级", range(1, len(rebalance_df) + 1))
+        rebalance_df = rebalance_df.drop(columns=["优先级分数"])
     st.dataframe(
         rebalance_df,
         width="stretch",
         hide_index=True,
         column_config={
             "优先级": st.column_config.NumberColumn("优先级", format="%d"),
-            "优先级分数": st.column_config.NumberColumn("优先级分数", format="%.2f"),
             "目标缺口(CNY)": st.column_config.NumberColumn("目标缺口(CNY)", format="%.2f"),
-            "目标缺口(原币)": st.column_config.NumberColumn("目标缺口(原币)", format="%.2f"),
             "按当前价需买": st.column_config.NumberColumn("按当前价需买", format="%.3f"),
         },
     )
