@@ -26,7 +26,6 @@ st.set_page_config(
 # 拉取失败时的回退价（与常见区间一致）
 _FALLBACK = {
     "VOO": 400.0,
-    "QQQ": 500.0,
     "AVGO": 1700.0,
     "NVDA": 1200.0,
     "GOOGL": 180.0,
@@ -39,7 +38,6 @@ _FALLBACK = {
 
 _TICKERS = {
     "voo": "VOO",
-    "qqq": "QQQ",
     "avgo": "AVGO",
     "nvda": "NVDA",
     "googl": "GOOGL",
@@ -63,7 +61,6 @@ _HTTP_TIMEOUT = (5, 15)
 # 美股：腾讯财经批量接口；失败则用新浪全球行情
 _QQ_US = {
     "VOO": "usVOO",
-    "QQQ": "usQQQ",
     "AVGO": "usAVGO",
     "NVDA": "usNVDA",
     "GOOGL": "usGOOGL",
@@ -73,7 +70,6 @@ _QQ_US = {
 }
 _SINA_GB = {
     "VOO": "gb_voo",
-    "QQQ": "gb_qqq",
     "AVGO": "gb_avgo",
     "NVDA": "gb_nvda",
     "GOOGL": "gb_googl",
@@ -87,7 +83,6 @@ _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
 _ASSET_META = {
     "VOO": {"label": "VOO", "currency": "USD"},
-    "QQQ": {"label": "QQQ", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
     "NVDA": {"label": "NVDA", "currency": "USD"},
     "GOOGL": {"label": "GOOGL", "currency": "USD"},
@@ -99,24 +94,24 @@ _ASSET_META = {
 }
 _TARGET_WEIGHTS = {
     # 目标比例：
-    # 美元资产: VOO 20%, QQQ 10%, 卫星仓位四标的合计10%（AVGO/NVDA/GOOGL/MSFT=3:2:3:2）, 债券 20%（TLT/IEI各10%）
+    # 美元资产: VOO 20%, 卫星仓位四标的合计20%（AVGO/NVDA/GOOGL/MSFT=3:2:3:2）, 债券 20%（TLT/IEI各10%）
     # 人民币资产: 沪深300(001015) 20%, 中证500(007994) 20%
     "VOO": 0.20,
-    "QQQ": 0.10,
-    "AVGO": 0.03,
-    "NVDA": 0.02,
-    "GOOGL": 0.03,
-    "MSFT": 0.02,
+    "AVGO": 0.06,
+    "NVDA": 0.04,
+    "GOOGL": 0.06,
+    "MSFT": 0.04,
     "TLT": 0.10,
     "IEI": 0.10,
     "001015": 0.20,
     "007994": 0.20,
 }
 
+_SATELLITE_SYMBOLS = ("AVGO", "NVDA", "GOOGL", "MSFT")
+
 # 美元资产 PE 参考区间（经验口径，仅作辅助，不构成投资建议）
 _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "VOO": (18.0, 24.0),
-    "QQQ": (22.0, 32.0),
     "AVGO": (24.0, 34.0),
     "NVDA": (28.0, 45.0),
     "GOOGL": (18.0, 28.0),
@@ -906,7 +901,7 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     except Exception:
         pass
 
-    for sym in ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "TLT", "IEI"):
+    for sym in ("VOO", *_SATELLITE_SYMBOLS, "TLT", "IEI"):
         if sym not in out:
             try:
                 res = _fetch_sina_gb_price_change(_SINA_GB[sym])
@@ -1269,7 +1264,6 @@ def _defaults_from_fetch() -> dict[str, float]:
     raw = _fetch_spot_prices()
     return {
         "voo": raw["VOO"],
-        "qqq": raw["QQQ"],
         "avgo": raw["AVGO"],
         "nvda": raw["NVDA"],
         "googl": raw["GOOGL"],
@@ -1284,7 +1278,6 @@ def _defaults_from_fetch() -> dict[str, float]:
 def _ensure_price_session_defaults() -> None:
     d = _defaults_from_fetch()
     st.session_state.setdefault("def_voo", d["voo"])
-    st.session_state.setdefault("def_qqq", d["qqq"])
     st.session_state.setdefault("def_avgo", d["avgo"])
     st.session_state.setdefault("def_nvda", d["nvda"])
     st.session_state.setdefault("def_googl", d["googl"])
@@ -1482,7 +1475,6 @@ if st.button(
     d = _defaults_from_fetch()
     st.session_state.def_fx = _fetch_usdcny_rate()
     st.session_state.def_voo = d["voo"]
-    st.session_state.def_qqq = d["qqq"]
     st.session_state.def_avgo = d["avgo"]
     st.session_state.def_nvda = d["nvda"]
     st.session_state.def_googl = d["googl"]
@@ -1496,7 +1488,6 @@ if st.button(
     for k in (
         "inp_fx",
         "inp_voo",
-        "inp_qqq",
         "inp_avgo",
         "inp_nvda",
         "inp_googl",
@@ -1518,7 +1509,6 @@ fx_meta = _fetch_usdcny_rate_meta()
 fx = float(st.session_state.get("inp_fx", st.session_state.def_fx))
 prices_now = {
     "VOO": float(st.session_state.get("inp_voo", st.session_state.def_voo)),
-    "QQQ": float(st.session_state.get("inp_qqq", st.session_state.def_qqq)),
     "AVGO": float(st.session_state.get("inp_avgo", st.session_state.def_avgo)),
     "NVDA": float(st.session_state.get("inp_nvda", st.session_state.def_nvda)),
     "GOOGL": float(st.session_state.get("inp_googl", st.session_state.def_googl)),
@@ -1672,6 +1662,36 @@ st.markdown(
 )
 
 _daily_cards: list[str] = []
+satellite_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in _SATELLITE_SYMBOLS)
+satellite_daily_change_cny = 0.0
+for sym in _SATELLITE_SYMBOLS:
+    d = float(daily_change_pct_by_symbol.get(sym, 0.0))
+    d_ratio = d / 100.0
+    shares_now = float(holdings.get(sym, {}).get("shares", 0.0))
+    current_px = float(prices_now.get(sym, 0.0))
+    current_value_native = shares_now * current_px
+    if abs(1.0 + d_ratio) > 1e-9:
+        daily_amount_native = current_value_native - (current_value_native / (1.0 + d_ratio))
+    else:
+        daily_amount_native = 0.0
+    satellite_daily_change_cny += daily_amount_native * fx
+satellite_daily_pct = (
+    sum(
+        (value_cny_by_symbol.get(sym, 0.0) / satellite_value_cny) * daily_change_pct_by_symbol.get(sym, 0.0)
+        for sym in _SATELLITE_SYMBOLS
+    )
+    if satellite_value_cny > 0
+    else 0.0
+)
+satellite_daily_color = _change_color_by_pct(satellite_daily_pct, theme=theme)
+satellite_daily_change_usd = (satellite_daily_change_cny / fx) if fx > 0 else 0.0
+satellite_card_html = (
+    f"<div class='daily-card' style='--daily-color:{satellite_daily_color};'>"
+    "<div class='daily-card-title'>卫星仓位</div>"
+    f"<div class='daily-card-pct'>{satellite_daily_pct:+.2f}%</div>"
+    f"<div class='daily-card-amount'>CNY {satellite_daily_change_cny:+,.2f}<br>≈ USD {satellite_daily_change_usd:+,.2f}</div>"
+    "</div>"
+)
 for sym, meta in _ASSET_META.items():
     d = daily_change_pct_by_symbol.get(sym, 0.0)
     c = _change_color_by_pct(d, theme=theme)
@@ -1695,6 +1715,8 @@ for sym, meta in _ASSET_META.items():
         f"<div class='daily-card-amount'>{daily_amount_text}</div>"
         "</div>"
     )
+    if sym == "VOO":
+        _daily_cards.append(satellite_card_html)
 st.markdown(
     "<div class='daily-card-grid'>"
     + "".join(_daily_cards)
@@ -1705,7 +1727,7 @@ st.markdown(
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📈 资产分布与盈亏")
 
-satellite_symbols = ("AVGO", "NVDA", "GOOGL", "MSFT")
+excluded_core_pnl_symbols = _SATELLITE_SYMBOLS
 pnl_chart_df = pd.DataFrame(
     [
         {
@@ -1714,7 +1736,7 @@ pnl_chart_df = pd.DataFrame(
             "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
         }
         for sym in _ASSET_META
-        if sym not in satellite_symbols
+        if sym not in excluded_core_pnl_symbols
     ]
 )
 pnl_chart = (
@@ -1734,16 +1756,14 @@ pnl_chart = (
 )
 st.altair_chart(_theme_altair_chart(pnl_chart, theme), width="stretch")
 
-usd_symbols = ("VOO", "QQQ", *satellite_symbols, "TLT", "IEI")
+usd_symbols = ("VOO", *_SATELLITE_SYMBOLS, "TLT", "IEI")
 cny_symbols = ("001015", "007994")
 
 bond_current = value_cny_by_symbol.get("TLT", 0.0) + value_cny_by_symbol.get("IEI", 0.0)
 voo_current = value_cny_by_symbol.get("VOO", 0.0)
-qqq_current = value_cny_by_symbol.get("QQQ", 0.0)
 
 ratio_denominator = total_value_cny if total_value_cny > 0 else 0.0
 voo_ratio = (voo_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
-qqq_ratio = (qqq_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 avgo_ratio = (value_cny_by_symbol.get("AVGO", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 nvda_ratio = (value_cny_by_symbol.get("NVDA", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 googl_ratio = (value_cny_by_symbol.get("GOOGL", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
@@ -1754,7 +1774,6 @@ iei_ratio = (value_cny_by_symbol.get("IEI", 0.0) / ratio_denominator * 100.0) if
 bond_ratio = (bond_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 
 voo_target = _TARGET_WEIGHTS["VOO"] * 100.0
-qqq_target = _TARGET_WEIGHTS["QQQ"] * 100.0
 new4_target = (
     _TARGET_WEIGHTS["AVGO"] + _TARGET_WEIGHTS["NVDA"] + _TARGET_WEIGHTS["GOOGL"] + _TARGET_WEIGHTS["MSFT"]
 ) * 100.0
@@ -1764,8 +1783,6 @@ group1_df = pd.DataFrame(
     [
         {"标的组": "VOO", "类型": "当前比例%", "成分": "VOO", "比例%": round(voo_ratio, 2)},
         {"标的组": "VOO", "类型": "目标比例%", "成分": "目标", "比例%": round(voo_target, 2)},
-        {"标的组": "QQQ", "类型": "当前比例%", "成分": "QQQ", "比例%": round(qqq_ratio, 2)},
-        {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2)},
         {"标的组": "卫星仓位", "类型": "当前比例%", "成分": "卫星仓位", "比例%": round(new4_ratio, 2)},
         {"标的组": "卫星仓位", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2)},
         {"标的组": "债券", "类型": "当前比例%", "成分": "债券", "比例%": round(bond_ratio, 2)},
@@ -1777,21 +1794,21 @@ group1_chart = (
     alt.Chart(group1_df)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "债券"]),
+        x=alt.X("标的组:N", sort=["VOO", "卫星仓位", "债券"]),
         xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
         y=alt.Y("比例%:Q", title="比例(%)"),
         color=alt.Color(
             "成分:N",
-            sort=["VOO", "QQQ", "卫星仓位", "债券", "目标"],
+            sort=["VOO", "卫星仓位", "债券", "目标"],
             scale=alt.Scale(
-                domain=["VOO", "QQQ", "卫星仓位", "债券", "目标"],
-                range=[theme["accent"], "#60a5fa", "#8b5cf6", "#f59e0b", "#94a3b8"],
+                domain=["VOO", "卫星仓位", "债券", "目标"],
+                range=[theme["accent"], "#8b5cf6", "#f59e0b", "#94a3b8"],
             ),
         ),
         order=alt.Order("成分:N", sort="ascending"),
         tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f")],
     )
-    .properties(title="核心仓位 / 卫星仓位 当前与目标对比")
+    .properties(title="VOO / 卫星仓位 / 债券 当前与目标对比")
 )
 tech_denominator = avgo_ratio + nvda_ratio + googl_ratio + msft_ratio
 tech_split_df = pd.DataFrame(
@@ -2118,7 +2135,6 @@ st.divider()
 if chart_board_enabled:
     _chart_symbol_labels = {
         "VOO": "VOO",
-        "QQQ": "QQQ",
         "债券(TLT)": "TLT",
         "债券(IEI)": "IEI",
         "沪深300ETF(510300)": "510300.SS",
