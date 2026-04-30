@@ -99,13 +99,13 @@ _ASSET_META = {
 }
 _TARGET_WEIGHTS = {
     # 目标比例：
-    # 美元资产: VOO 20%, QQQ 10%, 新增四标的合计10%（AVGO/NVDA/GOOGL/MSFT=4:2:2:2）, 债券 20%（TLT/IEI各10%）
+    # 美元资产: VOO 20%, QQQ 10%, 卫星仓位四标的合计10%（AVGO/NVDA/GOOGL/MSFT=3:2:3:2）, 债券 20%（TLT/IEI各10%）
     # 人民币资产: 沪深300(001015) 20%, 中证500(007994) 20%
     "VOO": 0.20,
     "QQQ": 0.10,
-    "AVGO": 0.04,
+    "AVGO": 0.03,
     "NVDA": 0.02,
-    "GOOGL": 0.02,
+    "GOOGL": 0.03,
     "MSFT": 0.02,
     "TLT": 0.10,
     "IEI": 0.10,
@@ -1803,7 +1803,7 @@ tech_split_df = pd.DataFrame(
             "浮盈亏(CNY)": round(pnl_cny_by_symbol.get("AVGO", 0.0), 2),
             "浮盈亏标签": f"¥ {pnl_cny_by_symbol.get('AVGO', 0.0):+,.0f}",
         },
-        {"标的": "AVGO", "类型": "目标占卫星仓位%", "比例%": 40.0, "浮盈亏(CNY)": None, "浮盈亏标签": ""},
+        {"标的": "AVGO", "类型": "目标占卫星仓位%", "比例%": 30.0, "浮盈亏(CNY)": None, "浮盈亏标签": ""},
         {
             "标的": "NVDA",
             "类型": "当前占卫星仓位%",
@@ -1819,7 +1819,7 @@ tech_split_df = pd.DataFrame(
             "浮盈亏(CNY)": round(pnl_cny_by_symbol.get("GOOGL", 0.0), 2),
             "浮盈亏标签": f"¥ {pnl_cny_by_symbol.get('GOOGL', 0.0):+,.0f}",
         },
-        {"标的": "GOOGL", "类型": "目标占卫星仓位%", "比例%": 20.0, "浮盈亏(CNY)": None, "浮盈亏标签": ""},
+        {"标的": "GOOGL", "类型": "目标占卫星仓位%", "比例%": 30.0, "浮盈亏(CNY)": None, "浮盈亏标签": ""},
         {
             "标的": "MSFT",
             "类型": "当前占卫星仓位%",
@@ -1864,7 +1864,7 @@ tech_pnl_labels = (
 )
 tech_split_chart = (
     (tech_split_bars + tech_pnl_labels)
-    .properties(title="卫星仓位内部占比与浮盈亏（目标：AVGO/NVDA/GOOGL/MSFT = 4:2:2:2）")
+    .properties(title="卫星仓位内部占比与浮盈亏（目标：AVGO/NVDA/GOOGL/MSFT = 3:2:3:2）")
 )
 st.altair_chart(_theme_altair_chart(tech_split_chart, theme), width="stretch")
 st.altair_chart(_theme_altair_chart(group1_chart, theme), width="stretch")
