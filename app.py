@@ -227,6 +227,12 @@ _UI_THEMES = {
 }
 
 
+def _auto_theme_name(now: datetime | None = None) -> str:
+    current = now or datetime.now(_TZ_SHANGHAI)
+    is_daytime = 7 <= current.hour < 19
+    return "浅色：绿涨红跌" if is_daytime else "深色：绿涨红跌"
+
+
 def _apply_theme_css(theme: dict[str, str]) -> None:
     st.markdown(
         f"""
@@ -1421,7 +1427,13 @@ def _load_chart_boards_api() -> dict[str, Any]:
     }
 
 
-theme_name = st.sidebar.selectbox("显示主题", options=list(_UI_THEMES.keys()), index=0)
+theme_options = ["自动（白天浅色 / 晚上深色）", *list(_UI_THEMES.keys())]
+theme_pick = st.sidebar.selectbox("显示主题", options=theme_options, index=0)
+if theme_pick == "自动（白天浅色 / 晚上深色）":
+    theme_name = _auto_theme_name()
+    st.sidebar.caption(f"当前自动主题：{theme_name}")
+else:
+    theme_name = theme_pick
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
 chart_board_enabled = st.sidebar.toggle(
