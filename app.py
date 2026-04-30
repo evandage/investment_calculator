@@ -1705,6 +1705,7 @@ st.markdown(
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📈 资产分布与盈亏")
 
+satellite_symbols = ("AVGO", "NVDA", "GOOGL", "MSFT")
 pnl_chart_df = pd.DataFrame(
     [
         {
@@ -1713,6 +1714,7 @@ pnl_chart_df = pd.DataFrame(
             "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
         }
         for sym in _ASSET_META
+        if sym not in satellite_symbols
     ]
 )
 pnl_chart = (
@@ -1728,11 +1730,11 @@ pnl_chart = (
         ),
         tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
     )
-    .properties(title="各标的浮盈亏（折合CNY）")
+    .properties(title="核心仓位浮盈亏（不含卫星仓位，折合CNY）")
 )
 st.altair_chart(_theme_altair_chart(pnl_chart, theme), width="stretch")
 
-usd_symbols = ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "TLT", "IEI")
+usd_symbols = ("VOO", "QQQ", *satellite_symbols, "TLT", "IEI")
 cny_symbols = ("001015", "007994")
 
 bond_current = value_cny_by_symbol.get("TLT", 0.0) + value_cny_by_symbol.get("IEI", 0.0)
@@ -1764,8 +1766,8 @@ group1_df = pd.DataFrame(
         {"标的组": "VOO", "类型": "目标比例%", "成分": "目标", "比例%": round(voo_target, 2)},
         {"标的组": "QQQ", "类型": "当前比例%", "成分": "QQQ", "比例%": round(qqq_ratio, 2)},
         {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2)},
-        {"标的组": "科技组合", "类型": "当前比例%", "成分": "科技组合", "比例%": round(new4_ratio, 2)},
-        {"标的组": "科技组合", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2)},
+        {"标的组": "卫星仓位", "类型": "当前比例%", "成分": "卫星仓位", "比例%": round(new4_ratio, 2)},
+        {"标的组": "卫星仓位", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2)},
         {"标的组": "债券", "类型": "当前比例%", "成分": "债券", "比例%": round(bond_ratio, 2)},
         {"标的组": "债券", "类型": "目标比例%", "成分": "目标", "比例%": round(bond_target, 2)},
     ]
@@ -1775,70 +1777,97 @@ group1_chart = (
     alt.Chart(group1_df)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的组:N", sort=["VOO", "QQQ", "科技组合", "债券"]),
+        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "债券"]),
         xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
         y=alt.Y("比例%:Q", title="比例(%)"),
         color=alt.Color(
             "成分:N",
-            sort=["VOO", "QQQ", "科技组合", "债券", "目标"],
+            sort=["VOO", "QQQ", "卫星仓位", "债券", "目标"],
             scale=alt.Scale(
-                domain=["VOO", "QQQ", "科技组合", "债券", "目标"],
+                domain=["VOO", "QQQ", "卫星仓位", "债券", "目标"],
                 range=[theme["accent"], "#60a5fa", "#8b5cf6", "#f59e0b", "#94a3b8"],
             ),
         ),
         order=alt.Order("成分:N", sort="ascending"),
         tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f")],
     )
-    .properties(title="VOO / QQQ / 科技组合 / 债券 当前与目标对比")
+    .properties(title="核心仓位 / 卫星仓位 当前与目标对比")
 )
-st.altair_chart(_theme_altair_chart(group1_chart, theme), width="stretch")
-
 tech_denominator = avgo_ratio + nvda_ratio + googl_ratio + msft_ratio
 tech_split_df = pd.DataFrame(
     [
         {
             "标的": "AVGO",
-            "类型": "当前占科技组合%",
+            "类型": "当前占卫星仓位%",
             "比例%": round((avgo_ratio / tech_denominator * 100.0) if tech_denominator > 0 else 0.0, 2),
+            "浮盈亏(CNY)": round(pnl_cny_by_symbol.get("AVGO", 0.0), 2),
+            "浮盈亏标签": f"¥ {pnl_cny_by_symbol.get('AVGO', 0.0):+,.0f}",
         },
-        {"标的": "AVGO", "类型": "目标占科技组合%", "比例%": 40.0},
+        {"标的": "AVGO", "类型": "目标占卫星仓位%", "比例%": 40.0, "浮盈亏(CNY)": None, "浮盈亏标签": ""},
         {
             "标的": "NVDA",
-            "类型": "当前占科技组合%",
+            "类型": "当前占卫星仓位%",
             "比例%": round((nvda_ratio / tech_denominator * 100.0) if tech_denominator > 0 else 0.0, 2),
+            "浮盈亏(CNY)": round(pnl_cny_by_symbol.get("NVDA", 0.0), 2),
+            "浮盈亏标签": f"¥ {pnl_cny_by_symbol.get('NVDA', 0.0):+,.0f}",
         },
-        {"标的": "NVDA", "类型": "目标占科技组合%", "比例%": 20.0},
+        {"标的": "NVDA", "类型": "目标占卫星仓位%", "比例%": 20.0, "浮盈亏(CNY)": None, "浮盈亏标签": ""},
         {
             "标的": "GOOGL",
-            "类型": "当前占科技组合%",
+            "类型": "当前占卫星仓位%",
             "比例%": round((googl_ratio / tech_denominator * 100.0) if tech_denominator > 0 else 0.0, 2),
+            "浮盈亏(CNY)": round(pnl_cny_by_symbol.get("GOOGL", 0.0), 2),
+            "浮盈亏标签": f"¥ {pnl_cny_by_symbol.get('GOOGL', 0.0):+,.0f}",
         },
-        {"标的": "GOOGL", "类型": "目标占科技组合%", "比例%": 20.0},
+        {"标的": "GOOGL", "类型": "目标占卫星仓位%", "比例%": 20.0, "浮盈亏(CNY)": None, "浮盈亏标签": ""},
         {
             "标的": "MSFT",
-            "类型": "当前占科技组合%",
+            "类型": "当前占卫星仓位%",
             "比例%": round((msft_ratio / tech_denominator * 100.0) if tech_denominator > 0 else 0.0, 2),
+            "浮盈亏(CNY)": round(pnl_cny_by_symbol.get("MSFT", 0.0), 2),
+            "浮盈亏标签": f"¥ {pnl_cny_by_symbol.get('MSFT', 0.0):+,.0f}",
         },
-        {"标的": "MSFT", "类型": "目标占科技组合%", "比例%": 20.0},
+        {"标的": "MSFT", "类型": "目标占卫星仓位%", "比例%": 20.0, "浮盈亏(CNY)": None, "浮盈亏标签": ""},
     ]
 )
-tech_split_chart = (
-    alt.Chart(tech_split_df)
+tech_split_base = alt.Chart(tech_split_df)
+tech_split_bars = (
+    tech_split_base
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
         x=alt.X("标的:N", sort=["AVGO", "NVDA", "GOOGL", "MSFT"]),
-        xOffset=alt.XOffset("类型:N", sort=["当前占科技组合%", "目标占科技组合%"]),
+        xOffset=alt.XOffset("类型:N", sort=["当前占卫星仓位%", "目标占卫星仓位%"]),
         y=alt.Y("比例%:Q", title="比例(%)"),
         color=alt.Color(
             "类型:N",
-            sort=["当前占科技组合%", "目标占科技组合%"],
+            sort=["当前占卫星仓位%", "目标占卫星仓位%"],
             scale=alt.Scale(range=["#8b5cf6", "#94a3b8"]),
         ),
-        tooltip=["标的:N", "类型:N", alt.Tooltip("比例%:Q", format=".2f")],
+        tooltip=[
+            "标的:N",
+            "类型:N",
+            alt.Tooltip("比例%:Q", format=".2f"),
+            alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"),
+        ],
     )
-    .properties(title="科技组合内部占比（目标：AVGO/NVDA/GOOGL/MSFT = 4:2:2:2）")
+)
+tech_pnl_labels = (
+    alt.Chart(tech_split_df[tech_split_df["类型"] == "当前占卫星仓位%"])
+    .mark_text(dy=-8, fontWeight=700, fontSize=12)
+    .encode(
+        x=alt.X("标的:N", sort=["AVGO", "NVDA", "GOOGL", "MSFT"]),
+        xOffset=alt.XOffset("类型:N", sort=["当前占卫星仓位%", "目标占卫星仓位%"]),
+        y=alt.Y("比例%:Q"),
+        text=alt.Text("浮盈亏标签:N"),
+        color=alt.value(theme["text"]),
+    )
+)
+tech_split_chart = (
+    (tech_split_bars + tech_pnl_labels)
+    .properties(title="卫星仓位内部占比与浮盈亏（目标：AVGO/NVDA/GOOGL/MSFT = 4:2:2:2）")
 )
 st.altair_chart(_theme_altair_chart(tech_split_chart, theme), width="stretch")
+st.altair_chart(_theme_altair_chart(group1_chart, theme), width="stretch")
 
 hs300_ratio = (value_cny_by_symbol.get("001015", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 zz500_ratio = (value_cny_by_symbol.get("007994", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
