@@ -1773,7 +1773,7 @@ satellite_card_html = (
     f"<div class='daily-card' style='--daily-color:{satellite_daily_color};'>"
     "<div class='daily-card-title'>卫星仓位</div>"
     f"<div class='daily-card-pct'>{satellite_daily_pct:+.2f}%</div>"
-    f"<div class='daily-card-amount'>CNY {satellite_daily_change_cny:+,.2f}<br>≈ USD {satellite_daily_change_usd:+,.2f}</div>"
+    f"<div class='daily-card-amount'>USD {satellite_daily_change_usd:+,.2f}<br>≈ CNY {satellite_daily_change_cny:+,.2f}</div>"
     "</div>"
 )
 for sym, meta in _ASSET_META.items():
@@ -1839,6 +1839,33 @@ pnl_chart = (
     .properties(title="核心仓位浮盈亏（不含卫星仓位，折合CNY）")
 )
 st.altair_chart(_theme_altair_chart(pnl_chart, theme), width="stretch")
+
+satellite_pnl_chart_df = pd.DataFrame(
+    [
+        {
+            "标的": sym,
+            "浮盈亏(CNY)": round(pnl_cny_by_symbol.get(sym, 0.0), 2),
+            "方向": "盈利" if pnl_cny_by_symbol.get(sym, 0.0) >= 0 else "亏损",
+        }
+        for sym in _SATELLITE_SYMBOLS
+    ]
+)
+satellite_pnl_chart = (
+    alt.Chart(satellite_pnl_chart_df)
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+    .encode(
+        x=alt.X("标的:N", sort=list(_SATELLITE_SYMBOLS)),
+        y=alt.Y("浮盈亏(CNY):Q"),
+        color=alt.Color(
+            "方向:N",
+            scale=alt.Scale(domain=["盈利", "亏损"], range=["#16a34a", "#dc2626"]),
+            legend=None,
+        ),
+        tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
+    )
+    .properties(title="卫星仓位浮盈亏（折合CNY）")
+)
+st.altair_chart(_theme_altair_chart(satellite_pnl_chart, theme), width="stretch")
 
 usd_symbols = ("VOO", *_SATELLITE_SYMBOLS, "TLT", "IEI")
 cny_symbols = ("001015", "007994")
@@ -1948,24 +1975,12 @@ tech_split_bars = (
             "标的:N",
             "类型:N",
             alt.Tooltip("比例%:Q", format=".2f"),
-            alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"),
         ],
     )
 )
-tech_pnl_labels = (
-    alt.Chart(tech_split_df[tech_split_df["类型"] == "当前占卫星仓位%"])
-    .mark_text(dy=-8, fontWeight=700, fontSize=12)
-    .encode(
-        x=alt.X("标的:N", sort=["AVGO", "NVDA", "GOOGL", "MSFT"]),
-        xOffset=alt.XOffset("类型:N", sort=["当前占卫星仓位%", "目标占卫星仓位%"]),
-        y=alt.Y("比例%:Q"),
-        text=alt.Text("浮盈亏标签:N"),
-        color=alt.value(theme["text"]),
-    )
-)
 tech_split_chart = (
-    (tech_split_bars + tech_pnl_labels)
-    .properties(title="卫星仓位内部占比与浮盈亏（目标：AVGO/NVDA/GOOGL/MSFT = 3:2:3:2）")
+    tech_split_bars
+    .properties(title="卫星仓位内部占比（目标：AVGO/NVDA/GOOGL/MSFT = 3:2:3:2）")
 )
 st.altair_chart(_theme_altair_chart(tech_split_chart, theme), width="stretch")
 st.altair_chart(_theme_altair_chart(group1_chart, theme), width="stretch")
