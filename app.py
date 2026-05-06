@@ -876,10 +876,46 @@ def _fetch_sina_cn_price_change(list_code: str) -> tuple[float, float] | None:
         return None
 
 
-def _fetch_fund_price_change(code: str) -> tuple[float, float] | None:
-    """东方财富基金估值：返回(最新估值, 估算涨跌幅%)。"""
+def _fetch_fund_nav_price_change(code: str) -> tuple[float, float] | None:
+    """东方财富历史净值：返回(最新确认单位净值, 日增长率%)。"""
+    url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=1"
+    r = requests.get(
+        url,
+        timeout=_HTTP_TIMEOUT,
+        headers={
+            **_REQUEST_HEADERS,
+            "Referer": "https://fundf10.eastmoney.com/",
+        },
+    )
+    text = r.text
+    rows = re.findall(
+        r"<tr>\s*<td>([^<]+)</td>\s*<td[^>]*>([^<]+)</td>\s*<td[^>]*>[^<]*</td>\s*<td[^>]*>([^<]+)</td>",
+        text,
+    )
+    if not rows:
+        return None
+    _, nav, daily_pct = rows[0]
+    try:
+        price = float(nav)
+        change_pct = float(daily_pct.strip().rstrip("%"))
+    except (TypeError, ValueError):
+        return None
+    if price <= 0:
+        return None
+    return price, change_pct
+
+
+def _fetch_fund_estimated_price_change(code: str) -> tuple[float, float] | None:
+    """东方财富基金估值：返回(盘中估值, 估算涨跌幅%)。仅作兜底。"""
     url = f"https://fundgz.1234567.com.cn/js/{code}.js"
-    r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
+    r = requests.get(
+        url,
+        timeout=_HTTP_TIMEOUT,
+        headers={
+            **_REQUEST_HEADERS,
+            "Referer": "https://fund.eastmoney.com/",
+        },
+    )
     text = r.text.strip()
     m = re.search(r"\((\{.*\})\)", text)
     if not m:
@@ -896,6 +932,21 @@ def _fetch_fund_price_change(code: str) -> tuple[float, float] | None:
     if price <= 0:
         return None
     return price, change_pct
+
+
+def _is_cn_market_open(now: datetime | None = None) -> bool:
+    current = now or datetime.now(_TZ_SHANGHAI)
+    if current.weekday() >= 5:
+        return False
+    minutes = current.hour * 60 + current.minute
+    return (9 * 60 + 30 <= minutes <= 11 * 60 + 30) or (13 * 60 <= minutes <= 15 * 60)
+
+
+def _fetch_fund_price_change(code: str) -> tuple[float, float] | None:
+    """基金展示口径：A股交易时段用盘中估算，非交易时段用最新确认净值。"""
+    if _is_cn_market_open():
+        return _fetch_fund_estimated_price_change(code) or _fetch_fund_nav_price_change(code)
+    return _fetch_fund_nav_price_change(code) or _fetch_fund_estimated_price_change(code)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
