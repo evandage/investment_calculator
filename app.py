@@ -876,8 +876,8 @@ def _fetch_sina_cn_price_change(list_code: str) -> tuple[float, float] | None:
         return None
 
 
-def _fetch_fund_nav_price_change(code: str) -> tuple[float, float] | None:
-    """东方财富历史净值：返回(最新确认单位净值, 日增长率%)。"""
+def _fetch_fund_nav_price_change(code: str) -> tuple[float, float, str] | None:
+    """东方财富历史净值：返回(最新确认单位净值, 日增长率%, 净值日期)。"""
     url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=1"
     r = requests.get(
         url,
@@ -894,7 +894,7 @@ def _fetch_fund_nav_price_change(code: str) -> tuple[float, float] | None:
     )
     if not rows:
         return None
-    _, nav, daily_pct = rows[0]
+    nav_date, nav, daily_pct = rows[0]
     try:
         price = float(nav)
         change_pct = float(daily_pct.strip().rstrip("%"))
@@ -902,11 +902,11 @@ def _fetch_fund_nav_price_change(code: str) -> tuple[float, float] | None:
         return None
     if price <= 0:
         return None
-    return price, change_pct
+    return price, change_pct, nav_date
 
 
-def _fetch_fund_estimated_price_change(code: str) -> tuple[float, float] | None:
-    """东方财富基金估值：返回(盘中估值, 估算涨跌幅%)。仅作兜底。"""
+def _fetch_fund_estimated_price_change(code: str) -> tuple[float, float, str] | None:
+    """东方财富基金估值：返回(盘中/收盘估值, 估算涨跌幅%, 估值时间)。仅作兜底。"""
     url = f"https://fundgz.1234567.com.cn/js/{code}.js"
     r = requests.get(
         url,
@@ -927,11 +927,12 @@ def _fetch_fund_estimated_price_change(code: str) -> tuple[float, float] | None:
     try:
         price = float(obj.get("gsz") or obj.get("dwjz") or 0.0)
         change_pct = float(obj.get("gszzl") or 0.0)
+        gztime = str(obj.get("gztime") or "")
     except (TypeError, ValueError):
         return None
     if price <= 0:
         return None
-    return price, change_pct
+    return price, change_pct, gztime
 
 
 def _is_cn_market_open(now: datetime | None = None) -> bool:
@@ -942,11 +943,31 @@ def _is_cn_market_open(now: datetime | None = None) -> bool:
     return (9 * 60 + 30 <= minutes <= 11 * 60 + 30) or (13 * 60 <= minutes <= 15 * 60)
 
 
-def _fetch_fund_price_change(code: str) -> tuple[float, float] | None:
-    """基金展示口径：A股交易时段用盘中估算，非交易时段用最新确认净值。"""
-    if _is_cn_market_open():
-        return _fetch_fund_estimated_price_change(code) or _fetch_fund_nav_price_change(code)
-    return _fetch_fund_nav_price_change(code) or _fetch_fund_estimated_price_change(code)
+def _fetch_fund_price_change(code: str) -> tuple[float, float, str] | None:
+    """基金展示口径：交易中用估算；收盘后当日净值未披露前继续用估算。"""
+    current = datetime.now(_TZ_SHANGHAI)
+    today = current.strftime("%Y-%m-%d")
+    nav = _fetch_fund_nav_price_change(code)
+    estimate = _fetch_fund_estimated_price_change(code)
+
+    if _is_cn_market_open(current):
+        if estimate is not None:
+            return estimate[0], estimate[1], "东财基金估算"
+        if nav is not None:
+            return nav[0], nav[1], f"东财确认净值({nav[2]})"
+        return None
+
+    if nav is not None and nav[2] >= today:
+        return nav[0], nav[1], f"东财确认净值({nav[2]})"
+
+    if estimate is not None and estimate[2].startswith(today):
+        return estimate[0], estimate[1], "东财收盘估算"
+
+    if nav is not None:
+        return nav[0], nav[1], f"东财确认净值({nav[2]})"
+    if estimate is not None:
+        return estimate[0], estimate[1], "东财基金估算"
+    return None
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -983,10 +1004,10 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
         try:
             res = _fetch_fund_price_change(_FUND_CODES[sym])
             if res is not None:
-                p, change_pct = res
+                p, change_pct, source = res
                 out[sym] = p
                 daily_change_pct_by_symbol[sym] = change_pct
-                source_by_symbol[sym] = "东财基金估值"
+                source_by_symbol[sym] = source
         except Exception:
             pass
 
