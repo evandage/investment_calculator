@@ -2083,7 +2083,7 @@ group1_chart = (
             sort=["VOO", "QQQ", "卫星仓位", "债券", "现金", "目标"],
             scale=alt.Scale(
                 domain=["VOO", "QQQ", "卫星仓位", "债券", "现金", "目标"],
-                range=[theme["accent"], "#0ea5e9", "#8b5cf6", "#f59e0b", "#64748b", "#94a3b8"],
+                range=["#2563eb", "#06b6d4", "#a855f7", "#f59e0b", "#64748b", "#94a3b8"],
             ),
         ),
         order=alt.Order("成分:N", sort="ascending"),
