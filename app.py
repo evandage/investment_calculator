@@ -1976,37 +1976,55 @@ pnl_chart_df = pd.DataFrame(
     ]
 ).sort_values("浮盈亏(CNY)", ascending=False)
 pnl_chart_base = alt.Chart(pnl_chart_df)
-pnl_chart_bars = (
+pnl_chart_positive_bars = (
     pnl_chart_base
     .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
+    .transform_filter(alt.datum["浮盈亏(CNY)"] >= 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None),
+        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=240)),
         x=alt.X("浮盈亏(CNY):Q", title="浮盈亏(CNY)"),
-        color=alt.Color(
-            "方向:N",
-            scale=alt.Scale(domain=["盈利", "亏损"], range=["#059669", "#e11d48"]),
-            legend=None,
-        ),
+        color=alt.value("#059669"),
         tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
     )
 )
-pnl_chart_labels = (
+pnl_chart_negative_bars = (
+    pnl_chart_base
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusBottomLeft=6)
+    .transform_filter(alt.datum["浮盈亏(CNY)"] < 0)
+    .encode(
+        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=240)),
+        x=alt.X("浮盈亏(CNY):Q", title="浮盈亏(CNY)"),
+        color=alt.value("#e11d48"),
+        tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
+    )
+)
+pnl_chart_positive_labels = (
     pnl_chart_base
     .mark_text(align="left", baseline="middle", dx=8, fontSize=13, fontWeight=700)
+    .transform_filter(alt.datum["浮盈亏(CNY)"] >= 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None),
+        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=240)),
         x=alt.X("浮盈亏(CNY):Q"),
         text="盈亏标签:N",
-        color=alt.Color(
-            "方向:N",
-            scale=alt.Scale(domain=["盈利", "亏损"], range=["#047857", "#be123c"]),
-            legend=None,
-        ),
+        color=alt.value("#047857"),
+    )
+)
+pnl_chart_negative_labels = (
+    pnl_chart_base
+    .mark_text(align="right", baseline="middle", dx=-8, fontSize=13, fontWeight=700)
+    .transform_filter(alt.datum["浮盈亏(CNY)"] < 0)
+    .encode(
+        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=240)),
+        x=alt.X("浮盈亏(CNY):Q"),
+        text="盈亏标签:N",
+        color=alt.value("#be123c"),
     )
 )
 pnl_chart = (
-    (pnl_chart_bars + pnl_chart_labels)
+    (pnl_chart_positive_bars + pnl_chart_negative_bars + pnl_chart_positive_labels + pnl_chart_negative_labels)
     .properties(title="核心仓位浮盈亏排名（不含卫星仓位，折合CNY）", height=max(220, 34 * len(pnl_chart_df)))
+    .configure_view(stroke=None)
+    .configure_axisY(labelLimit=240, labelPadding=8)
 )
 st.altair_chart(_theme_altair_chart(pnl_chart, theme), width="stretch")
 
@@ -2026,37 +2044,60 @@ satellite_pnl_chart_df = pd.DataFrame(
     ]
 ).sort_values("浮盈亏(USD)", ascending=False)
 satellite_pnl_chart_base = alt.Chart(satellite_pnl_chart_df)
-satellite_pnl_chart_bars = (
+satellite_pnl_chart_positive_bars = (
     satellite_pnl_chart_base
     .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
+    .transform_filter(alt.datum["浮盈亏(USD)"] >= 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None),
+        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=160)),
         x=alt.X("浮盈亏(USD):Q", title="浮盈亏(USD)"),
-        color=alt.Color(
-            "方向:N",
-            scale=alt.Scale(domain=["盈利", "亏损"], range=["#059669", "#e11d48"]),
-            legend=None,
-        ),
+        color=alt.value("#059669"),
         tooltip=["标的:N", alt.Tooltip("浮盈亏(USD):Q", format=",.2f"), "方向:N"],
     )
 )
-satellite_pnl_chart_labels = (
+satellite_pnl_chart_negative_bars = (
+    satellite_pnl_chart_base
+    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusBottomLeft=6)
+    .transform_filter(alt.datum["浮盈亏(USD)"] < 0)
+    .encode(
+        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=160)),
+        x=alt.X("浮盈亏(USD):Q", title="浮盈亏(USD)"),
+        color=alt.value("#e11d48"),
+        tooltip=["标的:N", alt.Tooltip("浮盈亏(USD):Q", format=",.2f"), "方向:N"],
+    )
+)
+satellite_pnl_chart_positive_labels = (
     satellite_pnl_chart_base
     .mark_text(align="left", baseline="middle", dx=8, fontSize=13, fontWeight=700)
+    .transform_filter(alt.datum["浮盈亏(USD)"] >= 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None),
+        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=160)),
         x=alt.X("浮盈亏(USD):Q"),
         text="盈亏标签:N",
-        color=alt.Color(
-            "方向:N",
-            scale=alt.Scale(domain=["盈利", "亏损"], range=["#047857", "#be123c"]),
-            legend=None,
-        ),
+        color=alt.value("#047857"),
+    )
+)
+satellite_pnl_chart_negative_labels = (
+    satellite_pnl_chart_base
+    .mark_text(align="right", baseline="middle", dx=-8, fontSize=13, fontWeight=700)
+    .transform_filter(alt.datum["浮盈亏(USD)"] < 0)
+    .encode(
+        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=160)),
+        x=alt.X("浮盈亏(USD):Q"),
+        text="盈亏标签:N",
+        color=alt.value("#be123c"),
     )
 )
 satellite_pnl_chart = (
-    (satellite_pnl_chart_bars + satellite_pnl_chart_labels)
+    (
+        satellite_pnl_chart_positive_bars
+        + satellite_pnl_chart_negative_bars
+        + satellite_pnl_chart_positive_labels
+        + satellite_pnl_chart_negative_labels
+    )
     .properties(title="卫星仓位浮盈亏排名（USD）", height=max(220, 34 * len(satellite_pnl_chart_df)))
+    .configure_view(stroke=None)
+    .configure_axisY(labelLimit=160, labelPadding=8)
 )
 st.altair_chart(_theme_altair_chart(satellite_pnl_chart, theme), width="stretch")
 
