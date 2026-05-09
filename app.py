@@ -104,15 +104,15 @@ _ASSET_META = {
 }
 _TARGET_WEIGHTS = {
     # 目标比例：
-    # 美元资产: VOO/QQQ/卫星仓位合计40%（6:3:1），债券20%（TLT/IEI各10%）
+    # 美元资产: VOO/QQQ/卫星仓位合计40%（2:1:1），债券20%（TLT/IEI各10%）
     # 人民币资产: 沪深300(001015) 20%, 中证500(007994) 20%
-    "VOO": 0.24,
-    "QQQ": 0.12,
-    "AVGO": 0.008,
-    "NVDA": 0.005333333333333333,
-    "GOOGL": 0.008,
-    "MSFT": 0.005333333333333333,
-    "ISRG": 0.013333333333333334,
+    "VOO": 0.20,
+    "QQQ": 0.10,
+    "AVGO": 0.02,
+    "NVDA": 0.013333333333333334,
+    "GOOGL": 0.02,
+    "MSFT": 0.013333333333333334,
+    "ISRG": 0.03333333333333333,
     "TLT": 0.10,
     "IEI": 0.10,
     "001015": 0.20,
@@ -2097,36 +2097,6 @@ tech_split_chart = (
 st.altair_chart(_theme_altair_chart(tech_split_chart, theme), width="stretch")
 st.altair_chart(_theme_altair_chart(group1_chart, theme), width="stretch")
 
-hs300_ratio = (value_cny_by_symbol.get("001015", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
-zz500_ratio = (value_cny_by_symbol.get("007994", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
-hs300_target = _TARGET_WEIGHTS["001015"] * 100.0
-zz500_target = _TARGET_WEIGHTS["007994"] * 100.0
-
-group2_df = pd.DataFrame(
-    [
-        {"标的组": "沪深300", "比例%": round(hs300_ratio, 2)},
-        {"标的组": "中证500", "比例%": round(zz500_ratio, 2)},
-    ]
-)
-group2_chart = (
-    alt.Chart(group2_df)
-    .mark_arc(innerRadius=42)
-    .encode(
-        theta=alt.Theta("比例%:Q"),
-        color=alt.Color(
-            "标的组:N",
-            sort=["沪深300", "中证500"],
-            scale=alt.Scale(range=[theme["accent"], "#60a5fa"]),
-        ),
-        tooltip=["标的组:N", alt.Tooltip("比例%:Q", format=".2f")],
-    )
-    .properties(title="沪深300 / 中证500 当前占比", width="container", height=260)
-)
-chart_col1, chart_col2 = st.columns(2)
-
-with chart_col1:
-    st.altair_chart(_theme_altair_chart(group2_chart, theme), width="stretch")
-
 usd_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in usd_symbols) + cash_usd * fx
 cny_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in cny_symbols) + cash_cny
 currency_denominator = total_assets_cny if total_assets_cny > 0 else 0.0
@@ -2155,8 +2125,7 @@ group3_chart = (
     )
     .properties(title="美元资产 / 人民币资产当前占比", width="container", height=260)
 )
-with chart_col2:
-    st.altair_chart(_theme_altair_chart(group3_chart, theme), width="stretch")
+st.altair_chart(_theme_altair_chart(group3_chart, theme), width="stretch")
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📦 我的持仓")
@@ -2262,6 +2231,67 @@ else:
             "优先级": st.column_config.NumberColumn("优先级", format="%d"),
             "目标缺口(CNY)": st.column_config.NumberColumn("目标缺口(CNY)", format="%.2f"),
             "按当前价需买": st.column_config.NumberColumn("按当前价需买", format="%.3f"),
+        },
+    )
+
+    st.markdown("#### 卫星仓位建仓补齐金额")
+    satellite_active = set(_SATELLITE_SYMBOLS)
+    satellite_post_total_cny = total_assets_cny
+    for _ in range(len(_SATELLITE_SYMBOLS) + 1):
+        active_weight = sum(_TARGET_WEIGHTS[sym] for sym in satellite_active)
+        active_current_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in satellite_active)
+        if active_weight <= 0 or active_weight >= 1:
+            break
+        solved_total_cny = (total_assets_cny - active_current_cny) / (1.0 - active_weight)
+        next_active = {
+            sym
+            for sym in _SATELLITE_SYMBOLS
+            if (_TARGET_WEIGHTS[sym] * solved_total_cny) > value_cny_by_symbol.get(sym, 0.0)
+        }
+        satellite_post_total_cny = solved_total_cny
+        if next_active == satellite_active:
+            break
+        satellite_active = next_active
+
+    satellite_build_rows: list[dict[str, Any]] = []
+    satellite_total_buy_cny = 0.0
+    satellite_total_buy_usd = 0.0
+    for sym in _SATELLITE_SYMBOLS:
+        cur_cny = value_cny_by_symbol.get(sym, 0.0)
+        target_cny_after_buy = _TARGET_WEIGHTS[sym] * satellite_post_total_cny
+        buy_cny = max(0.0, target_cny_after_buy - cur_cny)
+        buy_usd = (buy_cny / fx) if fx > 0 else 0.0
+        px = float(prices_now.get(sym, 0.0))
+        buy_shares = (buy_usd / px) if px > 0 else 0.0
+        target_pct_after_buy = (
+            (target_cny_after_buy / satellite_post_total_cny * 100.0) if satellite_post_total_cny > 0 else 0.0
+        )
+        satellite_total_buy_cny += buy_cny
+        satellite_total_buy_usd += buy_usd
+        satellite_build_rows.append(
+            {
+                "标的": sym,
+                "目标占总仓位%": round(target_pct_after_buy, 4),
+                "当前市值(USD)": round((cur_cny / fx) if fx > 0 else 0.0, 2),
+                "需买入(USD)": round(buy_usd, 2),
+                "约需股数": round(buy_shares, 4),
+                "当前价(USD)": round(px, 2),
+            }
+        )
+    st.caption(
+        f"按只补卫星仓位估算：合计需买入约 USD {satellite_total_buy_usd:,.2f}"
+        f"（≈ CNY {satellite_total_buy_cny:,.2f}）。"
+    )
+    st.dataframe(
+        pd.DataFrame(satellite_build_rows),
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "目标占总仓位%": st.column_config.NumberColumn("目标占总仓位%", format="%.4f%%"),
+            "当前市值(USD)": st.column_config.NumberColumn("当前市值(USD)", format="%.2f"),
+            "需买入(USD)": st.column_config.NumberColumn("需买入(USD)", format="%.2f"),
+            "约需股数": st.column_config.NumberColumn("约需股数", format="%.4f"),
+            "当前价(USD)": st.column_config.NumberColumn("当前价(USD)", format="%.2f"),
         },
     )
 
