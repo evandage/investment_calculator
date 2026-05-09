@@ -1968,26 +1968,45 @@ pnl_chart_df = pd.DataFrame(
         {
             "标的": _ASSET_META[sym]["label"],
             "浮盈亏(CNY)": round(pnl_cny_by_symbol[sym], 2),
+            "盈亏标签": f"¥ {pnl_cny_by_symbol[sym]:+,.0f}",
             "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
         }
         for sym in _ASSET_META
         if sym not in excluded_core_pnl_symbols
     ]
-)
-pnl_chart = (
-    alt.Chart(pnl_chart_df)
-    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+).sort_values("浮盈亏(CNY)", ascending=False)
+pnl_chart_base = alt.Chart(pnl_chart_df)
+pnl_chart_bars = (
+    pnl_chart_base
+    .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
     .encode(
-        x=alt.X("标的:N", sort=None),
-        y=alt.Y("浮盈亏(CNY):Q"),
+        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None),
+        x=alt.X("浮盈亏(CNY):Q", title="浮盈亏(CNY)"),
         color=alt.Color(
             "方向:N",
-            scale=alt.Scale(domain=["盈利", "亏损"], range=["#16a34a", "#dc2626"]),
+            scale=alt.Scale(domain=["盈利", "亏损"], range=["#059669", "#e11d48"]),
             legend=None,
         ),
         tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
     )
-    .properties(title="核心仓位浮盈亏（不含卫星仓位，折合CNY）")
+)
+pnl_chart_labels = (
+    pnl_chart_base
+    .mark_text(align="left", baseline="middle", dx=8, fontSize=13, fontWeight=700)
+    .encode(
+        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None),
+        x=alt.X("浮盈亏(CNY):Q"),
+        text="盈亏标签:N",
+        color=alt.Color(
+            "方向:N",
+            scale=alt.Scale(domain=["盈利", "亏损"], range=["#047857", "#be123c"]),
+            legend=None,
+        ),
+    )
+)
+pnl_chart = (
+    (pnl_chart_bars + pnl_chart_labels)
+    .properties(title="核心仓位浮盈亏排名（不含卫星仓位，折合CNY）", height=max(220, 34 * len(pnl_chart_df)))
 )
 st.altair_chart(_theme_altair_chart(pnl_chart, theme), width="stretch")
 
@@ -1996,6 +2015,7 @@ satellite_pnl_chart_df = pd.DataFrame(
         {
             "标的": sym,
             "浮盈亏(USD)": round(pnl_usd, 2),
+            "盈亏标签": f"$ {pnl_usd:+,.2f}",
             "方向": "盈利" if pnl_usd >= 0 else "亏损",
         }
         for sym in _SATELLITE_SYMBOLS
@@ -2004,21 +2024,39 @@ satellite_pnl_chart_df = pd.DataFrame(
             * (float(prices_now.get(sym, 0.0)) - float(holdings.get(sym, {}).get("avg_cost", 0.0)))
         ]
     ]
-)
-satellite_pnl_chart = (
-    alt.Chart(satellite_pnl_chart_df)
-    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+).sort_values("浮盈亏(USD)", ascending=False)
+satellite_pnl_chart_base = alt.Chart(satellite_pnl_chart_df)
+satellite_pnl_chart_bars = (
+    satellite_pnl_chart_base
+    .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
     .encode(
-        x=alt.X("标的:N", sort=list(_SATELLITE_SYMBOLS)),
-        y=alt.Y("浮盈亏(USD):Q"),
+        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None),
+        x=alt.X("浮盈亏(USD):Q", title="浮盈亏(USD)"),
         color=alt.Color(
             "方向:N",
-            scale=alt.Scale(domain=["盈利", "亏损"], range=["#16a34a", "#dc2626"]),
+            scale=alt.Scale(domain=["盈利", "亏损"], range=["#059669", "#e11d48"]),
             legend=None,
         ),
         tooltip=["标的:N", alt.Tooltip("浮盈亏(USD):Q", format=",.2f"), "方向:N"],
     )
-    .properties(title="卫星仓位浮盈亏（USD）")
+)
+satellite_pnl_chart_labels = (
+    satellite_pnl_chart_base
+    .mark_text(align="left", baseline="middle", dx=8, fontSize=13, fontWeight=700)
+    .encode(
+        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None),
+        x=alt.X("浮盈亏(USD):Q"),
+        text="盈亏标签:N",
+        color=alt.Color(
+            "方向:N",
+            scale=alt.Scale(domain=["盈利", "亏损"], range=["#047857", "#be123c"]),
+            legend=None,
+        ),
+    )
+)
+satellite_pnl_chart = (
+    (satellite_pnl_chart_bars + satellite_pnl_chart_labels)
+    .properties(title="卫星仓位浮盈亏排名（USD）", height=max(220, 34 * len(satellite_pnl_chart_df)))
 )
 st.altair_chart(_theme_altair_chart(satellite_pnl_chart, theme), width="stretch")
 
