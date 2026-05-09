@@ -81,6 +81,7 @@ def _yf_ticker_history(import_yf: Any, symbol: str, **kwargs: Any) -> pd.DataFra
 _EASTMONEY_US_SECID = {
     "VOO": "107.VOO",
     "QQQ": "105.QQQ",
+    "ISRG": "105.ISRG",
     "TLT": "105.TLT",
     "IEI": "105.IEI",
 }
