@@ -1995,10 +1995,14 @@ satellite_pnl_chart_df = pd.DataFrame(
     [
         {
             "标的": sym,
-            "浮盈亏(CNY)": round(pnl_cny_by_symbol.get(sym, 0.0), 2),
-            "方向": "盈利" if pnl_cny_by_symbol.get(sym, 0.0) >= 0 else "亏损",
+            "浮盈亏(USD)": round(pnl_usd, 2),
+            "方向": "盈利" if pnl_usd >= 0 else "亏损",
         }
         for sym in _SATELLITE_SYMBOLS
+        for pnl_usd in [
+            float(holdings.get(sym, {}).get("shares", 0.0))
+            * (float(prices_now.get(sym, 0.0)) - float(holdings.get(sym, {}).get("avg_cost", 0.0)))
+        ]
     ]
 )
 satellite_pnl_chart = (
@@ -2006,15 +2010,15 @@ satellite_pnl_chart = (
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
         x=alt.X("标的:N", sort=list(_SATELLITE_SYMBOLS)),
-        y=alt.Y("浮盈亏(CNY):Q"),
+        y=alt.Y("浮盈亏(USD):Q"),
         color=alt.Color(
             "方向:N",
             scale=alt.Scale(domain=["盈利", "亏损"], range=["#16a34a", "#dc2626"]),
             legend=None,
         ),
-        tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
+        tooltip=["标的:N", alt.Tooltip("浮盈亏(USD):Q", format=",.2f"), "方向:N"],
     )
-    .properties(title="卫星仓位浮盈亏（折合CNY）")
+    .properties(title="卫星仓位浮盈亏（USD）")
 )
 st.altair_chart(_theme_altair_chart(satellite_pnl_chart, theme), width="stretch")
 
