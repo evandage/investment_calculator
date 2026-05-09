@@ -2047,6 +2047,7 @@ new4_ratio = sum(satellite_ratio_by_symbol.values())
 tlt_ratio = (value_cny_by_symbol.get("TLT", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 iei_ratio = (value_cny_by_symbol.get("IEI", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 bond_ratio = (bond_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+cash_usd_ratio = (usd_extra_value_cny / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 
 voo_target = _usd_target_pct("VOO")
 qqq_target = _usd_target_pct("QQQ")
@@ -2065,6 +2066,8 @@ group1_df = pd.DataFrame(
         {"标的组": "卫星仓位", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2)},
         {"标的组": "债券", "类型": "当前比例%", "成分": "债券", "比例%": round(bond_ratio, 2)},
         {"标的组": "债券", "类型": "目标比例%", "成分": "目标", "比例%": round(bond_target, 2)},
+        {"标的组": "现金", "类型": "当前比例%", "成分": "现金", "比例%": round(cash_usd_ratio, 2)},
+        {"标的组": "现金", "类型": "目标比例%", "成分": "目标", "比例%": 0.0},
     ]
 )
 
@@ -2072,21 +2075,21 @@ group1_chart = (
     alt.Chart(group1_df)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "债券"]),
+        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "债券", "现金"]),
         xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
         y=alt.Y("比例%:Q", title="比例(%)"),
         color=alt.Color(
             "成分:N",
-            sort=["VOO", "QQQ", "卫星仓位", "债券", "目标"],
+            sort=["VOO", "QQQ", "卫星仓位", "债券", "现金", "目标"],
             scale=alt.Scale(
-                domain=["VOO", "QQQ", "卫星仓位", "债券", "目标"],
-                range=[theme["accent"], "#0ea5e9", "#8b5cf6", "#f59e0b", "#94a3b8"],
+                domain=["VOO", "QQQ", "卫星仓位", "债券", "现金", "目标"],
+                range=[theme["accent"], "#0ea5e9", "#8b5cf6", "#f59e0b", "#64748b", "#94a3b8"],
             ),
         ),
         order=alt.Order("成分:N", sort="ascending"),
         tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f")],
     )
-    .properties(title="VOO / QQQ / 卫星仓位 / 债券 当前与目标对比")
+    .properties(title="VOO / QQQ / 卫星仓位 / 债券 / 现金 当前与目标对比")
 )
 tech_denominator = sum(satellite_ratio_by_symbol.values())
 satellite_target_parts_total = sum(_SATELLITE_TARGET_PARTS.values())
