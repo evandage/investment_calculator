@@ -1638,14 +1638,6 @@ chart_board_enabled = st.sidebar.toggle(
 )
 if not chart_board_enabled:
     st.sidebar.caption("技术看板未启用：不会加载看板模块，也不会拉取看板数据。")
-fast_load_enabled = st.sidebar.toggle(
-    "快速加载（跳过慢指标）",
-    value=True,
-    key="fast_load_enabled",
-    help="默认开启：首屏跳过估值、VIX 等慢接口；近60日回撤仍会计算。",
-)
-if fast_load_enabled:
-    st.sidebar.caption("快速加载已开启：估值/VIX 使用空值或跳过，近60日回撤仍会计算。")
 
 cloud_user_id = st.sidebar.text_input(
     "用户ID（用于跨设备同步）",
@@ -2305,7 +2297,7 @@ else:
         den = 1.0 - tgt_w
         gap_cny = (num / den) if den > 0 else 0.0
         gap_usd = (gap_cny / fx) if fx > 0 else 0.0
-        q = {"pe": None} if fast_load_enabled else _fetch_us_etf_pe_drawdown(sym)
+        q = _fetch_us_etf_pe_drawdown(sym)
         pe = q.get("pe")
         dd = drawdown_pct_by_symbol.get(sym)
         dca_signal = _drawdown_dca_signal(sym, dd if isinstance(dd, (int, float)) else None)
@@ -2491,20 +2483,17 @@ else:
             save_mode = _save_user_state(cloud_user_id, holdings_apply, balances_apply)
             st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
-    if fast_load_enabled:
-        st.caption("VIX 参考已在快速加载模式下跳过。")
-    else:
-        st.markdown("#### 美股 VIX（CBOE）参考")
-        _vix_meta = _fetch_vix_meta()
-        _vix_val = float(_vix_meta["vix"])
-        _vix_chg = float(_vix_meta["change_pct"])
-        _vix_tag, _vix_note = _vix_regime(_vix_val)
-        st.markdown(
-            f"当前：`{_vix_val:.2f}`（{_vix_chg:+.2f}%）｜区间判定：**{_vix_tag}**  \n"
-            f"{_vix_note}  \n"
-            "参考区间：`<15 低波动` · `15-20 中性` · `20-30 偏高波动` · `>=30 高波动/恐慌`"
-        )
-        st.caption(f"VIX 数据源：{_vix_meta['source']}（更新时间 {_vix_meta['fetched_at']}）")
+    st.markdown("#### 美股 VIX（CBOE）参考")
+    _vix_meta = _fetch_vix_meta()
+    _vix_val = float(_vix_meta["vix"])
+    _vix_chg = float(_vix_meta["change_pct"])
+    _vix_tag, _vix_note = _vix_regime(_vix_val)
+    st.markdown(
+        f"当前：`{_vix_val:.2f}`（{_vix_chg:+.2f}%）｜区间判定：**{_vix_tag}**  \n"
+        f"{_vix_note}  \n"
+        "参考区间：`<15 低波动` · `15-20 中性` · `20-30 偏高波动` · `>=30 高波动/恐慌`"
+    )
+    st.caption(f"VIX 数据源：{_vix_meta['source']}（更新时间 {_vix_meta['fetched_at']}）")
 
 st.divider()
 
