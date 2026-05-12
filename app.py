@@ -1642,10 +1642,10 @@ fast_load_enabled = st.sidebar.toggle(
     "快速加载（跳过慢指标）",
     value=True,
     key="fast_load_enabled",
-    help="默认开启：首屏只拉现价，跳过回撤、估值、VIX 等慢接口；需要完整再平衡信号时可关闭。",
+    help="默认开启：首屏跳过估值、VIX 等慢接口；近60日回撤仍会计算。",
 )
 if fast_load_enabled:
-    st.sidebar.caption("快速加载已开启：回撤/估值/VIX 使用空值或跳过。")
+    st.sidebar.caption("快速加载已开启：估值/VIX 使用空值或跳过，近60日回撤仍会计算。")
 
 cloud_user_id = st.sidebar.text_input(
     "用户ID（用于跨设备同步）",
@@ -1835,7 +1835,7 @@ for sym, meta in _ASSET_META.items():
     total_value_cny += value_cny
     value_cny_by_symbol[sym] = value_cny
     pnl_cny_by_symbol[sym] = value_cny - cost_cny
-    row_drawdown = None if fast_load_enabled else _fetch_asset_drawdown(sym, meta)
+    row_drawdown = _fetch_asset_drawdown(sym, meta)
     drawdown_pct_by_symbol[sym] = row_drawdown
     rows.append(
         {
