@@ -2297,9 +2297,8 @@ else:
         meta = _ASSET_META[sym]
         tgt_w = (_TARGET_WEIGHTS.get(sym, 0.0) / usd_target_weight_total) if usd_target_weight_total > 0 else 0.0
         cur_cny = value_cny_by_symbol.get(sym, 0.0)
-        num = tgt_w * usd_total_cny - cur_cny
-        den = 1.0 - tgt_w
-        gap_cny = (num / den) if den > 0 else 0.0
+        target_cny = tgt_w * usd_total_cny
+        gap_cny = target_cny - cur_cny
         gap_usd = (gap_cny / fx) if fx > 0 else 0.0
         q = _fetch_us_etf_pe_drawdown(sym)
         pe = q.get("pe")
@@ -2328,7 +2327,7 @@ else:
         if dca_signal not in ("按计划观察", "暂无回撤数据"):
             note = f"{note}；回撤信号：{dca_signal}"
         px = float(prices_now.get(sym, 0.0))
-        need_units = (gap_usd / px) if px > 0 else 0.0
+        need_units = (max(0.0, gap_usd) / px) if px > 0 else 0.0
         dd_txt = f"{float(dd):.2f}%" if isinstance(dd, (int, float)) else "N/A"
         rebalance_rows.append(
             {
@@ -2367,56 +2366,69 @@ else:
     )
 
     st.markdown("#### 卫星仓位建仓补齐金额")
-    satellite_active = set(_SATELLITE_SYMBOLS)
-    satellite_post_total_cny = usd_total_cny
-    for _ in range(len(_SATELLITE_SYMBOLS) + 1):
-        active_weight = (
-            sum(_TARGET_WEIGHTS[sym] for sym in satellite_active) / usd_target_weight_total
-            if usd_target_weight_total > 0 else 0.0
+    satellite_target_total_w = (
+        sum(_TARGET_WEIGHTS[sym] for sym in _SATELLITE_SYMBOLS) / usd_target_weight_total
+        if usd_target_weight_total > 0
+        else 0.0
+    )
+    satellite_target_total_cny = satellite_target_total_w * usd_total_cny
+    satellite_current_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in _SATELLITE_SYMBOLS)
+    satellite_total_gap_cny = max(0.0, satellite_target_total_cny - satellite_current_total_cny)
+    satellite_parts_total = sum(_SATELLITE_TARGET_PARTS.values())
+    satellite_target_cny_by_symbol = {
+        sym: (
+            satellite_target_total_cny * (_SATELLITE_TARGET_PARTS[sym] / satellite_parts_total)
+            if satellite_parts_total > 0
+            else 0.0
         )
-        active_current_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in satellite_active)
-        if active_weight <= 0 or active_weight >= 1:
-            break
-        solved_total_cny = (usd_total_cny - active_current_cny) / (1.0 - active_weight)
-        next_active = {
-            sym
-            for sym in _SATELLITE_SYMBOLS
-            if ((_TARGET_WEIGHTS[sym] / usd_target_weight_total) * solved_total_cny) > value_cny_by_symbol.get(sym, 0.0)
-        }
-        satellite_post_total_cny = solved_total_cny
-        if next_active == satellite_active:
-            break
-        satellite_active = next_active
-
+        for sym in _SATELLITE_SYMBOLS
+    }
+    satellite_raw_deficit_cny_by_symbol = {
+        sym: max(0.0, satellite_target_cny_by_symbol[sym] - value_cny_by_symbol.get(sym, 0.0))
+        for sym in _SATELLITE_SYMBOLS
+    }
+    satellite_raw_deficit_total_cny = sum(satellite_raw_deficit_cny_by_symbol.values())
     satellite_build_rows: list[dict[str, Any]] = []
     satellite_total_buy_cny = 0.0
     satellite_total_buy_usd = 0.0
     for sym in _SATELLITE_SYMBOLS:
         cur_cny = value_cny_by_symbol.get(sym, 0.0)
-        satellite_target_w = (_TARGET_WEIGHTS[sym] / usd_target_weight_total) if usd_target_weight_total > 0 else 0.0
-        target_cny_after_buy = satellite_target_w * satellite_post_total_cny
-        buy_cny = max(0.0, target_cny_after_buy - cur_cny)
+        target_cny = satellite_target_cny_by_symbol[sym]
+        raw_deficit_cny = satellite_raw_deficit_cny_by_symbol[sym]
+        buy_cny = (
+            satellite_total_gap_cny * (raw_deficit_cny / satellite_raw_deficit_total_cny)
+            if satellite_raw_deficit_total_cny > 0
+            else 0.0
+        )
         buy_usd = (buy_cny / fx) if fx > 0 else 0.0
         px = float(prices_now.get(sym, 0.0))
         buy_shares = (buy_usd / px) if px > 0 else 0.0
-        target_pct_after_buy = (
-            (target_cny_after_buy / satellite_post_total_cny * 100.0) if satellite_post_total_cny > 0 else 0.0
+        target_pct_usd_assets = (target_cny / usd_total_cny * 100.0) if usd_total_cny > 0 else 0.0
+        target_pct_satellite = (
+            (_SATELLITE_TARGET_PARTS[sym] / satellite_parts_total * 100.0)
+            if satellite_parts_total > 0
+            else 0.0
         )
         satellite_total_buy_cny += buy_cny
         satellite_total_buy_usd += buy_usd
         satellite_build_rows.append(
             {
                 "标的": sym,
-                "目标占美元资产%": round(target_pct_after_buy, 4),
+                "目标占美元资产%": round(target_pct_usd_assets, 4),
+                "目标占卫星仓位%": round(target_pct_satellite, 2),
                 "当前市值(USD)": round((cur_cny / fx) if fx > 0 else 0.0, 2),
-                "需买入(USD)": round(buy_usd, 2),
+                "目标市值(USD)": round((target_cny / fx) if fx > 0 else 0.0, 2),
+                "内部缺口(USD)": round((raw_deficit_cny / fx) if fx > 0 else 0.0, 2),
+                "建议买入(USD)": round(buy_usd, 2),
                 "约需股数": round(buy_shares, 4),
                 "当前价(USD)": round(px, 2),
             }
         )
     st.caption(
-        f"按只补卫星仓位估算：合计需买入约 USD {satellite_total_buy_usd:,.2f}"
-        f"（≈ CNY {satellite_total_buy_cny:,.2f}）。"
+        f"按当前美元资产总额固定计算：卫星仓位目标 {satellite_target_total_w * 100.0:.2f}%"
+        f"（目标 USD {(satellite_target_total_cny / fx) if fx > 0 else 0.0:,.2f}，"
+        f"当前 USD {(satellite_current_total_cny / fx) if fx > 0 else 0.0:,.2f}），"
+        f"合计建议买入 USD {satellite_total_buy_usd:,.2f}（≈ CNY {satellite_total_buy_cny:,.2f}）。"
     )
     st.dataframe(
         pd.DataFrame(satellite_build_rows),
@@ -2424,8 +2436,11 @@ else:
         hide_index=True,
         column_config={
             "目标占美元资产%": st.column_config.NumberColumn("目标占美元资产%", format="%.4f%%"),
+            "目标占卫星仓位%": st.column_config.NumberColumn("目标占卫星仓位%", format="%.2f%%"),
             "当前市值(USD)": st.column_config.NumberColumn("当前市值(USD)", format="%.2f"),
-            "需买入(USD)": st.column_config.NumberColumn("需买入(USD)", format="%.2f"),
+            "目标市值(USD)": st.column_config.NumberColumn("目标市值(USD)", format="%.2f"),
+            "内部缺口(USD)": st.column_config.NumberColumn("内部缺口(USD)", format="%.2f"),
+            "建议买入(USD)": st.column_config.NumberColumn("建议买入(USD)", format="%.2f"),
             "约需股数": st.column_config.NumberColumn("约需股数", format="%.4f"),
             "当前价(USD)": st.column_config.NumberColumn("当前价(USD)", format="%.2f"),
         },
