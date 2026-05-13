@@ -1282,11 +1282,11 @@ def _load_balances() -> dict[str, float]:
     except (TypeError, ValueError):
         out["cash_cny"] = 0.0
     try:
-        out["realized_usd"] = max(0.0, float(data.get("realized_usd", 0.0)))
+        out["realized_usd"] = float(data.get("realized_usd", 0.0))
     except (TypeError, ValueError):
         out["realized_usd"] = 0.0
     try:
-        out["realized_cny"] = max(0.0, float(data.get("realized_cny", 0.0)))
+        out["realized_cny"] = float(data.get("realized_cny", 0.0))
     except (TypeError, ValueError):
         out["realized_cny"] = 0.0
     # 兼容旧版按标的保存的“结转余额”
@@ -1300,9 +1300,11 @@ def _load_balances() -> dict[str, float]:
 
 
 def _save_balances(balances: dict[str, float]) -> None:
-    payload = {sym: float(max(0.0, v)) for sym, v in _default_balances().items()}
-    for sym in payload:
-        payload[sym] = float(max(0.0, balances.get(sym, 0.0)))
+    payload = _default_balances()
+    payload["cash_usd"] = float(max(0.0, balances.get("cash_usd", 0.0)))
+    payload["cash_cny"] = float(max(0.0, balances.get("cash_cny", 0.0)))
+    payload["realized_usd"] = float(balances.get("realized_usd", 0.0))
+    payload["realized_cny"] = float(balances.get("realized_cny", 0.0))
     _BALANCE_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -1373,11 +1375,11 @@ def _normalize_balances(raw: Any) -> dict[str, float]:
     except (TypeError, ValueError):
         balances["cash_cny"] = 0.0
     try:
-        balances["realized_usd"] = max(0.0, float(raw.get("realized_usd", 0.0)))
+        balances["realized_usd"] = float(raw.get("realized_usd", 0.0))
     except (TypeError, ValueError):
         balances["realized_usd"] = 0.0
     try:
-        balances["realized_cny"] = max(0.0, float(raw.get("realized_cny", 0.0)))
+        balances["realized_cny"] = float(raw.get("realized_cny", 0.0))
     except (TypeError, ValueError):
         balances["realized_cny"] = 0.0
     # 兼容旧版字段
@@ -1768,15 +1770,13 @@ def _render_holdings_editor() -> None:
                     holdings[sym]["avg_cost"] = avg_cost
             st.markdown("#### 已变现与现金余额（会保存）")
             balances_for_view["realized_usd"] = st.number_input(
-                "已变现美元（USD）",
-                min_value=0.0,
+                "已变现浮盈亏美元（USD）",
                 value=float(balances_for_view.get("realized_usd", 0.0)),
                 step=0.01,
                 key="edit_balance_realized_usd",
             )
             balances_for_view["realized_cny"] = st.number_input(
-                "已变现人民币（CNY）",
-                min_value=0.0,
+                "已变现浮盈亏人民币（CNY）",
                 value=float(balances_for_view.get("realized_cny", 0.0)),
                 step=0.01,
                 key="edit_balance_realized_cny",
@@ -2258,7 +2258,7 @@ asset_col_usd, asset_col_total = st.columns(2)
 with asset_col_usd:
     st.markdown("#### 美元资产")
     usd_m1, usd_m2 = st.columns(2)
-    usd_m1.metric("已变现", f"$ {realized_usd:,.2f}")
+    usd_m1.metric("已变现浮盈亏", f"$ {realized_usd:,.2f}")
     usd_m2.metric(
         "未变现浮盈亏",
         f"$ {usd_unrealized_pnl_usd:,.2f}",
@@ -2267,13 +2267,13 @@ with asset_col_usd:
     )
     st.caption(
         f"成本 USD {usd_cost_usd:,.2f} ｜ 持仓市值 USD {usd_position_value_usd:,.2f} ｜ "
-        f"已变现 USD {realized_usd:,.2f} ｜ 现金 USD {cash_usd:,.2f} ｜ 总资产 USD {usd_total_usd:,.2f}"
+        f"已变现浮盈亏 USD {realized_usd:,.2f} ｜ 现金 USD {cash_usd:,.2f} ｜ 总资产 USD {usd_total_usd:,.2f}"
     )
 
 with asset_col_total:
     st.markdown("#### 总资产（折合CNY）")
     total_m1, total_m2 = st.columns(2)
-    total_m1.metric("已变现", f"¥ {total_realized_cny:,.2f}")
+    total_m1.metric("已变现浮盈亏", f"¥ {total_realized_cny:,.2f}")
     total_m2.metric(
         "未变现浮盈亏",
         f"¥ {total_pnl_cny:,.2f}",
@@ -2282,7 +2282,7 @@ with asset_col_total:
     )
     st.caption(
         f"成本 CNY {total_cost_cny:,.2f} ｜ 持仓市值 CNY {total_value_cny:,.2f} ｜ "
-        f"已变现 CNY {total_realized_cny:,.2f} ｜ 现金 CNY {total_balance_cny:,.2f} ｜ 总资产 CNY {total_assets_cny:,.2f}"
+        f"已变现浮盈亏 CNY {total_realized_cny:,.2f} ｜ 现金 CNY {total_balance_cny:,.2f} ｜ 总资产 CNY {total_assets_cny:,.2f}"
     )
 
 st.subheader("🧮 再平衡买入建议")
