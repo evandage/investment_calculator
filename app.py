@@ -32,8 +32,7 @@ _FALLBACK = {
     "GOOGL": 180.0,
     "MSFT": 420.0,
     "ISRG": 450.0,
-    "TLT": 90.0,
-    "IEI": 115.0,
+    "SGOV": 100.0,
     "001015": 1.0,
     "007994": 1.0,
 }
@@ -46,8 +45,7 @@ _TICKERS = {
     "googl": "GOOGL",
     "msft": "MSFT",
     "isrg": "ISRG",
-    "tlt": "TLT",
-    "iei": "IEI",
+    "sgov": "SGOV",
     "hs300": "001015",  # 华夏沪深300指数增强A
     "zz500": "007994",  # 华夏中证500指数增强
 }
@@ -71,8 +69,7 @@ _QQ_US = {
     "GOOGL": "usGOOGL",
     "MSFT": "usMSFT",
     "ISRG": "usISRG",
-    "TLT": "usTLT",
-    "IEI": "usIEI",
+    "SGOV": "usSGOV",
 }
 _SINA_GB = {
     "VOO": "gb_voo",
@@ -82,8 +79,7 @@ _SINA_GB = {
     "GOOGL": "gb_googl",
     "MSFT": "gb_msft",
     "ISRG": "gb_isrg",
-    "TLT": "gb_tlt",
-    "IEI": "gb_iei",
+    "SGOV": "gb_sgov",
 }
 _FUND_CODES = {"001015": "001015", "007994": "007994"}
 
@@ -97,24 +93,22 @@ _ASSET_META = {
     "GOOGL": {"label": "GOOGL", "currency": "USD"},
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "ISRG": {"label": "ISRG", "currency": "USD"},
-    "TLT": {"label": "债券(TLT)", "currency": "USD"},
-    "IEI": {"label": "债券(IEI)", "currency": "USD"},
+    "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
     "001015": {"label": "沪深300", "currency": "CNY"},
     "007994": {"label": "中证500", "currency": "CNY"},
 }
 _TARGET_WEIGHTS = {
     # 目标比例：
-    # 美元资产: VOO/QQQ/卫星仓位合计40%（2:1:1），债券20%（TLT/IEI各10%）
+    # 美元资产: VOO/QQQ/卫星仓位/短债(SGOV) = 4:2:2:2
     # 人民币资产: 沪深300(001015) 20%, 中证500(007994) 20%
-    "VOO": 0.20,
-    "QQQ": 0.10,
-    "AVGO": 0.02,
-    "NVDA": 0.013333333333333334,
-    "GOOGL": 0.02,
-    "MSFT": 0.013333333333333334,
-    "ISRG": 0.03333333333333333,
-    "TLT": 0.10,
-    "IEI": 0.10,
+    "VOO": 0.24,
+    "QQQ": 0.12,
+    "AVGO": 0.024,
+    "NVDA": 0.016,
+    "GOOGL": 0.024,
+    "MSFT": 0.016,
+    "ISRG": 0.04,
+    "SGOV": 0.12,
     "001015": 0.20,
     "007994": 0.20,
 }
@@ -137,8 +131,7 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "NVDA": (28.0, 45.0),
     "GOOGL": (18.0, 28.0),
     "MSFT": (24.0, 36.0),
-    "TLT": (14.0, 24.0),
-    "IEI": (12.0, 22.0),
+    "SGOV": (0.0, 10.0),
 }
 
 _DCA_DRAWDOWN_RULES: dict[str, tuple[tuple[float, str], ...]] = {
@@ -470,6 +463,10 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             text-align: center;
         }}
 
+        .daily-card-wide {{
+            grid-column: span 2;
+        }}
+
         .daily-card::before {{
             content: "";
             position: absolute;
@@ -593,6 +590,10 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
                 padding: 10px;
             }}
 
+            .daily-card-wide {{
+                grid-column: span 2;
+            }}
+
             .daily-card-title {{
                 font-size: 0.95rem;
             }}
@@ -615,6 +616,10 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
         @media (max-width: 420px) {{
             .daily-card-grid {{
                 grid-template-columns: 1fr;
+            }}
+
+            .daily-card-wide {{
+                grid-column: span 1;
             }}
         }}
         </style>
@@ -1010,7 +1015,7 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     except Exception:
         pass
 
-    for sym in ("VOO", "QQQ", *_SATELLITE_SYMBOLS, "TLT", "IEI"):
+    for sym in ("VOO", "QQQ", *_SATELLITE_SYMBOLS, "SGOV"):
         if sym not in out:
             try:
                 res = _fetch_sina_gb_price_change(_SINA_GB[sym])
@@ -1467,8 +1472,7 @@ def _defaults_from_fetch() -> dict[str, float]:
         "googl": raw["GOOGL"],
         "msft": raw["MSFT"],
         "isrg": raw["ISRG"],
-        "tlt": raw["TLT"],
-        "iei": raw["IEI"],
+        "sgov": raw["SGOV"],
         "hs300": raw["001015"],
         "zz500": raw["007994"],
     }
@@ -1483,8 +1487,7 @@ def _ensure_price_session_defaults() -> None:
     st.session_state.setdefault("def_googl", d["googl"])
     st.session_state.setdefault("def_msft", d["msft"])
     st.session_state.setdefault("def_isrg", d["isrg"])
-    st.session_state.setdefault("def_tlt", d["tlt"])
-    st.session_state.setdefault("def_iei", d["iei"])
+    st.session_state.setdefault("def_sgov", d["sgov"])
     st.session_state.setdefault("def_hs300", d["hs300"])
     st.session_state.setdefault("def_zz500", d["zz500"])
     st.session_state.setdefault("_prices_initialized", True)
@@ -1682,8 +1685,7 @@ if st.button(
     st.session_state.def_googl = d["googl"]
     st.session_state.def_msft = d["msft"]
     st.session_state.def_isrg = d["isrg"]
-    st.session_state.def_tlt = d["tlt"]
-    st.session_state.def_iei = d["iei"]
+    st.session_state.def_sgov = d["sgov"]
     st.session_state.def_hs300 = d["hs300"]
     st.session_state.def_zz500 = d["zz500"]
 
@@ -1697,8 +1699,7 @@ if st.button(
         "inp_googl",
         "inp_msft",
         "inp_isrg",
-        "inp_tlt",
-        "inp_iei",
+        "inp_sgov",
         "inp_hs300",
         "inp_zz500",
     ):
@@ -1720,8 +1721,7 @@ prices_now = {
     "GOOGL": float(st.session_state.get("inp_googl", st.session_state.def_googl)),
     "MSFT": float(st.session_state.get("inp_msft", st.session_state.def_msft)),
     "ISRG": float(st.session_state.get("inp_isrg", st.session_state.def_isrg)),
-    "TLT": float(st.session_state.get("inp_tlt", st.session_state.def_tlt)),
-    "IEI": float(st.session_state.get("inp_iei", st.session_state.def_iei)),
+    "SGOV": float(st.session_state.get("inp_sgov", st.session_state.def_sgov)),
     "001015": float(st.session_state.get("inp_hs300", st.session_state.def_hs300)),
     "007994": float(st.session_state.get("inp_zz500", st.session_state.def_zz500)),
 }
@@ -1800,7 +1800,7 @@ def _render_holdings_editor() -> None:
                 st.success(f"持仓已保存（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
 
 rows = []
-usd_symbols = ("VOO", "QQQ", *_SATELLITE_SYMBOLS, "TLT", "IEI")
+usd_symbols = ("VOO", "QQQ", *_SATELLITE_SYMBOLS, "SGOV")
 total_cost_cny = 0.0
 total_value_cny = 0.0
 value_cny_by_symbol: dict[str, float] = {}
@@ -1914,7 +1914,7 @@ satellite_daily_pct = (
 satellite_daily_color = _change_color_by_pct(satellite_daily_pct, theme=theme)
 satellite_daily_change_usd = (satellite_daily_change_cny / fx) if fx > 0 else 0.0
 satellite_card_html = (
-    f"<div class='daily-card' style='--daily-color:{satellite_daily_color};'>"
+    f"<div class='daily-card daily-card-wide' style='--daily-color:{satellite_daily_color};'>"
     "<div class='daily-card-title'>卫星仓位</div>"
     f"<div class='daily-card-pct'>{satellite_daily_pct:+.2f}%</div>"
     f"<div class='daily-card-amount'>USD {satellite_daily_change_usd:+,.2f}<br>≈ CNY {satellite_daily_change_cny:+,.2f}</div>"
@@ -1923,8 +1923,14 @@ satellite_card_html = (
 daily_card_symbols = (
     "VOO",
     "QQQ",
+    "AVGO",
+    "NVDA",
+    "GOOGL",
+    "MSFT",
     "ISRG",
-    *(sym for sym in _ASSET_META if sym not in {"VOO", "QQQ", "ISRG"}),
+    "SGOV",
+    "001015",
+    "007994",
 )
 for sym in daily_card_symbols:
     meta = _ASSET_META[sym]
@@ -2111,9 +2117,9 @@ usd_total_usd = (usd_total_cny / fx) if fx > 0 else 0.0
 def _usd_target_pct(sym: str) -> float:
     return (_TARGET_WEIGHTS[sym] / usd_target_weight_total * 100.0) if usd_target_weight_total > 0 else 0.0
 
-bond_current = value_cny_by_symbol.get("TLT", 0.0) + value_cny_by_symbol.get("IEI", 0.0)
 voo_current = value_cny_by_symbol.get("VOO", 0.0)
 qqq_current = value_cny_by_symbol.get("QQQ", 0.0)
+sgov_current = value_cny_by_symbol.get("SGOV", 0.0)
 
 ratio_denominator = usd_total_cny if usd_total_cny > 0 else 0.0
 voo_ratio = (voo_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
@@ -2127,9 +2133,7 @@ satellite_ratio_by_symbol = {
     for sym in _SATELLITE_SYMBOLS
 }
 new4_ratio = sum(satellite_ratio_by_symbol.values())
-tlt_ratio = (value_cny_by_symbol.get("TLT", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
-iei_ratio = (value_cny_by_symbol.get("IEI", 0.0) / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
-bond_ratio = (bond_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
+sgov_ratio = (sgov_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 cash_usd_ratio = (usd_extra_value_cny / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
 
 voo_target = _usd_target_pct("VOO")
@@ -2137,7 +2141,7 @@ qqq_target = _usd_target_pct("QQQ")
 new4_target = (
     sum(_TARGET_WEIGHTS[sym] for sym in _SATELLITE_SYMBOLS) / usd_target_weight_total * 100.0
 ) if usd_target_weight_total > 0 else 0.0
-bond_target = ((_TARGET_WEIGHTS["TLT"] + _TARGET_WEIGHTS["IEI"]) / usd_target_weight_total * 100.0) if usd_target_weight_total > 0 else 0.0
+sgov_target = _usd_target_pct("SGOV")
 
 group1_df = pd.DataFrame(
     [
@@ -2147,8 +2151,8 @@ group1_df = pd.DataFrame(
         {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2)},
         {"标的组": "卫星仓位", "类型": "当前比例%", "成分": "卫星仓位", "比例%": round(new4_ratio, 2)},
         {"标的组": "卫星仓位", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2)},
-        {"标的组": "债券", "类型": "当前比例%", "成分": "债券", "比例%": round(bond_ratio, 2)},
-        {"标的组": "债券", "类型": "目标比例%", "成分": "目标", "比例%": round(bond_target, 2)},
+        {"标的组": "短债", "类型": "当前比例%", "成分": "SGOV", "比例%": round(sgov_ratio, 2)},
+        {"标的组": "短债", "类型": "目标比例%", "成分": "目标", "比例%": round(sgov_target, 2)},
         {"标的组": "现金", "类型": "当前比例%", "成分": "现金", "比例%": round(cash_usd_ratio, 2)},
         {"标的组": "现金", "类型": "目标比例%", "成分": "目标", "比例%": 0.0},
     ]
@@ -2158,21 +2162,21 @@ group1_chart = (
     alt.Chart(group1_df)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "债券", "现金"]),
+        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "短债", "现金"]),
         xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
         y=alt.Y("比例%:Q", title="比例(%)"),
         color=alt.Color(
             "成分:N",
-            sort=["VOO", "QQQ", "卫星仓位", "债券", "现金", "目标"],
+            sort=["VOO", "QQQ", "卫星仓位", "SGOV", "现金", "目标"],
             scale=alt.Scale(
-                domain=["VOO", "QQQ", "卫星仓位", "债券", "现金", "目标"],
+                domain=["VOO", "QQQ", "卫星仓位", "SGOV", "现金", "目标"],
                 range=["#2563eb", "#06b6d4", "#a855f7", "#f59e0b", "#64748b", "#94a3b8"],
             ),
         ),
         order=alt.Order("成分:N", sort="ascending"),
         tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f")],
     )
-    .properties(title="VOO / QQQ / 卫星仓位 / 债券 / 现金 当前与目标对比")
+    .properties(title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比")
 )
 tech_denominator = sum(satellite_ratio_by_symbol.values())
 satellite_target_parts_total = sum(_SATELLITE_TARGET_PARTS.values())
@@ -2504,8 +2508,6 @@ if chart_board_enabled:
         "VOO": "VOO",
         "QQQ": "QQQ",
         "ISRG": "ISRG",
-        "债券(TLT)": "TLT",
-        "债券(IEI)": "IEI",
         "沪深300ETF(510300)": "510300.SS",
         "中证500ETF(510500)": "510500.SS",
     }

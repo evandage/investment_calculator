@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from chart_boards import configure_market_storage, sync_symbol_bars
 
 
-DEFAULT_SYMBOLS = ["VOO", "QQQ", "ISRG", "TLT", "IEI", "510300.SS", "510500.SS"]
+DEFAULT_SYMBOLS = ["VOO", "QQQ", "ISRG", "510300.SS", "510500.SS"]
 _TZ_SH = ZoneInfo("Asia/Shanghai")
 _TZ_NY = ZoneInfo("America/New_York")
 _OPEN_BUF_MIN = max(0, int(os.environ.get("MARKET_OPEN_BUFFER_MINUTES", "5")))
@@ -79,7 +79,7 @@ def main() -> int:
         "--symbols",
         type=str,
         default=",".join(DEFAULT_SYMBOLS),
-        help="Comma separated symbols (default: VOO,QQQ,ISRG,TLT,IEI,510300.SS,510500.SS)",
+        help="Comma separated symbols (default: VOO,QQQ,ISRG,510300.SS,510500.SS)",
     )
     parser.add_argument("--once", action="store_true", help="Run one cycle and exit")
     args = parser.parse_args()
