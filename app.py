@@ -105,28 +105,6 @@ _EASTMONEY_US_SECID = {
 _US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "ISRG", "SGOV")
 
 
-def _truthy_env(name: str) -> bool:
-    return str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _secret_value(name: str) -> str:
-    try:
-        value = st.secrets.get(name, "")
-    except Exception:
-        value = ""
-    return str(value or "").strip()
-
-
-def _looks_like_streamlit_cloud() -> bool:
-    runtime = str(os.environ.get("STREAMLIT_RUNTIME_ENV", "")).strip().lower()
-    sharing = str(os.environ.get("STREAMLIT_SHARING_MODE", "")).strip().lower()
-    return (
-        runtime in {"cloud", "community-cloud", "streamlit-cloud"}
-        or sharing in {"streamlit-cloud", "cloud"}
-        or _truthy_env("STREAMLIT_CLOUD")
-    )
-
-
 def _normalize_market_provider(value: str | None) -> str:
     v = str(value or "auto").strip().lower()
     if v in {"eastmoney", "em", "cn", "china", "mainland"}:
@@ -137,11 +115,7 @@ def _normalize_market_provider(value: str | None) -> str:
 
 
 def _market_data_provider() -> str:
-    provider = _normalize_market_provider(_secret_value("MARKET_DATA_PROVIDER") or os.environ.get("MARKET_DATA_PROVIDER"))
-    if provider == "auto":
-        # 跟随存储后端：云端 Supabase 部署通常在海外，走 yfinance；本地文件部署走大陆友好的源。
-        return "yfinance" if globals().get("_db") else "eastmoney"
-    return provider
+    return "eastmoney"
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
