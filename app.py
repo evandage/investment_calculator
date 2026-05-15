@@ -139,7 +139,8 @@ def _normalize_market_provider(value: str | None) -> str:
 def _market_data_provider() -> str:
     provider = _normalize_market_provider(_secret_value("MARKET_DATA_PROVIDER") or os.environ.get("MARKET_DATA_PROVIDER"))
     if provider == "auto":
-        return "yfinance" if _looks_like_streamlit_cloud() else "eastmoney"
+        # 跟随存储后端：云端 Supabase 部署通常在海外，走 yfinance；本地文件部署走大陆友好的源。
+        return "yfinance" if globals().get("_db") else "eastmoney"
     return provider
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
@@ -1732,14 +1733,20 @@ def _inflation_comment(yoy: float, metric_name: str) -> str:
 @st.cache_resource(show_spinner=False)
 def _load_chart_boards_api() -> dict[str, Any]:
     mod = importlib.import_module("chart_boards")
+    configure_market_provider = getattr(mod, "configure_market_provider", None)
+    if configure_market_provider is None:
+        configure_market_provider = lambda provider=None: provider or "eastmoney"
+    get_market_provider = getattr(mod, "get_market_provider", None)
+    if get_market_provider is None:
+        get_market_provider = lambda: "eastmoney"
     return {
         "CHART_THEME_OPTIONS": getattr(mod, "CHART_THEME_OPTIONS"),
         "configure_market_storage": getattr(mod, "configure_market_storage"),
         "fig_15m_vwap_rsi": getattr(mod, "fig_15m_vwap_rsi"),
         "fig_5m_vwap_rsi7": getattr(mod, "fig_5m_vwap_rsi7"),
         "fig_daily": getattr(mod, "fig_daily"),
-        "configure_market_provider": getattr(mod, "configure_market_provider"),
-        "get_market_provider": getattr(mod, "get_market_provider"),
+        "configure_market_provider": configure_market_provider,
+        "get_market_provider": get_market_provider,
         "probe_market_inventory": getattr(mod, "probe_market_inventory"),
         "probe_symbol_interval_raw_rows": getattr(mod, "probe_symbol_interval_raw_rows"),
         "probe_market_cache_status": getattr(mod, "probe_market_cache_status"),
