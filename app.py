@@ -2252,7 +2252,10 @@ usd_position_value_usd = sum(
     for sym in usd_symbols
 )
 usd_unrealized_pnl_usd = usd_position_value_usd - usd_cost_usd
+usd_unrealized_return_pct = (usd_unrealized_pnl_usd / usd_cost_usd * 100.0) if usd_cost_usd > 0 else 0.0
+usd_unrealized_asset_pct = (usd_unrealized_pnl_usd / usd_total_usd * 100.0) if usd_total_usd > 0 else 0.0
 total_realized_cny = realized_usd * fx + realized_cny
+total_unrealized_asset_pct = (total_pnl_cny / total_assets_cny * 100.0) if total_assets_cny > 0 else 0.0
 
 asset_col_usd, asset_col_total = st.columns(2)
 with asset_col_usd:
@@ -2262,12 +2265,13 @@ with asset_col_usd:
     usd_m2.metric(
         "未变现浮盈亏",
         f"$ {usd_unrealized_pnl_usd:,.2f}",
-        delta=f"{(usd_unrealized_pnl_usd / usd_cost_usd * 100.0) if usd_cost_usd > 0 else 0.0:.2f}%",
+        delta=f"收益率 {usd_unrealized_return_pct:.2f}%",
         delta_color=theme["delta_color"],
     )
     st.caption(
         f"成本 USD {usd_cost_usd:,.2f} ｜ 持仓市值 USD {usd_position_value_usd:,.2f} ｜ "
-        f"已变现浮盈亏 USD {realized_usd:,.2f} ｜ 现金 USD {cash_usd:,.2f} ｜ 总资产 USD {usd_total_usd:,.2f}"
+        f"已变现浮盈亏 USD {realized_usd:,.2f} ｜ 现金 USD {cash_usd:,.2f} ｜ "
+        f"总资产 USD {usd_total_usd:,.2f} ｜ 未变现占美元资产 {usd_unrealized_asset_pct:.2f}%"
     )
 
 with asset_col_total:
@@ -2277,12 +2281,13 @@ with asset_col_total:
     total_m2.metric(
         "未变现浮盈亏",
         f"¥ {total_pnl_cny:,.2f}",
-        delta=f"{total_pnl_pct:.2f}%",
+        delta=f"收益率 {total_pnl_pct:.2f}%",
         delta_color=theme["delta_color"],
     )
     st.caption(
         f"成本 CNY {total_cost_cny:,.2f} ｜ 持仓市值 CNY {total_value_cny:,.2f} ｜ "
-        f"已变现浮盈亏 CNY {total_realized_cny:,.2f} ｜ 现金 CNY {total_balance_cny:,.2f} ｜ 总资产 CNY {total_assets_cny:,.2f}"
+        f"已变现浮盈亏 CNY {total_realized_cny:,.2f} ｜ 现金 CNY {total_balance_cny:,.2f} ｜ "
+        f"总资产 CNY {total_assets_cny:,.2f} ｜ 未变现占总资产 {total_unrealized_asset_pct:.2f}%"
     )
 
 st.subheader("🧮 再平衡买入建议")
