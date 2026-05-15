@@ -1,9 +1,7 @@
 import re
 import json
 import base64
-import importlib
 from io import StringIO
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -82,6 +80,18 @@ _SINA_GB = {
     "SGOV": "gb_sgov",
 }
 _FUND_CODES = {"001015": "001015", "007994": "007994"}
+_EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+_EASTMONEY_QUOTE_URL = "https://push2.eastmoney.com/api/qt/stock/get"
+_EASTMONEY_US_SECID = {
+    "VOO": "107.VOO",
+    "QQQ": "105.QQQ",
+    "AVGO": "105.AVGO",
+    "NVDA": "105.NVDA",
+    "GOOGL": "105.GOOGL",
+    "MSFT": "105.MSFT",
+    "ISRG": "105.ISRG",
+    "SGOV": "106.SGOV",
+}
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
@@ -1061,19 +1071,18 @@ def _fetch_vix_meta() -> dict[str, float | str]:
     """获取美股 CBOE VIX 当前值与当日涨跌幅。"""
     fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
     try:
-        import yfinance as yf
-
-        t = yf.Ticker("^VIX")
-        h = t.history(period="5d", interval="1d", auto_adjust=False)
-        if h is not None and not h.empty and "Close" in h.columns:
-            c = pd.to_numeric(h["Close"], errors="coerce").dropna()
-            if len(c) >= 2:
-                cur = float(c.iloc[-1])
-                prev = float(c.iloc[-2])
-                pct = ((cur / prev - 1.0) * 100.0) if prev > 0 else 0.0
-                return {"vix": cur, "change_pct": pct, "source": "yfinance CBOE ^VIX", "fetched_at": fetched_at}
-            if len(c) == 1:
-                return {"vix": float(c.iloc[-1]), "change_pct": 0.0, "source": "yfinance CBOE ^VIX", "fetched_at": fetched_at}
+        r = requests.get(
+            _EASTMONEY_QUOTE_URL,
+            params={"secid": "167.VIX", "fields": "f43,f58,f60,f170"},
+            timeout=_HTTP_TIMEOUT,
+            headers={**_REQUEST_HEADERS, "Referer": "https://quote.eastmoney.com/"},
+        )
+        r.raise_for_status()
+        data = r.json().get("data") or {}
+        cur = float(data.get("f43")) / 100.0
+        pct = float(data.get("f170")) / 100.0
+        if cur > 0:
+            return {"vix": cur, "change_pct": pct, "source": "东方财富 VIX(167.VIX)", "fetched_at": fetched_at}
     except Exception:
         pass
     return {"vix": 20.0, "change_pct": 0.0, "source": "Fallback(20.0)", "fetched_at": fetched_at}
@@ -1091,64 +1100,45 @@ def _vix_regime(vix: float) -> tuple[str, str]:
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def _fetch_us_etf_pe_drawdown(symbol: str) -> dict[str, float | None]:
-    """返回美股ETF估值与回撤指标：pe(若可得)、回撤%(近60日高点回撤，负值为回撤)。"""
+    """返回美股/ETF估值与回撤指标：pe(若可得)、回撤%(近60日高点回撤，负值为回撤)。"""
     pe_val: float | None = None
     dd_val: float | None = None
-    try:
-        import yfinance as yf
-    except Exception:
-        yf = None  # type: ignore[assignment]
-
-    if yf is not None:
+    secid = _EASTMONEY_US_SECID.get(symbol)
+    if secid:
         try:
-            t = yf.Ticker(symbol)
-            info = {}
-            try:
-                info = t.get_info() or {}
-            except Exception:
-                info = {}
-            for k in ("trailingPE", "forwardPE"):
-                v = info.get(k)
+            r = requests.get(
+                _EASTMONEY_KLINE_URL,
+                params={
+                    "secid": secid,
+                    "klt": "101",
+                    "fqt": "1",
+                    "lmt": "80",
+                    "end": "20500101",
+                    "fields1": "f1,f2,f3,f4,f5,f6",
+                    "fields2": "f51,f52,f53,f54,f55,f56,f57",
+                },
+                timeout=_HTTP_TIMEOUT,
+                headers={**_REQUEST_HEADERS, "Referer": "https://quote.eastmoney.com/"},
+            )
+            r.raise_for_status()
+            klines = ((r.json().get("data") or {}).get("klines") or [])
+            closes: list[float] = []
+            for line in klines:
+                parts = str(line).split(",")
+                if len(parts) < 3:
+                    continue
                 try:
-                    fv = float(v)
-                    if fv > 0:
-                        pe_val = fv
-                        break
+                    close = float(parts[2])
                 except (TypeError, ValueError):
                     continue
-
-            hist = t.history(period="1y", interval="1d", auto_adjust=True)
-            if hist is not None and not hist.empty and "Close" in hist.columns:
-                c = pd.to_numeric(hist["Close"], errors="coerce").dropna()
-                if len(c) > 20:
-                    win = c.tail(60) if len(c) >= 60 else c
-                    peak = float(win.max())
-                    last = float(win.iloc[-1])
-                    if peak > 0:
-                        dd_val = (last / peak - 1.0) * 100.0
-        except Exception:
-            pass
-
-    if dd_val is None:
-        try:
-            end_ts = int(datetime.now(_TZ_SHANGHAI).timestamp())
-            start_ts = end_ts - 370 * 24 * 60 * 60
-            url = (
-                f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-                f"?period1={start_ts}&period2={end_ts}&interval=1d&events=history"
-            )
-            r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
-            r.raise_for_status()
-            result = (r.json().get("chart", {}).get("result") or [None])[0]
-            closes = ((result or {}).get("indicators", {}).get("quote") or [{}])[0].get("close", [])
-            if closes:
-                c = pd.to_numeric(pd.Series(closes), errors="coerce").dropna()
-                if len(c) > 20:
-                    win = c.tail(60) if len(c) >= 60 else c
-                    peak = float(win.max())
-                    last = float(win.iloc[-1])
-                    if peak > 0:
-                        dd_val = (last / peak - 1.0) * 100.0
+                if close > 0:
+                    closes.append(close)
+            if len(closes) > 1:
+                win = closes[-60:] if len(closes) >= 60 else closes
+                peak = max(win)
+                last = closes[-1]
+                if peak > 0:
+                    dd_val = (last / peak - 1.0) * 100.0
         except Exception:
             pass
 
@@ -1610,22 +1600,6 @@ def _inflation_comment(yoy: float, metric_name: str) -> str:
     return f"{metric_name}同比接近2%目标区间，通胀压力相对温和。"
 
 
-@st.cache_resource(show_spinner=False)
-def _load_chart_boards_api() -> dict[str, Any]:
-    mod = importlib.import_module("chart_boards")
-    return {
-        "CHART_THEME_OPTIONS": getattr(mod, "CHART_THEME_OPTIONS"),
-        "configure_market_storage": getattr(mod, "configure_market_storage"),
-        "fig_15m_vwap_rsi": getattr(mod, "fig_15m_vwap_rsi"),
-        "fig_5m_vwap_rsi7": getattr(mod, "fig_5m_vwap_rsi7"),
-        "fig_daily": getattr(mod, "fig_daily"),
-        "probe_market_inventory": getattr(mod, "probe_market_inventory"),
-        "probe_symbol_interval_raw_rows": getattr(mod, "probe_symbol_interval_raw_rows"),
-        "probe_market_cache_status": getattr(mod, "probe_market_cache_status"),
-        "probe_recent_market_rows": getattr(mod, "probe_recent_market_rows"),
-    }
-
-
 theme_options = ["自动（白天浅色 / 晚上深色）", *list(_UI_THEMES.keys())]
 theme_pick = st.sidebar.selectbox("显示主题", options=theme_options, index=0)
 if theme_pick == "自动（白天浅色 / 晚上深色）":
@@ -1635,14 +1609,6 @@ else:
     theme_name = theme_pick
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
-chart_board_enabled = st.sidebar.toggle(
-    "启用技术看板",
-    value=False,
-    key="chart_board_enabled",
-    help="默认关闭。开启后才会加载技术看板模块与K线数据。",
-)
-if not chart_board_enabled:
-    st.sidebar.caption("技术看板未启用：不会加载看板模块，也不会拉取看板数据。")
 
 cloud_user_id = st.sidebar.text_input(
     "用户ID（用于跨设备同步）",
@@ -2519,116 +2485,4 @@ else:
     )
     st.caption(f"VIX 数据源：{_vix_meta['source']}（更新时间 {_vix_meta['fetched_at']}）")
 
-st.divider()
-
-st.divider()
-
-if chart_board_enabled:
-    _chart_symbol_labels = {
-        "VOO": "VOO",
-        "QQQ": "QQQ",
-        "ISRG": "ISRG",
-        "沪深300ETF(510300)": "510300.SS",
-        "中证500ETF(510500)": "510500.SS",
-    }
-    _chart_label_options = list(_chart_symbol_labels.keys())
-    _chart_pick_default_label = "沪深300ETF(510300)"
-    _chart_pick_default_index = (
-        _chart_label_options.index(_chart_pick_default_label) if _chart_pick_default_label in _chart_label_options else 0
-    )
-    _chart_pick = st.selectbox(
-        "看板标的",
-        options=_chart_label_options,
-        index=_chart_pick_default_index,
-        key="chart_board_symbol",
-    )
-    _chart_yf = _chart_symbol_labels[_chart_pick]
-    _chart_user_avg_cost: float | None = None
-    try:
-        _chart_hold = holdings.get(_chart_yf, {})  # type: ignore[assignment]
-        _sh = float(_chart_hold.get("shares", 0.0))
-        _ac = float(_chart_hold.get("avg_cost", 0.0))
-        if _sh > 0 and _ac > 0:
-            _chart_user_avg_cost = _ac
-    except Exception:
-        _chart_user_avg_cost = None
-
-    _chart_api = _load_chart_boards_api()
-    chart_theme_options = list(_chart_api["CHART_THEME_OPTIONS"])
-    chart_theme = st.sidebar.selectbox(
-        "K线配色主题",
-        options=chart_theme_options,
-        index=chart_theme_options.index("Trading Dark") if "Trading Dark" in chart_theme_options else 0,
-        key="chart_plot_theme",
-        help="Classic Light 浅色机构风；Trading Dark 暗色终端风（绿涨红跌）；CN Quant 红涨绿跌略饱和。",
-    )
-    st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
-    chart_data_mode = st.sidebar.selectbox(
-        "看板数据模式",
-        options=["实时拉取（默认）", "数据库缓存（Supabase）"],
-        index=0,
-        key="chart_data_mode",
-        help="实时拉取：页面直接请求行情源；数据库缓存：仅读 Supabase 里的 K 线缓存。",
-    )
-
-    chart_cache_only = chart_data_mode == "数据库缓存（Supabase）"
-    if chart_cache_only and not _db:
-        st.sidebar.warning("未配置 Supabase，已自动切换为实时拉取模式。")
-        chart_cache_only = False
-    _chart_api["configure_market_storage"](_db if chart_cache_only else None, read_only=chart_cache_only)
-
-    _interval_display_map = {"日线（1d）": "1d", "15分钟（15m）": "15m", "5分钟（5m）": "5m"}
-    _interval_pick = st.sidebar.multiselect(
-        "看板加载哪些周期（不选则不拉取数据）",
-        options=list(_interval_display_map.keys()),
-        default=list(_interval_display_map.keys()),
-        key="chart_intervals_to_load",
-        help="关闭某个周期后，该周期对应的图表不会触发 fetch_ohlcv()，通常能显著减少加载时间。",
-    )
-    _interval_keys = [_interval_display_map[x] for x in _interval_pick] or ["1d"]
-
-    _prog_slot = st.empty()
-    _fig_d = _fig_15 = _fig_5 = None
-    _chart_errs: dict[str, str] = {}
-    _nj = int("1d" in _interval_keys) + int("15m" in _interval_keys) + int("5m" in _interval_keys)
-    if _nj > 0:
-        _fut_map: dict[Any, tuple[str, str]] = {}
-        with ThreadPoolExecutor(max_workers=min(3, _nj)) as _pool:
-            if "1d" in _interval_keys:
-                _fut_map[_pool.submit(_chart_api["fig_daily"], _chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost, cache_only=chart_cache_only)] = ("1d", "日线（1d）")
-            if "15m" in _interval_keys:
-                _fut_map[_pool.submit(_chart_api["fig_15m_vwap_rsi"], _chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost, cache_only=chart_cache_only)] = ("15m", "15m（15m）")
-            if "5m" in _interval_keys:
-                _fut_map[_pool.submit(_chart_api["fig_5m_vwap_rsi7"], _chart_yf, _chart_pick, chart_theme=chart_theme, user_avg_cost=_chart_user_avg_cost, cache_only=chart_cache_only)] = ("5m", "5m（5m）")
-            for _fut in as_completed(_fut_map):
-                _kind, _lab = _fut_map[_fut]
-                try:
-                    _fig = _fut.result()
-                    if _kind == "1d":
-                        _fig_d = _fig
-                    elif _kind == "15m":
-                        _fig_15 = _fig
-                    else:
-                        _fig_5 = _fig
-                except Exception as e:
-                    _chart_errs[_kind] = str(e)
-        _prog_slot.empty()
-
-    _tab_d, _tab_15, _tab_5 = st.tabs(["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"])
-    with _tab_d:
-        if "1d" in _interval_keys and _fig_d is not None:
-            st.plotly_chart(_fig_d, width="stretch")
-        elif "1d" in _interval_keys:
-            st.warning(f"日线图加载失败：{_chart_errs.get('1d', '未知错误')}")
-    with _tab_15:
-        if "15m" in _interval_keys and _fig_15 is not None:
-            st.plotly_chart(_fig_15, width="stretch")
-        elif "15m" in _interval_keys:
-            st.warning(f"15m 图加载失败：{_chart_errs.get('15m', '未知错误')}")
-    with _tab_5:
-        if "5m" in _interval_keys and _fig_5 is not None:
-            st.plotly_chart(_fig_5, width="stretch")
-        elif "5m" in _interval_keys:
-            st.warning(f"5m 图加载失败：{_chart_errs.get('5m', '未知错误')}")
-else:
-    st.info("技术看板已关闭。点击侧边栏“启用技术看板”后才会加载看板模块与K线数据。")
+# 技术看板已停用：不加载 chart_boards.py，不渲染 K 线图，以提升首页打开速度。
