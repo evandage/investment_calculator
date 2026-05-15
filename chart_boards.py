@@ -1,7 +1,9 @@
 """K 线看板：日线 EMA+RSI、15m/5m VWAP+RSI。
 
-行情源：A 股（.SS/.SZ）与常用美股 ETF（VOO/QQQ）优先东方财富（国内访问快，与页内腾讯/新浪现价同源生态）；
-其余美股等仍走 yfinance（Yahoo）。
+行情源策略：
+- MARKET_DATA_PROVIDER=eastmoney：优先东方财富，适合大陆本地部署；
+- MARKET_DATA_PROVIDER=yfinance：只用 Yahoo/yfinance，适合 Streamlit Cloud + 梯子；
+- MARKET_DATA_PROVIDER=auto 或未设置：本地默认 eastmoney，Streamlit Cloud 默认 yfinance。
 环境变量：YFINANCE_CHART_TIMEOUT（默认 90）、YFINANCE_CHART_RETRIES（默认 4）、
 YFINANCE_MIN_GAP_SECONDS（两次 yfinance 请求最小间隔，默认 15，减轻限流）、
 MARKET_SYNC_MIN_SECONDS（K 线增量同步最小间隔，默认 180）。
@@ -43,6 +45,7 @@ _SUPABASE_SESSION: requests.Session | None = None
 _SUPABASE_READ_ONLY = bool(int(os.environ.get("SUPABASE_READ_ONLY", "0")))
 _LAST_SYNC_AT: dict[tuple[str, str], float] = {}
 _SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")))
+_MARKET_DATA_PROVIDER = "auto"
 
 # Supabase 行情缓存保留期（避免分钟线无限增长导致切换标的变慢）
 # - 1d：需要足够长用于 EMA200/MACD/ATR 计算（这里留 ~450 天）
@@ -195,6 +198,52 @@ CHART_THEMES: dict[str, dict[str, Any]] = {
 }
 
 CHART_THEME_OPTIONS: tuple[str, ...] = tuple(CHART_THEMES.keys())
+
+
+def _truthy_env(name: str) -> bool:
+    return str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _looks_like_streamlit_cloud() -> bool:
+    runtime = str(os.environ.get("STREAMLIT_RUNTIME_ENV", "")).strip().lower()
+    sharing = str(os.environ.get("STREAMLIT_SHARING_MODE", "")).strip().lower()
+    return (
+        runtime in {"cloud", "community-cloud", "streamlit-cloud"}
+        or sharing in {"streamlit-cloud", "cloud"}
+        or _truthy_env("STREAMLIT_CLOUD")
+    )
+
+
+def _normalize_market_provider(value: str | None) -> str:
+    v = str(value or "auto").strip().lower()
+    if v in {"eastmoney", "em", "cn", "china", "mainland"}:
+        return "eastmoney"
+    if v in {"yfinance", "yf", "yahoo", "us"}:
+        return "yfinance"
+    return "auto"
+
+
+def _resolve_market_provider(value: str | None = None) -> str:
+    provider = _normalize_market_provider(value or os.environ.get("MARKET_DATA_PROVIDER"))
+    if provider == "auto":
+        return "yfinance" if _looks_like_streamlit_cloud() else "eastmoney"
+    return provider
+
+
+def configure_market_provider(provider: str | None = None) -> str:
+    """设置 K 线行情源，返回实际生效值：eastmoney 或 yfinance。"""
+    global _MARKET_DATA_PROVIDER
+    _MARKET_DATA_PROVIDER = _resolve_market_provider(provider)
+    return _MARKET_DATA_PROVIDER
+
+
+def get_market_provider() -> str:
+    if _MARKET_DATA_PROVIDER == "auto":
+        return configure_market_provider(None)
+    return _MARKET_DATA_PROVIDER
+
+
+configure_market_provider(None)
 
 
 def get_chart_theme(name: str) -> dict[str, Any]:
@@ -640,7 +689,7 @@ def _fetch_from_source(
     eastmoney_lmt: int | None = None,
     yfinance_start_naive_local: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, str]:
-    secid = _eastmoney_secid(symbol)
+    secid = _eastmoney_secid(symbol) if get_market_provider() == "eastmoney" else None
     if secid is not None:
         d = _fetch_eastmoney_ohlcv(secid, interval, lmt=eastmoney_lmt)
         if d.empty:
@@ -1093,7 +1142,7 @@ def fetch_ohlcv(
             else:
                 fetch_period = _period_for_incremental(interval)
                 mx = cached.index.max()
-                secid = _eastmoney_secid(symbol)
+                secid = _eastmoney_secid(symbol) if get_market_provider() == "eastmoney" else None
                 em_lmt = _eastmoney_incremental_lmt(symbol, interval, mx) if secid else None
                 yf_start = _yfinance_incremental_start(symbol, mx, interval) if secid is None else None
                 latest, source = _fetch_from_source(

@@ -2,6 +2,7 @@ import re
 import json
 import base64
 import importlib
+import os
 from io import StringIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -101,6 +102,45 @@ _EASTMONEY_US_SECID = {
     "ISRG": "105.ISRG",
     "SGOV": "106.SGOV",
 }
+_US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "ISRG", "SGOV")
+
+
+def _truthy_env(name: str) -> bool:
+    return str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _secret_value(name: str) -> str:
+    try:
+        value = st.secrets.get(name, "")
+    except Exception:
+        value = ""
+    return str(value or "").strip()
+
+
+def _looks_like_streamlit_cloud() -> bool:
+    runtime = str(os.environ.get("STREAMLIT_RUNTIME_ENV", "")).strip().lower()
+    sharing = str(os.environ.get("STREAMLIT_SHARING_MODE", "")).strip().lower()
+    return (
+        runtime in {"cloud", "community-cloud", "streamlit-cloud"}
+        or sharing in {"streamlit-cloud", "cloud"}
+        or _truthy_env("STREAMLIT_CLOUD")
+    )
+
+
+def _normalize_market_provider(value: str | None) -> str:
+    v = str(value or "auto").strip().lower()
+    if v in {"eastmoney", "em", "cn", "china", "mainland"}:
+        return "eastmoney"
+    if v in {"yfinance", "yf", "yahoo", "us"}:
+        return "yfinance"
+    return "auto"
+
+
+def _market_data_provider() -> str:
+    provider = _normalize_market_provider(_secret_value("MARKET_DATA_PROVIDER") or os.environ.get("MARKET_DATA_PROVIDER"))
+    if provider == "auto":
+        return "yfinance" if _looks_like_streamlit_cloud() else "eastmoney"
+    return provider
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
@@ -924,6 +964,35 @@ def _fetch_sina_cn_price_change(list_code: str) -> tuple[float, float] | None:
         return None
 
 
+def _fetch_yfinance_us_price_change() -> dict[str, dict[str, float]]:
+    import yfinance as yf
+
+    out: dict[str, dict[str, float]] = {}
+    for sym in _US_MARKET_SYMBOLS:
+        try:
+            ticker = yf.Ticker(sym)
+            hist = ticker.history(period="5d", interval="1d", auto_adjust=False)
+            if hist.empty or "Close" not in hist.columns:
+                continue
+            closes = pd.to_numeric(hist["Close"], errors="coerce").dropna()
+            if closes.empty:
+                continue
+            price = float(closes.iloc[-1])
+            try:
+                fast_price = float((ticker.fast_info or {}).get("last_price") or 0.0)
+                if fast_price > 0:
+                    price = fast_price
+            except Exception:
+                pass
+            prev_close = float(closes.iloc[-2]) if len(closes) >= 2 else price
+            change_pct = ((price / prev_close - 1.0) * 100.0) if prev_close > 0 else 0.0
+            if price > 0:
+                out[sym] = {"price": price, "change_pct": change_pct}
+        except Exception:
+            continue
+    return out
+
+
 def _fetch_fund_nav_price_change(code: str) -> tuple[float, float, str] | None:
     """东方财富历史净值：返回(最新确认单位净值, 日增长率%, 净值日期)。"""
     url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=1"
@@ -1024,27 +1093,38 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     daily_change_pct_by_symbol: dict[str, float] = {}
     source_by_symbol: dict[str, str] = {}
     fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
+    provider = _market_data_provider()
 
-    try:
-        qq_raw = _fetch_qq_us_price_change()
-        for sym, item in qq_raw.items():
-            out[sym] = float(item["price"])
-            daily_change_pct_by_symbol[sym] = float(item["change_pct"])
-            source_by_symbol[sym] = "腾讯美股"
-    except Exception:
-        pass
+    if provider == "yfinance":
+        try:
+            yf_raw = _fetch_yfinance_us_price_change()
+            for sym, item in yf_raw.items():
+                out[sym] = float(item["price"])
+                daily_change_pct_by_symbol[sym] = float(item["change_pct"])
+                source_by_symbol[sym] = "yfinance"
+        except Exception:
+            pass
+    else:
+        try:
+            qq_raw = _fetch_qq_us_price_change()
+            for sym, item in qq_raw.items():
+                out[sym] = float(item["price"])
+                daily_change_pct_by_symbol[sym] = float(item["change_pct"])
+                source_by_symbol[sym] = "腾讯美股"
+        except Exception:
+            pass
 
-    for sym in ("VOO", "QQQ", *_SATELLITE_SYMBOLS, "SGOV"):
-        if sym not in out:
-            try:
-                res = _fetch_sina_gb_price_change(_SINA_GB[sym])
-                if res is not None:
-                    p, change_pct = res
-                    out[sym] = p
-                    daily_change_pct_by_symbol[sym] = change_pct
-                    source_by_symbol[sym] = "新浪全球"
-            except Exception:
-                pass
+        for sym in _US_MARKET_SYMBOLS:
+            if sym not in out:
+                try:
+                    res = _fetch_sina_gb_price_change(_SINA_GB[sym])
+                    if res is not None:
+                        p, change_pct = res
+                        out[sym] = p
+                        daily_change_pct_by_symbol[sym] = change_pct
+                        source_by_symbol[sym] = "新浪全球"
+                except Exception:
+                    pass
 
     # 基金：用东方财富基金估值接口
     symbols = list(_TICKERS.values())
@@ -1067,6 +1147,7 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
         "prices": prices,
         "daily_change_pct_by_symbol": daily_change_pct_by_symbol,
         "source_by_symbol": source_by_symbol,
+        "market_data_provider": provider,
         "fetched_at": fetched_at,
     }
 
@@ -1079,6 +1160,20 @@ def _fetch_spot_prices() -> dict[str, float]:
 def _fetch_vix_meta() -> dict[str, float | str]:
     """获取美股 CBOE VIX 当前值与当日涨跌幅。"""
     fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
+    if _market_data_provider() == "yfinance":
+        try:
+            import yfinance as yf
+
+            hist = yf.Ticker("^VIX").history(period="5d", interval="1d", auto_adjust=False)
+            closes = pd.to_numeric(hist["Close"], errors="coerce").dropna() if not hist.empty else pd.Series(dtype=float)
+            if not closes.empty:
+                cur = float(closes.iloc[-1])
+                prev = float(closes.iloc[-2]) if len(closes) >= 2 else cur
+                pct = ((cur / prev - 1.0) * 100.0) if prev > 0 else 0.0
+                if cur > 0:
+                    return {"vix": cur, "change_pct": pct, "source": "yfinance ^VIX", "fetched_at": fetched_at}
+        except Exception:
+            pass
     for url in _EASTMONEY_QUOTE_URLS:
         try:
             r = requests.get(
@@ -1109,11 +1204,32 @@ def _vix_regime(vix: float) -> tuple[str, str]:
 
 
 @st.cache_data(ttl=21600, show_spinner=False)
-def _fetch_us_etf_pe_drawdown(symbol: str, cache_version: str = _DRAWDOWN_CACHE_VERSION) -> dict[str, float | None]:
+def _fetch_us_etf_pe_drawdown(
+    symbol: str,
+    cache_version: str = _DRAWDOWN_CACHE_VERSION,
+    provider: str | None = None,
+) -> dict[str, float | None]:
     """返回美股/ETF估值与回撤指标：pe(若可得)、回撤%(近60日高点回撤，负值为回撤)。"""
     _ = cache_version
+    provider = _normalize_market_provider(provider or _market_data_provider())
     pe_val: float | None = None
     dd_val: float | None = None
+    if provider == "yfinance":
+        try:
+            import yfinance as yf
+
+            hist = yf.Ticker(symbol).history(period="6mo", interval="1d", auto_adjust=True)
+            closes = pd.to_numeric(hist["Close"], errors="coerce").dropna() if not hist.empty else pd.Series(dtype=float)
+            if len(closes) > 1:
+                win = closes.tail(60)
+                peak = float(win.max())
+                last = float(closes.iloc[-1])
+                if peak > 0:
+                    dd_val = (last / peak - 1.0) * 100.0
+        except Exception:
+            pass
+        return {"pe": pe_val, "drawdown_pct": dd_val}
+
     secid = _EASTMONEY_US_SECID.get(symbol)
     if secid:
         for url in _EASTMONEY_KLINE_URLS:
@@ -1184,7 +1300,7 @@ def _fetch_fund_drawdown(code: str) -> float | None:
 
 def _fetch_asset_drawdown(sym: str, meta: dict[str, str]) -> float | None:
     if meta["currency"] == "USD":
-        q = _fetch_us_etf_pe_drawdown(sym, _DRAWDOWN_CACHE_VERSION)
+        q = _fetch_us_etf_pe_drawdown(sym, _DRAWDOWN_CACHE_VERSION, _market_data_provider())
         dd = q.get("drawdown_pct")
         return float(dd) if isinstance(dd, (int, float)) else None
     if sym in _FUND_CODES:
@@ -1622,6 +1738,8 @@ def _load_chart_boards_api() -> dict[str, Any]:
         "fig_15m_vwap_rsi": getattr(mod, "fig_15m_vwap_rsi"),
         "fig_5m_vwap_rsi7": getattr(mod, "fig_5m_vwap_rsi7"),
         "fig_daily": getattr(mod, "fig_daily"),
+        "configure_market_provider": getattr(mod, "configure_market_provider"),
+        "get_market_provider": getattr(mod, "get_market_provider"),
         "probe_market_inventory": getattr(mod, "probe_market_inventory"),
         "probe_symbol_interval_raw_rows": getattr(mod, "probe_symbol_interval_raw_rows"),
         "probe_market_cache_status": getattr(mod, "probe_market_cache_status"),
@@ -1661,6 +1779,7 @@ if _db:
     st.sidebar.caption(f"Supabase ref={_ref} | key={_k_kind}")
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
+st.sidebar.caption(f"行情源策略：{_market_data_provider()}")
 
 holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
 
@@ -1831,6 +1950,7 @@ def _render_chart_board() -> None:
         _chart_user_avg_cost = None
 
     _chart_api = _load_chart_boards_api()
+    chart_provider = _chart_api["configure_market_provider"](_market_data_provider())
     chart_theme_options = list(_chart_api["CHART_THEME_OPTIONS"])
     chart_theme = st.sidebar.selectbox(
         "K线配色主题",
@@ -1847,6 +1967,7 @@ def _render_chart_board() -> None:
         key="chart_data_mode",
         help="实时拉取：页面直接请求行情源；数据库缓存：仅读 Supabase 里的 K 线缓存。",
     )
+    st.sidebar.caption(f"K线行情源：{chart_provider}")
 
     chart_cache_only = chart_data_mode == "数据库缓存（Supabase）"
     if chart_cache_only and not _db:
