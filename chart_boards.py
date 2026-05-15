@@ -81,7 +81,12 @@ def _yf_ticker_history(import_yf: Any, symbol: str, **kwargs: Any) -> pd.DataFra
 _EASTMONEY_US_SECID = {
     "VOO": "107.VOO",
     "QQQ": "105.QQQ",
+    "AVGO": "105.AVGO",
+    "NVDA": "105.NVDA",
+    "GOOGL": "105.GOOGL",
+    "MSFT": "105.MSFT",
     "ISRG": "105.ISRG",
+    "SGOV": "106.SGOV",
 }
 
 _CH_FONT_FAMILY = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
@@ -1318,10 +1323,10 @@ def fig_daily(
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "1d", "5y", cache_only=cache_only)
-    if df.empty or len(df) < 50:
+    if df.empty or len(df) < 60:
         fig = go.Figure()
         fig.add_annotation(
-            text="暂无足够日线数据（可检查网络或标的代码）",
+            text="暂无足够日线数据（至少需要 60 根 K 线，可检查网络或标的代码）",
             xref="paper",
             yref="paper",
             x=0.5,
@@ -1338,10 +1343,7 @@ def fig_daily(
     p_max = float(df["High"].max())
 
     def _cost_visible(cost: float) -> bool:
-        if cost <= 0:
-            return False
-        # 防止异常成本线把价格轴拉爆，导致K线“看不见”。
-        return (p_min * 0.5) <= cost <= (p_max * 1.5)
+        return cost > 0
 
     e20, e50, e100, e200 = ema(c, 20), ema(c, 50), ema(c, 100), ema(c, 200)
     r14 = rsi(c, 14)
@@ -1350,12 +1352,21 @@ def fig_daily(
     lower = c - 1.0 * atr_v
     m_line, m_sig, m_hist = macd_series(c)
 
-    vol = df["Volume"].fillna(0.0).astype(float)
-    vcols = _volume_bar_colors(df, theme)
-
-    # 默认展示最近 N 根「交易日」K 线（非日历天），避免周末空白导致蜡烛挤成一坨
-    _n_daily_visible = 15
+    # 默认展示最近 N 根「交易日」K 线（非日历天），与页面 60 日回撤口径保持一致。
+    _n_daily_visible = 60
     vis_df = df.tail(_n_daily_visible) if len(df) >= _n_daily_visible else df
+    vis_e20 = e20.reindex(vis_df.index)
+    vis_e50 = e50.reindex(vis_df.index)
+    vis_e100 = e100.reindex(vis_df.index)
+    vis_e200 = e200.reindex(vis_df.index)
+    vis_r14 = r14.reindex(vis_df.index)
+    vis_upper = upper.reindex(vis_df.index)
+    vis_lower = lower.reindex(vis_df.index)
+    vis_m_line = m_line.reindex(vis_df.index)
+    vis_m_sig = m_sig.reindex(vis_df.index)
+    vis_m_hist = m_hist.reindex(vis_df.index)
+    vis_vol = vis_df["Volume"].fillna(0.0).astype(float)
+    vis_vcols = _volume_bar_colors(vis_df, theme)
     _x_start = vis_df.index.min()
     _x_end = vis_df.index.max()
     _x_pad = pd.Timedelta(days=0.45)
@@ -1374,11 +1385,11 @@ def fig_daily(
     )
     fig.add_trace(
         go.Candlestick(
-            x=df.index,
-            open=df["Open"],
-            high=df["High"],
-            low=df["Low"],
-            close=df["Close"],
+            x=vis_df.index,
+            open=vis_df["Open"],
+            high=vis_df["High"],
+            low=vis_df["Low"],
+            close=vis_df["Close"],
             name="K线",
             **_candlestick_kwargs(theme),
         ),
@@ -1409,10 +1420,14 @@ def fig_daily(
             font=dict(color=theme["rsi_orange"], size=11),
             bgcolor="rgba(0,0,0,0.08)",
         )
-    for name, s, color in zip(("EMA20", "EMA50", "EMA100", "EMA200"), (e20, e50, e100, e200), theme["ema"]):
+    for name, s, color in zip(
+        ("EMA20", "EMA50", "EMA100", "EMA200"),
+        (vis_e20, vis_e50, vis_e100, vis_e200),
+        theme["ema"],
+    ):
         fig.add_trace(
             go.Scatter(
-                x=df.index,
+                x=vis_df.index,
                 y=s,
                 name=name,
                 line=dict(width=1.15, color=color),
@@ -1424,8 +1439,8 @@ def fig_daily(
         )
     fig.add_trace(
         go.Scatter(
-            x=df.index,
-            y=upper,
+            x=vis_df.index,
+            y=vis_upper,
             name="收盘+1ATR",
             line=dict(width=1, dash="dot", color=theme["atr_upper"]),
         ),
@@ -1436,8 +1451,8 @@ def fig_daily(
 
     fig.add_trace(
         go.Scatter(
-            x=df.index,
-            y=lower,
+            x=vis_df.index,
+            y=vis_lower,
             name="收盘−1ATR",
             line=dict(width=1, dash="dot", color=theme["atr_lower"]),
         ),
@@ -1448,10 +1463,10 @@ def fig_daily(
 
     fig.add_trace(
         go.Bar(
-            x=df.index,
-            y=vol,
+            x=vis_df.index,
+            y=vis_vol,
             name="成交量",
-            marker_color=vcols,
+            marker_color=vis_vcols,
             marker_line_width=0,
             showlegend=False,
             hovertemplate="成交量: %{y:,.0f}<extra></extra>",
@@ -1463,8 +1478,8 @@ def fig_daily(
 
     fig.add_trace(
         go.Scatter(
-            x=df.index,
-            y=r14,
+            x=vis_df.index,
+            y=vis_r14,
             name="RSI(14)",
             line=dict(color=theme["rsi"], width=1.2),
         ),
@@ -1482,11 +1497,11 @@ def fig_daily(
         col=1,
     )
 
-    hist_colors = [theme["macd_pos"] if float(v) >= 0 else theme["macd_neg"] for v in m_hist.fillna(0.0)]
+    hist_colors = [theme["macd_pos"] if float(v) >= 0 else theme["macd_neg"] for v in vis_m_hist.fillna(0.0)]
     fig.add_trace(
         go.Bar(
-            x=df.index,
-            y=m_hist,
+            x=vis_df.index,
+            y=vis_m_hist,
             name="MACD柱",
             marker_color=hist_colors,
             marker_line_width=0,
@@ -1497,8 +1512,8 @@ def fig_daily(
     )
     fig.add_trace(
         go.Scatter(
-            x=df.index,
-            y=m_line,
+            x=vis_df.index,
+            y=vis_m_line,
             name="MACD",
             line=dict(color=theme["macd_line"], width=1.1),
         ),
@@ -1507,8 +1522,8 @@ def fig_daily(
     )
     fig.add_trace(
         go.Scatter(
-            x=df.index,
-            y=m_sig,
+            x=vis_df.index,
+            y=vis_m_sig,
             name="Signal",
             line=dict(color=theme["macd_sig"], width=1.0),
         ),
@@ -1538,8 +1553,7 @@ def fig_daily(
         barmode="overlay",
     )
     _apply_chart_theme(fig, theme)
-    v_vis = vis_df["Volume"].fillna(0.0).astype(float)
-    vmax_vis = float(v_vis.max()) if len(v_vis) else 0.0
+    vmax_vis = float(vis_vol.max()) if len(vis_vol) else 0.0
     y_lo = float(vis_df["Low"].min())
     y_hi = float(vis_df["High"].max())
     if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
@@ -1566,15 +1580,16 @@ def fig_daily(
     fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100], title_standoff=8)
     # MACD 用“可见窗口”数据算范围，避免 5 年历史极值把副图撑太大
     macd_range = _macd_yaxis_range(
-        m_line.reindex(vis_df.index),
-        m_sig.reindex(vis_df.index),
-        m_hist.reindex(vis_df.index),
+        vis_m_line,
+        vis_m_sig,
+        vis_m_hist,
     )
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     # 横轴：最近 N 个交易日 + 少量边距，K 线更易辨认
-    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], row=1, col=1)
-    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], row=2, col=1)
-    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], row=3, col=1)
+    _daily_rangebreaks = [dict(bounds=["sat", "mon"])]
+    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], rangebreaks=_daily_rangebreaks, row=1, col=1)
+    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], rangebreaks=_daily_rangebreaks, row=2, col=1)
+    fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], rangebreaks=_daily_rangebreaks, row=3, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, row=1, col=2)
     return fig
@@ -1612,9 +1627,7 @@ def fig_15m_vwap_rsi(
     p_max = float(df["High"].max())
 
     def _cost_visible(cost: float) -> bool:
-        if cost <= 0:
-            return False
-        return (p_min * 0.5) <= cost <= (p_max * 1.5)
+        return cost > 0
 
     r14 = rsi(cl, 14)
     r14_ma = ema(r14, 9)
@@ -1725,6 +1738,27 @@ def fig_15m_vwap_rsi(
         col=1,
         secondary_y=True,
     )
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+        cost = float(user_avg_cost)
+        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
+        fig.add_hline(
+            y=cost,
+            line_dash="dashdot",
+            line_width=1.8,
+            line_color=theme["rsi_orange"],
+            row=1,
+            col=1,
+        )
+        fig.add_annotation(
+            x=df.index.max(),
+            y=cost,
+            xref="x1",
+            yref="y1",
+            text=f"成本 {cost:.2f}（{pct:+.2f}%）",
+            showarrow=False,
+            font=dict(color=theme["rsi_orange"], size=11),
+            bgcolor="rgba(0,0,0,0.08)",
+        )
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -1813,6 +1847,9 @@ def fig_15m_vwap_rsi(
     vmax = float(vol.max()) if len(vol) else 0.0
     y_lo = float(df["Low"].min())
     y_hi = float(df["High"].max())
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+        y_lo = min(y_lo, float(user_avg_cost))
+        y_hi = max(y_hi, float(user_avg_cost))
     y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
     fig.update_yaxes(
         title_text="价格",
@@ -1974,6 +2011,33 @@ def fig_5m_vwap_rsi7(
         col=1,
         secondary_y=True,
     )
+    p_min = float(df["Low"].min())
+    p_max = float(df["High"].max())
+
+    def _cost_visible(cost: float) -> bool:
+        return cost > 0
+
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+        cost = float(user_avg_cost)
+        pct = (last_close / cost - 1.0) * 100 if cost > 0 else 0.0
+        fig.add_hline(
+            y=cost,
+            line_dash="dashdot",
+            line_width=1.8,
+            line_color=theme["rsi_orange"],
+            row=1,
+            col=1,
+        )
+        fig.add_annotation(
+            x=df.index.max(),
+            y=cost,
+            xref="x1",
+            yref="y1",
+            text=f"成本 {cost:.2f}（{pct:+.2f}%）",
+            showarrow=False,
+            font=dict(color=theme["rsi_orange"], size=11),
+            bgcolor="rgba(0,0,0,0.08)",
+        )
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -2062,6 +2126,9 @@ def fig_5m_vwap_rsi7(
     vmax = float(vol.max()) if len(vol) else 0.0
     y_lo = float(df["Low"].min())
     y_hi = float(df["High"].max())
+    if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
+        y_lo = min(y_lo, float(user_avg_cost))
+        y_hi = max(y_hi, float(user_avg_cost))
     y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
     fig.update_yaxes(
         title_text="价格",
