@@ -1704,9 +1704,8 @@ def _inflation_comment(yoy: float, metric_name: str) -> str:
     return f"{metric_name}同比接近2%目标区间，通胀压力相对温和。"
 
 
-@st.cache_resource(show_spinner=False)
 def _load_chart_boards_api() -> dict[str, Any]:
-    mod = importlib.import_module("chart_boards")
+    mod = importlib.reload(importlib.import_module("chart_boards"))
     configure_market_provider = getattr(mod, "configure_market_provider", None)
     if configure_market_provider is None:
         configure_market_provider = lambda provider=None: provider or "eastmoney"
@@ -2021,19 +2020,24 @@ def _render_chart_board() -> None:
         _prog_slot.empty()
 
     _tab_d, _tab_15, _tab_5 = st.tabs(["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"])
+    _plotly_static_axes_config = {
+        "scrollZoom": False,
+        "displayModeBar": False,
+        "doubleClick": False,
+    }
     with _tab_d:
         if "1d" in _interval_keys and _fig_d is not None:
-            st.plotly_chart(_fig_d, width="stretch")
+            st.plotly_chart(_fig_d, width="stretch", config=_plotly_static_axes_config)
         elif "1d" in _interval_keys:
             st.warning(f"日线图加载失败：{_chart_errs.get('1d', '未知错误')}")
     with _tab_15:
         if "15m" in _interval_keys and _fig_15 is not None:
-            st.plotly_chart(_fig_15, width="stretch")
+            st.plotly_chart(_fig_15, width="stretch", config=_plotly_static_axes_config)
         elif "15m" in _interval_keys:
             st.warning(f"15m 图加载失败：{_chart_errs.get('15m', '未知错误')}")
     with _tab_5:
         if "5m" in _interval_keys and _fig_5 is not None:
-            st.plotly_chart(_fig_5, width="stretch")
+            st.plotly_chart(_fig_5, width="stretch", config=_plotly_static_axes_config)
         elif "5m" in _interval_keys:
             st.warning(f"5m 图加载失败：{_chart_errs.get('5m', '未知错误')}")
 

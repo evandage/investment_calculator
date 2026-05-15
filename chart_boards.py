@@ -264,7 +264,7 @@ def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
             itemsizing="constant",
             itemwidth=30,
         ),
-        hovermode="x unified",
+        hovermode="closest",
         hoverlabel=dict(
             bgcolor=theme["hover_bg"],
             bordercolor=theme["hover_border"],
@@ -272,6 +272,7 @@ def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
             font_family=_CH_FONT_FAMILY,
         ),
         margin=dict(l=52, r=18, t=18, b=44),
+        dragmode=False,
     )
     fig.update_xaxes(
         showgrid=True,
@@ -285,6 +286,7 @@ def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
         spikemode="across",
         spikesnap="cursor",
         spikedash="solid",
+        fixedrange=True,
     )
     fig.update_yaxes(
         showgrid=True,
@@ -293,6 +295,7 @@ def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
         zeroline=False,
         showline=False,
         tickfont=dict(size=10, color=theme["muted"]),
+        fixedrange=True,
     )
 
 
@@ -1145,27 +1148,69 @@ def _volume_bar_colors(df: pd.DataFrame, theme: dict[str, Any]) -> list[str]:
     ]
 
 
-def _volume_profile_by_price(df: pd.DataFrame, bins: int = 24) -> tuple[pd.Series, pd.Series]:
-    """按价格分箱聚合成交量，返回(箱中位价格, 对应成交量)。"""
+def _volume_profile_by_price(
+    df: pd.DataFrame,
+    bins: int = 24,
+) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
+    """按价格分箱聚合成交量，返回(箱中位价格, 对应成交量, 下沿, 上沿, 箱高)。
+
+    逻辑：将每根 K 线成交量按其 high-low 区间与价格箱的重叠比例分摊。
+    这比把整根 K 线成交量塞进 typical price 单个箱更稳定，尤其适合宽振幅 K 线。
+    """
     if df.empty:
         e = pd.Series(dtype=float)
-        return e, e
+        return e, e, e, e, e
     low = float(df["Low"].min())
     high = float(df["High"].max())
     if not np.isfinite(low) or not np.isfinite(high) or high <= low:
         e = pd.Series(dtype=float)
-        return e, e
+        return e, e, e, e, e
 
-    tp = ((df["High"] + df["Low"] + df["Close"]) / 3.0).astype(float)
+    bar_low = pd.to_numeric(df["Low"], errors="coerce").astype(float)
+    bar_high = pd.to_numeric(df["High"], errors="coerce").astype(float)
+    close = pd.to_numeric(df["Close"], errors="coerce").astype(float)
     vol = df["Volume"].fillna(0.0).astype(float)
     edges = np.linspace(low, high, bins + 1)
-    cats = pd.cut(tp, bins=edges, include_lowest=True, duplicates="drop")
-    if cats.isna().all():
+    if len(np.unique(edges)) < 2:
         e = pd.Series(dtype=float)
-        return e, e
-    by_bin = vol.groupby(cats, observed=False).sum()
+        return e, e, e, e, e
+
+    by_bin_values = np.zeros(len(edges) - 1, dtype=float)
+    for lo, hi, cls, amount in zip(bar_low, bar_high, close, vol):
+        if not (np.isfinite(lo) and np.isfinite(hi) and np.isfinite(amount)) or amount <= 0:
+            continue
+        lo, hi = min(float(lo), float(hi)), max(float(lo), float(hi))
+        if hi > lo:
+            overlaps = np.maximum(0.0, np.minimum(edges[1:], hi) - np.maximum(edges[:-1], lo))
+            overlap_sum = float(overlaps.sum())
+            if overlap_sum > 0:
+                by_bin_values += amount * overlaps / overlap_sum
+                continue
+
+        # 无实体波动或极端数据时，退化为按收盘价所在箱归集。
+        ref_price = float(cls) if np.isfinite(cls) else lo
+        idx = int(np.searchsorted(edges, ref_price, side="right") - 1)
+        idx = max(0, min(len(by_bin_values) - 1, idx))
+        by_bin_values[idx] += amount
+
+    intervals = pd.IntervalIndex.from_breaks(edges, closed="right")
+    by_bin = pd.Series(by_bin_values, index=intervals).astype(float)
+    by_bin = by_bin[by_bin > 0]
+    if by_bin.empty:
+        e = pd.Series(dtype=float)
+        return e, e, e, e, e
+
+    lows = by_bin.index.map(lambda itv: float(itv.left))
+    highs = by_bin.index.map(lambda itv: float(itv.right))
     mids = by_bin.index.map(lambda itv: float((itv.left + itv.right) / 2.0))
-    return pd.Series(mids, index=by_bin.index), by_bin.astype(float)
+    widths = [max(float(hi) - float(lo), 1e-9) for lo, hi in zip(lows, highs)]
+    return (
+        pd.Series(mids, index=by_bin.index),
+        by_bin.astype(float),
+        pd.Series(lows, index=by_bin.index),
+        pd.Series(highs, index=by_bin.index),
+        pd.Series(widths, index=by_bin.index),
+    )
 
 
 def atr_series(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -1385,7 +1430,7 @@ def fig_daily(
     _x_end = vis_df.index.max()
     _x_pad = pd.Timedelta(days=0.45)
 
-    vp_price, vp_vol = _volume_profile_by_price(vis_df, bins=26)
+    vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(vis_df, bins=26)
 
     fig = make_subplots(
         rows=3,
@@ -1550,12 +1595,14 @@ def fig_daily(
             go.Bar(
                 x=vp_vol.values,
                 y=vp_price.values,
+                width=vp_width.values,
+                customdata=np.column_stack([vp_low.values, vp_high.values]),
                 orientation="h",
                 name="价位成交量",
                 marker_color=theme["vp_bar"],
                 marker_line_width=0,
                 showlegend=False,
-                hovertemplate="价格: %{y:.4f}<br>量: %{x:,.0f}<extra></extra>",
+                hovertemplate="价格区间: %{customdata[0]:.4f} - %{customdata[1]:.4f}<br>区间成交量: %{x:,.0f}<extra></extra>",
             ),
             row=1,
             col=2,
@@ -1575,13 +1622,14 @@ def fig_daily(
         y_hi = max(y_hi, float(user_avg_cost))
     atr_vis = atr_v.reindex(vis_df.index).dropna()
     y_pad = float(atr_vis.iloc[-1]) if len(atr_vis) else max((y_hi - y_lo) * 0.06, 1e-9)
+    price_y_range = [y_lo - y_pad, y_hi + y_pad]
     fig.update_yaxes(
         title_text="价格",
         row=1,
         col=1,
         title_standoff=8,
         secondary_y=False,
-        range=[y_lo - y_pad, y_hi + y_pad],
+        range=price_y_range,
     )
     fig.update_yaxes(
         row=1,
@@ -1605,7 +1653,7 @@ def fig_daily(
     fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], rangebreaks=_daily_rangebreaks, row=2, col=1)
     fig.update_xaxes(range=[_x_start - _x_pad, _x_end + _x_pad], rangebreaks=_daily_rangebreaks, row=3, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
-    fig.update_yaxes(showticklabels=False, row=1, col=2)
+    fig.update_yaxes(showticklabels=False, showgrid=False, range=price_y_range, row=1, col=2)
     return fig
 
 
@@ -1652,7 +1700,7 @@ def fig_15m_vwap_rsi(
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
 
-    vp_price, vp_vol = _volume_profile_by_price(df, bins=24)
+    vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(df, bins=24)
 
     fig = make_subplots(
         rows=3,
@@ -1841,12 +1889,14 @@ def fig_15m_vwap_rsi(
             go.Bar(
                 x=vp_vol.values,
                 y=vp_price.values,
+                width=vp_width.values,
+                customdata=np.column_stack([vp_low.values, vp_high.values]),
                 orientation="h",
                 name="价位成交量",
                 marker_color=theme["vp_bar"],
                 marker_line_width=0,
                 showlegend=False,
-                hovertemplate="价格: %{y:.4f}<br>量: %{x:,.0f}<extra></extra>",
+                hovertemplate="价格区间: %{customdata[0]:.4f} - %{customdata[1]:.4f}<br>区间成交量: %{x:,.0f}<extra></extra>",
             ),
             row=1,
             col=2,
@@ -1865,13 +1915,14 @@ def fig_15m_vwap_rsi(
         y_lo = min(y_lo, float(user_avg_cost))
         y_hi = max(y_hi, float(user_avg_cost))
     y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
+    price_y_range = [y_lo - y_pad, y_hi + y_pad]
     fig.update_yaxes(
         title_text="价格",
         row=1,
         col=1,
         title_standoff=8,
         secondary_y=False,
-        range=[y_lo - y_pad, y_hi + y_pad],
+        range=price_y_range,
     )
     fig.update_yaxes(
         row=1,
@@ -1885,7 +1936,7 @@ def fig_15m_vwap_rsi(
     macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
-    fig.update_yaxes(showticklabels=False, row=1, col=2)
+    fig.update_yaxes(showticklabels=False, showgrid=False, range=price_y_range, row=1, col=2)
     return fig
 
 
@@ -1926,7 +1977,7 @@ def fig_5m_vwap_rsi7(
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
 
-    vp_price, vp_vol = _volume_profile_by_price(df, bins=24)
+    vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(df, bins=24)
 
     fig = make_subplots(
         rows=3,
@@ -2120,12 +2171,14 @@ def fig_5m_vwap_rsi7(
             go.Bar(
                 x=vp_vol.values,
                 y=vp_price.values,
+                width=vp_width.values,
+                customdata=np.column_stack([vp_low.values, vp_high.values]),
                 orientation="h",
                 name="价位成交量",
                 marker_color=theme["vp_bar"],
                 marker_line_width=0,
                 showlegend=False,
-                hovertemplate="价格: %{y:.4f}<br>量: %{x:,.0f}<extra></extra>",
+                hovertemplate="价格区间: %{customdata[0]:.4f} - %{customdata[1]:.4f}<br>区间成交量: %{x:,.0f}<extra></extra>",
             ),
             row=1,
             col=2,
@@ -2144,13 +2197,14 @@ def fig_5m_vwap_rsi7(
         y_lo = min(y_lo, float(user_avg_cost))
         y_hi = max(y_hi, float(user_avg_cost))
     y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
+    price_y_range = [y_lo - y_pad, y_hi + y_pad]
     fig.update_yaxes(
         title_text="价格",
         row=1,
         col=1,
         title_standoff=8,
         secondary_y=False,
-        range=[y_lo - y_pad, y_hi + y_pad],
+        range=price_y_range,
     )
     fig.update_yaxes(
         row=1,
@@ -2164,5 +2218,5 @@ def fig_5m_vwap_rsi7(
     macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
-    fig.update_yaxes(showticklabels=False, row=1, col=2)
+    fig.update_yaxes(showticklabels=False, showgrid=False, range=price_y_range, row=1, col=2)
     return fig
