@@ -1991,7 +1991,7 @@ def _render_chart_board() -> None:
                         _chart_yf,
                         _chart_pick,
                         chart_theme=chart_theme,
-                        user_avg_cost=_chart_user_avg_cost,
+                        user_avg_cost=None,
                         cache_only=chart_cache_only,
                     )
                 ] = ("15m", "15m（15m）")
@@ -2002,7 +2002,7 @@ def _render_chart_board() -> None:
                         _chart_yf,
                         _chart_pick,
                         chart_theme=chart_theme,
-                        user_avg_cost=_chart_user_avg_cost,
+                        user_avg_cost=None,
                         cache_only=chart_cache_only,
                     )
                 ] = ("5m", "5m（5m）")
