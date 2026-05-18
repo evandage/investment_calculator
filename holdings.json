@@ -1,0 +1,42 @@
+{
+  "QQQ": {
+    "shares": 0,
+    "avg_cost": 400
+  },
+  "VOO": {
+    "shares": 1,
+    "avg_cost": 586.47
+  },
+  "AVGO": {
+    "shares": 0.1914,
+    "avg_cost": 412.54
+  },
+  "ISRG": {
+    "shares": 0.2321,
+    "avg_cost": 430.8487720809996
+  },
+  "MSFT": {
+    "shares": 0.1683,
+    "avg_cost": 415.82
+  },
+  "NVDA": {
+    "shares": 0.25,
+    "avg_cost": 199.92
+  },
+  "SGOV": {
+    "shares": 30,
+    "avg_cost": 100.52
+  },
+  "GOOGL": {
+    "shares": 0.2667,
+    "avg_cost": 374.86
+  },
+  "001015": {
+    "shares": 5023.83,
+    "avg_cost": 2.289090196125267
+  },
+  "007994": {
+    "shares": 4431.84,
+    "avg_cost": 2.594859020181234
+  }
+}
