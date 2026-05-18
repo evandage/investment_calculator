@@ -1189,6 +1189,7 @@ def _fetch_us_etf_pe_drawdown(
     provider = _normalize_market_provider(provider or _market_data_provider())
     pe_val: float | None = None
     dd_val: float | None = None
+    rebound_val: float | None = None
     if provider == "yfinance":
         try:
             import yfinance as yf
@@ -1201,9 +1202,12 @@ def _fetch_us_etf_pe_drawdown(
                 last = float(closes.iloc[-1])
                 if peak > 0:
                     dd_val = (last / peak - 1.0) * 100.0
+                trough = float(win.min())
+                if trough > 0:
+                    rebound_val = (last / trough - 1.0) * 100.0
         except Exception:
             pass
-        return {"pe": pe_val, "drawdown_pct": dd_val}
+        return {"pe": pe_val, "drawdown_pct": dd_val, "rebound_pct": rebound_val}
 
     secid = _EASTMONEY_US_SECID.get(symbol)
     if secid:
@@ -1239,19 +1243,23 @@ def _fetch_us_etf_pe_drawdown(
                 if len(closes) > 1:
                     win = closes[-60:] if len(closes) >= 60 else closes
                     peak = max(win)
+                    trough = min(win)
                     last = closes[-1]
                     if peak > 0:
                         dd_val = (last / peak - 1.0) * 100.0
+                    if trough > 0:
+                        rebound_val = (last / trough - 1.0) * 100.0
+                    if dd_val is not None or rebound_val is not None:
                         break
             except Exception:
                 continue
 
-    return {"pe": pe_val, "drawdown_pct": dd_val}
+    return {"pe": pe_val, "drawdown_pct": dd_val, "rebound_pct": rebound_val}
 
 
 @st.cache_data(ttl=21600, show_spinner=False)
-def _fetch_fund_drawdown(code: str) -> float | None:
-    """用东方财富历史净值估算近60条记录高点回撤。"""
+def _fetch_fund_60d_metrics(code: str) -> dict[str, float | None]:
+    """用东方财富历史净值估算近60条记录高点回撤与低点涨幅。"""
     url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=120"
     try:
         r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
@@ -1264,13 +1272,22 @@ def _fetch_fund_drawdown(code: str) -> float | None:
             except (TypeError, ValueError):
                 continue
         if len(values) <= 1:
-            return None
+            return {"drawdown_pct": None, "rebound_pct": None}
         win = values[:60]
         peak = max(win)
+        trough = min(win)
         last = values[0]
-        return (last / peak - 1.0) * 100.0 if peak > 0 else None
+        drawdown = (last / peak - 1.0) * 100.0 if peak > 0 else None
+        rebound = (last / trough - 1.0) * 100.0 if trough > 0 else None
+        return {"drawdown_pct": drawdown, "rebound_pct": rebound}
     except Exception:
-        return None
+        return {"drawdown_pct": None, "rebound_pct": None}
+
+
+def _fetch_fund_drawdown(code: str) -> float | None:
+    q = _fetch_fund_60d_metrics(code)
+    dd = q.get("drawdown_pct")
+    return float(dd) if isinstance(dd, (int, float)) else None
 
 
 def _fetch_asset_drawdown(sym: str, meta: dict[str, str]) -> float | None:
@@ -1280,6 +1297,18 @@ def _fetch_asset_drawdown(sym: str, meta: dict[str, str]) -> float | None:
         return float(dd) if isinstance(dd, (int, float)) else None
     if sym in _FUND_CODES:
         return _fetch_fund_drawdown(_FUND_CODES[sym])
+    return None
+
+
+def _fetch_asset_rebound(sym: str, meta: dict[str, str]) -> float | None:
+    if meta["currency"] == "USD":
+        q = _fetch_us_etf_pe_drawdown(sym, _DRAWDOWN_CACHE_VERSION, _market_data_provider())
+        rebound = q.get("rebound_pct")
+        return float(rebound) if isinstance(rebound, (int, float)) else None
+    if sym in _FUND_CODES:
+        q = _fetch_fund_60d_metrics(_FUND_CODES[sym])
+        rebound = q.get("rebound_pct")
+        return float(rebound) if isinstance(rebound, (int, float)) else None
     return None
 
 
@@ -1773,6 +1802,7 @@ if st.button(
     _fetch_usdcny_rate_meta.clear()
     _fetch_vix_meta.clear()
     _fetch_us_etf_pe_drawdown.clear()
+    _fetch_fund_60d_metrics.clear()
     _fetch_fund_drawdown.clear()
     d = _defaults_from_fetch()
     st.session_state.def_fx = _fetch_usdcny_rate()
@@ -2062,6 +2092,7 @@ value_cny_by_symbol: dict[str, float] = {}
 pnl_cny_by_symbol: dict[str, float] = {}
 daily_change_pct_by_symbol: dict[str, float] = spot_meta.get("daily_change_pct_by_symbol", {})  # type: ignore[assignment]
 drawdown_pct_by_symbol: dict[str, float | None] = {}
+rebound_pct_by_symbol: dict[str, float | None] = {}
 for sym, meta in _ASSET_META.items():
     shares = float(holdings[sym]["shares"])
     avg_cost = float(holdings[sym]["avg_cost"])
@@ -2083,13 +2114,16 @@ for sym, meta in _ASSET_META.items():
     value_cny_by_symbol[sym] = value_cny
     pnl_cny_by_symbol[sym] = value_cny - cost_cny
     row_drawdown = _fetch_asset_drawdown(sym, meta)
+    row_rebound = _fetch_asset_rebound(sym, meta)
     drawdown_pct_by_symbol[sym] = row_drawdown
+    rebound_pct_by_symbol[sym] = row_rebound
     rows.append(
         {
             "标的": meta["label"],
             "币种": meta["currency"],
             "当日涨跌%": round(daily_change_pct_by_symbol.get(sym, 0.0), 2),
             "近60日高点回撤%": round(float(row_drawdown), 2) if isinstance(row_drawdown, (int, float)) else None,
+            "近60日低点涨幅%": round(float(row_rebound), 2) if isinstance(row_rebound, (int, float)) else None,
             "浮动盈亏": round(pnl, 2),
             "涨跌幅%": round(pnl_pct, 2),
             "持有数量": round(shares, 3),
@@ -2498,6 +2532,7 @@ st.dataframe(
     column_config={
         "当日涨跌%": st.column_config.NumberColumn("当日涨跌%", format="%.2f%%"),
         "近60日高点回撤%": st.column_config.NumberColumn("近60日高点回撤%", format="%.2f%%"),
+        "近60日低点涨幅%": st.column_config.NumberColumn("近60日低点涨幅%", format="%.2f%%"),
         "涨跌幅%": st.column_config.NumberColumn("涨跌幅%", format="%.2f%%"),
     },
 )
