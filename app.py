@@ -1803,7 +1803,6 @@ if st.button(
     _fetch_vix_meta.clear()
     _fetch_us_etf_pe_drawdown.clear()
     _fetch_fund_60d_metrics.clear()
-    _fetch_fund_drawdown.clear()
     d = _defaults_from_fetch()
     st.session_state.def_fx = _fetch_usdcny_rate()
     st.session_state.def_voo = d["voo"]
