@@ -30,6 +30,11 @@ _EASTMONEY_HEADERS = {
     ),
     "Referer": "https://quote.eastmoney.com/",
 }
+_TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+_TENCENT_HEADERS = {
+    "User-Agent": _EASTMONEY_HEADERS["User-Agent"],
+    "Referer": "https://finance.qq.com/",
+}
 _HTTP_TIMEOUT = (5, 45)
 
 _YF_TIMEOUT = float(os.environ.get("YFINANCE_CHART_TIMEOUT", "90"))
@@ -42,7 +47,7 @@ _SUPABASE_SESSION: requests.Session | None = None
 _SUPABASE_READ_ONLY = bool(int(os.environ.get("SUPABASE_READ_ONLY", "0")))
 _LAST_SYNC_AT: dict[tuple[str, str], float] = {}
 _SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")))
-_MARKET_DATA_PROVIDER = "eastmoney"
+_MARKET_DATA_PROVIDER = "tencent"
 
 # Supabase 行情缓存保留期（避免分钟线无限增长导致切换标的变慢）
 # - 1d：需要足够长用于 EMA200/MACD/ATR 计算（这里留 ~450 天）
@@ -87,6 +92,16 @@ _EASTMONEY_US_SECID = {
     "MSFT": "105.MSFT",
     "ISRG": "105.ISRG",
     "SGOV": "106.SGOV",
+}
+_TENCENT_US_KLINE = {
+    "VOO": "usVOO.AM",
+    "QQQ": "usQQQ.OQ",
+    "AVGO": "usAVGO.OQ",
+    "NVDA": "usNVDA.OQ",
+    "GOOGL": "usGOOGL.OQ",
+    "MSFT": "usMSFT.OQ",
+    "ISRG": "usISRG.OQ",
+    "SGOV": "usSGOV.AM",
 }
 
 _CH_FONT_FAMILY = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
@@ -198,14 +213,22 @@ CHART_THEME_OPTIONS: tuple[str, ...] = tuple(CHART_THEMES.keys())
 
 
 def configure_market_provider(provider: str | None = None) -> str:
-    """兼容旧调用；当前统一使用 eastmoney。"""
+    """配置 K 线数据源；默认腾讯优先，东财/yfinance 作为后备。"""
     global _MARKET_DATA_PROVIDER
-    _MARKET_DATA_PROVIDER = "eastmoney"
+    p = str(provider or "tencent").strip().lower()
+    if p in {"tencent", "qq", "gtimg"}:
+        _MARKET_DATA_PROVIDER = "tencent"
+    elif p in {"eastmoney", "em", "cn", "china", "mainland"}:
+        _MARKET_DATA_PROVIDER = "eastmoney"
+    elif p in {"yfinance", "yf", "yahoo", "us"}:
+        _MARKET_DATA_PROVIDER = "yfinance"
+    else:
+        _MARKET_DATA_PROVIDER = "tencent"
     return _MARKET_DATA_PROVIDER
 
 
 def get_market_provider() -> str:
-    return "eastmoney"
+    return _MARKET_DATA_PROVIDER
 
 
 configure_market_provider(None)
@@ -453,6 +476,64 @@ def _fetch_eastmoney_ohlcv(
     return df[~df.index.duplicated(keep="last")]
 
 
+def _fetch_tencent_ohlcv(
+    symbol: str,
+    interval: Literal["1d", "15m", "5m"],
+    *,
+    lmt: int | None = None,
+) -> pd.DataFrame:
+    """腾讯美股 K 线。当前对美股日线覆盖较好，分钟线通常不足，分钟线返回空让后备源处理。"""
+    code = _TENCENT_US_KLINE.get(symbol)
+    if not code or interval != "1d":
+        return pd.DataFrame()
+    n = 1000 if lmt is None else int(lmt)
+    n = max(80, min(1000, n))
+    try:
+        r = requests.get(
+            _TENCENT_KLINE_URL,
+            params={"param": f"{code},day,,,{n},qfq"},
+            headers=_TENCENT_HEADERS,
+            timeout=_HTTP_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json().get("data") or {}
+        rows_raw = ((data.get(code) or {}).get("day") or []) if isinstance(data, dict) else []
+    except (OSError, ValueError, requests.RequestException):
+        return pd.DataFrame()
+
+    rows: list[tuple[pd.Timestamp, float, float, float, float, float]] = []
+    for row in rows_raw:
+        if not isinstance(row, list) or len(row) < 6:
+            continue
+        try:
+            ts = pd.to_datetime(row[0])
+            o, c, h, low = float(row[1]), float(row[2]), float(row[3]), float(row[4])
+            v = float(row[5])
+            rows.append((ts, o, h, low, c, v))
+        except (ValueError, TypeError):
+            continue
+    if not rows:
+        return pd.DataFrame()
+    idx, o, h, low, c, v = zip(*rows)
+    new_york_noon = [
+        pd.Timestamp(
+            year=t.year,
+            month=t.month,
+            day=t.day,
+            hour=12,
+            minute=0,
+            tz=ZoneInfo("America/New_York"),
+        )
+        for t in idx
+    ]
+    df = pd.DataFrame(
+        {"Open": o, "High": h, "Low": low, "Close": c, "Volume": v},
+        index=pd.DatetimeIndex(new_york_noon, name="Datetime"),
+    )
+    df = df.sort_index()
+    return df[~df.index.duplicated(keep="last")]
+
+
 def _fetch_yfinance_ohlcv(
     symbol: str,
     interval: Literal["1d", "15m", "5m"],
@@ -657,7 +738,15 @@ def _fetch_from_source(
     eastmoney_lmt: int | None = None,
     yfinance_start_naive_local: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, str]:
-    secid = _eastmoney_secid(symbol) if get_market_provider() == "eastmoney" else None
+    provider = get_market_provider()
+    if provider == "tencent":
+        d = _fetch_tencent_ohlcv(symbol, interval, lmt=eastmoney_lmt)
+        if not d.empty:
+            if interval != "1d":
+                d = _fix_intraday_last_bar_volume(d)
+            return _normalize_plot_time_index(d, symbol), "tencent"
+
+    secid = _eastmoney_secid(symbol) if provider in {"tencent", "eastmoney"} else None
     if secid is not None:
         d = _fetch_eastmoney_ohlcv(secid, interval, lmt=eastmoney_lmt)
         if d.empty:
@@ -1110,9 +1199,10 @@ def fetch_ohlcv(
             else:
                 fetch_period = _period_for_incremental(interval)
                 mx = cached.index.max()
-                secid = _eastmoney_secid(symbol) if get_market_provider() == "eastmoney" else None
+                provider = get_market_provider()
+                secid = _eastmoney_secid(symbol) if provider in {"tencent", "eastmoney"} else None
                 em_lmt = _eastmoney_incremental_lmt(symbol, interval, mx) if secid else None
-                yf_start = _yfinance_incremental_start(symbol, mx, interval) if secid is None else None
+                yf_start = _yfinance_incremental_start(symbol, mx, interval) if provider == "yfinance" else None
                 latest, source = _fetch_from_source(
                     symbol,
                     interval,

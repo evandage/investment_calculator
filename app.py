@@ -3,6 +3,7 @@ import json
 import base64
 import importlib
 import os
+import time
 from io import StringIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -72,6 +73,16 @@ _QQ_US = {
     "ISRG": "usISRG",
     "SGOV": "usSGOV",
 }
+_QQ_US_KLINE = {
+    "VOO": "usVOO.AM",
+    "QQQ": "usQQQ.OQ",
+    "AVGO": "usAVGO.OQ",
+    "NVDA": "usNVDA.OQ",
+    "GOOGL": "usGOOGL.OQ",
+    "MSFT": "usMSFT.OQ",
+    "ISRG": "usISRG.OQ",
+    "SGOV": "usSGOV.AM",
+}
 _SINA_GB = {
     "VOO": "gb_voo",
     "QQQ": "gb_qqq",
@@ -91,7 +102,7 @@ _EASTMONEY_QUOTE_URLS = (
     "http://push2.eastmoney.com/api/qt/stock/get",
     "https://push2.eastmoney.com/api/qt/stock/get",
 )
-_DRAWDOWN_CACHE_VERSION = "eastmoney-http-v2"
+_DRAWDOWN_CACHE_VERSION = "tencent-eastmoney-yahoo-chart-v5"
 _EASTMONEY_US_SECID = {
     "VOO": "107.VOO",
     "QQQ": "105.QQQ",
@@ -107,6 +118,8 @@ _US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "ISRG", "SG
 
 def _normalize_market_provider(value: str | None) -> str:
     v = str(value or "auto").strip().lower()
+    if v in {"tencent", "qq", "gtimg"}:
+        return "tencent"
     if v in {"eastmoney", "em", "cn", "china", "mainland"}:
         return "eastmoney"
     if v in {"yfinance", "yf", "yahoo", "us"}:
@@ -115,10 +128,11 @@ def _normalize_market_provider(value: str | None) -> str:
 
 
 def _market_data_provider() -> str:
-    return "eastmoney"
+    return "tencent"
 
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
+_MONTHLY_BUDGET_USAGE_FILE = Path(__file__).with_name("monthly_budget_usage.json")
 _ASSET_META = {
     "VOO": {"label": "VOO", "currency": "USD"},
     "QQQ": {"label": "QQQ", "currency": "USD"},
@@ -168,21 +182,44 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "SGOV": (0.0, 10.0),
 }
 
-_DCA_DRAWDOWN_RULES: dict[str, tuple[tuple[float, str], ...]] = {
-    "VOO": ((-15.0, "明显加大，可用部分备用资金"), (-10.0, "明显加大"), (-5.0, "多买一点")),
-    "QQQ": ((-15.0, "明显加大，可用部分备用资金"), (-10.0, "明显加大"), (-5.0, "多买一点")),
-    "MSFT": ((-25.0, "重加"), (-15.0, "中加"), (-8.0, "小加")),
-    "GOOGL": ((-25.0, "重加"), (-18.0, "中加"), (-10.0, "小加")),
-    "NVDA": ((-30.0, "重加"), (-20.0, "中加"), (-12.0, "小加")),
-    "AVGO": ((-28.0, "重加"), (-18.0, "中加"), (-10.0, "小加")),
-    "ISRG": ((-30.0, "重加"), (-20.0, "中加"), (-12.0, "小加")),
+_REBALANCE_PHASE_BUILD = "建仓期"
+_REBALANCE_PHASE_DCA = "长期定投期"
+_REBALANCE_ALLOCATION_ROWS = [
+    {"资产": "VOO", "目标占比": "40%", "策略定位": "核心长期仓"},
+    {"资产": "QQQ", "目标占比": "20%", "策略定位": "科技增强仓"},
+    {"资产": "卫星仓（MSFT/GOOGL/NVDA/AVGO/ISRG）", "目标占比": "20%", "策略定位": "主动超额收益"},
+    {"资产": "SGOV", "目标占比": "20%", "策略定位": "弹药库/现金管理"},
+]
+_REBALANCE_STRATEGY_LABELS = {
+    "VOO": "长期无脑定投",
+    "QQQ": "动态增强，跌了多买",
+    "GOOGL": "半定投化",
+    "MSFT": "半定投化",
+    "ISRG": "半定投化",
+    "NVDA": "波动驱动加仓",
+    "AVGO": "波动驱动加仓",
+    "SGOV": "机会弹药库",
 }
-
-_DCA_DRAWDOWN_RULE_TEXT = (
-    "回撤定投规则：VOO 参考 S&P 500：-5% 多买一点、-10% 明显加大、-15% 可用部分备用资金；"
-    "卫星仓位按个股阈值：MSFT -8/-15/-25，GOOGL -10/-18/-25，NVDA -12/-20/-30，"
-    "AVGO -10/-18/-28，ISRG -12/-20/-30。"
-)
+_REBALANCE_RULES: dict[str, dict[str, dict[str, Any]]] = {
+    _REBALANCE_PHASE_BUILD: {
+        "VOO": {"normal": (1.0, "正常建仓", "每月机械定投", "normal"), "bands": [(-15.0, 3.0, "大加", "3x 月预算 + 少量 SGOV", "large"), (-10.0, 2.0, "中加", "2x 月预算", "medium"), (-5.0, 1.5, "小加", "1.5x 月预算", "small")]},
+        "QQQ": {"normal": (0.25, "少买/等回撤", "未跌满 6%：贵了少买", "normal"), "bands": [(-18.0, 4.0, "大加", "4x + 动用 SGOV", "large"), (-12.0, 2.5, "中加", "2.5x", "medium"), (-6.0, 1.5, "小加", "1.5x", "small")]},
+        "MSFT": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-22.0, 4.0, "大加", "4x", "large"), (-15.0, 2.5, "中加", "2.5x", "medium"), (-8.0, 1.5, "小加", "1.5x", "small")]},
+        "GOOGL": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-25.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
+        "NVDA": {"normal": (0.0, "等待波动", "未到小加档：等待波动", "normal"), "bands": [(-30.0, 5.0, "大加", "5x + 明显动用 SGOV", "large"), (-20.0, 3.0, "中加", "3x", "medium"), (-12.0, 1.5, "小加", "1.5x", "small")]},
+        "AVGO": {"normal": (0.0, "等待波动", "未到小加档：等待波动", "normal"), "bands": [(-28.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
+        "ISRG": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-28.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
+    },
+    _REBALANCE_PHASE_DCA: {
+        "VOO": {"normal": (1.0, "正常定投", "正常：工资定投", "normal"), "bands": [(-15.0, 2.5, "大加", "中等动用 SGOV", "large"), (-10.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-5.0, 1.25, "多买一点", "当月 SGOV 流入", "small")]},
+        "QQQ": {"normal": (0.5, "小额定投", "正常：小额定投", "normal"), "bands": [(-18.0, 2.5, "大加", "中等 SGOV", "large"), (-12.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-6.0, 1.25, "增加投入", "当月 SGOV 流入", "small")]},
+        "MSFT": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-22.0, 2.0, "大加", "大加", "large"), (-15.0, 1.5, "明显加", "明显加", "medium"), (-8.0, 1.0, "多买", "多买", "small")]},
+        "GOOGL": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-25.0, 2.0, "大加", "大加", "large"), (-18.0, 1.5, "明显加", "明显加", "medium"), (-10.0, 1.0, "多买", "多买", "small")]},
+        "NVDA": {"normal": (0.0, "少量/观察", "正常：少量/观察", "normal"), "bands": [(-30.0, 2.5, "大加", "大加（AI 恐慌级）", "large"), (-20.0, 1.75, "明显加", "明显加", "medium"), (-12.0, 1.0, "小加", "小加", "small")]},
+        "AVGO": {"normal": (0.1, "观察/小买", "正常：观察/小买", "normal"), "bands": [(-28.0, 2.5, "大加", "大加", "large"), (-18.0, 1.75, "明显加", "明显加", "medium"), (-10.0, 1.0, "小加", "小加", "small")]},
+        "ISRG": {"normal": (0.25, "长期慢买", "正常：长期慢买", "normal"), "bands": [(-28.0, 2.0, "大加", "大加", "large"), (-18.0, 1.5, "明显加", "明显加", "medium"), (-10.0, 1.0, "多买", "多买", "small")]},
+    },
+}
 
 
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -1178,6 +1215,79 @@ def _vix_regime(vix: float) -> tuple[str, str]:
     return ("高波动/恐慌", "风险事件阶段，优先仓位管理与现金流，避免一次性重仓。")
 
 
+def _fetch_yahoo_chart_60d_metrics(symbol: str) -> dict[str, float | None]:
+    period2 = int(time.time())
+    period1 = period2 - 220 * 24 * 60 * 60
+    try:
+        r = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            params={
+                "period1": period1,
+                "period2": period2,
+                "interval": "1d",
+                "events": "history",
+            },
+            timeout=(8, 18),
+            headers=_REQUEST_HEADERS,
+        )
+        r.raise_for_status()
+        result = ((r.json().get("chart") or {}).get("result") or [None])[0] or {}
+        quote = (((result.get("indicators") or {}).get("quote") or [None])[0]) or {}
+        closes = [
+            float(v)
+            for v in (quote.get("close") or [])
+            if isinstance(v, (int, float)) and float(v) > 0
+        ]
+        if len(closes) <= 1:
+            return {"drawdown_pct": None, "rebound_pct": None}
+        win = closes[-60:] if len(closes) >= 60 else closes
+        peak = max(win)
+        trough = min(win)
+        last = closes[-1]
+        drawdown = (last / peak - 1.0) * 100.0 if peak > 0 else None
+        rebound = (last / trough - 1.0) * 100.0 if trough > 0 else None
+        return {"drawdown_pct": drawdown, "rebound_pct": rebound}
+    except Exception:
+        return {"drawdown_pct": None, "rebound_pct": None}
+
+
+def _fetch_tencent_us_60d_metrics(symbol: str) -> dict[str, float | None]:
+    code = _QQ_US_KLINE.get(symbol)
+    if not code:
+        return {"drawdown_pct": None, "rebound_pct": None}
+    try:
+        r = requests.get(
+            "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
+            params={"param": f"{code},day,,,100,qfq"},
+            timeout=(8, 18),
+            headers={**_REQUEST_HEADERS, "Referer": "https://finance.qq.com/"},
+        )
+        r.raise_for_status()
+        data = r.json().get("data") or {}
+        rows = ((data.get(code) or {}).get("day") or []) if isinstance(data, dict) else []
+        closes: list[float] = []
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 3:
+                continue
+            try:
+                close = float(row[2])
+            except (TypeError, ValueError):
+                continue
+            if close > 0:
+                closes.append(close)
+        if len(closes) <= 1:
+            return {"drawdown_pct": None, "rebound_pct": None}
+        win = closes[-60:] if len(closes) >= 60 else closes
+        peak = max(win)
+        trough = min(win)
+        last = closes[-1]
+        drawdown = (last / peak - 1.0) * 100.0 if peak > 0 else None
+        rebound = (last / trough - 1.0) * 100.0 if trough > 0 else None
+        return {"drawdown_pct": drawdown, "rebound_pct": rebound}
+    except Exception:
+        return {"drawdown_pct": None, "rebound_pct": None}
+
+
 @st.cache_data(ttl=21600, show_spinner=False)
 def _fetch_us_etf_pe_drawdown(
     symbol: str,
@@ -1190,6 +1300,11 @@ def _fetch_us_etf_pe_drawdown(
     pe_val: float | None = None
     dd_val: float | None = None
     rebound_val: float | None = None
+    if provider != "yfinance":
+        tencent_metrics = _fetch_tencent_us_60d_metrics(symbol)
+        dd_val = tencent_metrics.get("drawdown_pct")
+        rebound_val = tencent_metrics.get("rebound_pct")
+
     if provider == "yfinance":
         try:
             import yfinance as yf
@@ -1207,10 +1322,18 @@ def _fetch_us_etf_pe_drawdown(
                     rebound_val = (last / trough - 1.0) * 100.0
         except Exception:
             pass
+        if dd_val is None or rebound_val is None:
+            tencent_metrics = _fetch_tencent_us_60d_metrics(symbol)
+            dd_val = dd_val if dd_val is not None else tencent_metrics.get("drawdown_pct")
+            rebound_val = rebound_val if rebound_val is not None else tencent_metrics.get("rebound_pct")
+        if dd_val is None or rebound_val is None:
+            yahoo_metrics = _fetch_yahoo_chart_60d_metrics(symbol)
+            dd_val = dd_val if dd_val is not None else yahoo_metrics.get("drawdown_pct")
+            rebound_val = rebound_val if rebound_val is not None else yahoo_metrics.get("rebound_pct")
         return {"pe": pe_val, "drawdown_pct": dd_val, "rebound_pct": rebound_val}
 
     secid = _EASTMONEY_US_SECID.get(symbol)
-    if secid:
+    if secid and (dd_val is None or rebound_val is None):
         for url in _EASTMONEY_KLINE_URLS:
             try:
                 r = requests.get(
@@ -1253,6 +1376,11 @@ def _fetch_us_etf_pe_drawdown(
                         break
             except Exception:
                 continue
+
+    if dd_val is None or rebound_val is None:
+        yahoo_metrics = _fetch_yahoo_chart_60d_metrics(symbol)
+        dd_val = dd_val if dd_val is not None else yahoo_metrics.get("drawdown_pct")
+        rebound_val = rebound_val if rebound_val is not None else yahoo_metrics.get("rebound_pct")
 
     return {"pe": pe_val, "drawdown_pct": dd_val, "rebound_pct": rebound_val}
 
@@ -1312,13 +1440,37 @@ def _fetch_asset_rebound(sym: str, meta: dict[str, str]) -> float | None:
     return None
 
 
-def _drawdown_dca_signal(symbol: str, drawdown_pct: float | None) -> str:
+def _rebalance_strategy_signal(
+    symbol: str,
+    drawdown_pct: float | None,
+    phase: str,
+) -> tuple[str, float, str, str, str]:
+    strategy = _REBALANCE_STRATEGY_LABELS.get(symbol, "按计划")
+    if symbol == "SGOV":
+        return strategy, 0.0, "作为弹药库", "弹药库", "reserve"
+    rule = _REBALANCE_RULES.get(phase, {}).get(symbol)
+    if rule is None:
+        return strategy, 0.0, "按计划", "暂无策略规则", "normal"
+    normal_multiplier, normal_action, normal_signal, normal_intensity = rule["normal"]
     if not isinstance(drawdown_pct, (int, float)):
-        return "暂无回撤数据"
-    for threshold, label in _DCA_DRAWDOWN_RULES.get(symbol, ()):
+        return strategy, float(normal_multiplier), str(normal_action), str(normal_signal), str(normal_intensity)
+    for threshold, multiplier, action, signal, intensity in rule["bands"]:
         if float(drawdown_pct) <= threshold:
-            return label
-    return "按计划观察"
+            return strategy, float(multiplier), str(action), str(signal), str(intensity)
+    return strategy, float(normal_multiplier), str(normal_action), str(normal_signal), str(normal_intensity)
+
+
+def _rebalance_can_use_sgov_reserve(drawdowns: dict[str, float | None]) -> bool:
+    for rules_by_symbol in _REBALANCE_RULES.values():
+        for sym, rule in rules_by_symbol.items():
+            drawdown = drawdowns.get(sym)
+            if not isinstance(drawdown, (int, float)):
+                continue
+            for threshold, _, _, _, intensity in rule["bands"]:
+                if intensity == "large" and float(drawdown) <= threshold:
+                    return True
+    return False
+
 
 
 def _default_holdings() -> dict[str, dict[str, float]]:
@@ -1430,6 +1582,84 @@ def _save_balances(balances: dict[str, float]) -> None:
     payload["realized_cny"] = float(balances.get("realized_cny", 0.0))
     _BALANCE_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_monthly_budget_usage_store() -> dict[str, Any]:
+    if not _MONTHLY_BUDGET_USAGE_FILE.exists():
+        return {}
+    try:
+        data = json.loads(_MONTHLY_BUDGET_USAGE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _load_monthly_budget_usage(user_id: str, month_key: str) -> dict[str, Any]:
+    store = _load_monthly_budget_usage_store()
+    user_key = str(user_id or "local").strip() or "local"
+    raw_user = store.get(user_key)
+    raw = (raw_user.get(month_key) or {}) if isinstance(raw_user, dict) else {}
+    month_data = {
+        "used_budget_usd": 0.0,
+        "planned_new_cash_usd": 700.0,
+        "bought_symbols": [],
+        "updated_at": "",
+    }
+    if isinstance(raw, dict):
+        try:
+            month_data["used_budget_usd"] = max(0.0, float(raw.get("used_budget_usd", 0.0)))
+        except (TypeError, ValueError):
+            month_data["used_budget_usd"] = 0.0
+        try:
+            month_data["planned_new_cash_usd"] = max(0.0, float(raw.get("planned_new_cash_usd", 700.0)))
+        except (TypeError, ValueError):
+            month_data["planned_new_cash_usd"] = 700.0
+        raw_symbols = raw.get("bought_symbols", [])
+        if isinstance(raw_symbols, list):
+            month_data["bought_symbols"] = [
+                str(sym).upper()
+                for sym in raw_symbols
+                if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
+            ]
+        month_data["updated_at"] = str(raw.get("updated_at", ""))
+    return month_data
+
+
+def _save_monthly_budget_usage(
+    user_id: str,
+    month_key: str,
+    used_budget_usd: float,
+    bought_symbols: list[str] | None = None,
+    planned_new_cash_usd: float = 700.0,
+) -> None:
+    store = _load_monthly_budget_usage_store()
+    user_key = str(user_id or "local").strip() or "local"
+    user_store = store.get(user_key)
+    if not isinstance(user_store, dict):
+        user_store = {}
+    try:
+        used = max(0.0, float(used_budget_usd))
+    except (TypeError, ValueError):
+        used = 0.0
+    try:
+        planned_cash_usd = max(0.0, float(planned_new_cash_usd))
+    except (TypeError, ValueError):
+        planned_cash_usd = 700.0
+    user_store[month_key] = {
+        "used_budget_usd": used,
+        "planned_new_cash_usd": planned_cash_usd,
+        "bought_symbols": [
+            str(sym).upper()
+            for sym in (bought_symbols or [])
+            if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
+        ],
+        "updated_at": datetime.now(_TZ_SHANGHAI).isoformat(timespec="seconds"),
+    }
+    store[user_key] = user_store
+    _MONTHLY_BUDGET_USAGE_FILE.write_text(
+        json.dumps(store, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -1794,10 +2024,14 @@ holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
 
 
 # --- 刷新市价（并可选同步当前K线到云端）---
-if st.button(
-    "刷新市价",
-    help="拉取现价并刷新默认输入；K线同步在后台定时进行。",
-):
+refresh_left, refresh_center, refresh_right = st.columns([0.18, 0.64, 0.18])
+with refresh_center:
+    refresh_prices_clicked = st.button(
+        "刷新市价",
+        help="拉取现价并刷新默认输入；K线同步在后台定时进行。",
+        use_container_width=True,
+    )
+if refresh_prices_clicked:
     _fetch_spot_prices_meta.clear()
     _fetch_usdcny_rate_meta.clear()
     _fetch_vix_meta.clear()
@@ -2579,231 +2813,387 @@ with asset_col_total:
         f"总资产 CNY {total_assets_cny:,.2f} ｜ 收益率 = 未变现浮盈亏 / 持仓成本 = {total_pnl_pct:.2f}%"
     )
 
-st.subheader("🧮 再平衡买入建议")
-st.caption(_DCA_DRAWDOWN_RULE_TEXT)
-if usd_total_cny <= 0:
-    st.info("美元资产总额为 0，暂无法生成美元资产再平衡建议。")
-else:
-    st.caption("按美元资产总额作为分母计算目标缺口；沪深300和中证500不参与本表比例。")
-    rebalance_rows: list[dict[str, Any]] = []
-    suggestion_map: dict[str, dict[str, Any]] = {}
-    for sym in usd_symbols:
-        meta = _ASSET_META[sym]
-        tgt_w = (_TARGET_WEIGHTS.get(sym, 0.0) / usd_target_weight_total) if usd_target_weight_total > 0 else 0.0
-        cur_cny = value_cny_by_symbol.get(sym, 0.0)
-        target_cny = tgt_w * usd_total_cny
-        gap_cny = target_cny - cur_cny
-        gap_usd = (gap_cny / fx) if fx > 0 else 0.0
-        q = _fetch_us_etf_pe_drawdown(sym, _DRAWDOWN_CACHE_VERSION)
-        pe = q.get("pe")
-        dd = drawdown_pct_by_symbol.get(sym)
-        dca_signal = _drawdown_dca_signal(sym, dd if isinstance(dd, (int, float)) else None)
-        pe_band = _USD_ASSET_PE_BANDS.get(sym)
-        expensive = False
-        if isinstance(pe, (int, float)) and pe_band is not None and float(pe) >= pe_band[1]:
-            expensive = True
-        if isinstance(pe, (int, float)) and float(pe) >= 35.0:
-            expensive = True
-        priority_score = max(0.0, gap_usd)
-        if expensive:
-            priority_score *= 0.55
-        if isinstance(dd, (int, float)) and float(dd) <= -10:
-            priority_score *= 1.15
-        action = "暂不买入"
-        note = "已高于目标或接近目标"
-        if gap_cny > 0:
-            if expensive:
-                action = "观察"
-                note = "估值偏贵，建议少量/暂缓"
-            else:
-                action = "优先买入"
-                note = "低于目标权重，适合补仓"
-        if dca_signal not in ("按计划观察", "暂无回撤数据"):
-            note = f"{note}；回撤信号：{dca_signal}"
-        px = float(prices_now.get(sym, 0.0))
-        need_units = (max(0.0, gap_usd) / px) if px > 0 else 0.0
-        dd_txt = f"{float(dd):.2f}%" if isinstance(dd, (int, float)) else "N/A"
-        rebalance_rows.append(
-            {
-                "标的": meta["label"],
-                "建议动作": action,
-                "优先级分数": round(priority_score, 2),
-                "目标缺口(USD)": round(gap_usd, 2),
-                "按当前价需买": round(need_units, 3),
-                "近60日回撤": dd_txt,
-                "回撤定投档位": dca_signal,
-                "说明": note,
-            }
-        )
-        suggestion_map[sym] = {
-            "gap_cny": gap_cny,
-            "priority_score": priority_score,
-            "action": action,
-            "expensive": expensive,
-        }
-    rebalance_df = pd.DataFrame(rebalance_rows)
-    rebalance_df = rebalance_df[
-        ["标的", "建议动作", "目标缺口(USD)", "按当前价需买", "近60日回撤", "回撤定投档位", "说明", "优先级分数"]
-    ].sort_values(by=["优先级分数", "目标缺口(USD)"], ascending=[False, False])
-    if not rebalance_df.empty:
-        rebalance_df.insert(0, "优先级", range(1, len(rebalance_df) + 1))
-        rebalance_df = rebalance_df.drop(columns=["优先级分数"])
-    st.dataframe(
-        rebalance_df,
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "优先级": st.column_config.NumberColumn("优先级", format="%d"),
-            "目标缺口(USD)": st.column_config.NumberColumn("目标缺口(USD)", format="%.2f"),
-            "按当前价需买": st.column_config.NumberColumn("按当前价需买", format="%.3f"),
-        },
-    )
+st.markdown("<br>", unsafe_allow_html=True)
+rebalance_title_col, rebalance_rule_col = st.columns([0.78, 0.22], vertical_alignment="center")
+with rebalance_title_col:
+    st.subheader("🧮 再平衡建议")
+with rebalance_rule_col:
+    with st.popover("ⓘ 算法规则", width="stretch"):
+        st.markdown("#### 长期目标")
+        st.dataframe(pd.DataFrame(_REBALANCE_ALLOCATION_ROWS), width="stretch", hide_index=True)
+        st.markdown(
+            """
+#### 回撤定义
+使用 60 日最高价回撤：
 
-    st.markdown("#### 卫星仓位建仓补齐金额")
-    satellite_target_total_w = (
-        sum(_TARGET_WEIGHTS[sym] for sym in _SATELLITE_SYMBOLS) / usd_target_weight_total
-        if usd_target_weight_total > 0
-        else 0.0
-    )
-    satellite_target_total_cny = satellite_target_total_w * usd_total_cny
-    satellite_current_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in _SATELLITE_SYMBOLS)
-    satellite_total_gap_cny = max(0.0, satellite_target_total_cny - satellite_current_total_cny)
-    satellite_parts_total = sum(_SATELLITE_TARGET_PARTS.values())
-    satellite_target_cny_by_symbol = {
-        sym: (
-            satellite_target_total_cny * (_SATELLITE_TARGET_PARTS[sym] / satellite_parts_total)
-            if satellite_parts_total > 0
+`drawdown = (current_price - max_60d_price) / max_60d_price`
+
+#### 阶段判断
+- **建仓期**：SGOV 明显高于 20% 目标，或权益仓位未达到目标权益仓位的 90%。
+- **长期定投期**：基本达到目标仓位后，主要靠新增工资定投。
+
+#### SGOV 规则
+- 本表只使用当前已经在账户里的美元现金和 SGOV，不预估未来新增工资。
+- 每月新增 5000 RMB 由前面的持仓/现金编辑录入后，再参与下一次规划。
+- 建仓期先按当前持仓计算每个标的到目标的缺口，再按剩余月数拆成月度推进量。
+- SGOV 超过 20% 目标的部分，可以随时挪用。
+- 目标内 20% SGOV 默认保留，只有触发大加档才动用。
+- 一旦触发大加/恐慌级档位，SGOV 可以全部动用，之后用后续新增资金再补回。
+"""
+        )
+        st.markdown("#### 建仓期规则")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"标的": "VOO", "小加": "-5% / 1.5x", "中加": "-10% / 2x", "大加": "-15% / 3x + 少量SGOV"},
+                    {"标的": "QQQ", "小加": "-6% / 1.5x", "中加": "-12% / 2.5x", "大加": "-18% / 4x + 动用SGOV"},
+                    {"标的": "MSFT", "小加": "-8% / 1.5x", "中加": "-15% / 2.5x", "大加": "-22% / 4x"},
+                    {"标的": "GOOGL", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-25% / 4x"},
+                    {"标的": "NVDA", "小加": "-12% / 1.5x", "中加": "-20% / 3x", "大加": "-30% / 5x + 明显动用SGOV"},
+                    {"标的": "AVGO", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-28% / 4x"},
+                    {"标的": "ISRG", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-28% / 4x"},
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        st.markdown("#### 长期定投期规则")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"标的": "VOO", "正常": "正常定投", "小加": "-5% 多买一点", "中加": "-10% 明显加仓", "大加": "-15% 大加"},
+                    {"标的": "QQQ", "正常": "小额定投", "小加": "-6% 增加投入", "中加": "-12% 明显加仓", "大加": "-18% 大加"},
+                    {"标的": "MSFT", "正常": "持续小买", "小加": "-8% 多买", "中加": "-15% 明显加", "大加": "-22% 大加"},
+                    {"标的": "GOOGL", "正常": "持续小买", "小加": "-10% 多买", "中加": "-18% 明显加", "大加": "-25% 大加"},
+                    {"标的": "NVDA", "正常": "少量/观察", "小加": "-12% 小加", "中加": "-20% 明显加", "大加": "-30% AI恐慌级"},
+                    {"标的": "AVGO", "正常": "观察/小买", "小加": "-10% 小加", "中加": "-18% 明显加", "大加": "-28% 大加"},
+                    {"标的": "ISRG", "正常": "长期慢买", "小加": "-10% 多买", "中加": "-18% 明显加", "大加": "-28% 大加"},
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+
+with st.expander("再平衡买入建议", expanded=False):
+    if usd_total_cny <= 0:
+        st.info("美元资产总额为 0，暂无法生成再平衡建议。")
+    else:
+        sgov_current_usd = (value_cny_by_symbol.get("SGOV", 0.0) / fx) if fx > 0 else 0.0
+        sgov_target_pct = (
+            _TARGET_WEIGHTS.get("SGOV", 0.0) / usd_target_weight_total
+            if usd_target_weight_total > 0
             else 0.0
         )
-        for sym in _SATELLITE_SYMBOLS
-    }
-    satellite_raw_deficit_cny_by_symbol = {
-        sym: max(0.0, satellite_target_cny_by_symbol[sym] - value_cny_by_symbol.get(sym, 0.0))
-        for sym in _SATELLITE_SYMBOLS
-    }
-    satellite_raw_deficit_total_cny = sum(satellite_raw_deficit_cny_by_symbol.values())
-    satellite_build_rows: list[dict[str, Any]] = []
-    satellite_total_buy_cny = 0.0
-    satellite_total_buy_usd = 0.0
-    for sym in _SATELLITE_SYMBOLS:
-        cur_cny = value_cny_by_symbol.get(sym, 0.0)
-        target_cny = satellite_target_cny_by_symbol[sym]
-        raw_deficit_cny = satellite_raw_deficit_cny_by_symbol[sym]
-        buy_cny = (
-            satellite_total_gap_cny * (raw_deficit_cny / satellite_raw_deficit_total_cny)
-            if satellite_raw_deficit_total_cny > 0
+        equity_current_usd = (
+            sum(value_cny_by_symbol.get(sym, 0.0) / fx for sym in usd_symbols if sym != "SGOV")
+            if fx > 0
             else 0.0
         )
-        buy_usd = (buy_cny / fx) if fx > 0 else 0.0
-        px = float(prices_now.get(sym, 0.0))
-        buy_shares = (buy_usd / px) if px > 0 else 0.0
-        target_pct_usd_assets = (target_cny / usd_total_cny * 100.0) if usd_total_cny > 0 else 0.0
-        target_pct_satellite = (
-            (_SATELLITE_TARGET_PARTS[sym] / satellite_parts_total * 100.0)
-            if satellite_parts_total > 0
-            else 0.0
+        equity_target_pct = max(0.0, 1.0 - sgov_target_pct)
+        equity_current_pct = (equity_current_usd / usd_total_usd) if usd_total_usd > 0 else 0.0
+        sgov_current_pct = (sgov_current_usd / usd_total_usd) if usd_total_usd > 0 else 0.0
+        auto_phase = (
+            _REBALANCE_PHASE_BUILD
+            if sgov_current_pct > sgov_target_pct + 0.05 or equity_current_pct < equity_target_pct * 0.90
+            else _REBALANCE_PHASE_DCA
         )
-        satellite_total_buy_cny += buy_cny
-        satellite_total_buy_usd += buy_usd
-        satellite_build_rows.append(
-            {
-                "标的": sym,
-                "目标占美元资产%": round(target_pct_usd_assets, 4),
-                "目标占卫星仓位%": round(target_pct_satellite, 2),
-                "当前市值(USD)": round((cur_cny / fx) if fx > 0 else 0.0, 2),
-                "目标市值(USD)": round((target_cny / fx) if fx > 0 else 0.0, 2),
-                "内部缺口(USD)": round((raw_deficit_cny / fx) if fx > 0 else 0.0, 2),
-                "建议买入(USD)": round(buy_usd, 2),
-                "约需股数": round(buy_shares, 4),
-                "当前价(USD)": round(px, 2),
-            }
+    
+        default_build_months = 1
+        now_for_build = datetime.now(_TZ_SHANGHAI)
+        build_end_year = 2026
+        build_end_month = 10
+        if now_for_build.year < build_end_year or (
+            now_for_build.year == build_end_year and now_for_build.month <= build_end_month
+        ):
+            default_build_months = max(
+                1,
+                (build_end_year - now_for_build.year) * 12 + build_end_month - now_for_build.month + 1,
+            )
+    
+        st.session_state.setdefault("rebalance_wizard_step", "1 确认阶段")
+        st.session_state.setdefault("rebalance_generated", False)
+        rebalance_steps = ["1 确认阶段", "2 预算与记录", "3 生成建议"]
+        current_wizard_step = str(st.session_state.get("rebalance_wizard_step", rebalance_steps[0]))
+        if current_wizard_step not in rebalance_steps:
+            current_wizard_step = rebalance_steps[0]
+        wizard_step = st.radio(
+            "再平衡买入流程",
+            rebalance_steps,
+            index=rebalance_steps.index(current_wizard_step),
+            horizontal=True,
         )
-    st.caption(
-        f"按当前美元资产总额固定计算：卫星仓位目标 {satellite_target_total_w * 100.0:.2f}%"
-        f"（目标 USD {(satellite_target_total_cny / fx) if fx > 0 else 0.0:,.2f}，"
-        f"当前 USD {(satellite_current_total_cny / fx) if fx > 0 else 0.0:,.2f}），"
-        f"合计建议买入 USD {satellite_total_buy_usd:,.2f}（≈ CNY {satellite_total_buy_cny:,.2f}）。"
-    )
-    st.dataframe(
-        pd.DataFrame(satellite_build_rows),
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "目标占美元资产%": st.column_config.NumberColumn("目标占美元资产%", format="%.4f%%"),
-            "目标占卫星仓位%": st.column_config.NumberColumn("目标占卫星仓位%", format="%.2f%%"),
-            "当前市值(USD)": st.column_config.NumberColumn("当前市值(USD)", format="%.2f"),
-            "目标市值(USD)": st.column_config.NumberColumn("目标市值(USD)", format="%.2f"),
-            "内部缺口(USD)": st.column_config.NumberColumn("内部缺口(USD)", format="%.2f"),
-            "建议买入(USD)": st.column_config.NumberColumn("建议买入(USD)", format="%.2f"),
-            "约需股数": st.column_config.NumberColumn("约需股数", format="%.4f"),
-            "当前价(USD)": st.column_config.NumberColumn("当前价(USD)", format="%.2f"),
-        },
-    )
-
-    st.markdown("#### 根据再平衡建议执行本月定投")
-    cfg_c1, cfg_c2 = st.columns(2)
-    with cfg_c1:
-        monthly_rmb = st.number_input("本月投入（CNY）", min_value=0.0, value=5000.0, step=100.0, key="rebalance_rmb")
-    with cfg_c2:
-        rebalance_fx = st.number_input("汇率（USD/CNY）", min_value=0.01, value=float(fx), step=0.0001, format="%.4f", key="rebalance_fx")
-
-    if st.button("按优先级生成本月买入计划", key="rebalance_plan_btn"):
-        _, balances_plan, _ = _load_user_state(cloud_user_id)
-        usd_symbols = [s for s, m in _ASSET_META.items() if m["currency"] == "USD"]
-        usd_budget_total = (
-            balances_plan["cash_usd"]
-            + (monthly_rmb / rebalance_fx if rebalance_fx > 0 else 0.0)
+        if wizard_step != current_wizard_step:
+            st.session_state["rebalance_wizard_step"] = wizard_step
+            st.session_state["rebalance_generated"] = False
+    
+        if wizard_step == "1 确认阶段":
+            st.markdown("##### 1. 确认阶段")
+            cfg_c1, cfg_c2 = st.columns(2)
+            with cfg_c1:
+                phase_choice = st.selectbox(
+                    "策略阶段",
+                    ["自动判断", _REBALANCE_PHASE_BUILD, _REBALANCE_PHASE_DCA],
+                    key="rebalance_phase_choice",
+                )
+            with cfg_c2:
+                build_month_input_kwargs: dict[str, Any] = {
+                    "label": "建仓剩余月数（到11月前）",
+                    "min_value": 1,
+                    "max_value": 24,
+                    "step": 1,
+                    "key": "rebalance_build_months",
+                }
+                if "rebalance_build_months" not in st.session_state:
+                    build_month_input_kwargs["value"] = int(default_build_months)
+                build_months = st.number_input(**build_month_input_kwargs)
+            st.caption(
+                f"自动判断：{auto_phase}。建仓期默认按当前持仓缺口和剩余月份推进，不把平均进度当成硬性月预算。"
+            )
+            if st.button("确认阶段，下一步", key="rebalance_confirm_phase"):
+                st.session_state["rebalance_wizard_step"] = "2 预算与记录"
+                st.session_state["rebalance_generated"] = False
+                st.rerun()
+        else:
+            phase_choice = str(st.session_state.get("rebalance_phase_choice", "自动判断"))
+            build_months = int(st.session_state.get("rebalance_build_months", default_build_months))
+    
+        rebalance_phase = auto_phase if phase_choice == "自动判断" else phase_choice
+        can_use_sgov_reserve = _rebalance_can_use_sgov_reserve(drawdown_pct_by_symbol)
+        build_month_count = max(1, int(build_months))
+    
+        current_month_key = now_for_build.strftime("%Y-%m")
+        budget_usage = _load_monthly_budget_usage(cloud_user_id, current_month_key)
+        used_budget_usd = float(budget_usage.get("used_budget_usd", 0.0))
+        planned_new_cash_usd = float(budget_usage.get("planned_new_cash_usd", 700.0))
+        planned_total_new_cash_usd = planned_new_cash_usd * build_month_count
+        planned_usd_total_usd = usd_total_usd + planned_total_new_cash_usd
+        planned_sgov_target_usd = sgov_target_pct * planned_usd_total_usd
+        sgov_excess_usd = max(0.0, sgov_current_usd - planned_sgov_target_usd)
+        planned_sgov_gap_usd = max(0.0, planned_sgov_target_usd - sgov_current_usd)
+        planned_new_cash_sgov_reserve_usd = 0.0 if can_use_sgov_reserve else min(
+            planned_new_cash_usd * sgov_target_pct,
+            planned_sgov_gap_usd,
         )
-
-        usd_candidates = [s for s in usd_symbols if suggestion_map[s]["gap_cny"] > 0 and not suggestion_map[s]["expensive"]]
-        if not usd_candidates:
-            usd_candidates = [s for s in usd_symbols if suggestion_map[s]["gap_cny"] > 0]
-
-        usd_weight_sum = sum(max(0.0, suggestion_map[s]["priority_score"]) for s in usd_candidates)
-
-        plan_buys: dict[str, dict[str, float]] = {s: {"shares": 0.0, "price": float(prices_now[s])} for s in _ASSET_META}
-        usd_spent = 0.0
-
-        for s in usd_candidates:
-            px = float(prices_now[s])
-            if px <= 0:
+        planned_new_cash_deployable_usd = max(0.0, planned_new_cash_usd - planned_new_cash_sgov_reserve_usd)
+        sgov_special_deploy_usd = (
+            max(0.0, sgov_current_usd - sgov_excess_usd) if can_use_sgov_reserve else 0.0
+        )
+        current_deployable_pool_usd = max(0.0, cash_usd) + sgov_excess_usd + sgov_special_deploy_usd
+        deployable_pool_usd = current_deployable_pool_usd + planned_new_cash_deployable_usd
+        bought_symbols_this_month = [
+            sym for sym in budget_usage.get("bought_symbols", []) if sym in usd_symbols and sym != "SGOV"
+        ]
+        save_execution = False
+        clear_execution = False
+        edited_used_budget_usd = used_budget_usd
+        edited_planned_new_cash_usd = planned_new_cash_usd
+        edited_bought_symbols = bought_symbols_this_month
+        if wizard_step == "2 预算与记录":
+            st.markdown("##### 2. 预算与本月记录")
+            st.caption(
+                f"记录 {current_month_key} 已经用掉的建仓预算，保存到 monthly_budget_usage.json。"
+                "每月计划新投入只用于生成建议，不自动修改持仓或现金；真实买入后你继续在前面的持仓/现金区更新。"
+            )
+            with st.form("monthly_budget_usage_form"):
+                edited_planned_new_cash_usd = st.number_input(
+                    "每月计划新投入(USD)",
+                    min_value=0.0,
+                    value=planned_new_cash_usd,
+                    step=50.0,
+                    format="%.2f",
+                    key=f"monthly_planned_cash_{current_month_key}",
+                )
+                edited_used_budget_usd = st.number_input(
+                    "本月已用预算(USD)",
+                    min_value=0.0,
+                    value=used_budget_usd,
+                    step=10.0,
+                    format="%.2f",
+                    key=f"monthly_budget_used_{current_month_key}",
+                )
+                buyable_symbols = [sym for sym in usd_symbols if sym != "SGOV"]
+                edited_bought_symbols = st.multiselect(
+                    "本月已经买过的标的（正常/小加不重复；中加/大加继续建议）",
+                    options=buyable_symbols,
+                    default=bought_symbols_this_month,
+                    key=f"monthly_budget_bought_symbols_{current_month_key}",
+                )
+                save_exec_col, clear_exec_col = st.columns([0.25, 0.25])
+                save_execution = save_exec_col.form_submit_button("保存并下一步")
+                clear_execution = clear_exec_col.form_submit_button("清零本月已用")
+        if save_execution:
+            used_budget_usd = float(edited_used_budget_usd)
+            planned_new_cash_usd = float(edited_planned_new_cash_usd)
+            bought_symbols_this_month = [str(sym).upper() for sym in edited_bought_symbols]
+            _save_monthly_budget_usage(
+                cloud_user_id,
+                current_month_key,
+                used_budget_usd,
+                bought_symbols_this_month,
+                planned_new_cash_usd,
+            )
+            st.session_state["rebalance_wizard_step"] = "3 生成建议"
+            st.session_state["rebalance_generated"] = False
+            st.success("已保存本月预算使用。")
+            st.rerun()
+        if clear_execution:
+            used_budget_usd = 0.0
+            bought_symbols_this_month = []
+            _save_monthly_budget_usage(
+                cloud_user_id,
+                current_month_key,
+                used_budget_usd,
+                bought_symbols_this_month,
+                planned_new_cash_usd,
+            )
+            st.success("已清零本月已用预算。")
+    
+        strategy_rows: list[dict[str, Any]] = []
+        full_rebalance_need_usd = 0.0
+        for sym in usd_symbols:
+            meta = _ASSET_META[sym]
+            current_cny = value_cny_by_symbol.get(sym, 0.0)
+            current_usd = (current_cny / fx) if fx > 0 else 0.0
+            target_pct = (_TARGET_WEIGHTS.get(sym, 0.0) / usd_target_weight_total) if usd_target_weight_total > 0 else 0.0
+            target_usd = target_pct * planned_usd_total_usd
+            gap_usd = target_usd - current_usd
+            drawdown_pct = drawdown_pct_by_symbol.get(sym)
+            strategy, multiplier, action, signal, intensity = _rebalance_strategy_signal(sym, drawdown_pct, rebalance_phase)
+            already_bought_this_month = sym != "SGOV" and sym in bought_symbols_this_month
+            if already_bought_this_month and intensity not in {"medium", "large"}:
                 continue
-            w = max(0.0, suggestion_map[s]["priority_score"])
-            alloc = usd_budget_total * (w / usd_weight_sum) if usd_weight_sum > 0 else 0.0
-            shares = int(alloc // px)
-            spent = shares * px
-            plan_buys[s]["shares"] = float(shares)
-            usd_spent += spent
-
-        cash_usd_next = max(0.0, usd_budget_total - usd_spent)
-        cash_cny_next = balances_plan["cash_cny"]
-
-        st.info(
-            f"美元预算 {usd_budget_total:.2f}（买入 {usd_spent:.2f}，结余 {cash_usd_next:.2f}）。"
-            "本计划只覆盖美元资产，不分配沪深300和中证500。"
+            base_budget_usd = max(0.0, gap_usd) / build_month_count
+            raw_buy_usd = min(max(0.0, gap_usd), base_budget_usd * multiplier)
+            if sym == "SGOV":
+                raw_buy_usd = 0.0
+                action = "作为弹药库"
+                if can_use_sgov_reserve:
+                    note = "触发大加档，SGOV 可以全部动用；后续用新增资金补回。"
+                elif sgov_excess_usd > 0:
+                    note = "超过 20% 目标和底线的部分可随时挪用；目标内 20% 继续保留。"
+                else:
+                    note = "目标内 20% 作为常规弹药库，只有大加档才动用。"
+            elif gap_usd <= 0:
+                action = "暂不买入"
+                note = "当前已达到或高于目标仓位。"
+            elif intensity == "large":
+                note = "大加档：可以动用全部 SGOV，后续再补回弹药库。"
+            elif intensity == "medium":
+                note = "中加档：可少量动用 SGOV，优先使用月现金流。"
+            elif intensity == "small":
+                note = "小加档：主要使用当月现金流，尽量不动 SGOV。"
+            else:
+                note = "按当前阶段的常规月度节奏执行。"
+            if already_bought_this_month and intensity in {"medium", "large"}:
+                note = f"本月已买过，但现在升级到{action}档，允许继续给出加仓建议。"
+            if sym != "SGOV":
+                full_rebalance_need_usd += max(0.0, gap_usd)
+            signal_remaining_usd = max(0.0, raw_buy_usd)
+            strategy_rows.append(
+                {
+                    "标的": meta["label"],
+                    "阶段": rebalance_phase,
+                    "策略": strategy,
+                    "动作": action,
+                    "当前占美元资产%": round(
+                        (current_usd / planned_usd_total_usd * 100.0) if planned_usd_total_usd > 0 else 0.0,
+                        2,
+                    ),
+                    "目标占美元资产%": round(target_pct * 100.0, 2),
+                    "到目标缺口(USD)": round(gap_usd, 2),
+                    "60日回撤%": round(float(drawdown_pct), 2) if isinstance(drawdown_pct, (int, float)) else None,
+                    "回撤档位": signal,
+                    "建议买入(USD)": 0.0,
+                    "说明": note,
+                    "_raw_buy_usd": raw_buy_usd,
+                    "_signal_remaining_usd": signal_remaining_usd,
+                }
+            )
+    
+        remaining_signal_buy_usd = sum(row["_signal_remaining_usd"] for row in strategy_rows)
+        monthly_budget_usd = min(deployable_pool_usd, full_rebalance_need_usd) / build_month_count
+        total_executed_usd = max(0.0, used_budget_usd)
+        remaining_reference_budget_usd = max(0.0, monthly_budget_usd - total_executed_usd)
+        remaining_deployable_budget_usd = max(0.0, deployable_pool_usd - total_executed_usd)
+        suggested_run_budget_usd = min(
+            remaining_deployable_budget_usd,
+            max(remaining_reference_budget_usd, remaining_signal_buy_usd),
         )
-        for s, buy in plan_buys.items():
-            if buy["shares"] > 0:
-                unit_txt = "股" if _ASSET_META[s]["currency"] == "USD" else "份"
-                st.markdown(f"- **{_ASSET_META[s]['label']}**：买入 **{buy['shares']:.3f}** {unit_txt} @ {buy['price']:.4f}")
-
-        if st.button("将该买入计划更新到我的持仓", key="rebalance_apply_btn"):
-            holdings_apply, balances_apply, _ = _load_user_state(cloud_user_id)
-            for s, buy in plan_buys.items():
-                holdings_apply[s] = _merge_buy(holdings_apply[s], buy["shares"], buy["price"])
-            balances_apply["cash_usd"] = cash_usd_next
-            balances_apply["cash_cny"] = cash_cny_next
-            save_mode = _save_user_state(cloud_user_id, holdings_apply, balances_apply)
-            st.success(f"已更新到持仓（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
-
-    st.markdown("#### 美股 VIX（CBOE）参考")
-    _vix_meta = _fetch_vix_meta()
-    _vix_val = float(_vix_meta["vix"])
-    _vix_chg = float(_vix_meta["change_pct"])
-    _vix_tag, _vix_note = _vix_regime(_vix_val)
-    st.markdown(
-        f"当前：`{_vix_val:.2f}`（{_vix_chg:+.2f}%）｜区间判定：**{_vix_tag}**  \n"
-        f"{_vix_note}  \n"
-        "参考区间：`<15 低波动` · `15-20 中性` · `20-30 偏高波动` · `>=30 高波动/恐慌`"
-    )
-    st.caption(f"VIX 数据源：{_vix_meta['source']}（更新时间 {_vix_meta['fetched_at']}）")
+        if wizard_step == "3 生成建议":
+            st.markdown("##### 3. 生成买入建议")
+            preview_c1, preview_c2, preview_c3, preview_c4 = st.columns(4)
+            preview_c1.metric("计划期末资产(USD)", f"{planned_usd_total_usd:,.2f}")
+            preview_c2.metric("本月新增可买(USD)", f"{planned_new_cash_deployable_usd:,.2f}")
+            preview_c3.metric("本轮可用资金(USD)", f"{remaining_deployable_budget_usd:,.2f}")
+            preview_c4.metric("当前信号建议(USD)", f"{remaining_signal_buy_usd:,.2f}")
+            run_budget_usd = st.number_input(
+                "本轮最高可用预算(USD)",
+                min_value=0.0,
+                max_value=max(0.0, remaining_deployable_budget_usd),
+                value=float(suggested_run_budget_usd),
+                step=50.0,
+                format="%.2f",
+                key=f"rebalance_run_budget_{current_month_key}",
+                help="月度参考不是硬上限。没触发可以少用；触发中加/大加时，可以把没用掉的资金滚到本轮一起用。",
+            )
+            action_c1, action_c2 = st.columns([0.25, 0.75])
+            if action_c1.button("生成买入建议", type="primary", key="rebalance_generate_btn"):
+                st.session_state["rebalance_generated"] = True
+            if action_c2.button("返回修改预算", key="rebalance_back_to_budget"):
+                st.session_state["rebalance_wizard_step"] = "2 预算与记录"
+                st.session_state["rebalance_generated"] = False
+                st.rerun()
+        else:
+            run_budget_usd = float(suggested_run_budget_usd)
+        strategy_budget_usd = min(run_budget_usd, remaining_signal_buy_usd)
+        waiting_trigger_usd = max(0.0, remaining_deployable_budget_usd - strategy_budget_usd)
+        cash_scale = (strategy_budget_usd / remaining_signal_buy_usd) if remaining_signal_buy_usd > 0 else 0.0
+        for row in strategy_rows:
+            buy_usd = row["_signal_remaining_usd"] * cash_scale
+            row["建议买入(USD)"] = round(buy_usd, 2)
+    
+        strategy_df = pd.DataFrame(strategy_rows).sort_values(
+            by=["_signal_remaining_usd", "到目标缺口(USD)"],
+            ascending=[False, False],
+        )
+        strategy_df = strategy_df.drop(columns=["_raw_buy_usd", "_signal_remaining_usd"])
+        if wizard_step != "3 生成建议":
+            st.stop()
+        if not st.session_state.get("rebalance_generated", False):
+            st.info("确认本轮预算后，点击「生成买入建议」查看结果。")
+            st.stop()
+        st.caption(
+            f"自动判断阶段：{auto_phase}；当前执行阶段：{rebalance_phase}。"
+            f"本轮按当前现金/SGOV可动用资金 USD {current_deployable_pool_usd:,.2f} "
+            f"+ 本月计划新投入可买部分 USD {planned_new_cash_deployable_usd:,.2f} 生成建议。"
+            f"目标分母按当前美元资产 USD {usd_total_usd:,.2f} "
+            f"+ 未来 {int(build_months)} 个月新投入 USD {planned_total_new_cash_usd:,.2f} "
+            f"= USD {planned_usd_total_usd:,.2f} 计算。"
+            f"当前计划可动用建仓池 USD {deployable_pool_usd:,.2f}，按计划期末仓位缺口和 {int(build_months)} 个月进度计算，"
+            f"月度参考进度 USD {monthly_budget_usd:,.2f}。"
+            f"本月已用预算 USD {total_executed_usd:,.2f}，参考剩余额度 USD {remaining_reference_budget_usd:,.2f}，"
+            f"剩余可动用建仓池 USD {remaining_deployable_budget_usd:,.2f}。"
+            f"本月已买过标的：{', '.join(bought_symbols_this_month) if bought_symbols_this_month else '无'}"
+            "（正常/小加不重复；若跌到中加/大加会重新建议）。"
+            f"SGOV 当前 USD {sgov_current_usd:,.2f}，计划期末 20% 目标 USD {planned_sgov_target_usd:,.2f}，"
+            f"本月新增资金中预留给 SGOV USD {planned_new_cash_sgov_reserve_usd:,.2f}，"
+            f"可随时挪用 SGOV USD {sgov_excess_usd:,.2f}，"
+            f"{'已触发大加档，可额外动用目标内 SGOV USD ' + format(sgov_special_deploy_usd, ',.2f') + '（可用完，后续补回）' if can_use_sgov_reserve else '未触发大加档，目标内 20% SGOV 暂不动用'}。"
+            f"当前信号建议 USD {remaining_signal_buy_usd:,.2f}；"
+            f"本轮最高可用预算 USD {run_budget_usd:,.2f}；"
+            f"最终建议买入 USD {strategy_budget_usd:,.2f}；"
+            f"留待后续/等待触发资金 USD {waiting_trigger_usd:,.2f}。"
+        )
+        st.dataframe(
+            strategy_df,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "当前占美元资产%": st.column_config.NumberColumn("当前占美元资产%", format="%.2f%%"),
+                "目标占美元资产%": st.column_config.NumberColumn("目标占美元资产%", format="%.2f%%"),
+                "到目标缺口(USD)": st.column_config.NumberColumn("到目标缺口(USD)", format="%.2f"),
+                "60日回撤%": st.column_config.NumberColumn("60日回撤%", format="%.2f%%"),
+                "建议买入(USD)": st.column_config.NumberColumn("建议买入(USD)", format="%.2f"),
+            },
+        )
+    
