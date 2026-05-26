@@ -1,4 +1,4 @@
-import re
+﻿import re
 import json
 import base64
 import importlib
@@ -20,12 +20,12 @@ import streamlit as st
 
 st.set_page_config(
     page_title="Investment Dashboard",
-    page_icon="📈",
+    page_icon="馃搱",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# 拉取失败时的回退价（与常见区间一致）
+# 鎷夊彇澶辫触鏃剁殑鍥為€€浠凤紙涓庡父瑙佸尯闂翠竴鑷达級
 _FALLBACK = {
     "VOO": 400.0,
     "QQQ": 400.0,
@@ -48,8 +48,8 @@ _TICKERS = {
     "msft": "MSFT",
     "isrg": "ISRG",
     "sgov": "SGOV",
-    "hs300": "001015",  # 华夏沪深300指数增强A
-    "zz500": "006382",  # 华夏中证500ETF联接C
+    "hs300": "001015",  # 鍗庡娌繁300鎸囨暟澧炲己A
+    "zz500": "006382",  # 鍗庡涓瘉500鎸囨暟澧炲己
 }
 
 _REQUEST_HEADERS = {
@@ -59,10 +59,10 @@ _REQUEST_HEADERS = {
     ),
 }
 
-# (connect, read) 秒；避免长时间挂死
+# (connect, read) 绉掞紱閬垮厤闀挎椂闂存寕姝?
 _HTTP_TIMEOUT = (5, 15)
 
-# 美股：腾讯财经批量接口；失败则用新浪全球行情
+# 缇庤偂锛氳吘璁储缁忔壒閲忔帴鍙ｏ紱澶辫触鍒欑敤鏂版氮鍏ㄧ悆琛屾儏
 _QQ_US = {
     "VOO": "usVOO",
     "QQQ": "usQQQ",
@@ -141,14 +141,14 @@ _ASSET_META = {
     "GOOGL": {"label": "GOOGL", "currency": "USD"},
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "ISRG": {"label": "ISRG", "currency": "USD"},
-    "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
-    "001015": {"label": "沪深300", "currency": "CNY"},
-    "006382": {"label": "中证500", "currency": "CNY"},
+    "SGOV": {"label": "鐭€?SGOV)", "currency": "USD"},
+    "001015": {"label": "娌繁300", "currency": "CNY"},
+    "006382": {"label": "涓瘉500", "currency": "CNY"},
 }
 _TARGET_WEIGHTS = {
-    # 目标比例：
-    # 美元资产: VOO/QQQ/卫星仓位/短债(SGOV) = 4:2:2:2
-    # 人民币资产: 沪深300(001015) 20%, 中证500(006382) 20%
+    # 鐩爣姣斾緥锛?
+    # 缇庡厓璧勪骇: VOO/QQQ/鍗槦浠撲綅/鐭€?SGOV) = 4:2:2:2
+    # 浜烘皯甯佽祫浜? 娌繁300(001015) 20%, 涓瘉500(006382) 20%
     "VOO": 0.24,
     "QQQ": 0.12,
     "AVGO": 0.024,
@@ -170,7 +170,7 @@ _SATELLITE_TARGET_PARTS = {
     "ISRG": 5,
 }
 
-# 美元资产 PE 参考区间（经验口径，仅作辅助，不构成投资建议）
+# 缇庡厓璧勪骇 PE 鍙傝€冨尯闂达紙缁忛獙鍙ｅ緞锛屼粎浣滆緟鍔╋紝涓嶆瀯鎴愭姇璧勫缓璁級
 _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "VOO": (18.0, 24.0),
     "QQQ": (24.0, 36.0),
@@ -182,49 +182,49 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "SGOV": (0.0, 10.0),
 }
 
-_REBALANCE_PHASE_BUILD = "建仓期"
-_REBALANCE_PHASE_DCA = "长期定投期"
+_REBALANCE_PHASE_BUILD = "寤轰粨鏈?
+_REBALANCE_PHASE_DCA = "闀挎湡瀹氭姇鏈?
 _REBALANCE_ALLOCATION_ROWS = [
-    {"资产": "VOO", "目标占比": "40%", "策略定位": "核心长期仓"},
-    {"资产": "QQQ", "目标占比": "20%", "策略定位": "科技增强仓"},
-    {"资产": "卫星仓（MSFT/GOOGL/NVDA/AVGO/ISRG）", "目标占比": "20%", "策略定位": "主动超额收益"},
-    {"资产": "SGOV", "目标占比": "20%", "策略定位": "弹药库/现金管理"},
+    {"璧勪骇": "VOO", "鐩爣鍗犳瘮": "40%", "绛栫暐瀹氫綅": "鏍稿績闀挎湡浠?},
+    {"璧勪骇": "QQQ", "鐩爣鍗犳瘮": "20%", "绛栫暐瀹氫綅": "绉戞妧澧炲己浠?},
+    {"璧勪骇": "鍗槦浠擄紙MSFT/GOOGL/NVDA/AVGO/ISRG锛?, "鐩爣鍗犳瘮": "20%", "绛栫暐瀹氫綅": "涓诲姩瓒呴鏀剁泭"},
+    {"璧勪骇": "SGOV", "鐩爣鍗犳瘮": "20%", "绛栫暐瀹氫綅": "寮硅嵂搴?鐜伴噾绠＄悊"},
 ]
 _REBALANCE_STRATEGY_LABELS = {
-    "VOO": "长期无脑定投",
-    "QQQ": "动态增强，跌了多买",
-    "GOOGL": "半定投化",
-    "MSFT": "半定投化",
-    "ISRG": "半定投化",
-    "NVDA": "波动驱动加仓",
-    "AVGO": "波动驱动加仓",
-    "SGOV": "机会弹药库",
+    "VOO": "闀挎湡鏃犺剳瀹氭姇",
+    "QQQ": "鍔ㄦ€佸寮猴紝璺屼簡澶氫拱",
+    "GOOGL": "鍗婂畾鎶曞寲",
+    "MSFT": "鍗婂畾鎶曞寲",
+    "ISRG": "鍗婂畾鎶曞寲",
+    "NVDA": "娉㈠姩椹卞姩鍔犱粨",
+    "AVGO": "娉㈠姩椹卞姩鍔犱粨",
+    "SGOV": "鏈轰細寮硅嵂搴?,
 }
 _REBALANCE_RULES: dict[str, dict[str, dict[str, Any]]] = {
     _REBALANCE_PHASE_BUILD: {
-        "VOO": {"normal": (1.0, "正常建仓", "每月机械定投", "normal"), "bands": [(-15.0, 3.0, "大加", "3x 月预算 + 少量 SGOV", "large"), (-10.0, 2.0, "中加", "2x 月预算", "medium"), (-5.0, 1.5, "小加", "1.5x 月预算", "small")]},
-        "QQQ": {"normal": (0.25, "少买/等回撤", "未跌满 6%：贵了少买", "normal"), "bands": [(-18.0, 4.0, "大加", "4x + 动用 SGOV", "large"), (-12.0, 2.5, "中加", "2.5x", "medium"), (-6.0, 1.5, "小加", "1.5x", "small")]},
-        "MSFT": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-22.0, 4.0, "大加", "4x", "large"), (-15.0, 2.5, "中加", "2.5x", "medium"), (-8.0, 1.5, "小加", "1.5x", "small")]},
-        "GOOGL": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-25.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
-        "NVDA": {"normal": (0.0, "等待波动", "未到小加档：等待波动", "normal"), "bands": [(-30.0, 5.0, "大加", "5x + 明显动用 SGOV", "large"), (-20.0, 3.0, "中加", "3x", "medium"), (-12.0, 1.5, "小加", "1.5x", "small")]},
-        "AVGO": {"normal": (0.0, "等待波动", "未到小加档：等待波动", "normal"), "bands": [(-28.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
-        "ISRG": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-28.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
+        "VOO": {"normal": (1.0, "姝ｅ父寤轰粨", "姣忔湀鏈烘瀹氭姇", "normal"), "bands": [(-13.0, 2.5, "澶у姞", "2.5x + 灏戦噺 SGOV", "large"), (-8.0, 1.5, "涓姞", "1.5x", "medium"), (-4.0, 1.0, "灏忓姞", "1x", "small")]},
+        "QQQ": {"normal": (0.25, "灏戜拱/绛夊洖鎾?, "鏈穼婊?5%锛氳吹浜嗗皯涔?, "normal"), "bands": [(-16.0, 3.0, "澶у姞", "3x + 鍔ㄧ敤 SGOV", "large"), (-10.0, 1.5, "涓姞", "1.5x", "medium"), (-5.0, 1.0, "灏忓姞", "1x", "small")]},
+        "MSFT": {"normal": (0.25, "鎱㈡參寤轰粨", "鏈埌灏忓姞妗ｏ細灏忛绱Н", "normal"), "bands": [(-18.0, 3.0, "澶у姞", "3x", "large"), (-12.0, 1.5, "涓姞", "1.5x", "medium"), (-6.0, 1.0, "灏忓姞", "1x", "small")]},
+        "GOOGL": {"normal": (0.25, "鎱㈡參寤轰粨", "鏈埌灏忓姞妗ｏ細灏忛绱Н", "normal"), "bands": [(-20.0, 3.0, "澶у姞", "3x", "large"), (-12.0, 1.5, "涓姞", "1.5x", "medium"), (-6.0, 1.0, "灏忓姞", "1x", "small")]},
+        "NVDA": {"normal": (0.0, "绛夊緟娉㈠姩", "鏈埌灏忓姞妗ｏ細绛夊緟娉㈠姩", "normal"), "bands": [(-25.0, 4.0, "澶у姞", "4x + 鏄庢樉鍔ㄧ敤 SGOV", "large"), (-15.0, 2.0, "涓姞", "2x", "medium"), (-8.0, 1.0, "灏忓姞", "1x", "small")]},
+        "AVGO": {"normal": (0.0, "绛夊緟娉㈠姩", "鏈埌灏忓姞妗ｏ細绛夊緟娉㈠姩", "normal"), "bands": [(-22.0, 3.5, "澶у姞", "3.5x", "large"), (-14.0, 1.5, "涓姞", "1.5x", "medium"), (-7.0, 1.0, "灏忓姞", "1x", "small")]},
+        "ISRG": {"normal": (0.25, "鎱㈡參寤轰粨", "鏈埌灏忓姞妗ｏ細灏忛绱Н", "normal"), "bands": [(-20.0, 3.0, "澶у姞", "3x", "large"), (-12.0, 1.5, "涓姞", "1.5x", "medium"), (-6.0, 1.0, "灏忓姞", "1x", "small")]},
     },
     _REBALANCE_PHASE_DCA: {
-        "VOO": {"normal": (1.0, "正常定投", "正常：工资定投", "normal"), "bands": [(-15.0, 2.5, "大加", "中等动用 SGOV", "large"), (-10.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-5.0, 1.25, "多买一点", "当月 SGOV 流入", "small")]},
-        "QQQ": {"normal": (0.5, "小额定投", "正常：小额定投", "normal"), "bands": [(-18.0, 2.5, "大加", "中等 SGOV", "large"), (-12.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-6.0, 1.25, "增加投入", "当月 SGOV 流入", "small")]},
-        "MSFT": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-22.0, 2.0, "大加", "大加", "large"), (-15.0, 1.5, "明显加", "明显加", "medium"), (-8.0, 1.0, "多买", "多买", "small")]},
-        "GOOGL": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-25.0, 2.0, "大加", "大加", "large"), (-18.0, 1.5, "明显加", "明显加", "medium"), (-10.0, 1.0, "多买", "多买", "small")]},
-        "NVDA": {"normal": (0.0, "少量/观察", "正常：少量/观察", "normal"), "bands": [(-30.0, 2.5, "大加", "大加（AI 恐慌级）", "large"), (-20.0, 1.75, "明显加", "明显加", "medium"), (-12.0, 1.0, "小加", "小加", "small")]},
-        "AVGO": {"normal": (0.1, "观察/小买", "正常：观察/小买", "normal"), "bands": [(-28.0, 2.5, "大加", "大加", "large"), (-18.0, 1.75, "明显加", "明显加", "medium"), (-10.0, 1.0, "小加", "小加", "small")]},
-        "ISRG": {"normal": (0.25, "长期慢买", "正常：长期慢买", "normal"), "bands": [(-28.0, 2.0, "大加", "大加", "large"), (-18.0, 1.5, "明显加", "明显加", "medium"), (-10.0, 1.0, "多买", "多买", "small")]},
+        "VOO": {"normal": (1.0, "姝ｅ父瀹氭姇", "姝ｅ父锛氬伐璧勫畾鎶?, "normal"), "bands": [(-15.0, 2.5, "澶у姞", "涓瓑鍔ㄧ敤 SGOV", "large"), (-10.0, 1.75, "鏄庢樉鍔犱粨", "灏戦噺 SGOV", "medium"), (-5.0, 1.25, "澶氫拱涓€鐐?, "褰撴湀 SGOV 娴佸叆", "small")]},
+        "QQQ": {"normal": (0.5, "灏忛瀹氭姇", "姝ｅ父锛氬皬棰濆畾鎶?, "normal"), "bands": [(-18.0, 2.5, "澶у姞", "涓瓑 SGOV", "large"), (-12.0, 1.75, "鏄庢樉鍔犱粨", "灏戦噺 SGOV", "medium"), (-6.0, 1.25, "澧炲姞鎶曞叆", "褰撴湀 SGOV 娴佸叆", "small")]},
+        "MSFT": {"normal": (0.25, "鎸佺画灏忎拱", "姝ｅ父锛氭寔缁皬涔?, "normal"), "bands": [(-22.0, 2.0, "澶у姞", "澶у姞", "large"), (-15.0, 1.5, "鏄庢樉鍔?, "鏄庢樉鍔?, "medium"), (-8.0, 1.0, "澶氫拱", "澶氫拱", "small")]},
+        "GOOGL": {"normal": (0.25, "鎸佺画灏忎拱", "姝ｅ父锛氭寔缁皬涔?, "normal"), "bands": [(-25.0, 2.0, "澶у姞", "澶у姞", "large"), (-18.0, 1.5, "鏄庢樉鍔?, "鏄庢樉鍔?, "medium"), (-10.0, 1.0, "澶氫拱", "澶氫拱", "small")]},
+        "NVDA": {"normal": (0.0, "灏戦噺/瑙傚療", "姝ｅ父锛氬皯閲?瑙傚療", "normal"), "bands": [(-30.0, 2.5, "澶у姞", "澶у姞锛圓I 鎭愭厡绾э級", "large"), (-20.0, 1.75, "鏄庢樉鍔?, "鏄庢樉鍔?, "medium"), (-12.0, 1.0, "灏忓姞", "灏忓姞", "small")]},
+        "AVGO": {"normal": (0.1, "瑙傚療/灏忎拱", "姝ｅ父锛氳瀵?灏忎拱", "normal"), "bands": [(-28.0, 2.5, "澶у姞", "澶у姞", "large"), (-18.0, 1.75, "鏄庢樉鍔?, "鏄庢樉鍔?, "medium"), (-10.0, 1.0, "灏忓姞", "灏忓姞", "small")]},
+        "ISRG": {"normal": (0.25, "闀挎湡鎱拱", "姝ｅ父锛氶暱鏈熸參涔?, "normal"), "bands": [(-28.0, 2.0, "澶у姞", "澶у姞", "large"), (-18.0, 1.5, "鏄庢樉鍔?, "鏄庢樉鍔?, "medium"), (-10.0, 1.0, "澶氫拱", "澶氫拱", "small")]},
     },
 }
 
 
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _UI_THEMES = {
-    "浅色：绿跌红涨": {
+    "娴呰壊锛氱豢璺岀孩娑?: {
         "delta_color": "normal",
         "up_base": "#7f1d1d",
         "up_peak": "#ef4444",
@@ -248,7 +248,7 @@ _UI_THEMES = {
         "button_shadow": "0 8px 22px rgba(37, 99, 235, 0.28)",
         "control_bg": "rgba(255, 255, 255, 0.86)",
     },
-    "浅色：绿涨红跌": {
+    "娴呰壊锛氱豢娑ㄧ孩璺?: {
         "delta_color": "normal",
         "up_base": "#166534",
         "up_peak": "#22c55e",
@@ -272,7 +272,7 @@ _UI_THEMES = {
         "button_shadow": "0 8px 22px rgba(124, 58, 237, 0.28)",
         "control_bg": "rgba(255, 255, 255, 0.86)",
     },
-    "深色：绿跌红涨": {
+    "娣辫壊锛氱豢璺岀孩娑?: {
         "delta_color": "normal",
         "up_base": "#fecaca",
         "up_peak": "#f87171",
@@ -296,7 +296,7 @@ _UI_THEMES = {
         "button_shadow": "0 10px 26px rgba(56, 189, 248, 0.22)",
         "control_bg": "rgba(15, 23, 42, 0.78)",
     },
-    "深色：绿涨红跌": {
+    "娣辫壊锛氱豢娑ㄧ孩璺?: {
         "delta_color": "normal",
         "up_base": "#bbf7d0",
         "up_peak": "#4ade80",
@@ -326,7 +326,7 @@ _UI_THEMES = {
 def _auto_theme_name(now: datetime | None = None) -> str:
     current = now or datetime.now(_TZ_SHANGHAI)
     is_daytime = 7 <= current.hour < 19
-    return "浅色：绿涨红跌" if is_daytime else "深色：绿涨红跌"
+    return "娴呰壊锛氱豢娑ㄧ孩璺? if is_daytime else "娣辫壊锛氱豢娑ㄧ孩璺?
 
 
 def _apply_theme_css(theme: dict[str, str]) -> None:
@@ -744,7 +744,7 @@ def _lerp_color(hex_a: str, hex_b: str, t: float) -> str:
 
 
 def _change_color_by_pct(pct: float, cap_pct: float = 4.0, theme: dict[str, str] | None = None) -> str:
-    """涨跌幅颜色梯度：绝对涨跌越大颜色越亮，越小越暗。"""
+    """娑ㄨ穼骞呴鑹叉搴︼細缁濆娑ㄨ穼瓒婂ぇ棰滆壊瓒婁寒锛岃秺灏忚秺鏆椼€?""
     p = float(pct)
     intensity = min(1.0, abs(p) / max(0.1, float(cap_pct)))
     palette = theme or {}
@@ -787,7 +787,7 @@ def _fetch_usdcny_rate_meta() -> dict[str, str | float]:
     fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
     for source, fn in (
         ("ER-API", _fetch_fx_from_erapi),
-        ("腾讯 USDCNY", _fetch_fx_from_qq),
+        ("鑵捐 USDCNY", _fetch_fx_from_qq),
     ):
         try:
             fx = fn()
@@ -834,7 +834,7 @@ def _parse_qq_us_response_price_change(text: str) -> dict[str, dict[str, float]]
             continue
         code, body = m.group(1), m.group(2)
         parts = body.split("~")
-        # 腾讯美股字段中：3=最新价，32=涨跌幅(百分比)
+        # 鑵捐缇庤偂瀛楁涓細3=鏈€鏂颁环锛?2=娑ㄨ穼骞?鐧惧垎姣?
         if len(parts) > 32:
             try:
                 price = float(parts[3])
@@ -911,7 +911,7 @@ def _fetch_sina_gb_price_change(list_code: str) -> tuple[float, float] | None:
     try:
         price = float(parts[1])
         chg_points = float(parts[2])
-        # sina gb_*: parts[2] 为涨跌额(点)，用它反推昨收来得到涨跌幅%
+        # sina gb_*: parts[2] 涓烘定璺岄(鐐?锛岀敤瀹冨弽鎺ㄦ槰鏀舵潵寰楀埌娑ㄨ穼骞?
         prev_close = price - chg_points
         if price <= 0 or prev_close <= 0:
             return None
@@ -939,7 +939,7 @@ def _fetch_sina_cn(list_code: str) -> float | None:
     if len(parts) < 4:
         return None
     try:
-        # 你的口径：parts[3]=当前价
+        # 浣犵殑鍙ｅ緞锛歱arts[3]=褰撳墠浠?
         p = float(parts[3])
         return p if p > 0 else None
     except ValueError:
@@ -964,8 +964,8 @@ def _fetch_sina_cn_price_change(list_code: str) -> tuple[float, float] | None:
     if len(parts) < 4:
         return None
     try:
-        # 你的口径（已验证）：
-        # parts[2]=昨收价，parts[3]=当前价
+        # 浣犵殑鍙ｅ緞锛堝凡楠岃瘉锛夛細
+        # parts[2]=鏄ㄦ敹浠凤紝parts[3]=褰撳墠浠?
         price = float(parts[3])
         prev_close = float(parts[2])
         if price <= 0 or prev_close <= 0:
@@ -1006,7 +1006,7 @@ def _fetch_yfinance_us_price_change() -> dict[str, dict[str, float]]:
 
 
 def _fetch_fund_nav_price_change(code: str) -> tuple[float, float, str] | None:
-    """东方财富历史净值：返回(最新确认单位净值, 日增长率%, 净值日期)。"""
+    """涓滄柟璐㈠瘜鍘嗗彶鍑€鍊硷細杩斿洖(鏈€鏂扮‘璁ゅ崟浣嶅噣鍊? 鏃ュ闀跨巼%, 鍑€鍊兼棩鏈?銆?""
     url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=1"
     r = requests.get(
         url,
@@ -1035,7 +1035,7 @@ def _fetch_fund_nav_price_change(code: str) -> tuple[float, float, str] | None:
 
 
 def _fetch_fund_estimated_price_change(code: str) -> tuple[float, float, str] | None:
-    """东方财富基金估值：返回(盘中/收盘估值, 估算涨跌幅%, 估值时间)。仅作兜底。"""
+    """涓滄柟璐㈠瘜鍩洪噾浼板€硷細杩斿洖(鐩樹腑/鏀剁洏浼板€? 浼扮畻娑ㄨ穼骞?, 浼板€兼椂闂?銆備粎浣滃厹搴曘€?""
     url = f"https://fundgz.1234567.com.cn/js/{code}.js"
     r = requests.get(
         url,
@@ -1073,7 +1073,7 @@ def _is_cn_market_open(now: datetime | None = None) -> bool:
 
 
 def _fetch_fund_price_change(code: str) -> tuple[float, float, str] | None:
-    """基金展示口径：交易中用估算；收盘后当日净值未披露前继续用估算。"""
+    """鍩洪噾灞曠ず鍙ｅ緞锛氫氦鏄撲腑鐢ㄤ及绠楋紱鏀剁洏鍚庡綋鏃ュ噣鍊兼湭鎶湶鍓嶇户缁敤浼扮畻銆?""
     current = datetime.now(_TZ_SHANGHAI)
     today = current.strftime("%Y-%m-%d")
     nav = _fetch_fund_nav_price_change(code)
@@ -1081,21 +1081,21 @@ def _fetch_fund_price_change(code: str) -> tuple[float, float, str] | None:
 
     if _is_cn_market_open(current):
         if estimate is not None:
-            return estimate[0], estimate[1], "东财基金估算"
+            return estimate[0], estimate[1], "涓滆储鍩洪噾浼扮畻"
         if nav is not None:
-            return nav[0], nav[1], f"东财确认净值({nav[2]})"
+            return nav[0], nav[1], f"涓滆储纭鍑€鍊?{nav[2]})"
         return None
 
     if nav is not None and nav[2] >= today:
-        return nav[0], nav[1], f"东财确认净值({nav[2]})"
+        return nav[0], nav[1], f"涓滆储纭鍑€鍊?{nav[2]})"
 
     if estimate is not None and estimate[2].startswith(today):
-        return estimate[0], estimate[1], "东财收盘估算"
+        return estimate[0], estimate[1], "涓滆储鏀剁洏浼扮畻"
 
     if nav is not None:
-        return nav[0], nav[1], f"东财确认净值({nav[2]})"
+        return nav[0], nav[1], f"涓滆储纭鍑€鍊?{nav[2]})"
     if estimate is not None:
-        return estimate[0], estimate[1], "东财基金估算"
+        return estimate[0], estimate[1], "涓滆储鍩洪噾浼扮畻"
     return None
 
 
@@ -1122,7 +1122,7 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
             for sym, item in qq_raw.items():
                 out[sym] = float(item["price"])
                 daily_change_pct_by_symbol[sym] = float(item["change_pct"])
-                source_by_symbol[sym] = "腾讯美股"
+                source_by_symbol[sym] = "鑵捐缇庤偂"
         except Exception:
             pass
 
@@ -1134,11 +1134,11 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
                         p, change_pct = res
                         out[sym] = p
                         daily_change_pct_by_symbol[sym] = change_pct
-                        source_by_symbol[sym] = "新浪全球"
+                        source_by_symbol[sym] = "鏂版氮鍏ㄧ悆"
                 except Exception:
                     pass
 
-    # 基金：用东方财富基金估值接口
+    # 鍩洪噾锛氱敤涓滄柟璐㈠瘜鍩洪噾浼板€兼帴鍙?
     symbols = list(_TICKERS.values())
     for sym in ("001015", "006382"):
         try:
@@ -1170,7 +1170,7 @@ def _fetch_spot_prices() -> dict[str, float]:
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _fetch_vix_meta() -> dict[str, float | str]:
-    """获取美股 CBOE VIX 当前值与当日涨跌幅。"""
+    """鑾峰彇缇庤偂 CBOE VIX 褰撳墠鍊间笌褰撴棩娑ㄨ穼骞呫€?""
     fetched_at = datetime.now(_TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
     if _market_data_provider() == "yfinance":
         try:
@@ -1199,7 +1199,7 @@ def _fetch_vix_meta() -> dict[str, float | str]:
             cur = float(data.get("f43")) / 100.0
             pct = float(data.get("f170")) / 100.0
             if cur > 0:
-                return {"vix": cur, "change_pct": pct, "source": "东方财富 VIX(167.VIX)", "fetched_at": fetched_at}
+                return {"vix": cur, "change_pct": pct, "source": "涓滄柟璐㈠瘜 VIX(167.VIX)", "fetched_at": fetched_at}
         except Exception:
             continue
     return {"vix": 20.0, "change_pct": 0.0, "source": "Fallback(20.0)", "fetched_at": fetched_at}
@@ -1207,12 +1207,12 @@ def _fetch_vix_meta() -> dict[str, float | str]:
 
 def _vix_regime(vix: float) -> tuple[str, str]:
     if vix < 15:
-        return ("低波动", "市场情绪偏乐观，风险偏好较高；注意防止过度乐观。")
+        return ("浣庢尝鍔?, "甯傚満鎯呯华鍋忎箰瑙傦紝椋庨櫓鍋忓ソ杈冮珮锛涙敞鎰忛槻姝㈣繃搴︿箰瑙傘€?)
     if vix < 20:
-        return ("中性偏稳", "常态区间，市场波动温和，可按计划分批配置。")
+        return ("涓€у亸绋?, "甯告€佸尯闂达紝甯傚満娉㈠姩娓╁拰锛屽彲鎸夎鍒掑垎鎵归厤缃€?)
     if vix < 30:
-        return ("偏高波动", "不确定性上升，建议控制单次仓位、分批进场。")
-    return ("高波动/恐慌", "风险事件阶段，优先仓位管理与现金流，避免一次性重仓。")
+        return ("鍋忛珮娉㈠姩", "涓嶇‘瀹氭€т笂鍗囷紝寤鸿鎺у埗鍗曟浠撲綅銆佸垎鎵硅繘鍦恒€?)
+    return ("楂樻尝鍔?鎭愭厡", "椋庨櫓浜嬩欢闃舵锛屼紭鍏堜粨浣嶇鐞嗕笌鐜伴噾娴侊紝閬垮厤涓€娆℃€ч噸浠撱€?)
 
 
 def _fetch_yahoo_chart_60d_metrics(symbol: str) -> dict[str, float | None]:
@@ -1294,7 +1294,7 @@ def _fetch_us_etf_pe_drawdown(
     cache_version: str = _DRAWDOWN_CACHE_VERSION,
     provider: str | None = None,
 ) -> dict[str, float | None]:
-    """返回美股/ETF估值与回撤指标：pe(若可得)、回撤%(近60日高点回撤，负值为回撤)。"""
+    """杩斿洖缇庤偂/ETF浼板€间笌鍥炴挙鎸囨爣锛歱e(鑻ュ彲寰?銆佸洖鎾?(杩?0鏃ラ珮鐐瑰洖鎾わ紝璐熷€间负鍥炴挙)銆?""
     _ = cache_version
     provider = _normalize_market_provider(provider or _market_data_provider())
     pe_val: float | None = None
@@ -1387,7 +1387,7 @@ def _fetch_us_etf_pe_drawdown(
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def _fetch_fund_60d_metrics(code: str) -> dict[str, float | None]:
-    """用东方财富历史净值估算近60条记录高点回撤与低点涨幅。"""
+    """鐢ㄤ笢鏂硅储瀵屽巻鍙插噣鍊间及绠楄繎60鏉¤褰曢珮鐐瑰洖鎾や笌浣庣偣娑ㄥ箙銆?""
     url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=120"
     try:
         r = requests.get(url, timeout=_HTTP_TIMEOUT, headers=_REQUEST_HEADERS)
@@ -1445,12 +1445,12 @@ def _rebalance_strategy_signal(
     drawdown_pct: float | None,
     phase: str,
 ) -> tuple[str, float, str, str, str]:
-    strategy = _REBALANCE_STRATEGY_LABELS.get(symbol, "按计划")
+    strategy = _REBALANCE_STRATEGY_LABELS.get(symbol, "鎸夎鍒?)
     if symbol == "SGOV":
-        return strategy, 0.0, "作为弹药库", "弹药库", "reserve"
+        return strategy, 0.0, "浣滀负寮硅嵂搴?, "寮硅嵂搴?, "reserve"
     rule = _REBALANCE_RULES.get(phase, {}).get(symbol)
     if rule is None:
-        return strategy, 0.0, "按计划", "暂无策略规则", "normal"
+        return strategy, 0.0, "鎸夎鍒?, "鏆傛棤绛栫暐瑙勫垯", "normal"
     normal_multiplier, normal_action, normal_signal, normal_intensity = rule["normal"]
     if not isinstance(drawdown_pct, (int, float)):
         return strategy, float(normal_multiplier), str(normal_action), str(normal_signal), str(normal_intensity)
@@ -1564,7 +1564,7 @@ def _load_balances() -> dict[str, float]:
         out["realized_cny"] = float(data.get("realized_cny", 0.0))
     except (TypeError, ValueError):
         out["realized_cny"] = 0.0
-    # 兼容旧版按标的保存的“结转余额”
+    # 鍏煎鏃х増鎸夋爣鐨勪繚瀛樼殑鈥滅粨杞綑棰濃€?
     try:
         legacy_cny = max(0.0, float(data.get("001015", 0.0))) + max(0.0, float(data.get("006382", 0.0)))
     except (TypeError, ValueError):
@@ -1605,6 +1605,7 @@ def _load_monthly_budget_usage(user_id: str, month_key: str) -> dict[str, Any]:
         "used_budget_usd": 0.0,
         "planned_new_cash_usd": 700.0,
         "bought_symbols": [],
+        "bought_records": {},
         "updated_at": "",
     }
     if isinstance(raw, dict):
@@ -1623,6 +1624,23 @@ def _load_monthly_budget_usage(user_id: str, month_key: str) -> dict[str, Any]:
                 for sym in raw_symbols
                 if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
             ]
+        raw_records = raw.get("bought_records", {})
+        if isinstance(raw_records, dict):
+            records: dict[str, dict[str, float]] = {}
+            for raw_sym, raw_item in raw_records.items():
+                sym = str(raw_sym).upper()
+                if sym not in _ASSET_META or _ASSET_META[sym]["currency"] != "USD":
+                    continue
+                try:
+                    if isinstance(raw_item, dict):
+                        amount_usd = float(raw_item.get("amount_usd", 0.0))
+                    else:
+                        amount_usd = float(raw_item)
+                except (TypeError, ValueError):
+                    amount_usd = 0.0
+                if amount_usd > 0:
+                    records[sym] = {"amount_usd": amount_usd}
+            month_data["bought_records"] = records
         month_data["updated_at"] = str(raw.get("updated_at", ""))
     return month_data
 
@@ -1633,6 +1651,7 @@ def _save_monthly_budget_usage(
     used_budget_usd: float,
     bought_symbols: list[str] | None = None,
     planned_new_cash_usd: float = 700.0,
+    bought_records: dict[str, dict[str, float] | float] | None = None,
 ) -> None:
     store = _load_monthly_budget_usage_store()
     user_key = str(user_id or "local").strip() or "local"
@@ -1647,14 +1666,30 @@ def _save_monthly_budget_usage(
         planned_cash_usd = max(0.0, float(planned_new_cash_usd))
     except (TypeError, ValueError):
         planned_cash_usd = 700.0
+    normalized_symbols = [
+        str(sym).upper()
+        for sym in (bought_symbols or [])
+        if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
+    ]
+    normalized_records: dict[str, dict[str, float]] = {}
+    for raw_sym, raw_item in (bought_records or {}).items():
+        sym = str(raw_sym).upper()
+        if sym not in normalized_symbols:
+            continue
+        try:
+            if isinstance(raw_item, dict):
+                amount_usd = float(raw_item.get("amount_usd", 0.0))
+            else:
+                amount_usd = float(raw_item)
+        except (TypeError, ValueError):
+            amount_usd = 0.0
+        if amount_usd > 0:
+            normalized_records[sym] = {"amount_usd": round(amount_usd, 2)}
     user_store[month_key] = {
         "used_budget_usd": used,
         "planned_new_cash_usd": planned_cash_usd,
-        "bought_symbols": [
-            str(sym).upper()
-            for sym in (bought_symbols or [])
-            if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
-        ],
+        "bought_symbols": normalized_symbols,
+        "bought_records": normalized_records,
         "updated_at": datetime.now(_TZ_SHANGHAI).isoformat(timespec="seconds"),
     }
     store[user_key] = user_store
@@ -1735,7 +1770,7 @@ def _normalize_balances(raw: Any) -> dict[str, float]:
         balances["realized_cny"] = float(raw.get("realized_cny", 0.0))
     except (TypeError, ValueError):
         balances["realized_cny"] = 0.0
-    # 兼容旧版字段
+    # 鍏煎鏃х増瀛楁
     try:
         legacy_cny = max(0.0, float(raw.get("001015", 0.0))) + max(0.0, float(raw.get("006382", 0.0)))
     except (TypeError, ValueError):
@@ -1791,7 +1826,7 @@ def _save_to_supabase(user_id: str, holdings: dict[str, dict[str, float]], balan
 
 
 def _session_cloud_enabled() -> bool:
-    """配置了 Supabase 即使用云端（持仓 + K 线缓存），与手动登录无关。"""
+    """閰嶇疆浜?Supabase 鍗充娇鐢ㄤ簯绔紙鎸佷粨 + K 绾跨紦瀛橈級锛屼笌鎵嬪姩鐧诲綍鏃犲叧銆?""
     return _db_conf() is not None
 
 
@@ -1801,7 +1836,7 @@ def _load_user_state(user_id: str) -> tuple[dict[str, dict[str, float]], dict[st
         if cloud is not None:
             h, b = cloud
             return h, b, "cloud"
-    # 未登录、未配置云端或读失败：本地 JSON
+    # 鏈櫥褰曘€佹湭閰嶇疆浜戠鎴栬澶辫触锛氭湰鍦?JSON
     return _load_holdings(), _load_balances(), "local"
 
 
@@ -1909,7 +1944,7 @@ def _latest_fomc_statement() -> dict[str, str]:
             "title": x.get("title", "-"),
             "link": x.get("link", ""),
         }
-    return {"date": "-", "title": "暂无可用数据", "link": ""}
+    return {"date": "-", "title": "鏆傛棤鍙敤鏁版嵁", "link": ""}
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -1957,10 +1992,10 @@ def _fred_inflation_snapshot(series_id: str) -> dict[str, str | float]:
 
 def _inflation_comment(yoy: float, metric_name: str) -> str:
     if yoy >= 3.0:
-        return f"{metric_name}同比仍偏高，通胀黏性较强。"
+        return f"{metric_name}鍚屾瘮浠嶅亸楂橈紝閫氳儉榛忔€ц緝寮恒€?
     if yoy >= 2.2:
-        return f"{metric_name}同比回落中，但仍略高于美联储2%目标。"
-    return f"{metric_name}同比接近2%目标区间，通胀压力相对温和。"
+        return f"{metric_name}鍚屾瘮鍥炶惤涓紝浣嗕粛鐣ラ珮浜庣編鑱斿偍2%鐩爣銆?
+    return f"{metric_name}鍚屾瘮鎺ヨ繎2%鐩爣鍖洪棿锛岄€氳儉鍘嬪姏鐩稿娓╁拰銆?
 
 
 def _load_chart_boards_api() -> dict[str, Any]:
@@ -1986,29 +2021,29 @@ def _load_chart_boards_api() -> dict[str, Any]:
     }
 
 
-theme_options = ["自动（白天浅色 / 晚上深色）", *list(_UI_THEMES.keys())]
-theme_pick = st.sidebar.selectbox("显示主题", options=theme_options, index=0)
-if theme_pick == "自动（白天浅色 / 晚上深色）":
+theme_options = ["鑷姩锛堢櫧澶╂祬鑹?/ 鏅氫笂娣辫壊锛?, *list(_UI_THEMES.keys())]
+theme_pick = st.sidebar.selectbox("鏄剧ず涓婚", options=theme_options, index=0)
+if theme_pick == "鑷姩锛堢櫧澶╂祬鑹?/ 鏅氫笂娣辫壊锛?:
     theme_name = _auto_theme_name()
-    st.sidebar.caption(f"当前自动主题：{theme_name}")
+    st.sidebar.caption(f"褰撳墠鑷姩涓婚锛歿theme_name}")
 else:
     theme_name = theme_pick
 theme = _UI_THEMES[theme_name]
 _apply_theme_css(theme)
 
 cloud_user_id = st.sidebar.text_input(
-    "用户ID（用于跨设备同步）",
+    "鐢ㄦ埛ID锛堢敤浜庤法璁惧鍚屾锛?,
     value="evan",
     key="sidebar_user_id",
-    help="配置了 Supabase 时读写云端 portfolio；否则使用本地 JSON。",
+    help="閰嶇疆浜?Supabase 鏃惰鍐欎簯绔?portfolio锛涘惁鍒欎娇鐢ㄦ湰鍦?JSON銆?,
 ).strip()
 
 _db = _db_conf()
 
-st.title(f"👋 Hello, {cloud_user_id or 'Guest'}")
+st.title(f"馃憢 Hello, {cloud_user_id or 'Guest'}")
 
 if _db:
-    st.sidebar.caption("存储后端：Supabase")
+    st.sidebar.caption("瀛樺偍鍚庣锛歋upabase")
     try:
         _host = _db["url"].replace("https://", "").replace("http://", "").split("/")[0]
         _ref = _host.split(".")[0]
@@ -2017,18 +2052,18 @@ if _db:
     _k_kind = _supabase_key_kind(_db.get("key", ""))
     st.sidebar.caption(f"Supabase ref={_ref} | key={_k_kind}")
 else:
-    st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
-st.sidebar.caption(f"行情源策略：{_market_data_provider()}")
+    st.sidebar.caption("瀛樺偍鍚庣锛氭湰鍦版枃浠讹紙鏈厤缃?Supabase Secrets锛?)
+st.sidebar.caption(f"琛屾儏婧愮瓥鐣ワ細{_market_data_provider()}")
 
 holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
 
 
-# --- 刷新市价（并可选同步当前K线到云端）---
+# --- 鍒锋柊甯備环锛堝苟鍙€夊悓姝ュ綋鍓岾绾垮埌浜戠锛?--
 refresh_left, refresh_center, refresh_right = st.columns([0.18, 0.64, 0.18])
 with refresh_center:
     refresh_prices_clicked = st.button(
-        "刷新市价",
-        help="拉取现价并刷新默认输入；K线同步在后台定时进行。",
+        "鍒锋柊甯備环",
+        help="鎷夊彇鐜颁环骞跺埛鏂伴粯璁よ緭鍏ワ紱K绾垮悓姝ュ湪鍚庡彴瀹氭椂杩涜銆?,
         use_container_width=True,
     )
 if refresh_prices_clicked:
@@ -2050,7 +2085,7 @@ if refresh_prices_clicked:
     st.session_state.def_hs300 = d["hs300"]
     st.session_state.def_zz500 = d["zz500"]
 
-    # 删除输入框缓存值，让下方 number_input 用新的 def_* 作为默认值。
+    # 鍒犻櫎杈撳叆妗嗙紦瀛樺€硷紝璁╀笅鏂?number_input 鐢ㄦ柊鐨?def_* 浣滀负榛樿鍊笺€?
     for k in (
         "inp_fx",
         "inp_voo",
@@ -2067,7 +2102,7 @@ if refresh_prices_clicked:
         if k in st.session_state:
             del st.session_state[k]
 
-    st.success("已刷新市价")
+    st.success("宸插埛鏂板競浠?)
 
 _ensure_fx_session_default()
 _ensure_price_session_defaults()
@@ -2087,16 +2122,16 @@ prices_now = {
     "006382": float(st.session_state.get("inp_zz500", st.session_state.def_zz500)),
 }
 
-# 前端不负责同步外部行情，避免阻塞与不确定性；由独立 sync worker 负责写 Supabase
+# 鍓嶇涓嶈礋璐ｅ悓姝ュ閮ㄨ鎯咃紝閬垮厤闃诲涓庝笉纭畾鎬э紱鐢辩嫭绔?sync worker 璐熻矗鍐?Supabase
 
 def _render_holdings_editor() -> None:
-    with st.expander("编辑持仓（会保存）", expanded=False):
+    with st.expander("缂栬緫鎸佷粨锛堜細淇濆瓨锛?, expanded=False):
         with st.form("holdings_edit_form"):
             for sym, meta in _ASSET_META.items():
                 c1, c2, c3 = st.columns([1, 1, 1])
                 with c1:
                     shares = st.number_input(
-                        f"{meta['label']} 持有数量",
+                        f"{meta['label']} 鎸佹湁鏁伴噺",
                         min_value=0.0,
                         value=float(holdings[sym]["shares"]),
                         step=0.0001,
@@ -2105,7 +2140,7 @@ def _render_holdings_editor() -> None:
                     )
                 with c2:
                     avg_cost = st.number_input(
-                        f"单位成本({meta['currency']})",
+                        f"鍗曚綅鎴愭湰({meta['currency']})",
                         min_value=0.0,
                         value=float(holdings[sym]["avg_cost"]),
                         step=0.0001,
@@ -2114,49 +2149,49 @@ def _render_holdings_editor() -> None:
                     )
                 with c3:
                     total_cost_input = st.number_input(
-                        f"或填总成本({meta['currency']})",
+                        f"鎴栧～鎬绘垚鏈?{meta['currency']})",
                         min_value=0.0,
                         value=0.0,
                         step=100.0,
                         format="%.4f",
                         key=f"edit_total_cost_{sym}",
-                        help="若此处填写大于0的金额，将优先按 [总成本 ÷ 持有数量] 自动计算单位成本并覆盖保存。"
+                        help="鑻ユ澶勫～鍐欏ぇ浜?鐨勯噾棰濓紝灏嗕紭鍏堟寜 [鎬绘垚鏈?梅 鎸佹湁鏁伴噺] 鑷姩璁＄畻鍗曚綅鎴愭湰骞惰鐩栦繚瀛樸€?
                     )
                 holdings[sym]["shares"] = shares
                 if total_cost_input > 0:
                     holdings[sym]["avg_cost"] = (total_cost_input / shares) if shares > 0 else 0.0
                 else:
                     holdings[sym]["avg_cost"] = avg_cost
-            st.markdown("#### 已变现与现金余额（会保存）")
+            st.markdown("#### 宸插彉鐜颁笌鐜伴噾浣欓锛堜細淇濆瓨锛?)
             balances_for_view["realized_usd"] = st.number_input(
-                "已变现浮盈亏美元（USD）",
+                "宸插彉鐜版诞鐩堜簭缇庡厓锛圲SD锛?,
                 value=float(balances_for_view.get("realized_usd", 0.0)),
                 step=0.01,
                 key="edit_balance_realized_usd",
             )
             balances_for_view["realized_cny"] = st.number_input(
-                "已变现浮盈亏人民币（CNY）",
+                "宸插彉鐜版诞鐩堜簭浜烘皯甯侊紙CNY锛?,
                 value=float(balances_for_view.get("realized_cny", 0.0)),
                 step=0.01,
                 key="edit_balance_realized_cny",
             )
             balances_for_view["cash_usd"] = st.number_input(
-                "现金美元（USD）",
+                "鐜伴噾缇庡厓锛圲SD锛?,
                 min_value=0.0,
                 value=float(balances_for_view.get("cash_usd", 0.0)),
                 step=0.01,
                 key="edit_balance_cash_usd",
             )
             balances_for_view["cash_cny"] = st.number_input(
-                "现金人民币（CNY）",
+                "鐜伴噾浜烘皯甯侊紙CNY锛?,
                 min_value=0.0,
                 value=float(balances_for_view.get("cash_cny", 0.0)),
                 step=0.01,
                 key="edit_balance_cash_cny",
             )
-            if st.form_submit_button("保存持仓"):
+            if st.form_submit_button("淇濆瓨鎸佷粨"):
                 save_mode = _save_user_state(cloud_user_id, holdings, balances_for_view)
-                st.success(f"持仓已保存（{'云端数据库' if save_mode == 'cloud' else '本地文件'}）")
+                st.success(f"鎸佷粨宸蹭繚瀛橈紙{'浜戠鏁版嵁搴? if save_mode == 'cloud' else '鏈湴鏂囦欢'}锛?)
 
 
 def _render_chart_board() -> None:
@@ -2176,7 +2211,7 @@ def _render_chart_board() -> None:
         _chart_label_options.index(_chart_pick_default_label) if _chart_pick_default_label in _chart_label_options else 0
     )
     _chart_pick = st.selectbox(
-        "看板标的",
+        "鐪嬫澘鏍囩殑",
         options=_chart_label_options,
         index=_chart_pick_default_index,
         key="chart_board_symbol",
@@ -2196,35 +2231,35 @@ def _render_chart_board() -> None:
     chart_provider = _chart_api["configure_market_provider"](_market_data_provider())
     chart_theme_options = list(_chart_api["CHART_THEME_OPTIONS"])
     chart_theme = st.sidebar.selectbox(
-        "K线配色主题",
+        "K绾块厤鑹蹭富棰?,
         options=chart_theme_options,
         index=chart_theme_options.index("Trading Dark") if "Trading Dark" in chart_theme_options else 0,
         key="chart_plot_theme",
-        help="Classic Light 浅色机构风；Trading Dark 暗色终端风（绿涨红跌）；CN Quant 红涨绿跌略饱和。",
+        help="Classic Light 娴呰壊鏈烘瀯椋庯紱Trading Dark 鏆楄壊缁堢椋庯紙缁挎定绾㈣穼锛夛紱CN Quant 绾㈡定缁胯穼鐣ラケ鍜屻€?,
     )
-    st.sidebar.caption("显示主题影响盈亏颜色；K线主题只影响技术看板配色。")
+    st.sidebar.caption("鏄剧ず涓婚褰卞搷鐩堜簭棰滆壊锛汯绾夸富棰樺彧褰卞搷鎶€鏈湅鏉块厤鑹层€?)
     chart_data_mode = st.sidebar.selectbox(
-        "看板数据模式",
-        options=["实时拉取（默认）", "数据库缓存（Supabase）"],
+        "鐪嬫澘鏁版嵁妯″紡",
+        options=["瀹炴椂鎷夊彇锛堥粯璁わ級", "鏁版嵁搴撶紦瀛橈紙Supabase锛?],
         index=0,
         key="chart_data_mode",
-        help="实时拉取：页面直接请求行情源；数据库缓存：仅读 Supabase 里的 K 线缓存。",
+        help="瀹炴椂鎷夊彇锛氶〉闈㈢洿鎺ヨ姹傝鎯呮簮锛涙暟鎹簱缂撳瓨锛氫粎璇?Supabase 閲岀殑 K 绾跨紦瀛樸€?,
     )
-    st.sidebar.caption(f"K线行情源：{chart_provider}")
+    st.sidebar.caption(f"K绾胯鎯呮簮锛歿chart_provider}")
 
-    chart_cache_only = chart_data_mode == "数据库缓存（Supabase）"
+    chart_cache_only = chart_data_mode == "鏁版嵁搴撶紦瀛橈紙Supabase锛?
     if chart_cache_only and not _db:
-        st.sidebar.warning("未配置 Supabase，已自动切换为实时拉取模式。")
+        st.sidebar.warning("鏈厤缃?Supabase锛屽凡鑷姩鍒囨崲涓哄疄鏃舵媺鍙栨ā寮忋€?)
         chart_cache_only = False
     _chart_api["configure_market_storage"](_db if chart_cache_only else None, read_only=chart_cache_only)
 
-    _interval_display_map = {"日线（1d）": "1d", "15分钟（15m）": "15m", "5分钟（5m）": "5m"}
+    _interval_display_map = {"鏃ョ嚎锛?d锛?: "1d", "15鍒嗛挓锛?5m锛?: "15m", "5鍒嗛挓锛?m锛?: "5m"}
     _interval_pick = st.sidebar.multiselect(
-        "看板加载哪些周期（不选则不拉取数据）",
+        "鐪嬫澘鍔犺浇鍝簺鍛ㄦ湡锛堜笉閫夊垯涓嶆媺鍙栨暟鎹級",
         options=list(_interval_display_map.keys()),
         default=list(_interval_display_map.keys()),
         key="chart_intervals_to_load",
-        help="关闭某个周期后，该周期对应的图表不会触发 fetch_ohlcv()，通常能显著减少加载时间。",
+        help="鍏抽棴鏌愪釜鍛ㄦ湡鍚庯紝璇ュ懆鏈熷搴旂殑鍥捐〃涓嶄細瑙﹀彂 fetch_ohlcv()锛岄€氬父鑳芥樉钁楀噺灏戝姞杞芥椂闂淬€?,
     )
     _interval_keys = [_interval_display_map[x] for x in _interval_pick] or ["1d"]
 
@@ -2245,7 +2280,7 @@ def _render_chart_board() -> None:
                         user_avg_cost=_chart_user_avg_cost,
                         cache_only=chart_cache_only,
                     )
-                ] = ("1d", "日线（1d）")
+                ] = ("1d", "鏃ョ嚎锛?d锛?)
             if "15m" in _interval_keys:
                 _fut_map[
                     _pool.submit(
@@ -2256,7 +2291,7 @@ def _render_chart_board() -> None:
                         user_avg_cost=None,
                         cache_only=chart_cache_only,
                     )
-                ] = ("15m", "15m（15m）")
+                ] = ("15m", "15m锛?5m锛?)
             if "5m" in _interval_keys:
                 _fut_map[
                     _pool.submit(
@@ -2267,7 +2302,7 @@ def _render_chart_board() -> None:
                         user_avg_cost=None,
                         cache_only=chart_cache_only,
                     )
-                ] = ("5m", "5m（5m）")
+                ] = ("5m", "5m锛?m锛?)
             for _fut in as_completed(_fut_map):
                 _kind, _lab = _fut_map[_fut]
                 try:
@@ -2282,7 +2317,7 @@ def _render_chart_board() -> None:
                     _chart_errs[_kind] = str(e)
         _prog_slot.empty()
 
-    _tab_d, _tab_15, _tab_5 = st.tabs(["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"])
+    _tab_d, _tab_15, _tab_5 = st.tabs(["鏃ョ嚎锛圗MA路ATR路MACD锛?, "15m锛圴WAP路RSI路MACD锛?, "5m锛圴WAP路RSI路MACD锛?])
     _plotly_static_axes_config = {
         "scrollZoom": False,
         "displayModeBar": False,
@@ -2292,30 +2327,30 @@ def _render_chart_board() -> None:
         if "1d" in _interval_keys and _fig_d is not None:
             st.plotly_chart(_fig_d, width="stretch", config=_plotly_static_axes_config)
         elif "1d" in _interval_keys:
-            st.warning(f"日线图加载失败：{_chart_errs.get('1d', '未知错误')}")
+            st.warning(f"鏃ョ嚎鍥惧姞杞藉け璐ワ細{_chart_errs.get('1d', '鏈煡閿欒')}")
     with _tab_15:
         if "15m" in _interval_keys and _fig_15 is not None:
             st.plotly_chart(_fig_15, width="stretch", config=_plotly_static_axes_config)
         elif "15m" in _interval_keys:
-            st.warning(f"15m 图加载失败：{_chart_errs.get('15m', '未知错误')}")
+            st.warning(f"15m 鍥惧姞杞藉け璐ワ細{_chart_errs.get('15m', '鏈煡閿欒')}")
     with _tab_5:
         if "5m" in _interval_keys and _fig_5 is not None:
             st.plotly_chart(_fig_5, width="stretch", config=_plotly_static_axes_config)
         elif "5m" in _interval_keys:
-            st.warning(f"5m 图加载失败：{_chart_errs.get('5m', '未知错误')}")
+            st.warning(f"5m 鍥惧姞杞藉け璐ワ細{_chart_errs.get('5m', '鏈煡閿欒')}")
 
 
-with st.expander("技术看板", expanded=False):
+with st.expander("鎶€鏈湅鏉?, expanded=False):
     _chart_should_load = st.toggle(
-        "加载技术看板",
+        "鍔犺浇鎶€鏈湅鏉?,
         value=False,
         key="chart_board_load_top",
-        help="开启后才会加载 K 线模块和行情数据；默认收起时不拉取 K 线。",
+        help="寮€鍚悗鎵嶄細鍔犺浇 K 绾挎ā鍧楀拰琛屾儏鏁版嵁锛涢粯璁ゆ敹璧锋椂涓嶆媺鍙?K 绾裤€?,
     )
     if _chart_should_load:
         _render_chart_board()
     else:
-        st.caption("打开“加载技术看板”后显示 K 线图，默认加载日线、15分钟、5分钟。")
+        st.caption("鎵撳紑鈥滃姞杞芥妧鏈湅鏉库€濆悗鏄剧ず K 绾垮浘锛岄粯璁ゅ姞杞芥棩绾裤€?5鍒嗛挓銆?鍒嗛挓銆?)
 
 rows = []
 usd_symbols = ("VOO", "QQQ", *_SATELLITE_SYMBOLS, "SGOV")
@@ -2352,17 +2387,17 @@ for sym, meta in _ASSET_META.items():
     rebound_pct_by_symbol[sym] = row_rebound
     rows.append(
         {
-            "标的": meta["label"],
-            "币种": meta["currency"],
-            "当日涨跌%": round(daily_change_pct_by_symbol.get(sym, 0.0), 2),
-            "近60日高点回撤%": round(float(row_drawdown), 2) if isinstance(row_drawdown, (int, float)) else None,
-            "近60日低点涨幅%": round(float(row_rebound), 2) if isinstance(row_rebound, (int, float)) else None,
-            "浮动盈亏": round(pnl, 2),
-            "涨跌幅%": round(pnl_pct, 2),
-            "持有数量": round(shares, 3),
-            "持仓成本": round(avg_cost, 2),
-            "当前价": round(current, 4),
-            "持仓市值": round(value, 2),
+            "鏍囩殑": meta["label"],
+            "甯佺": meta["currency"],
+            "褰撴棩娑ㄨ穼%": round(daily_change_pct_by_symbol.get(sym, 0.0), 2),
+            "杩?0鏃ラ珮鐐瑰洖鎾?": round(float(row_drawdown), 2) if isinstance(row_drawdown, (int, float)) else None,
+            "杩?0鏃ヤ綆鐐规定骞?": round(float(row_rebound), 2) if isinstance(row_rebound, (int, float)) else None,
+            "娴姩鐩堜簭": round(pnl, 2),
+            "娑ㄨ穼骞?": round(pnl_pct, 2),
+            "鎸佹湁鏁伴噺": round(shares, 3),
+            "鎸佷粨鎴愭湰": round(avg_cost, 2),
+            "褰撳墠浠?: round(current, 4),
+            "鎸佷粨甯傚€?: round(value, 2),
         }
     )
 
@@ -2375,7 +2410,7 @@ realized_cny = float(balances_for_view.get("realized_cny", 0.0))
 total_balance_cny = cash_usd * fx + cash_cny
 total_assets_cny = total_value_cny + total_balance_cny
 
-st.markdown("### 📊 今日表现")
+st.markdown("### 馃搳 浠婃棩琛ㄧ幇")
 
 weighted_daily_pct = (
     sum(
@@ -2386,7 +2421,7 @@ weighted_daily_pct = (
     else 0.0
 )
 weighted_daily_color = _change_color_by_pct(weighted_daily_pct, theme=theme)
-# 汇总全持仓当日涨跌金额（先按各资产原币计算，再统一折算 CNY）。
+# 姹囨€诲叏鎸佷粨褰撴棩娑ㄨ穼閲戦锛堝厛鎸夊悇璧勪骇鍘熷竵璁＄畻锛屽啀缁熶竴鎶樼畻 CNY锛夈€?
 total_daily_change_cny = 0.0
 for sym, meta in _ASSET_META.items():
     d = float(daily_change_pct_by_symbol.get(sym, 0.0))
@@ -2405,8 +2440,8 @@ for sym, meta in _ASSET_META.items():
 total_daily_change_usd = (total_daily_change_cny / fx) if fx > 0 else 0.0
 st.markdown(
     "<div class='daily-summary'>"
-    f"<span class='daily-summary-main'><strong>当日加权涨跌</strong>：<span style='color:{weighted_daily_color}; font-weight:800; font-size:18px;'>{weighted_daily_pct:+.2f}%</span></span>"
-    f"<span class='daily-summary-values' style='color:{weighted_daily_color}; font-weight:800;'>CNY {total_daily_change_cny:+,.2f} · USD {total_daily_change_usd:+,.2f}</span>"
+    f"<span class='daily-summary-main'><strong>褰撴棩鍔犳潈娑ㄨ穼</strong>锛?span style='color:{weighted_daily_color}; font-weight:800; font-size:18px;'>{weighted_daily_pct:+.2f}%</span></span>"
+    f"<span class='daily-summary-values' style='color:{weighted_daily_color}; font-weight:800;'>CNY {total_daily_change_cny:+,.2f} 路 USD {total_daily_change_usd:+,.2f}</span>"
     "</div>",
     unsafe_allow_html=True,
 )
@@ -2437,9 +2472,9 @@ satellite_daily_color = _change_color_by_pct(satellite_daily_pct, theme=theme)
 satellite_daily_change_usd = (satellite_daily_change_cny / fx) if fx > 0 else 0.0
 satellite_card_html = (
     f"<div class='daily-card daily-card-wide' style='--daily-color:{satellite_daily_color};'>"
-    "<div class='daily-card-title'>卫星仓位</div>"
+    "<div class='daily-card-title'>鍗槦浠撲綅</div>"
     f"<div class='daily-card-pct'>{satellite_daily_pct:+.2f}%</div>"
-    f"<div class='daily-card-amount'>USD {satellite_daily_change_usd:+,.2f}<br>≈ CNY {satellite_daily_change_cny:+,.2f}</div>"
+    f"<div class='daily-card-amount'>USD {satellite_daily_change_usd:+,.2f}<br>鈮?CNY {satellite_daily_change_cny:+,.2f}</div>"
     "</div>"
 )
 daily_card_symbols = (
@@ -2462,13 +2497,13 @@ for sym in daily_card_symbols:
     current_px = float(prices_now.get(sym, 0.0))
     current_value_native = shares_now * current_px
     d_ratio = d / 100.0
-    # 用当前市值反推昨日市值，得到更贴近真实的当日波动金额。
+    # 鐢ㄥ綋鍓嶅競鍊煎弽鎺ㄦ槰鏃ュ競鍊硷紝寰楀埌鏇磋创杩戠湡瀹炵殑褰撴棩娉㈠姩閲戦銆?
     if abs(1.0 + d_ratio) > 1e-9:
         daily_amount_native = current_value_native - (current_value_native / (1.0 + d_ratio))
     else:
         daily_amount_native = 0.0
     if meta["currency"] == "USD":
-        daily_amount_text = f"USD {daily_amount_native:+,.2f}<br>≈ CNY {daily_amount_native * fx:+,.2f}"
+        daily_amount_text = f"USD {daily_amount_native:+,.2f}<br>鈮?CNY {daily_amount_native * fx:+,.2f}"
     else:
         daily_amount_text = f"CNY {daily_amount_native:+,.2f}"
     _daily_cards.append(
@@ -2488,69 +2523,69 @@ st.markdown(
 )
 
 st.markdown("<br>", unsafe_allow_html=True)
-st.subheader("📈 资产分布与盈亏")
+st.subheader("馃搱 璧勪骇鍒嗗竷涓庣泩浜?)
 
 excluded_core_pnl_symbols = _SATELLITE_SYMBOLS
 pnl_chart_df = pd.DataFrame(
     [
         {
-            "标的": _ASSET_META[sym]["label"],
-            "浮盈亏(CNY)": round(pnl_cny_by_symbol[sym], 2),
-            "盈亏标签": f"¥ {pnl_cny_by_symbol[sym]:+,.0f}",
-            "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
+            "鏍囩殑": _ASSET_META[sym]["label"],
+            "娴泩浜?CNY)": round(pnl_cny_by_symbol[sym], 2),
+            "鐩堜簭鏍囩": f"楼 {pnl_cny_by_symbol[sym]:+,.0f}",
+            "鏂瑰悜": "鐩堝埄" if pnl_cny_by_symbol[sym] >= 0 else "浜忔崯",
         }
         for sym in _ASSET_META
         if sym not in excluded_core_pnl_symbols
     ]
-).sort_values("浮盈亏(CNY)", ascending=False)
+).sort_values("娴泩浜?CNY)", ascending=False)
 pnl_chart_base = alt.Chart(pnl_chart_df)
 pnl_chart_positive_bars = (
     pnl_chart_base
     .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
-    .transform_filter(alt.datum["浮盈亏(CNY)"] >= 0)
+    .transform_filter(alt.datum["娴泩浜?CNY)"] >= 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=240)),
-        x=alt.X("浮盈亏(CNY):Q", title="浮盈亏(CNY)"),
+        y=alt.Y("鏍囩殑:N", sort=list(pnl_chart_df["鏍囩殑"]), title=None, axis=alt.Axis(labelLimit=240)),
+        x=alt.X("娴泩浜?CNY):Q", title="娴泩浜?CNY)"),
         color=alt.value("#059669"),
-        tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
+        tooltip=["鏍囩殑:N", alt.Tooltip("娴泩浜?CNY):Q", format=",.2f"), "鏂瑰悜:N"],
     )
 )
 pnl_chart_negative_bars = (
     pnl_chart_base
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusBottomLeft=6)
-    .transform_filter(alt.datum["浮盈亏(CNY)"] < 0)
+    .transform_filter(alt.datum["娴泩浜?CNY)"] < 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=240)),
-        x=alt.X("浮盈亏(CNY):Q", title="浮盈亏(CNY)"),
+        y=alt.Y("鏍囩殑:N", sort=list(pnl_chart_df["鏍囩殑"]), title=None, axis=alt.Axis(labelLimit=240)),
+        x=alt.X("娴泩浜?CNY):Q", title="娴泩浜?CNY)"),
         color=alt.value("#e11d48"),
-        tooltip=["标的:N", alt.Tooltip("浮盈亏(CNY):Q", format=",.2f"), "方向:N"],
+        tooltip=["鏍囩殑:N", alt.Tooltip("娴泩浜?CNY):Q", format=",.2f"), "鏂瑰悜:N"],
     )
 )
 pnl_chart_positive_labels = (
     pnl_chart_base
     .mark_text(align="left", baseline="middle", dx=8, fontSize=13, fontWeight=700)
-    .transform_filter(alt.datum["浮盈亏(CNY)"] >= 0)
+    .transform_filter(alt.datum["娴泩浜?CNY)"] >= 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=240)),
-        x=alt.X("浮盈亏(CNY):Q"),
-        text="盈亏标签:N",
+        y=alt.Y("鏍囩殑:N", sort=list(pnl_chart_df["鏍囩殑"]), title=None, axis=alt.Axis(labelLimit=240)),
+        x=alt.X("娴泩浜?CNY):Q"),
+        text="鐩堜簭鏍囩:N",
         color=alt.value("#047857"),
     )
 )
 pnl_chart_negative_labels = (
     pnl_chart_base
     .mark_text(align="right", baseline="middle", dx=-8, fontSize=13, fontWeight=700)
-    .transform_filter(alt.datum["浮盈亏(CNY)"] < 0)
+    .transform_filter(alt.datum["娴泩浜?CNY)"] < 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=240)),
-        x=alt.X("浮盈亏(CNY):Q"),
-        text="盈亏标签:N",
+        y=alt.Y("鏍囩殑:N", sort=list(pnl_chart_df["鏍囩殑"]), title=None, axis=alt.Axis(labelLimit=240)),
+        x=alt.X("娴泩浜?CNY):Q"),
+        text="鐩堜簭鏍囩:N",
         color=alt.value("#be123c"),
     )
 )
 pnl_chart = (
     (pnl_chart_positive_bars + pnl_chart_negative_bars + pnl_chart_positive_labels + pnl_chart_negative_labels)
-    .properties(title="核心仓位浮盈亏排名（不含卫星仓位，折合CNY）", height=max(260, 46 * len(pnl_chart_df)))
+    .properties(title="鏍稿績浠撲綅娴泩浜忔帓鍚嶏紙涓嶅惈鍗槦浠撲綅锛屾姌鍚圕NY锛?, height=max(260, 46 * len(pnl_chart_df)))
     .configure_view(stroke=None)
     .configure_axisY(labelLimit=240, labelPadding=8)
 )
@@ -2559,10 +2594,10 @@ st.altair_chart(_theme_altair_chart(pnl_chart, theme), width="stretch")
 satellite_pnl_chart_df = pd.DataFrame(
     [
         {
-            "标的": sym,
-            "浮盈亏(USD)": round(pnl_usd, 2),
-            "盈亏标签": f"$ {pnl_usd:+,.2f}",
-            "方向": "盈利" if pnl_usd >= 0 else "亏损",
+            "鏍囩殑": sym,
+            "娴泩浜?USD)": round(pnl_usd, 2),
+            "鐩堜簭鏍囩": f"$ {pnl_usd:+,.2f}",
+            "鏂瑰悜": "鐩堝埄" if pnl_usd >= 0 else "浜忔崯",
         }
         for sym in _SATELLITE_SYMBOLS
         for pnl_usd in [
@@ -2570,49 +2605,49 @@ satellite_pnl_chart_df = pd.DataFrame(
             * (float(prices_now.get(sym, 0.0)) - float(holdings.get(sym, {}).get("avg_cost", 0.0)))
         ]
     ]
-).sort_values("浮盈亏(USD)", ascending=False)
+).sort_values("娴泩浜?USD)", ascending=False)
 satellite_pnl_chart_base = alt.Chart(satellite_pnl_chart_df)
 satellite_pnl_chart_positive_bars = (
     satellite_pnl_chart_base
     .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
-    .transform_filter(alt.datum["浮盈亏(USD)"] >= 0)
+    .transform_filter(alt.datum["娴泩浜?USD)"] >= 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=160)),
-        x=alt.X("浮盈亏(USD):Q", title="浮盈亏(USD)"),
+        y=alt.Y("鏍囩殑:N", sort=list(satellite_pnl_chart_df["鏍囩殑"]), title=None, axis=alt.Axis(labelLimit=160)),
+        x=alt.X("娴泩浜?USD):Q", title="娴泩浜?USD)"),
         color=alt.value("#059669"),
-        tooltip=["标的:N", alt.Tooltip("浮盈亏(USD):Q", format=",.2f"), "方向:N"],
+        tooltip=["鏍囩殑:N", alt.Tooltip("娴泩浜?USD):Q", format=",.2f"), "鏂瑰悜:N"],
     )
 )
 satellite_pnl_chart_negative_bars = (
     satellite_pnl_chart_base
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusBottomLeft=6)
-    .transform_filter(alt.datum["浮盈亏(USD)"] < 0)
+    .transform_filter(alt.datum["娴泩浜?USD)"] < 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=160)),
-        x=alt.X("浮盈亏(USD):Q", title="浮盈亏(USD)"),
+        y=alt.Y("鏍囩殑:N", sort=list(satellite_pnl_chart_df["鏍囩殑"]), title=None, axis=alt.Axis(labelLimit=160)),
+        x=alt.X("娴泩浜?USD):Q", title="娴泩浜?USD)"),
         color=alt.value("#e11d48"),
-        tooltip=["标的:N", alt.Tooltip("浮盈亏(USD):Q", format=",.2f"), "方向:N"],
+        tooltip=["鏍囩殑:N", alt.Tooltip("娴泩浜?USD):Q", format=",.2f"), "鏂瑰悜:N"],
     )
 )
 satellite_pnl_chart_positive_labels = (
     satellite_pnl_chart_base
     .mark_text(align="left", baseline="middle", dx=8, fontSize=13, fontWeight=700)
-    .transform_filter(alt.datum["浮盈亏(USD)"] >= 0)
+    .transform_filter(alt.datum["娴泩浜?USD)"] >= 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=160)),
-        x=alt.X("浮盈亏(USD):Q"),
-        text="盈亏标签:N",
+        y=alt.Y("鏍囩殑:N", sort=list(satellite_pnl_chart_df["鏍囩殑"]), title=None, axis=alt.Axis(labelLimit=160)),
+        x=alt.X("娴泩浜?USD):Q"),
+        text="鐩堜簭鏍囩:N",
         color=alt.value("#047857"),
     )
 )
 satellite_pnl_chart_negative_labels = (
     satellite_pnl_chart_base
     .mark_text(align="right", baseline="middle", dx=-8, fontSize=13, fontWeight=700)
-    .transform_filter(alt.datum["浮盈亏(USD)"] < 0)
+    .transform_filter(alt.datum["娴泩浜?USD)"] < 0)
     .encode(
-        y=alt.Y("标的:N", sort=list(satellite_pnl_chart_df["标的"]), title=None, axis=alt.Axis(labelLimit=160)),
-        x=alt.X("浮盈亏(USD):Q"),
-        text="盈亏标签:N",
+        y=alt.Y("鏍囩殑:N", sort=list(satellite_pnl_chart_df["鏍囩殑"]), title=None, axis=alt.Axis(labelLimit=160)),
+        x=alt.X("娴泩浜?USD):Q"),
+        text="鐩堜簭鏍囩:N",
         color=alt.value("#be123c"),
     )
 )
@@ -2623,7 +2658,7 @@ satellite_pnl_chart = (
         + satellite_pnl_chart_positive_labels
         + satellite_pnl_chart_negative_labels
     )
-    .properties(title="卫星仓位浮盈亏排名（USD）", height=max(240, 42 * len(satellite_pnl_chart_df)))
+    .properties(title="鍗槦浠撲綅娴泩浜忔帓鍚嶏紙USD锛?, height=max(240, 42 * len(satellite_pnl_chart_df)))
     .configure_view(stroke=None)
     .configure_axisY(labelLimit=160, labelPadding=8)
 )
@@ -2667,16 +2702,16 @@ sgov_target = _usd_target_pct("SGOV")
 
 group1_df = pd.DataFrame(
     [
-        {"标的组": "VOO", "类型": "当前比例%", "成分": "VOO", "比例%": round(voo_ratio, 2)},
-        {"标的组": "VOO", "类型": "目标比例%", "成分": "目标", "比例%": round(voo_target, 2)},
-        {"标的组": "QQQ", "类型": "当前比例%", "成分": "QQQ", "比例%": round(qqq_ratio, 2)},
-        {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2)},
-        {"标的组": "卫星仓位", "类型": "当前比例%", "成分": "卫星仓位", "比例%": round(new4_ratio, 2)},
-        {"标的组": "卫星仓位", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2)},
-        {"标的组": "短债", "类型": "当前比例%", "成分": "SGOV", "比例%": round(sgov_ratio, 2)},
-        {"标的组": "短债", "类型": "目标比例%", "成分": "目标", "比例%": round(sgov_target, 2)},
-        {"标的组": "现金", "类型": "当前比例%", "成分": "现金", "比例%": round(cash_usd_ratio, 2)},
-        {"标的组": "现金", "类型": "目标比例%", "成分": "目标", "比例%": 0.0},
+        {"鏍囩殑缁?: "VOO", "绫诲瀷": "褰撳墠姣斾緥%", "鎴愬垎": "VOO", "姣斾緥%": round(voo_ratio, 2)},
+        {"鏍囩殑缁?: "VOO", "绫诲瀷": "鐩爣姣斾緥%", "鎴愬垎": "鐩爣", "姣斾緥%": round(voo_target, 2)},
+        {"鏍囩殑缁?: "QQQ", "绫诲瀷": "褰撳墠姣斾緥%", "鎴愬垎": "QQQ", "姣斾緥%": round(qqq_ratio, 2)},
+        {"鏍囩殑缁?: "QQQ", "绫诲瀷": "鐩爣姣斾緥%", "鎴愬垎": "鐩爣", "姣斾緥%": round(qqq_target, 2)},
+        {"鏍囩殑缁?: "鍗槦浠撲綅", "绫诲瀷": "褰撳墠姣斾緥%", "鎴愬垎": "鍗槦浠撲綅", "姣斾緥%": round(new4_ratio, 2)},
+        {"鏍囩殑缁?: "鍗槦浠撲綅", "绫诲瀷": "鐩爣姣斾緥%", "鎴愬垎": "鐩爣", "姣斾緥%": round(new4_target, 2)},
+        {"鏍囩殑缁?: "鐭€?, "绫诲瀷": "褰撳墠姣斾緥%", "鎴愬垎": "SGOV", "姣斾緥%": round(sgov_ratio, 2)},
+        {"鏍囩殑缁?: "鐭€?, "绫诲瀷": "鐩爣姣斾緥%", "鎴愬垎": "鐩爣", "姣斾緥%": round(sgov_target, 2)},
+        {"鏍囩殑缁?: "鐜伴噾", "绫诲瀷": "褰撳墠姣斾緥%", "鎴愬垎": "鐜伴噾", "姣斾緥%": round(cash_usd_ratio, 2)},
+        {"鏍囩殑缁?: "鐜伴噾", "绫诲瀷": "鐩爣姣斾緥%", "鎴愬垎": "鐩爣", "姣斾緥%": 0.0},
     ]
 )
 
@@ -2684,21 +2719,21 @@ group1_chart = (
     alt.Chart(group1_df)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "短债", "现金"]),
-        xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
-        y=alt.Y("比例%:Q", title="比例(%)"),
+        x=alt.X("鏍囩殑缁?N", sort=["VOO", "QQQ", "鍗槦浠撲綅", "鐭€?, "鐜伴噾"]),
+        xOffset=alt.XOffset("绫诲瀷:N", sort=["褰撳墠姣斾緥%", "鐩爣姣斾緥%"]),
+        y=alt.Y("姣斾緥%:Q", title="姣斾緥(%)"),
         color=alt.Color(
-            "成分:N",
-            sort=["VOO", "QQQ", "卫星仓位", "SGOV", "现金", "目标"],
+            "鎴愬垎:N",
+            sort=["VOO", "QQQ", "鍗槦浠撲綅", "SGOV", "鐜伴噾", "鐩爣"],
             scale=alt.Scale(
-                domain=["VOO", "QQQ", "卫星仓位", "SGOV", "现金", "目标"],
+                domain=["VOO", "QQQ", "鍗槦浠撲綅", "SGOV", "鐜伴噾", "鐩爣"],
                 range=["#2563eb", "#06b6d4", "#a855f7", "#f59e0b", "#64748b", "#94a3b8"],
             ),
         ),
-        order=alt.Order("成分:N", sort="ascending"),
-        tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f")],
+        order=alt.Order("鎴愬垎:N", sort="ascending"),
+        tooltip=["鏍囩殑缁?N", "绫诲瀷:N", "鎴愬垎:N", alt.Tooltip("姣斾緥%:Q", format=".2f")],
     )
-    .properties(title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比")
+    .properties(title="VOO / QQQ / 鍗槦浠撲綅 / 鐭€?SGOV) / 鐜伴噾 褰撳墠涓庣洰鏍囧姣?)
 )
 tech_denominator = sum(satellite_ratio_by_symbol.values())
 satellite_target_parts_total = sum(_SATELLITE_TARGET_PARTS.values())
@@ -2708,21 +2743,21 @@ tech_split_df = pd.DataFrame(
         for sym in _SATELLITE_SYMBOLS
         for row in (
             {
-                "标的": sym,
-                "类型": "当前占卫星仓位%",
-                "比例%": round(
+                "鏍囩殑": sym,
+                "绫诲瀷": "褰撳墠鍗犲崼鏄熶粨浣?",
+                "姣斾緥%": round(
                     (satellite_ratio_by_symbol[sym] / tech_denominator * 100.0) if tech_denominator > 0 else 0.0,
                     2,
                 ),
-                "浮盈亏(CNY)": round(pnl_cny_by_symbol.get(sym, 0.0), 2),
-                "浮盈亏标签": f"¥ {pnl_cny_by_symbol.get(sym, 0.0):+,.0f}",
+                "娴泩浜?CNY)": round(pnl_cny_by_symbol.get(sym, 0.0), 2),
+                "娴泩浜忔爣绛?: f"楼 {pnl_cny_by_symbol.get(sym, 0.0):+,.0f}",
             },
             {
-                "标的": sym,
-                "类型": "目标占卫星仓位%",
-                "比例%": round(_SATELLITE_TARGET_PARTS[sym] / satellite_target_parts_total * 100.0, 2),
-                "浮盈亏(CNY)": None,
-                "浮盈亏标签": "",
+                "鏍囩殑": sym,
+                "绫诲瀷": "鐩爣鍗犲崼鏄熶粨浣?",
+                "姣斾緥%": round(_SATELLITE_TARGET_PARTS[sym] / satellite_target_parts_total * 100.0, 2),
+                "娴泩浜?CNY)": None,
+                "娴泩浜忔爣绛?: "",
             },
         )
     ]
@@ -2732,41 +2767,41 @@ tech_split_bars = (
     tech_split_base
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的:N", sort=list(_SATELLITE_SYMBOLS)),
-        xOffset=alt.XOffset("类型:N", sort=["当前占卫星仓位%", "目标占卫星仓位%"]),
-        y=alt.Y("比例%:Q", title="比例(%)"),
+        x=alt.X("鏍囩殑:N", sort=list(_SATELLITE_SYMBOLS)),
+        xOffset=alt.XOffset("绫诲瀷:N", sort=["褰撳墠鍗犲崼鏄熶粨浣?", "鐩爣鍗犲崼鏄熶粨浣?"]),
+        y=alt.Y("姣斾緥%:Q", title="姣斾緥(%)"),
         color=alt.Color(
-            "类型:N",
-            sort=["当前占卫星仓位%", "目标占卫星仓位%"],
+            "绫诲瀷:N",
+            sort=["褰撳墠鍗犲崼鏄熶粨浣?", "鐩爣鍗犲崼鏄熶粨浣?"],
             scale=alt.Scale(range=["#8b5cf6", "#94a3b8"]),
         ),
         tooltip=[
-            "标的:N",
-            "类型:N",
-            alt.Tooltip("比例%:Q", format=".2f"),
+            "鏍囩殑:N",
+            "绫诲瀷:N",
+            alt.Tooltip("姣斾緥%:Q", format=".2f"),
         ],
     )
 )
 tech_split_chart = (
     tech_split_bars
-    .properties(title="卫星仓位内部占比（目标：AVGO/NVDA/GOOGL/MSFT/ISRG = 3:2:3:2:5）")
+    .properties(title="鍗槦浠撲綅鍐呴儴鍗犳瘮锛堢洰鏍囷細AVGO/NVDA/GOOGL/MSFT/ISRG = 3:2:3:2:5锛?)
 )
 st.altair_chart(_theme_altair_chart(tech_split_chart, theme), width="stretch")
 st.altair_chart(_theme_altair_chart(group1_chart, theme), width="stretch")
 
 st.markdown("<br>", unsafe_allow_html=True)
-st.subheader("📦 我的持仓")
-st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'cloud' else '本地文件'}")
+st.subheader("馃摝 鎴戠殑鎸佷粨")
+st.caption(f"褰撳墠鎸佷粨璇诲彇鏉ユ簮锛歿'浜戠鏁版嵁搴? if storage_mode == 'cloud' else '鏈湴鏂囦欢'}")
 _render_holdings_editor()
 st.dataframe(
     rows,
     width="stretch",
     hide_index=True,
     column_config={
-        "当日涨跌%": st.column_config.NumberColumn("当日涨跌%", format="%.2f%%"),
-        "近60日高点回撤%": st.column_config.NumberColumn("近60日高点回撤%", format="%.2f%%"),
-        "近60日低点涨幅%": st.column_config.NumberColumn("近60日低点涨幅%", format="%.2f%%"),
-        "涨跌幅%": st.column_config.NumberColumn("涨跌幅%", format="%.2f%%"),
+        "褰撴棩娑ㄨ穼%": st.column_config.NumberColumn("褰撴棩娑ㄨ穼%", format="%.2f%%"),
+        "杩?0鏃ラ珮鐐瑰洖鎾?": st.column_config.NumberColumn("杩?0鏃ラ珮鐐瑰洖鎾?", format="%.2f%%"),
+        "杩?0鏃ヤ綆鐐规定骞?": st.column_config.NumberColumn("杩?0鏃ヤ綆鐐规定骞?", format="%.2f%%"),
+        "娑ㄨ穼骞?": st.column_config.NumberColumn("娑ㄨ穼骞?", format="%.2f%%"),
     },
 )
 usd_cost_usd = sum(float(holdings[sym]["shares"]) * float(holdings[sym]["avg_cost"]) for sym in usd_symbols)
@@ -2782,101 +2817,95 @@ total_unrealized_asset_pct = (total_pnl_cny / total_assets_cny * 100.0) if total
 
 asset_col_usd, asset_col_total = st.columns(2)
 with asset_col_usd:
-    st.markdown("#### 美元资产")
+    st.markdown("#### 缇庡厓璧勪骇")
     usd_m1, usd_m2 = st.columns(2)
-    usd_m1.metric("已变现浮盈亏", f"$ {realized_usd:,.2f}")
+    usd_m1.metric("宸插彉鐜版诞鐩堜簭", f"$ {realized_usd:,.2f}")
     usd_m2.metric(
-        "未变现浮盈亏",
+        "鏈彉鐜版诞鐩堜簭",
         f"$ {usd_unrealized_pnl_usd:,.2f}",
         delta=f"{usd_unrealized_asset_pct:.2f}%",
         delta_color=theme["delta_color"],
     )
     st.caption(
-        f"成本 USD {usd_cost_usd:,.2f} ｜ 持仓市值 USD {usd_position_value_usd:,.2f} ｜ "
-        f"已变现浮盈亏 USD {realized_usd:,.2f} ｜ 现金 USD {cash_usd:,.2f} ｜ "
-        f"总资产 USD {usd_total_usd:,.2f} ｜ 收益率 = 未变现浮盈亏 / 美元持仓成本 = {usd_unrealized_return_pct:.2f}%"
+        f"鎴愭湰 USD {usd_cost_usd:,.2f} 锝?鎸佷粨甯傚€?USD {usd_position_value_usd:,.2f} 锝?"
+        f"宸插彉鐜版诞鐩堜簭 USD {realized_usd:,.2f} 锝?鐜伴噾 USD {cash_usd:,.2f} 锝?"
+        f"鎬昏祫浜?USD {usd_total_usd:,.2f} 锝?鏀剁泭鐜?= 鏈彉鐜版诞鐩堜簭 / 缇庡厓鎸佷粨鎴愭湰 = {usd_unrealized_return_pct:.2f}%"
     )
 
 with asset_col_total:
-    st.markdown("#### 总资产（折合CNY）")
+    st.markdown("#### 鎬昏祫浜э紙鎶樺悎CNY锛?)
     total_m1, total_m2 = st.columns(2)
-    total_m1.metric("已变现浮盈亏", f"¥ {total_realized_cny:,.2f}")
+    total_m1.metric("宸插彉鐜版诞鐩堜簭", f"楼 {total_realized_cny:,.2f}")
     total_m2.metric(
-        "未变现浮盈亏",
-        f"¥ {total_pnl_cny:,.2f}",
+        "鏈彉鐜版诞鐩堜簭",
+        f"楼 {total_pnl_cny:,.2f}",
         delta=f"{total_unrealized_asset_pct:.2f}%",
         delta_color=theme["delta_color"],
     )
     st.caption(
-        f"成本 CNY {total_cost_cny:,.2f} ｜ 持仓市值 CNY {total_value_cny:,.2f} ｜ "
-        f"已变现浮盈亏 CNY {total_realized_cny:,.2f} ｜ 现金 CNY {total_balance_cny:,.2f} ｜ "
-        f"总资产 CNY {total_assets_cny:,.2f} ｜ 收益率 = 未变现浮盈亏 / 持仓成本 = {total_pnl_pct:.2f}%"
+        f"鎴愭湰 CNY {total_cost_cny:,.2f} 锝?鎸佷粨甯傚€?CNY {total_value_cny:,.2f} 锝?"
+        f"宸插彉鐜版诞鐩堜簭 CNY {total_realized_cny:,.2f} 锝?鐜伴噾 CNY {total_balance_cny:,.2f} 锝?"
+        f"鎬昏祫浜?CNY {total_assets_cny:,.2f} 锝?鏀剁泭鐜?= 鏈彉鐜版诞鐩堜簭 / 鎸佷粨鎴愭湰 = {total_pnl_pct:.2f}%"
     )
 
 st.markdown("<br>", unsafe_allow_html=True)
 rebalance_title_col, rebalance_rule_col = st.columns([0.78, 0.22], vertical_alignment="center")
 with rebalance_title_col:
-    st.subheader("🧮 再平衡建议")
+    st.subheader("馃М 鍐嶅钩琛″缓璁?)
 with rebalance_rule_col:
-    with st.popover("ⓘ 算法规则", width="stretch"):
-        st.markdown("#### 长期目标")
+    with st.popover("鈸?绠楁硶瑙勫垯", width="stretch"):
+        st.markdown("#### 闀挎湡鐩爣")
         st.dataframe(pd.DataFrame(_REBALANCE_ALLOCATION_ROWS), width="stretch", hide_index=True)
         st.markdown(
             """
-#### 回撤定义
-使用 60 日最高价回撤：
+#### 鍥炴挙瀹氫箟
+浣跨敤 60 鏃ユ渶楂樹环鍥炴挙锛?
 
 `drawdown = (current_price - max_60d_price) / max_60d_price`
 
-#### 阶段判断
-- **建仓期**：SGOV 明显高于 20% 目标，或权益仓位未达到目标权益仓位的 90%。
-- **长期定投期**：基本达到目标仓位后，主要靠新增工资定投。
+#### 闃舵鍒ゆ柇
+- **寤轰粨鏈?*锛歋GOV 鏄庢樉楂樹簬 20% 鐩爣锛屾垨鏉冪泭浠撲綅鏈揪鍒扮洰鏍囨潈鐩婁粨浣嶇殑 90%銆?
+- **闀挎湡瀹氭姇鏈?*锛氬熀鏈揪鍒扮洰鏍囦粨浣嶅悗锛屼富瑕侀潬鏂板宸ヨ祫瀹氭姇銆?
 
-#### SGOV 规则
-- 本表只使用当前已经在账户里的美元现金和 SGOV，不预估未来新增工资。
-- 每月新增 5000 RMB 由前面的持仓/现金编辑录入后，再参与下一次规划。
-- 建仓期先按当前持仓计算每个标的到目标的缺口，再按剩余月数拆成月度推进量。
-- SGOV 超过 20% 目标的部分，可以随时挪用。
-- 目标内 20% SGOV 默认保留，只有触发大加档才动用。
-- 一旦触发大加/恐慌级档位，SGOV 可以全部动用，之后用后续新增资金再补回。
-"""
+#### SGOV 瑙勫垯
+- 鐩爣鍒嗘瘝浣跨敤褰撳墠缇庡厓璧勪骇 + 鍓╀綑鏈堜唤鐨勮鍒掓柊澧炴姇鍏ャ€?- 鏈湀璁″垝鏂板鎶曞叆榛樿 700 USD锛屾甯告儏鍐典笅鍏堥鐣?SGOV 鐩爣鎵€闇€閮ㄥ垎锛屽墿浣欓儴鍒嗘墠杩涘叆涔板叆寤鸿銆?- 寤轰粨鏈熸寜璁″垝鏈熸湯鐩爣璁＄畻姣忎釜鏍囩殑缂哄彛锛屽啀鎸夊墿浣欐湀鏁版媶鎴愭湀搴︽帹杩涢噺銆?- SGOV 瓒呰繃 20% 鐩爣鐨勯儴鍒嗭紝鍙互闅忔椂鎸敤銆?- 鐩爣鍐?20% SGOV 榛樿淇濈暀锛屽彧鏈夎Е鍙戝ぇ鍔犳。鎵嶅姩鐢ㄣ€?- 涓€鏃﹁Е鍙戝ぇ鍔?鎭愭厡绾ф。浣嶏紝SGOV 鍙互鍏ㄩ儴鍔ㄧ敤锛屼箣鍚庣敤鍚庣画鏂板璧勯噾鍐嶈ˉ鍥炪€?"""
         )
-        st.markdown("#### 建仓期规则")
+        st.markdown("#### 寤轰粨鏈熻鍒?)
         st.dataframe(
             pd.DataFrame(
                 [
-                    {"标的": "VOO", "小加": "-5% / 1.5x", "中加": "-10% / 2x", "大加": "-15% / 3x + 少量SGOV"},
-                    {"标的": "QQQ", "小加": "-6% / 1.5x", "中加": "-12% / 2.5x", "大加": "-18% / 4x + 动用SGOV"},
-                    {"标的": "MSFT", "小加": "-8% / 1.5x", "中加": "-15% / 2.5x", "大加": "-22% / 4x"},
-                    {"标的": "GOOGL", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-25% / 4x"},
-                    {"标的": "NVDA", "小加": "-12% / 1.5x", "中加": "-20% / 3x", "大加": "-30% / 5x + 明显动用SGOV"},
-                    {"标的": "AVGO", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-28% / 4x"},
-                    {"标的": "ISRG", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-28% / 4x"},
+                    {"鏍囩殑": "VOO", "灏忓姞": "-4% / 1x", "涓姞": "-8% / 1.5x", "澶у姞": "-13% / 2.5x + 灏戦噺SGOV"},
+                    {"鏍囩殑": "QQQ", "灏忓姞": "-5% / 1x", "涓姞": "-10% / 1.5x", "澶у姞": "-16% / 3x + 鍔ㄧ敤SGOV"},
+                    {"鏍囩殑": "MSFT", "灏忓姞": "-6% / 1x", "涓姞": "-12% / 1.5x", "澶у姞": "-18% / 3x"},
+                    {"鏍囩殑": "GOOGL", "灏忓姞": "-6% / 1x", "涓姞": "-12% / 1.5x", "澶у姞": "-20% / 3x"},
+                    {"鏍囩殑": "NVDA", "灏忓姞": "-8% / 1x", "涓姞": "-15% / 2x", "澶у姞": "-25% / 4x + 鏄庢樉鍔ㄧ敤SGOV"},
+                    {"鏍囩殑": "AVGO", "灏忓姞": "-7% / 1x", "涓姞": "-14% / 1.5x", "澶у姞": "-22% / 3.5x"},
+                    {"鏍囩殑": "ISRG", "灏忓姞": "-6% / 1x", "涓姞": "-12% / 1.5x", "澶у姞": "-20% / 3x"},
                 ]
             ),
             width="stretch",
             hide_index=True,
         )
-        st.markdown("#### 长期定投期规则")
+        st.markdown("#### 闀挎湡瀹氭姇鏈熻鍒?)
         st.dataframe(
             pd.DataFrame(
                 [
-                    {"标的": "VOO", "正常": "正常定投", "小加": "-5% 多买一点", "中加": "-10% 明显加仓", "大加": "-15% 大加"},
-                    {"标的": "QQQ", "正常": "小额定投", "小加": "-6% 增加投入", "中加": "-12% 明显加仓", "大加": "-18% 大加"},
-                    {"标的": "MSFT", "正常": "持续小买", "小加": "-8% 多买", "中加": "-15% 明显加", "大加": "-22% 大加"},
-                    {"标的": "GOOGL", "正常": "持续小买", "小加": "-10% 多买", "中加": "-18% 明显加", "大加": "-25% 大加"},
-                    {"标的": "NVDA", "正常": "少量/观察", "小加": "-12% 小加", "中加": "-20% 明显加", "大加": "-30% AI恐慌级"},
-                    {"标的": "AVGO", "正常": "观察/小买", "小加": "-10% 小加", "中加": "-18% 明显加", "大加": "-28% 大加"},
-                    {"标的": "ISRG", "正常": "长期慢买", "小加": "-10% 多买", "中加": "-18% 明显加", "大加": "-28% 大加"},
+                    {"鏍囩殑": "VOO", "姝ｅ父": "姝ｅ父瀹氭姇", "灏忓姞": "-5% 澶氫拱涓€鐐?, "涓姞": "-10% 鏄庢樉鍔犱粨", "澶у姞": "-15% 澶у姞"},
+                    {"鏍囩殑": "QQQ", "姝ｅ父": "灏忛瀹氭姇", "灏忓姞": "-6% 澧炲姞鎶曞叆", "涓姞": "-12% 鏄庢樉鍔犱粨", "澶у姞": "-18% 澶у姞"},
+                    {"鏍囩殑": "MSFT", "姝ｅ父": "鎸佺画灏忎拱", "灏忓姞": "-8% 澶氫拱", "涓姞": "-15% 鏄庢樉鍔?, "澶у姞": "-22% 澶у姞"},
+                    {"鏍囩殑": "GOOGL", "姝ｅ父": "鎸佺画灏忎拱", "灏忓姞": "-10% 澶氫拱", "涓姞": "-18% 鏄庢樉鍔?, "澶у姞": "-25% 澶у姞"},
+                    {"鏍囩殑": "NVDA", "姝ｅ父": "灏戦噺/瑙傚療", "灏忓姞": "-12% 灏忓姞", "涓姞": "-20% 鏄庢樉鍔?, "澶у姞": "-30% AI鎭愭厡绾?},
+                    {"鏍囩殑": "AVGO", "姝ｅ父": "瑙傚療/灏忎拱", "灏忓姞": "-10% 灏忓姞", "涓姞": "-18% 鏄庢樉鍔?, "澶у姞": "-28% 澶у姞"},
+                    {"鏍囩殑": "ISRG", "姝ｅ父": "闀挎湡鎱拱", "灏忓姞": "-10% 澶氫拱", "涓姞": "-18% 鏄庢樉鍔?, "澶у姞": "-28% 澶у姞"},
                 ]
             ),
             width="stretch",
             hide_index=True,
         )
 
-with st.expander("再平衡买入建议", expanded=False):
+with st.expander("鍐嶅钩琛′拱鍏ュ缓璁?, expanded=False):
     if usd_total_cny <= 0:
-        st.info("美元资产总额为 0，暂无法生成再平衡建议。")
+        st.info("缇庡厓璧勪骇鎬婚涓?0锛屾殏鏃犳硶鐢熸垚鍐嶅钩琛″缓璁€?)
     else:
         sgov_current_usd = (value_cny_by_symbol.get("SGOV", 0.0) / fx) if fx > 0 else 0.0
         sgov_target_pct = (
@@ -2910,14 +2939,14 @@ with st.expander("再平衡买入建议", expanded=False):
                 (build_end_year - now_for_build.year) * 12 + build_end_month - now_for_build.month + 1,
             )
     
-        st.session_state.setdefault("rebalance_wizard_step", "1 确认阶段")
+        st.session_state.setdefault("rebalance_wizard_step", "1 纭闃舵")
         st.session_state.setdefault("rebalance_generated", False)
-        rebalance_steps = ["1 确认阶段", "2 预算与记录", "3 生成建议"]
+        rebalance_steps = ["1 纭闃舵", "2 棰勭畻涓庤褰?, "3 鐢熸垚寤鸿"]
         current_wizard_step = str(st.session_state.get("rebalance_wizard_step", rebalance_steps[0]))
         if current_wizard_step not in rebalance_steps:
             current_wizard_step = rebalance_steps[0]
         wizard_step = st.radio(
-            "再平衡买入流程",
+            "鍐嶅钩琛′拱鍏ユ祦绋?,
             rebalance_steps,
             index=rebalance_steps.index(current_wizard_step),
             horizontal=True,
@@ -2926,18 +2955,18 @@ with st.expander("再平衡买入建议", expanded=False):
             st.session_state["rebalance_wizard_step"] = wizard_step
             st.session_state["rebalance_generated"] = False
     
-        if wizard_step == "1 确认阶段":
-            st.markdown("##### 1. 确认阶段")
+        if wizard_step == "1 纭闃舵":
+            st.markdown("##### 1. 纭闃舵")
             cfg_c1, cfg_c2 = st.columns(2)
             with cfg_c1:
                 phase_choice = st.selectbox(
-                    "策略阶段",
-                    ["自动判断", _REBALANCE_PHASE_BUILD, _REBALANCE_PHASE_DCA],
+                    "绛栫暐闃舵",
+                    ["鑷姩鍒ゆ柇", _REBALANCE_PHASE_BUILD, _REBALANCE_PHASE_DCA],
                     key="rebalance_phase_choice",
                 )
             with cfg_c2:
                 build_month_input_kwargs: dict[str, Any] = {
-                    "label": "建仓剩余月数（到11月前）",
+                    "label": "寤轰粨鍓╀綑鏈堟暟锛堝埌11鏈堝墠锛?,
                     "min_value": 1,
                     "max_value": 24,
                     "step": 1,
@@ -2947,17 +2976,17 @@ with st.expander("再平衡买入建议", expanded=False):
                     build_month_input_kwargs["value"] = int(default_build_months)
                 build_months = st.number_input(**build_month_input_kwargs)
             st.caption(
-                f"自动判断：{auto_phase}。建仓期默认按当前持仓缺口和剩余月份推进，不把平均进度当成硬性月预算。"
+                f"鑷姩鍒ゆ柇锛歿auto_phase}銆傚缓浠撴湡榛樿鎸夊綋鍓嶆寔浠撶己鍙ｅ拰鍓╀綑鏈堜唤鎺ㄨ繘锛屼笉鎶婂钩鍧囪繘搴﹀綋鎴愮‖鎬ф湀棰勭畻銆?
             )
-            if st.button("确认阶段，下一步", key="rebalance_confirm_phase"):
-                st.session_state["rebalance_wizard_step"] = "2 预算与记录"
+            if st.button("纭闃舵锛屼笅涓€姝?, key="rebalance_confirm_phase"):
+                st.session_state["rebalance_wizard_step"] = "2 棰勭畻涓庤褰?
                 st.session_state["rebalance_generated"] = False
                 st.rerun()
         else:
-            phase_choice = str(st.session_state.get("rebalance_phase_choice", "自动判断"))
+            phase_choice = str(st.session_state.get("rebalance_phase_choice", "鑷姩鍒ゆ柇"))
             build_months = int(st.session_state.get("rebalance_build_months", default_build_months))
     
-        rebalance_phase = auto_phase if phase_choice == "自动判断" else phase_choice
+        rebalance_phase = auto_phase if phase_choice == "鑷姩鍒ゆ柇" else phase_choice
         can_use_sgov_reserve = _rebalance_can_use_sgov_reserve(drawdown_pct_by_symbol)
         build_month_count = max(1, int(build_months))
     
@@ -2983,20 +3012,25 @@ with st.expander("再平衡买入建议", expanded=False):
         bought_symbols_this_month = [
             sym for sym in budget_usage.get("bought_symbols", []) if sym in usd_symbols and sym != "SGOV"
         ]
+        bought_records_this_month = {
+            sym: item
+            for sym, item in (budget_usage.get("bought_records", {}) or {}).items()
+            if sym in usd_symbols and sym != "SGOV" and isinstance(item, dict)
+        }
         save_execution = False
         clear_execution = False
         edited_used_budget_usd = used_budget_usd
         edited_planned_new_cash_usd = planned_new_cash_usd
-        edited_bought_symbols = bought_symbols_this_month
-        if wizard_step == "2 预算与记录":
-            st.markdown("##### 2. 预算与本月记录")
+        if wizard_step == "2 棰勭畻涓庤褰?:
+            st.markdown("##### 2. 棰勭畻涓庢湰鏈堣褰?)
             st.caption(
-                f"记录 {current_month_key} 已经用掉的建仓预算，保存到 monthly_budget_usage.json。"
-                "每月计划新投入只用于生成建议，不自动修改持仓或现金；真实买入后你继续在前面的持仓/现金区更新。"
+                f"璁板綍 {current_month_key} 宸茬粡鐢ㄦ帀鐨勫缓浠撻绠楋紝淇濆瓨鍒?monthly_budget_usage.json銆?
+                "姣忎釜鏍囩殑濉啓鏈湀宸蹭拱鍏ラ噾棰濆悗锛岀敓鎴愬缓璁細鎸夊綋鍓嶆。浣嶅簲涔伴噾棰濇墸鍑忋€?
+                "鐪熷疄涔板叆鍚庝綘缁х画鍦ㄥ墠闈㈢殑鎸佷粨/鐜伴噾鍖烘洿鏂般€?
             )
             with st.form("monthly_budget_usage_form"):
                 edited_planned_new_cash_usd = st.number_input(
-                    "每月计划新投入(USD)",
+                    "姣忔湀璁″垝鏂版姇鍏?USD)",
                     min_value=0.0,
                     value=planned_new_cash_usd,
                     step=50.0,
@@ -3004,7 +3038,7 @@ with st.expander("再平衡买入建议", expanded=False):
                     key=f"monthly_planned_cash_{current_month_key}",
                 )
                 edited_used_budget_usd = st.number_input(
-                    "本月已用预算(USD)",
+                    "鏈湀宸茬敤棰勭畻(USD)",
                     min_value=0.0,
                     value=used_budget_usd,
                     step=10.0,
@@ -3012,41 +3046,79 @@ with st.expander("再平衡买入建议", expanded=False):
                     key=f"monthly_budget_used_{current_month_key}",
                 )
                 buyable_symbols = [sym for sym in usd_symbols if sym != "SGOV"]
-                edited_bought_symbols = st.multiselect(
-                    "本月已经买过的标的（正常/小加不重复；中加/大加继续建议）",
-                    options=buyable_symbols,
-                    default=bought_symbols_this_month,
-                    key=f"monthly_budget_bought_symbols_{current_month_key}",
+                bought_editor_rows = []
+                for sym in buyable_symbols:
+                    record = bought_records_this_month.get(sym, {})
+                    recorded_amount = float(record.get("amount_usd", 0.0) or 0.0)
+                    bought_editor_rows.append(
+                        {
+                            "鏍囩殑": sym,
+                            "鏈湀宸蹭拱鍏ラ噾棰?USD)": recorded_amount,
+                        }
+                    )
+                edited_bought_table = st.data_editor(
+                    pd.DataFrame(bought_editor_rows),
+                    key=f"monthly_budget_bought_records_{current_month_key}",
+                    hide_index=True,
+                    width="stretch",
+                    disabled=["鏍囩殑"],
+                    column_config={
+                        "鏈湀宸蹭拱鍏ラ噾棰?USD)": st.column_config.NumberColumn(
+                            "鏈湀宸蹭拱鍏ラ噾棰?USD)",
+                            min_value=0.0,
+                            step=10.0,
+                            format="%.2f",
+                        ),
+                    },
                 )
                 save_exec_col, clear_exec_col = st.columns([0.25, 0.25])
-                save_execution = save_exec_col.form_submit_button("保存并下一步")
-                clear_execution = clear_exec_col.form_submit_button("清零本月已用")
+                save_execution = save_exec_col.form_submit_button("淇濆瓨骞朵笅涓€姝?)
+                clear_execution = clear_exec_col.form_submit_button("娓呴浂鏈湀宸茬敤")
         if save_execution:
             used_budget_usd = float(edited_used_budget_usd)
             planned_new_cash_usd = float(edited_planned_new_cash_usd)
-            bought_symbols_this_month = [str(sym).upper() for sym in edited_bought_symbols]
+            bought_symbols_this_month = []
+            bought_records_this_month = {}
+            for _, record_row in edited_bought_table.iterrows():
+                sym = str(record_row.get("鏍囩殑", "")).upper()
+                if sym not in usd_symbols or sym == "SGOV":
+                    continue
+                try:
+                    bought_amount_usd = float(record_row.get("鏈湀宸蹭拱鍏ラ噾棰?USD)", 0.0))
+                except (TypeError, ValueError):
+                    bought_amount_usd = 0.0
+                if bought_amount_usd > 0:
+                    bought_symbols_this_month.append(sym)
+                    bought_records_this_month[sym] = {"amount_usd": bought_amount_usd}
+            used_budget_usd = max(
+                used_budget_usd,
+                sum(item["amount_usd"] for item in bought_records_this_month.values()),
+            )
             _save_monthly_budget_usage(
                 cloud_user_id,
                 current_month_key,
                 used_budget_usd,
                 bought_symbols_this_month,
                 planned_new_cash_usd,
+                bought_records_this_month,
             )
-            st.session_state["rebalance_wizard_step"] = "3 生成建议"
+            st.session_state["rebalance_wizard_step"] = "3 鐢熸垚寤鸿"
             st.session_state["rebalance_generated"] = False
-            st.success("已保存本月预算使用。")
+            st.success("宸蹭繚瀛樻湰鏈堥绠椾娇鐢ㄣ€?)
             st.rerun()
         if clear_execution:
             used_budget_usd = 0.0
             bought_symbols_this_month = []
+            bought_records_this_month = {}
             _save_monthly_budget_usage(
                 cloud_user_id,
                 current_month_key,
                 used_budget_usd,
                 bought_symbols_this_month,
                 planned_new_cash_usd,
+                bought_records_this_month,
             )
-            st.success("已清零本月已用预算。")
+            st.success("宸叉竻闆舵湰鏈堝凡鐢ㄩ绠椼€?)
     
         strategy_rows: list[dict[str, Any]] = []
         full_rebalance_need_usd = 0.0
@@ -3060,87 +3132,102 @@ with st.expander("再平衡买入建议", expanded=False):
             drawdown_pct = drawdown_pct_by_symbol.get(sym)
             strategy, multiplier, action, signal, intensity = _rebalance_strategy_signal(sym, drawdown_pct, rebalance_phase)
             already_bought_this_month = sym != "SGOV" and sym in bought_symbols_this_month
-            if already_bought_this_month and intensity not in {"medium", "large"}:
-                continue
+            try:
+                monthly_bought_amount_usd = float(
+                    (bought_records_this_month.get(sym, {}) or {}).get("amount_usd", 0.0)
+                )
+            except (TypeError, ValueError):
+                monthly_bought_amount_usd = 0.0
             base_budget_usd = max(0.0, gap_usd) / build_month_count
             raw_buy_usd = min(max(0.0, gap_usd), base_budget_usd * multiplier)
             if sym == "SGOV":
                 raw_buy_usd = 0.0
-                action = "作为弹药库"
+                action = "浣滀负寮硅嵂搴?
                 if can_use_sgov_reserve:
-                    note = "触发大加档，SGOV 可以全部动用；后续用新增资金补回。"
+                    note = "瑙﹀彂澶у姞妗ｏ紝SGOV 鍙互鍏ㄩ儴鍔ㄧ敤锛涘悗缁敤鏂板璧勯噾琛ュ洖銆?
                 elif sgov_excess_usd > 0:
-                    note = "超过 20% 目标和底线的部分可随时挪用；目标内 20% 继续保留。"
+                    note = "瓒呰繃 20% 鐩爣鍜屽簳绾跨殑閮ㄥ垎鍙殢鏃舵尓鐢紱鐩爣鍐?20% 缁х画淇濈暀銆?
                 else:
-                    note = "目标内 20% 作为常规弹药库，只有大加档才动用。"
+                    note = "鐩爣鍐?20% 浣滀负甯歌寮硅嵂搴擄紝鍙湁澶у姞妗ｆ墠鍔ㄧ敤銆?
             elif gap_usd <= 0:
-                action = "暂不买入"
-                note = "当前已达到或高于目标仓位。"
+                action = "鏆備笉涔板叆"
+                note = "褰撳墠宸茶揪鍒版垨楂樹簬鐩爣浠撲綅銆?
             elif intensity == "large":
-                note = "大加档：可以动用全部 SGOV，后续再补回弹药库。"
+                note = "澶у姞妗ｏ細鍙互鍔ㄧ敤鍏ㄩ儴 SGOV锛屽悗缁啀琛ュ洖寮硅嵂搴撱€?
             elif intensity == "medium":
-                note = "中加档：可少量动用 SGOV，优先使用月现金流。"
+                note = "涓姞妗ｏ細鍙皯閲忓姩鐢?SGOV锛屼紭鍏堜娇鐢ㄦ湀鐜伴噾娴併€?
             elif intensity == "small":
-                note = "小加档：主要使用当月现金流，尽量不动 SGOV。"
+                note = "灏忓姞妗ｏ細涓昏浣跨敤褰撴湀鐜伴噾娴侊紝灏介噺涓嶅姩 SGOV銆?
             else:
-                note = "按当前阶段的常规月度节奏执行。"
-            if already_bought_this_month and intensity in {"medium", "large"}:
-                note = f"本月已买过，但现在升级到{action}档，允许继续给出加仓建议。"
+                note = "鎸夊綋鍓嶉樁娈电殑甯歌鏈堝害鑺傚鎵ц銆?
             if sym != "SGOV":
                 full_rebalance_need_usd += max(0.0, gap_usd)
-            signal_remaining_usd = max(0.0, raw_buy_usd)
+            signal_remaining_usd = max(0.0, raw_buy_usd - monthly_bought_amount_usd)
+            if already_bought_this_month and signal_remaining_usd <= 0:
+                continue
+            if already_bought_this_month:
+                note = (
+                    f"鏈湀宸蹭拱 USD {monthly_bought_amount_usd:,.2f}锛?
+                    f"褰撳墠妗ｄ綅搴斾拱 USD {raw_buy_usd:,.2f}锛屽墿浣欒ˉ宸?USD {signal_remaining_usd:,.2f}銆?
+                )
             strategy_rows.append(
                 {
-                    "标的": meta["label"],
-                    "阶段": rebalance_phase,
-                    "策略": strategy,
-                    "动作": action,
-                    "当前占美元资产%": round(
+                    "鏍囩殑": meta["label"],
+                    "闃舵": rebalance_phase,
+                    "绛栫暐": strategy,
+                    "鍔ㄤ綔": action,
+                    "褰撳墠鍗犵編鍏冭祫浜?": round(
                         (current_usd / planned_usd_total_usd * 100.0) if planned_usd_total_usd > 0 else 0.0,
                         2,
                     ),
-                    "目标占美元资产%": round(target_pct * 100.0, 2),
-                    "到目标缺口(USD)": round(gap_usd, 2),
-                    "60日回撤%": round(float(drawdown_pct), 2) if isinstance(drawdown_pct, (int, float)) else None,
-                    "回撤档位": signal,
-                    "建议买入(USD)": 0.0,
-                    "说明": note,
+                    "鐩爣鍗犵編鍏冭祫浜?": round(target_pct * 100.0, 2),
+                    "鍒扮洰鏍囩己鍙?USD)": round(gap_usd, 2),
+                    "60鏃ュ洖鎾?": round(float(drawdown_pct), 2) if isinstance(drawdown_pct, (int, float)) else None,
+                    "鍥炴挙妗ｄ綅": signal,
+                    "鏈湀宸蹭拱(USD)": round(monthly_bought_amount_usd, 2),
+                    "寤鸿涔板叆(USD)": 0.0,
+                    "璇存槑": note,
                     "_raw_buy_usd": raw_buy_usd,
                     "_signal_remaining_usd": signal_remaining_usd,
                 }
             )
     
+        monthly_symbol_bought_total_usd = sum(
+            float((item or {}).get("amount_usd", 0.0))
+            for item in bought_records_this_month.values()
+            if isinstance(item, dict)
+        )
         remaining_signal_buy_usd = sum(row["_signal_remaining_usd"] for row in strategy_rows)
         monthly_budget_usd = min(deployable_pool_usd, full_rebalance_need_usd) / build_month_count
-        total_executed_usd = max(0.0, used_budget_usd)
+        total_executed_usd = max(0.0, used_budget_usd, monthly_symbol_bought_total_usd)
         remaining_reference_budget_usd = max(0.0, monthly_budget_usd - total_executed_usd)
         remaining_deployable_budget_usd = max(0.0, deployable_pool_usd - total_executed_usd)
         suggested_run_budget_usd = min(
             remaining_deployable_budget_usd,
             max(remaining_reference_budget_usd, remaining_signal_buy_usd),
         )
-        if wizard_step == "3 生成建议":
-            st.markdown("##### 3. 生成买入建议")
+        if wizard_step == "3 鐢熸垚寤鸿":
+            st.markdown("##### 3. 鐢熸垚涔板叆寤鸿")
             preview_c1, preview_c2, preview_c3, preview_c4 = st.columns(4)
-            preview_c1.metric("计划期末资产(USD)", f"{planned_usd_total_usd:,.2f}")
-            preview_c2.metric("本月新增可买(USD)", f"{planned_new_cash_deployable_usd:,.2f}")
-            preview_c3.metric("本轮可用资金(USD)", f"{remaining_deployable_budget_usd:,.2f}")
-            preview_c4.metric("当前信号建议(USD)", f"{remaining_signal_buy_usd:,.2f}")
+            preview_c1.metric("璁″垝鏈熸湯璧勪骇(USD)", f"{planned_usd_total_usd:,.2f}")
+            preview_c2.metric("鏈湀鏂板鍙拱(USD)", f"{planned_new_cash_deployable_usd:,.2f}")
+            preview_c3.metric("鏈疆鍙敤璧勯噾(USD)", f"{remaining_deployable_budget_usd:,.2f}")
+            preview_c4.metric("褰撳墠淇″彿寤鸿(USD)", f"{remaining_signal_buy_usd:,.2f}")
             run_budget_usd = st.number_input(
-                "本轮最高可用预算(USD)",
+                "鏈疆鏈€楂樺彲鐢ㄩ绠?USD)",
                 min_value=0.0,
                 max_value=max(0.0, remaining_deployable_budget_usd),
                 value=float(suggested_run_budget_usd),
                 step=50.0,
                 format="%.2f",
                 key=f"rebalance_run_budget_{current_month_key}",
-                help="月度参考不是硬上限。没触发可以少用；触发中加/大加时，可以把没用掉的资金滚到本轮一起用。",
+                help="鏈堝害鍙傝€冧笉鏄‖涓婇檺銆傛病瑙﹀彂鍙互灏戠敤锛涜Е鍙戜腑鍔?澶у姞鏃讹紝鍙互鎶婃病鐢ㄦ帀鐨勮祫閲戞粴鍒版湰杞竴璧风敤銆?,
             )
             action_c1, action_c2 = st.columns([0.25, 0.75])
-            if action_c1.button("生成买入建议", type="primary", key="rebalance_generate_btn"):
+            if action_c1.button("鐢熸垚涔板叆寤鸿", type="primary", key="rebalance_generate_btn"):
                 st.session_state["rebalance_generated"] = True
-            if action_c2.button("返回修改预算", key="rebalance_back_to_budget"):
-                st.session_state["rebalance_wizard_step"] = "2 预算与记录"
+            if action_c2.button("杩斿洖淇敼棰勭畻", key="rebalance_back_to_budget"):
+                st.session_state["rebalance_wizard_step"] = "2 棰勭畻涓庤褰?
                 st.session_state["rebalance_generated"] = False
                 st.rerun()
         else:
@@ -3150,50 +3237,59 @@ with st.expander("再平衡买入建议", expanded=False):
         cash_scale = (strategy_budget_usd / remaining_signal_buy_usd) if remaining_signal_buy_usd > 0 else 0.0
         for row in strategy_rows:
             buy_usd = row["_signal_remaining_usd"] * cash_scale
-            row["建议买入(USD)"] = round(buy_usd, 2)
+            row["寤鸿涔板叆(USD)"] = round(buy_usd, 2)
     
         strategy_df = pd.DataFrame(strategy_rows).sort_values(
-            by=["_signal_remaining_usd", "到目标缺口(USD)"],
+            by=["_signal_remaining_usd", "鍒扮洰鏍囩己鍙?USD)"],
             ascending=[False, False],
         )
         strategy_df = strategy_df.drop(columns=["_raw_buy_usd", "_signal_remaining_usd"])
-        if wizard_step != "3 生成建议":
+        if wizard_step != "3 鐢熸垚寤鸿":
             st.stop()
         if not st.session_state.get("rebalance_generated", False):
-            st.info("确认本轮预算后，点击「生成买入建议」查看结果。")
+            st.info("纭鏈疆棰勭畻鍚庯紝鐐瑰嚮銆岀敓鎴愪拱鍏ュ缓璁€嶆煡鐪嬬粨鏋溿€?)
             st.stop()
+        bought_summary = []
+        for sym in bought_symbols_this_month:
+            try:
+                amount_usd = float((bought_records_this_month.get(sym, {}) or {}).get("amount_usd", 0.0))
+            except (TypeError, ValueError):
+                amount_usd = 0.0
+            bought_summary.append(f"{sym} ${amount_usd:,.2f}" if amount_usd > 0 else sym)
         st.caption(
-            f"自动判断阶段：{auto_phase}；当前执行阶段：{rebalance_phase}。"
-            f"本轮按当前现金/SGOV可动用资金 USD {current_deployable_pool_usd:,.2f} "
-            f"+ 本月计划新投入可买部分 USD {planned_new_cash_deployable_usd:,.2f} 生成建议。"
-            f"目标分母按当前美元资产 USD {usd_total_usd:,.2f} "
-            f"+ 未来 {int(build_months)} 个月新投入 USD {planned_total_new_cash_usd:,.2f} "
-            f"= USD {planned_usd_total_usd:,.2f} 计算。"
-            f"当前计划可动用建仓池 USD {deployable_pool_usd:,.2f}，按计划期末仓位缺口和 {int(build_months)} 个月进度计算，"
-            f"月度参考进度 USD {monthly_budget_usd:,.2f}。"
-            f"本月已用预算 USD {total_executed_usd:,.2f}，参考剩余额度 USD {remaining_reference_budget_usd:,.2f}，"
-            f"剩余可动用建仓池 USD {remaining_deployable_budget_usd:,.2f}。"
-            f"本月已买过标的：{', '.join(bought_symbols_this_month) if bought_symbols_this_month else '无'}"
-            "（正常/小加不重复；若跌到中加/大加会重新建议）。"
-            f"SGOV 当前 USD {sgov_current_usd:,.2f}，计划期末 20% 目标 USD {planned_sgov_target_usd:,.2f}，"
-            f"本月新增资金中预留给 SGOV USD {planned_new_cash_sgov_reserve_usd:,.2f}，"
-            f"可随时挪用 SGOV USD {sgov_excess_usd:,.2f}，"
-            f"{'已触发大加档，可额外动用目标内 SGOV USD ' + format(sgov_special_deploy_usd, ',.2f') + '（可用完，后续补回）' if can_use_sgov_reserve else '未触发大加档，目标内 20% SGOV 暂不动用'}。"
-            f"当前信号建议 USD {remaining_signal_buy_usd:,.2f}；"
-            f"本轮最高可用预算 USD {run_budget_usd:,.2f}；"
-            f"最终建议买入 USD {strategy_budget_usd:,.2f}；"
-            f"留待后续/等待触发资金 USD {waiting_trigger_usd:,.2f}。"
+            f"鑷姩鍒ゆ柇闃舵锛歿auto_phase}锛涘綋鍓嶆墽琛岄樁娈碉細{rebalance_phase}銆?
+            f"鏈疆鎸夊綋鍓嶇幇閲?SGOV鍙姩鐢ㄨ祫閲?USD {current_deployable_pool_usd:,.2f} "
+            f"+ 鏈湀璁″垝鏂版姇鍏ュ彲涔伴儴鍒?USD {planned_new_cash_deployable_usd:,.2f} 鐢熸垚寤鸿銆?
+            f"鐩爣鍒嗘瘝鎸夊綋鍓嶇編鍏冭祫浜?USD {usd_total_usd:,.2f} "
+            f"+ 鏈潵 {int(build_months)} 涓湀鏂版姇鍏?USD {planned_total_new_cash_usd:,.2f} "
+            f"= USD {planned_usd_total_usd:,.2f} 璁＄畻銆?
+            f"褰撳墠璁″垝鍙姩鐢ㄥ缓浠撴睜 USD {deployable_pool_usd:,.2f}锛屾寜璁″垝鏈熸湯浠撲綅缂哄彛鍜?{int(build_months)} 涓湀杩涘害璁＄畻锛?
+            f"鏈堝害鍙傝€冭繘搴?USD {monthly_budget_usd:,.2f}銆?
+            f"鏈湀宸茬敤棰勭畻 USD {total_executed_usd:,.2f}锛屽弬鑰冨墿浣欓搴?USD {remaining_reference_budget_usd:,.2f}锛?
+            f"鍓╀綑鍙姩鐢ㄥ缓浠撴睜 USD {remaining_deployable_budget_usd:,.2f}銆?
+            f"鏈湀宸蹭拱杩囨爣鐨勶細{', '.join(bought_summary) if bought_summary else '鏃?}"
+            "锛堟寜姣忎釜鏍囩殑褰撳墠妗ｄ綅搴斾拱閲戦鎵ｅ噺锛岃嫢涓姞/澶у姞鍚庡簲涔伴噾棰濆彉楂橈紝浼氱户缁ˉ宸锛夈€?
+            f"SGOV 褰撳墠 USD {sgov_current_usd:,.2f}锛岃鍒掓湡鏈?20% 鐩爣 USD {planned_sgov_target_usd:,.2f}锛?
+            f"鏈湀鏂板璧勯噾涓鐣欑粰 SGOV USD {planned_new_cash_sgov_reserve_usd:,.2f}锛?
+            f"鍙殢鏃舵尓鐢?SGOV USD {sgov_excess_usd:,.2f}锛?
+            f"{'宸茶Е鍙戝ぇ鍔犳。锛屽彲棰濆鍔ㄧ敤鐩爣鍐?SGOV USD ' + format(sgov_special_deploy_usd, ',.2f') + '锛堝彲鐢ㄥ畬锛屽悗缁ˉ鍥烇級' if can_use_sgov_reserve else '鏈Е鍙戝ぇ鍔犳。锛岀洰鏍囧唴 20% SGOV 鏆備笉鍔ㄧ敤'}銆?
+            f"褰撳墠淇″彿寤鸿 USD {remaining_signal_buy_usd:,.2f}锛?
+            f"鏈疆鏈€楂樺彲鐢ㄩ绠?USD {run_budget_usd:,.2f}锛?
+            f"鏈€缁堝缓璁拱鍏?USD {strategy_budget_usd:,.2f}锛?
+            f"鐣欏緟鍚庣画/绛夊緟瑙﹀彂璧勯噾 USD {waiting_trigger_usd:,.2f}銆?
         )
         st.dataframe(
             strategy_df,
             width="stretch",
             hide_index=True,
             column_config={
-                "当前占美元资产%": st.column_config.NumberColumn("当前占美元资产%", format="%.2f%%"),
-                "目标占美元资产%": st.column_config.NumberColumn("目标占美元资产%", format="%.2f%%"),
-                "到目标缺口(USD)": st.column_config.NumberColumn("到目标缺口(USD)", format="%.2f"),
-                "60日回撤%": st.column_config.NumberColumn("60日回撤%", format="%.2f%%"),
-                "建议买入(USD)": st.column_config.NumberColumn("建议买入(USD)", format="%.2f"),
+                "褰撳墠鍗犵編鍏冭祫浜?": st.column_config.NumberColumn("褰撳墠鍗犵編鍏冭祫浜?", format="%.2f%%"),
+                "鐩爣鍗犵編鍏冭祫浜?": st.column_config.NumberColumn("鐩爣鍗犵編鍏冭祫浜?", format="%.2f%%"),
+                "鍒扮洰鏍囩己鍙?USD)": st.column_config.NumberColumn("鍒扮洰鏍囩己鍙?USD)", format="%.2f"),
+                "60鏃ュ洖鎾?": st.column_config.NumberColumn("60鏃ュ洖鎾?", format="%.2f%%"),
+                "鏈湀宸蹭拱(USD)": st.column_config.NumberColumn("鏈湀宸蹭拱(USD)", format="%.2f"),
+                "寤鸿涔板叆(USD)": st.column_config.NumberColumn("寤鸿涔板叆(USD)", format="%.2f"),
             },
         )
     
+
