@@ -2491,18 +2491,26 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📈 资产分布与盈亏")
 
 excluded_core_pnl_symbols = _SATELLITE_SYMBOLS
-pnl_chart_df = pd.DataFrame(
-    [
-        {
-            "标的": _ASSET_META[sym]["label"],
-            "浮盈亏(CNY)": round(pnl_cny_by_symbol[sym], 2),
-            "盈亏标签": f"¥ {pnl_cny_by_symbol[sym]:+,.0f}",
-            "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
-        }
-        for sym in _ASSET_META
-        if sym not in excluded_core_pnl_symbols
-    ]
-).sort_values("浮盈亏(CNY)", ascending=False)
+satellite_pnl_cny = sum(pnl_cny_by_symbol.get(sym, 0.0) for sym in _SATELLITE_SYMBOLS)
+pnl_chart_rows = [
+    {
+        "标的": _ASSET_META[sym]["label"],
+        "浮盈亏(CNY)": round(pnl_cny_by_symbol[sym], 2),
+        "盈亏标签": f"¥ {pnl_cny_by_symbol[sym]:+,.0f}",
+        "方向": "盈利" if pnl_cny_by_symbol[sym] >= 0 else "亏损",
+    }
+    for sym in _ASSET_META
+    if sym not in excluded_core_pnl_symbols
+]
+pnl_chart_rows.append(
+    {
+        "标的": "卫星仓位",
+        "浮盈亏(CNY)": round(satellite_pnl_cny, 2),
+        "盈亏标签": f"¥ {satellite_pnl_cny:+,.0f}",
+        "方向": "盈利" if satellite_pnl_cny >= 0 else "亏损",
+    }
+)
+pnl_chart_df = pd.DataFrame(pnl_chart_rows).sort_values("浮盈亏(CNY)", ascending=False)
 pnl_chart_base = alt.Chart(pnl_chart_df)
 pnl_chart_positive_bars = (
     pnl_chart_base
@@ -2550,7 +2558,7 @@ pnl_chart_negative_labels = (
 )
 pnl_chart = (
     (pnl_chart_positive_bars + pnl_chart_negative_bars + pnl_chart_positive_labels + pnl_chart_negative_labels)
-    .properties(title="核心仓位浮盈亏排名（不含卫星仓位，折合CNY）", height=max(260, 46 * len(pnl_chart_df)))
+    .properties(title="核心仓位浮盈亏排名（卫星仓位合并为一项，折合CNY）", height=max(260, 46 * len(pnl_chart_df)))
     .configure_view(stroke=None)
     .configure_axisY(labelLimit=240, labelPadding=8)
 )
