@@ -3097,6 +3097,8 @@ with st.expander("再平衡买入建议", expanded=False):
             if sym != "SGOV":
                 full_rebalance_need_usd += max(0.0, gap_usd)
             signal_remaining_usd = max(0.0, raw_buy_usd)
+            if sym == "VOO" and rebalance_phase == _REBALANCE_PHASE_BUILD and sym not in bought_symbols_this_month:
+                signal_remaining_usd = max(signal_remaining_usd, float(prices_now.get("VOO", 0.0)))
             strategy_rows.append(
                 {
                     "标的": meta["label"],
@@ -3155,7 +3157,6 @@ with st.expander("再平衡买入建议", expanded=False):
         else:
             run_budget_usd = float(suggested_run_budget_usd)
         strategy_budget_usd = min(run_budget_usd, remaining_signal_buy_usd)
-        waiting_trigger_usd = max(0.0, remaining_deployable_budget_usd - strategy_budget_usd)
         cash_scale = (strategy_budget_usd / remaining_signal_buy_usd) if remaining_signal_buy_usd > 0 else 0.0
         for row in strategy_rows:
             buy_usd = row["_signal_remaining_usd"] * cash_scale
@@ -3166,6 +3167,8 @@ with st.expander("再平衡买入建议", expanded=False):
             buy_shares = (buy_usd / current_price_usd) if current_price_usd > 0 else 0.0
             row["建议买入(USD)"] = round(buy_usd, 2)
             row["建议买入(股)"] = round(buy_shares, 4)
+        actual_strategy_budget_usd = sum(float(row.get("建议买入(USD)", 0.0)) for row in strategy_rows)
+        waiting_trigger_usd = max(0.0, remaining_deployable_budget_usd - actual_strategy_budget_usd)
     
         strategy_df = pd.DataFrame(strategy_rows).sort_values(
             by=["_signal_remaining_usd", "到目标缺口(USD)"],
@@ -3211,7 +3214,7 @@ with st.expander("再平衡买入建议", expanded=False):
             f"{'已触发大加档，可额外动用目标内 SGOV USD ' + format(sgov_special_deploy_usd, ',.2f') + '（可用完，后续补回）' if can_use_sgov_reserve else '未触发大加档，目标内 20% SGOV 暂不动用'}。"
             f"当前信号建议 USD {remaining_signal_buy_usd:,.2f}；"
             f"本轮最高可用预算 USD {run_budget_usd:,.2f}；"
-            f"最终建议买入 USD {strategy_budget_usd:,.2f}；"
+            f"最终建议买入 USD {actual_strategy_budget_usd:,.2f}；"
             f"留待后续/等待触发资金 USD {waiting_trigger_usd:,.2f}。"
         )
         st.dataframe(
