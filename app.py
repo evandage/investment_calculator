@@ -3100,6 +3100,7 @@ with st.expander("再平衡买入建议", expanded=False):
             strategy_rows.append(
                 {
                     "标的": meta["label"],
+                    "_symbol": sym,
                     "阶段": rebalance_phase,
                     "策略": strategy,
                     "动作": action,
@@ -3158,13 +3159,34 @@ with st.expander("再平衡买入建议", expanded=False):
         cash_scale = (strategy_budget_usd / remaining_signal_buy_usd) if remaining_signal_buy_usd > 0 else 0.0
         for row in strategy_rows:
             buy_usd = row["_signal_remaining_usd"] * cash_scale
+            sym = str(row.get("_symbol", ""))
+            current_price_usd = float(prices_now.get(sym, 0.0))
+            if sym == "VOO" and rebalance_phase == _REBALANCE_PHASE_BUILD and current_price_usd > 0:
+                buy_usd = max(buy_usd, current_price_usd)
+            buy_shares = (buy_usd / current_price_usd) if current_price_usd > 0 else 0.0
             row["建议买入(USD)"] = round(buy_usd, 2)
+            row["建议买入(股)"] = round(buy_shares, 4)
     
         strategy_df = pd.DataFrame(strategy_rows).sort_values(
             by=["_signal_remaining_usd", "到目标缺口(USD)"],
             ascending=[False, False],
         )
-        strategy_df = strategy_df.drop(columns=["_raw_buy_usd", "_signal_remaining_usd"])
+        strategy_df = strategy_df.drop(columns=["_symbol", "_raw_buy_usd", "_signal_remaining_usd"])
+        strategy_columns = [
+            "标的",
+            "阶段",
+            "策略",
+            "动作",
+            "当前占美元资产%",
+            "目标占美元资产%",
+            "到目标缺口(USD)",
+            "60日回撤%",
+            "回撤档位",
+            "建议买入(USD)",
+            "建议买入(股)",
+            "说明",
+        ]
+        strategy_df = strategy_df[[col for col in strategy_columns if col in strategy_df.columns]]
         if wizard_step != "3 生成建议":
             st.stop()
         if not st.session_state.get("rebalance_generated", False):
@@ -3202,6 +3224,7 @@ with st.expander("再平衡买入建议", expanded=False):
                 "到目标缺口(USD)": st.column_config.NumberColumn("到目标缺口(USD)", format="%.2f"),
                 "60日回撤%": st.column_config.NumberColumn("60日回撤%", format="%.2f%%"),
                 "建议买入(USD)": st.column_config.NumberColumn("建议买入(USD)", format="%.2f"),
+                "建议买入(股)": st.column_config.NumberColumn("建议买入(股)", format="%.4f"),
             },
         )
     
