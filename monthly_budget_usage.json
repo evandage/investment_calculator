@@ -3,10 +3,14 @@
     "2026-05": {
       "used_budget_usd": 100.0,
       "planned_new_cash_usd": 700.0,
-      "bought_symbols": [
-        "ISRG"
-      ],
-      "updated_at": "2026-05-27T09:38:00+08:00"
+      "bought_symbols": [],
+      "updated_at": "2026-05-28T09:29:20+08:00"
+    },
+    "2026-06": {
+      "used_budget_usd": 0.0,
+      "planned_new_cash_usd": 700.0,
+      "bought_symbols": [],
+      "updated_at": "2026-06-02T09:41:21+08:00"
     }
   }
 }

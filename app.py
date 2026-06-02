@@ -202,24 +202,63 @@ _REBALANCE_STRATEGY_LABELS = {
 }
 _REBALANCE_RULES: dict[str, dict[str, dict[str, Any]]] = {
     _REBALANCE_PHASE_BUILD: {
-        "VOO": {"normal": (1.0, "正常建仓", "每月机械定投", "normal"), "bands": [(-15.0, 3.0, "大加", "3x 月预算 + 少量 SGOV", "large"), (-10.0, 2.0, "中加", "2x 月预算", "medium"), (-5.0, 1.5, "小加", "1.5x 月预算", "small")]},
-        "QQQ": {"normal": (0.25, "少买/等回撤", "未跌满 6%：贵了少买", "normal"), "bands": [(-18.0, 4.0, "大加", "4x + 动用 SGOV", "large"), (-12.0, 2.5, "中加", "2.5x", "medium"), (-6.0, 1.5, "小加", "1.5x", "small")]},
-        "MSFT": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-22.0, 4.0, "大加", "4x", "large"), (-15.0, 2.5, "中加", "2.5x", "medium"), (-8.0, 1.5, "小加", "1.5x", "small")]},
-        "GOOGL": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-25.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
-        "NVDA": {"normal": (0.0, "等待波动", "未到小加档：等待波动", "normal"), "bands": [(-30.0, 5.0, "大加", "5x + 明显动用 SGOV", "large"), (-20.0, 3.0, "中加", "3x", "medium"), (-12.0, 1.5, "小加", "1.5x", "small")]},
-        "AVGO": {"normal": (0.0, "等待波动", "未到小加档：等待波动", "normal"), "bands": [(-28.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
-        "ISRG": {"normal": (0.25, "慢慢建仓", "未到小加档：小额累积", "normal"), "bands": [(-28.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-10.0, 1.5, "小加", "1.5x", "small")]},
+        "VOO": {"normal": (1.0, "正常建仓", "每月机械定投", "normal"), "bands": [(-10.0, 3.0, "大加", "3x 月预算 + 少量 SGOV", "large"), (-7.0, 2.0, "中加", "2x 月预算", "medium"), (-3.0, 1.5, "小加", "1.5x 月预算", "small")]},
+        "QQQ": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-13.0, 4.0, "大加", "4x + 动用 SGOV", "large"), (-10.0, 2.5, "中加", "2.5x", "medium"), (-5.0, 1.5, "小加", "1.5x", "small")]},
+        "MSFT": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-22.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-12.0, 1.5, "试探", "1.5x 月预算", "small")]},
+        "GOOGL": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-24.0, 4.0, "大加", "4x", "large"), (-19.0, 2.5, "中加", "2.5x", "medium"), (-11.0, 1.5, "试探", "1.5x 月预算", "small")]},
+        "NVDA": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-25.0, 5.0, "大加", "5x + 明显动用 SGOV", "large"), (-21.0, 3.0, "中加", "3x", "medium"), (-12.0, 1.5, "试探", "1.5x 月预算", "small")]},
+        "AVGO": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-25.0, 4.0, "大加", "4x", "large"), (-22.0, 2.5, "中加", "2.5x", "medium"), (-15.0, 1.5, "试探", "1.5x 月预算", "small")]},
+        "ISRG": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-23.0, 3.5, "大加", "3.5x", "large"), (-20.0, 2.0, "中加", "2x", "medium"), (-15.0, 1.5, "试探", "1.5x 月预算", "small")]},
     },
     _REBALANCE_PHASE_DCA: {
-        "VOO": {"normal": (1.0, "正常定投", "正常：工资定投", "normal"), "bands": [(-15.0, 2.5, "大加", "中等动用 SGOV", "large"), (-10.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-5.0, 1.25, "多买一点", "当月 SGOV 流入", "small")]},
-        "QQQ": {"normal": (0.5, "小额定投", "正常：小额定投", "normal"), "bands": [(-18.0, 2.5, "大加", "中等 SGOV", "large"), (-12.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-6.0, 1.25, "增加投入", "当月 SGOV 流入", "small")]},
-        "MSFT": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-22.0, 2.0, "大加", "大加", "large"), (-15.0, 1.5, "明显加", "明显加", "medium"), (-8.0, 1.0, "多买", "多买", "small")]},
-        "GOOGL": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-25.0, 2.0, "大加", "大加", "large"), (-18.0, 1.5, "明显加", "明显加", "medium"), (-10.0, 1.0, "多买", "多买", "small")]},
-        "NVDA": {"normal": (0.0, "少量/观察", "正常：少量/观察", "normal"), "bands": [(-30.0, 2.5, "大加", "大加（AI 恐慌级）", "large"), (-20.0, 1.75, "明显加", "明显加", "medium"), (-12.0, 1.0, "小加", "小加", "small")]},
-        "AVGO": {"normal": (0.1, "观察/小买", "正常：观察/小买", "normal"), "bands": [(-28.0, 2.5, "大加", "大加", "large"), (-18.0, 1.75, "明显加", "明显加", "medium"), (-10.0, 1.0, "小加", "小加", "small")]},
-        "ISRG": {"normal": (0.25, "长期慢买", "正常：长期慢买", "normal"), "bands": [(-28.0, 2.0, "大加", "大加", "large"), (-18.0, 1.5, "明显加", "明显加", "medium"), (-10.0, 1.0, "多买", "多买", "small")]},
+        "VOO": {"normal": (1.0, "正常定投", "正常：工资定投", "normal"), "bands": [(-10.0, 2.5, "大加", "中等动用 SGOV", "large"), (-7.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-3.0, 1.25, "多买一点", "当月 SGOV 流入", "small")]},
+        "QQQ": {"normal": (0.5, "小额定投", "正常：小额定投", "normal"), "bands": [(-13.0, 2.5, "大加", "中等 SGOV", "large"), (-10.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-5.0, 1.25, "增加投入", "当月 SGOV 流入", "small")]},
+        "MSFT": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-22.0, 2.0, "大加", "大加", "large"), (-18.0, 1.5, "明显加", "明显加", "medium"), (-12.0, 0.75, "试探", "试探", "small")]},
+        "GOOGL": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-24.0, 2.0, "大加", "大加", "large"), (-19.0, 1.5, "明显加", "明显加", "medium"), (-11.0, 0.75, "试探", "试探", "small")]},
+        "NVDA": {"normal": (0.0, "少量/观察", "正常：少量/观察", "normal"), "bands": [(-25.0, 2.5, "大加", "大加（AI 恐慌级）", "large"), (-21.0, 1.75, "明显加", "明显加", "medium"), (-12.0, 0.75, "试探", "试探", "small")]},
+        "AVGO": {"normal": (0.1, "观察/小买", "正常：观察/小买", "normal"), "bands": [(-25.0, 2.5, "大加", "大加", "large"), (-22.0, 1.75, "明显加", "明显加", "medium"), (-15.0, 0.75, "试探", "试探", "small")]},
+        "ISRG": {"normal": (0.5, "正常定投", "正常：持续定投", "normal"), "bands": [(-23.0, 2.0, "大加", "大加", "large"), (-20.0, 1.5, "明显加", "明显加", "medium"), (-15.0, 0.75, "试探", "试探", "small")]},
     },
 }
+
+
+_REBALANCE_INTENSITY_ORDER = {"none": 0, "normal": 1, "small": 2, "medium": 3, "large": 4}
+_REBALANCE_INTENSITY_LABELS = {
+    "none": "未买",
+    "normal": "普通/正常",
+    "small": "小加/试探",
+    "medium": "中加",
+    "large": "大加",
+}
+
+
+def _normalize_rebalance_intensity(value: Any) -> str:
+    v = str(value or "none").strip().lower()
+    aliases = {
+        "": "none",
+        "no": "none",
+        "none": "none",
+        "normal": "normal",
+        "regular": "normal",
+        "small": "small",
+        "probe": "small",
+        "medium": "medium",
+        "large": "large",
+    }
+    return aliases.get(v, "none")
+
+
+def _rebalance_intensity_multiplier(symbol: str, phase: str, intensity: str) -> float:
+    intensity = _normalize_rebalance_intensity(intensity)
+    rule = _REBALANCE_RULES.get(phase, {}).get(symbol)
+    if rule is None or intensity == "none":
+        return 0.0
+    if intensity == "normal":
+        return float(rule["normal"][0])
+    for _, multiplier, _, _, band_intensity in rule["bands"]:
+        if str(band_intensity) == intensity:
+            return float(multiplier)
+    return 0.0
 
 
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -411,8 +450,13 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
         /* Button styling */
         .stButton > button,
         .stDownloadButton > button,
+        .stFormSubmitButton > button,
         [data-testid="stButton"] button,
-        [data-testid="stDownloadButton"] button {{
+        [data-testid="stDownloadButton"] button,
+        [data-testid="stFormSubmitButton"] button,
+        .stApp button[kind="primary"],
+        .stApp button[kind="secondary"],
+        .stApp [data-baseweb="button"] {{
             border-radius: 8px;
             border: 1px solid {theme["button_border"]};
             background: {theme["button_bg"]};
@@ -425,8 +469,13 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
         }}
         .stButton > button:hover,
         .stDownloadButton > button:hover,
+        .stFormSubmitButton > button:hover,
         [data-testid="stButton"] button:hover,
-        [data-testid="stDownloadButton"] button:hover {{
+        [data-testid="stDownloadButton"] button:hover,
+        [data-testid="stFormSubmitButton"] button:hover,
+        .stApp button[kind="primary"]:hover,
+        .stApp button[kind="secondary"]:hover,
+        .stApp [data-baseweb="button"]:hover {{
             transform: scale(1.02);
             border-color: {theme["button_border"]};
             color: {theme["button_text"]} !important;
@@ -435,12 +484,19 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
 
         .stButton > button *,
         .stDownloadButton > button *,
+        .stFormSubmitButton > button *,
         [data-testid="stButton"] button *,
         [data-testid="stButton"] button p,
         [data-testid="stButton"] button span,
         [data-testid="stDownloadButton"] button *,
         [data-testid="stDownloadButton"] button p,
-        [data-testid="stDownloadButton"] button span {{
+        [data-testid="stDownloadButton"] button span,
+        [data-testid="stFormSubmitButton"] button *,
+        [data-testid="stFormSubmitButton"] button p,
+        [data-testid="stFormSubmitButton"] button span,
+        .stApp button[kind="primary"] *,
+        .stApp button[kind="secondary"] *,
+        .stApp [data-baseweb="button"] * {{
             color: {theme["button_text"]} !important;
             -webkit-text-fill-color: {theme["button_text"]} !important;
         }}
@@ -465,7 +521,85 @@ def _apply_theme_css(theme: dict[str, str]) -> None:
             border-radius: 8px;
             overflow: hidden;
             border: 1px solid var(--app-border);
+            background: var(--app-panel-bg) !important;
             box-shadow: var(--app-shadow);
+        }}
+
+        [data-testid="stDataFrame"] > div,
+        [data-testid="stDataFrame"] [data-testid="stDataFrameResizable"],
+        [data-testid="stDataFrame"] [role="grid"],
+        [data-testid="stDataFrame"] canvas {{
+            background: var(--app-panel-bg) !important;
+            color: var(--app-text) !important;
+        }}
+
+        [data-testid="stDataFrame"] button,
+        [data-testid="stDataFrame"] [data-baseweb="button"] {{
+            background: var(--app-control-bg) !important;
+            border: 1px solid var(--app-border) !important;
+            color: var(--app-text) !important;
+            box-shadow: none !important;
+        }}
+
+        [data-testid="stDataFrame"] button *,
+        [data-testid="stDataFrame"] [data-baseweb="button"] * {{
+            color: var(--app-text) !important;
+            -webkit-text-fill-color: var(--app-text) !important;
+        }}
+
+        [data-testid="stDataFrame"] input,
+        [data-testid="stDataFrame"] textarea {{
+            background: var(--app-control-bg) !important;
+            color: var(--app-text) !important;
+            border-color: var(--app-border) !important;
+        }}
+
+        .themed-table-wrap {{
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            border: 1px solid var(--app-border);
+            border-radius: 8px;
+            background: var(--app-panel-bg);
+            box-shadow: var(--app-shadow);
+            margin: 0.25rem 0 1rem;
+        }}
+
+        .themed-table {{
+            width: 100%;
+            border-collapse: collapse;
+            color: var(--app-text);
+            background: var(--app-panel-bg);
+            font-size: 0.9rem;
+        }}
+
+        .themed-table thead th {{
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--app-control-bg);
+            color: var(--app-text);
+            border-bottom: 1px solid var(--app-border);
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 800;
+            white-space: nowrap;
+        }}
+
+        .themed-table tbody td {{
+            background: transparent;
+            color: var(--app-text);
+            border-bottom: 1px solid var(--app-border);
+            padding: 9px 12px;
+            white-space: nowrap;
+        }}
+
+        .themed-table tbody tr:nth-child(even) td {{
+            background: color-mix(in srgb, var(--app-control-bg) 46%, transparent);
+        }}
+
+        .themed-table tbody tr:hover td {{
+            background: color-mix(in srgb, var(--app-control-bg) 74%, transparent);
         }}
 
         .stTextInput input,
@@ -716,6 +850,23 @@ def _theme_altair_chart(chart: alt.Chart, theme: dict[str, str]) -> alt.Chart:
             titleColor=theme["muted_text"],
             orient="bottom",
         )
+    )
+
+
+def _render_themed_table(
+    data: pd.DataFrame | list[dict[str, Any]],
+    *,
+    formatters: dict[str, str] | None = None,
+) -> None:
+    df = data.copy() if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
+    styler = (
+        df.style.hide(axis="index")
+        .format(formatters or {}, na_rep="-")
+        .set_table_attributes('class="themed-table"')
+    )
+    st.markdown(
+        f'<div class="themed-table-wrap">{styler.to_html()}</div>',
+        unsafe_allow_html=True,
     )
 
 
@@ -1005,6 +1156,26 @@ def _fetch_yfinance_us_price_change() -> dict[str, dict[str, float]]:
     return out
 
 
+def _fetch_yfinance_adjusted_daily_return(symbol: str) -> float | None:
+    """Return the dividend-adjusted daily return when Yahoo adjusted data is available."""
+    try:
+        import yfinance as yf
+
+        hist = yf.Ticker(symbol).history(period="5d", interval="1d", auto_adjust=True)
+        if hist.empty or "Close" not in hist.columns:
+            return None
+        closes = pd.to_numeric(hist["Close"], errors="coerce").dropna()
+        if len(closes) < 2:
+            return None
+        prev_close = float(closes.iloc[-2])
+        current = float(closes.iloc[-1])
+        if prev_close <= 0 or current <= 0:
+            return None
+        return (current / prev_close - 1.0) * 100.0
+    except Exception:
+        return None
+
+
 def _fetch_fund_nav_price_change(code: str) -> tuple[float, float, str] | None:
     """东方财富历史净值：返回(最新确认单位净值, 日增长率%, 净值日期)。"""
     url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=1"
@@ -1155,6 +1326,11 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
     for sym in symbols:
         source_by_symbol.setdefault(sym, "Fallback")
         daily_change_pct_by_symbol.setdefault(sym, 0.0)
+    sgov_adjusted_return = _fetch_yfinance_adjusted_daily_return("SGOV")
+    if sgov_adjusted_return is not None:
+        daily_change_pct_by_symbol["SGOV"] = sgov_adjusted_return
+        if source_by_symbol.get("SGOV"):
+            source_by_symbol["SGOV"] = f"{source_by_symbol['SGOV']} / Yahoo adjusted return"
     return {
         "prices": prices,
         "daily_change_pct_by_symbol": daily_change_pct_by_symbol,
@@ -1537,6 +1713,7 @@ def _default_balances() -> dict[str, float]:
         "cash_cny": 0.0,
         "realized_usd": 0.0,
         "realized_cny": 0.0,
+        "sgov_dividend_usd": 0.0,
     }
 
 
@@ -1564,6 +1741,10 @@ def _load_balances() -> dict[str, float]:
         out["realized_cny"] = float(data.get("realized_cny", 0.0))
     except (TypeError, ValueError):
         out["realized_cny"] = 0.0
+    try:
+        out["sgov_dividend_usd"] = float(data.get("sgov_dividend_usd", 0.0))
+    except (TypeError, ValueError):
+        out["sgov_dividend_usd"] = 0.0
     # 兼容旧版按标的保存的“结转余额”
     try:
         legacy_cny = max(0.0, float(data.get("001015", 0.0))) + max(0.0, float(data.get("006382", 0.0)))
@@ -1580,6 +1761,7 @@ def _save_balances(balances: dict[str, float]) -> None:
     payload["cash_cny"] = float(max(0.0, balances.get("cash_cny", 0.0)))
     payload["realized_usd"] = float(balances.get("realized_usd", 0.0))
     payload["realized_cny"] = float(balances.get("realized_cny", 0.0))
+    payload["sgov_dividend_usd"] = float(balances.get("sgov_dividend_usd", 0.0))
     _BALANCE_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -1605,6 +1787,7 @@ def _load_monthly_budget_usage(user_id: str, month_key: str) -> dict[str, Any]:
         "used_budget_usd": 0.0,
         "planned_new_cash_usd": 700.0,
         "bought_symbols": [],
+        "bought_intensity_by_symbol": {},
         "updated_at": "",
     }
     if isinstance(raw, dict):
@@ -1623,6 +1806,20 @@ def _load_monthly_budget_usage(user_id: str, month_key: str) -> dict[str, Any]:
                 for sym in raw_symbols
                 if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
             ]
+        raw_intensity = raw.get("bought_intensity_by_symbol", {})
+        if isinstance(raw_intensity, dict):
+            month_data["bought_intensity_by_symbol"] = {
+                str(sym).upper(): _normalize_rebalance_intensity(intensity)
+                for sym, intensity in raw_intensity.items()
+                if str(sym).upper() in _ASSET_META
+                and _ASSET_META[str(sym).upper()]["currency"] == "USD"
+                and _normalize_rebalance_intensity(intensity) != "none"
+            }
+        elif month_data["bought_symbols"]:
+            month_data["bought_intensity_by_symbol"] = {
+                str(sym).upper(): "normal"
+                for sym in month_data["bought_symbols"]
+            }
         month_data["updated_at"] = str(raw.get("updated_at", ""))
     return month_data
 
@@ -1633,6 +1830,7 @@ def _save_monthly_budget_usage(
     used_budget_usd: float,
     bought_symbols: list[str] | None = None,
     planned_new_cash_usd: float = 700.0,
+    bought_intensity_by_symbol: dict[str, str] | None = None,
 ) -> None:
     store = _load_monthly_budget_usage_store()
     user_key = str(user_id or "local").strip() or "local"
@@ -1647,14 +1845,23 @@ def _save_monthly_budget_usage(
         planned_cash_usd = max(0.0, float(planned_new_cash_usd))
     except (TypeError, ValueError):
         planned_cash_usd = 700.0
+    normalized_intensity = {
+        str(sym).upper(): _normalize_rebalance_intensity(intensity)
+        for sym, intensity in (bought_intensity_by_symbol or {}).items()
+        if str(sym).upper() in _ASSET_META
+        and _ASSET_META[str(sym).upper()]["currency"] == "USD"
+        and _normalize_rebalance_intensity(intensity) != "none"
+    }
+    normalized_symbols = [
+        str(sym).upper()
+        for sym in (bought_symbols or normalized_intensity.keys())
+        if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
+    ]
     user_store[month_key] = {
         "used_budget_usd": used,
         "planned_new_cash_usd": planned_cash_usd,
-        "bought_symbols": [
-            str(sym).upper()
-            for sym in (bought_symbols or [])
-            if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
-        ],
+        "bought_symbols": normalized_symbols,
+        "bought_intensity_by_symbol": normalized_intensity,
         "updated_at": datetime.now(_TZ_SHANGHAI).isoformat(timespec="seconds"),
     }
     store[user_key] = user_store
@@ -1735,6 +1942,10 @@ def _normalize_balances(raw: Any) -> dict[str, float]:
         balances["realized_cny"] = float(raw.get("realized_cny", 0.0))
     except (TypeError, ValueError):
         balances["realized_cny"] = 0.0
+    try:
+        balances["sgov_dividend_usd"] = float(raw.get("sgov_dividend_usd", 0.0))
+    except (TypeError, ValueError):
+        balances["sgov_dividend_usd"] = 0.0
     # 兼容旧版字段
     try:
         legacy_cny = max(0.0, float(raw.get("001015", 0.0))) + max(0.0, float(raw.get("006382", 0.0)))
@@ -2005,7 +2216,15 @@ cloud_user_id = st.sidebar.text_input(
 
 _db = _db_conf()
 
-st.title(f"👋 Hello, {cloud_user_id or 'Guest'}")
+title_col, refresh_col = st.columns([0.72, 0.28], vertical_alignment="center")
+with title_col:
+    st.title(f"👋 Hello, {cloud_user_id or 'Guest'}")
+with refresh_col:
+    refresh_prices_clicked = st.button(
+        "刷新市价",
+        help="拉取现价并刷新默认输入；K线同步在后台定时进行。",
+        use_container_width=True,
+    )
 
 if _db:
     st.sidebar.caption("存储后端：Supabase")
@@ -2021,16 +2240,6 @@ else:
 st.sidebar.caption(f"行情源策略：{_market_data_provider()}")
 
 holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
-
-
-# --- 刷新市价（并可选同步当前K线到云端）---
-refresh_left, refresh_center, refresh_right = st.columns([0.18, 0.64, 0.18])
-with refresh_center:
-    refresh_prices_clicked = st.button(
-        "刷新市价",
-        help="拉取现价并刷新默认输入；K线同步在后台定时进行。",
-        use_container_width=True,
-    )
 if refresh_prices_clicked:
     _fetch_spot_prices_meta.clear()
     _fetch_usdcny_rate_meta.clear()
@@ -2133,6 +2342,13 @@ def _render_holdings_editor() -> None:
                 value=float(balances_for_view.get("realized_usd", 0.0)),
                 step=0.01,
                 key="edit_balance_realized_usd",
+            )
+            balances_for_view["sgov_dividend_usd"] = st.number_input(
+                "SGOV 已收分红/利息（USD）",
+                value=float(balances_for_view.get("sgov_dividend_usd", 0.0)),
+                step=0.01,
+                key="edit_balance_sgov_dividend_usd",
+                help="用于修正 SGOV 月度派息除权导致的价格型浮盈亏误差；填写已收到但希望归因到 SGOV 的分红金额。",
             )
             balances_for_view["realized_cny"] = st.number_input(
                 "已变现浮盈亏人民币（CNY）",
@@ -2326,13 +2542,15 @@ pnl_cny_by_symbol: dict[str, float] = {}
 daily_change_pct_by_symbol: dict[str, float] = spot_meta.get("daily_change_pct_by_symbol", {})  # type: ignore[assignment]
 drawdown_pct_by_symbol: dict[str, float | None] = {}
 rebound_pct_by_symbol: dict[str, float | None] = {}
+sgov_dividend_usd = float(balances_for_view.get("sgov_dividend_usd", 0.0))
 for sym, meta in _ASSET_META.items():
     shares = float(holdings[sym]["shares"])
     avg_cost = float(holdings[sym]["avg_cost"])
     current = float(prices_now[sym])
     cost = shares * avg_cost
     value = shares * current
-    pnl = value - cost
+    dividend_native = sgov_dividend_usd if sym == "SGOV" else 0.0
+    pnl = value - cost + dividend_native
     pnl_pct = (pnl / cost * 100) if cost > 0 else 0.0
 
     if meta["currency"] == "USD":
@@ -2345,7 +2563,7 @@ for sym, meta in _ASSET_META.items():
     total_cost_cny += cost_cny
     total_value_cny += value_cny
     value_cny_by_symbol[sym] = value_cny
-    pnl_cny_by_symbol[sym] = value_cny - cost_cny
+    pnl_cny_by_symbol[sym] = value_cny - cost_cny + (dividend_native * fx if meta["currency"] == "USD" else dividend_native)
     row_drawdown = _fetch_asset_drawdown(sym, meta)
     row_rebound = _fetch_asset_rebound(sym, meta)
     drawdown_pct_by_symbol[sym] = row_drawdown
@@ -2366,7 +2584,7 @@ for sym, meta in _ASSET_META.items():
         }
     )
 
-total_pnl_cny = total_value_cny - total_cost_cny
+total_pnl_cny = sum(pnl_cny_by_symbol.values())
 total_pnl_pct = (total_pnl_cny / total_cost_cny * 100) if total_cost_cny > 0 else 0.0
 cash_usd = float(balances_for_view.get("cash_usd", 0.0))
 cash_cny = float(balances_for_view.get("cash_cny", 0.0))
@@ -2766,15 +2984,18 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📦 我的持仓")
 st.caption(f"当前持仓读取来源：{'云端数据库' if storage_mode == 'cloud' else '本地文件'}")
 _render_holdings_editor()
-st.dataframe(
+_render_themed_table(
     rows,
-    width="stretch",
-    hide_index=True,
-    column_config={
-        "当日涨跌%": st.column_config.NumberColumn("当日涨跌%", format="%.2f%%"),
-        "近60日高点回撤%": st.column_config.NumberColumn("近60日高点回撤%", format="%.2f%%"),
-        "近60日低点涨幅%": st.column_config.NumberColumn("近60日低点涨幅%", format="%.2f%%"),
-        "涨跌幅%": st.column_config.NumberColumn("涨跌幅%", format="%.2f%%"),
+    formatters={
+        "当日涨跌%": "{:.2f}%",
+        "近60日高点回撤%": "{:.2f}%",
+        "近60日低点涨幅%": "{:.2f}%",
+        "浮动盈亏": "{:.2f}",
+        "涨跌幅%": "{:.2f}%",
+        "持有数量": "{:.2f}",
+        "持仓成本": "{:.2f}",
+        "当前价": "{:.2f}",
+        "持仓市值": "{:.2f}",
     },
 )
 usd_cost_usd = sum(float(holdings[sym]["shares"]) * float(holdings[sym]["avg_cost"]) for sym in usd_symbols)
@@ -2782,7 +3003,7 @@ usd_position_value_usd = sum(
     float(holdings[sym]["shares"]) * float(prices_now.get(sym, 0.0))
     for sym in usd_symbols
 )
-usd_unrealized_pnl_usd = usd_position_value_usd - usd_cost_usd
+usd_unrealized_pnl_usd = usd_position_value_usd - usd_cost_usd + sgov_dividend_usd
 usd_unrealized_return_pct = (usd_unrealized_pnl_usd / usd_cost_usd * 100.0) if usd_cost_usd > 0 else 0.0
 usd_unrealized_asset_pct = (usd_unrealized_pnl_usd / usd_total_usd * 100.0) if usd_total_usd > 0 else 0.0
 total_realized_cny = realized_usd * fx + realized_cny
@@ -2853,13 +3074,13 @@ with rebalance_rule_col:
         st.dataframe(
             pd.DataFrame(
                 [
-                    {"标的": "VOO", "小加": "-5% / 1.5x", "中加": "-10% / 2x", "大加": "-15% / 3x + 少量SGOV"},
-                    {"标的": "QQQ", "小加": "-6% / 1.5x", "中加": "-12% / 2.5x", "大加": "-18% / 4x + 动用SGOV"},
-                    {"标的": "MSFT", "小加": "-8% / 1.5x", "中加": "-15% / 2.5x", "大加": "-22% / 4x"},
-                    {"标的": "GOOGL", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-25% / 4x"},
-                    {"标的": "NVDA", "小加": "-12% / 1.5x", "中加": "-20% / 3x", "大加": "-30% / 5x + 明显动用SGOV"},
-                    {"标的": "AVGO", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-28% / 4x"},
-                    {"标的": "ISRG", "小加": "-10% / 1.5x", "中加": "-18% / 2.5x", "大加": "-28% / 4x"},
+                    {"标的": "VOO", "小加": "-3% / 1.5x", "中加": "-7% / 2x", "大加": "-10% / 3x + 少量SGOV"},
+                    {"标的": "QQQ", "小加": "-5% / 1.5x", "中加": "-10% / 2.5x", "大加": "-13% / 4x + 动用SGOV"},
+                    {"标的": "MSFT", "小加": "-12% / 1.5x", "中加": "-18% / 2.5x", "大加": "-22% / 4x"},
+                    {"标的": "GOOGL", "小加": "-11% / 1.5x", "中加": "-19% / 2.5x", "大加": "-24% / 4x"},
+                    {"标的": "NVDA", "小加": "-12% / 1.5x", "中加": "-21% / 3x", "大加": "-25% / 5x + 明显动用SGOV"},
+                    {"标的": "AVGO", "小加": "-15% / 1.5x", "中加": "-22% / 2.5x", "大加": "-25% / 4x"},
+                    {"标的": "ISRG", "小加": "-15% / 1.5x", "中加": "-20% / 2x", "大加": "-23% / 3.5x"},
                 ]
             ),
             width="stretch",
@@ -2869,13 +3090,13 @@ with rebalance_rule_col:
         st.dataframe(
             pd.DataFrame(
                 [
-                    {"标的": "VOO", "正常": "正常定投", "小加": "-5% 多买一点", "中加": "-10% 明显加仓", "大加": "-15% 大加"},
-                    {"标的": "QQQ", "正常": "小额定投", "小加": "-6% 增加投入", "中加": "-12% 明显加仓", "大加": "-18% 大加"},
-                    {"标的": "MSFT", "正常": "持续小买", "小加": "-8% 多买", "中加": "-15% 明显加", "大加": "-22% 大加"},
-                    {"标的": "GOOGL", "正常": "持续小买", "小加": "-10% 多买", "中加": "-18% 明显加", "大加": "-25% 大加"},
-                    {"标的": "NVDA", "正常": "少量/观察", "小加": "-12% 小加", "中加": "-20% 明显加", "大加": "-30% AI恐慌级"},
-                    {"标的": "AVGO", "正常": "观察/小买", "小加": "-10% 小加", "中加": "-18% 明显加", "大加": "-28% 大加"},
-                    {"标的": "ISRG", "正常": "长期慢买", "小加": "-10% 多买", "中加": "-18% 明显加", "大加": "-28% 大加"},
+                    {"标的": "VOO", "正常": "正常定投", "小加": "-3% 多买一点", "中加": "-7% 明显加仓", "大加": "-10% 大加"},
+                    {"标的": "QQQ", "正常": "小额定投", "小加": "-5% 增加投入", "中加": "-10% 明显加仓", "大加": "-13% 大加"},
+                    {"标的": "MSFT", "正常": "持续小买", "小加": "-12% 试探", "中加": "-18% 明显加", "大加": "-22% 大加"},
+                    {"标的": "GOOGL", "正常": "持续小买", "小加": "-11% 试探", "中加": "-19% 明显加", "大加": "-24% 大加"},
+                    {"标的": "NVDA", "正常": "少量/观察", "小加": "-12% 试探", "中加": "-21% 明显加", "大加": "-25% AI恐慌级"},
+                    {"标的": "AVGO", "正常": "观察/小买", "小加": "-15% 试探", "中加": "-22% 明显加", "大加": "-25% 大加"},
+                    {"标的": "ISRG", "正常": "正常定投", "小加": "-15% 试探", "中加": "-20% 明显加", "大加": "-23% 大加"},
                 ]
             ),
             width="stretch",
@@ -2909,7 +3130,7 @@ with st.expander("再平衡买入建议", expanded=False):
         default_build_months = 1
         now_for_build = datetime.now(_TZ_SHANGHAI)
         build_end_year = 2026
-        build_end_month = 10
+        build_end_month = 9
         if now_for_build.year < build_end_year or (
             now_for_build.year == build_end_year and now_for_build.month <= build_end_month
         ):
@@ -2937,6 +3158,7 @@ with st.expander("再平衡买入建议", expanded=False):
         if wizard_step == "1 确认阶段":
             st.markdown("##### 1. 确认阶段")
             cfg_c1, cfg_c2 = st.columns(2)
+            build_months_key = "rebalance_build_months_until_sep_2026"
             with cfg_c1:
                 phase_choice = st.selectbox(
                     "策略阶段",
@@ -2945,13 +3167,13 @@ with st.expander("再平衡买入建议", expanded=False):
                 )
             with cfg_c2:
                 build_month_input_kwargs: dict[str, Any] = {
-                    "label": "建仓剩余月数（到11月前）",
+                    "label": "建仓剩余月数（到10月前）",
                     "min_value": 1,
                     "max_value": 24,
                     "step": 1,
-                    "key": "rebalance_build_months",
+                    "key": build_months_key,
                 }
-                if "rebalance_build_months" not in st.session_state:
+                if build_months_key not in st.session_state:
                     build_month_input_kwargs["value"] = int(default_build_months)
                 build_months = st.number_input(**build_month_input_kwargs)
             st.caption(
@@ -2963,7 +3185,7 @@ with st.expander("再平衡买入建议", expanded=False):
                 st.rerun()
         else:
             phase_choice = str(st.session_state.get("rebalance_phase_choice", "自动判断"))
-            build_months = int(st.session_state.get("rebalance_build_months", default_build_months))
+            build_months = int(st.session_state.get("rebalance_build_months_until_sep_2026", default_build_months))
     
         rebalance_phase = auto_phase if phase_choice == "自动判断" else phase_choice
         can_use_sgov_reserve = _rebalance_can_use_sgov_reserve(drawdown_pct_by_symbol)
@@ -2973,43 +3195,55 @@ with st.expander("再平衡买入建议", expanded=False):
         budget_usage = _load_monthly_budget_usage(cloud_user_id, current_month_key)
         used_budget_usd = float(budget_usage.get("used_budget_usd", 0.0))
         planned_new_cash_usd = float(budget_usage.get("planned_new_cash_usd", 700.0))
-        planned_total_new_cash_usd = planned_new_cash_usd * build_month_count
-        planned_usd_total_usd = usd_total_usd + planned_total_new_cash_usd
+        future_cash_month_count = max(0, build_month_count - 1)
+        planned_future_new_cash_usd = planned_new_cash_usd * future_cash_month_count
+        planned_usd_total_usd = usd_total_usd + planned_future_new_cash_usd
         planned_sgov_target_usd = sgov_target_pct * planned_usd_total_usd
         sgov_excess_usd = max(0.0, sgov_current_usd - planned_sgov_target_usd)
         planned_sgov_gap_usd = max(0.0, planned_sgov_target_usd - sgov_current_usd)
-        planned_new_cash_sgov_reserve_usd = 0.0 if can_use_sgov_reserve else min(
-            planned_new_cash_usd * sgov_target_pct,
+        planned_future_cash_sgov_reserve_usd = 0.0 if can_use_sgov_reserve else min(
+            planned_future_new_cash_usd * sgov_target_pct,
             planned_sgov_gap_usd,
         )
-        planned_new_cash_deployable_usd = max(0.0, planned_new_cash_usd - planned_new_cash_sgov_reserve_usd)
+        planned_future_cash_deployable_usd = max(
+            0.0,
+            planned_future_new_cash_usd - planned_future_cash_sgov_reserve_usd,
+        )
         sgov_special_deploy_usd = (
             max(0.0, sgov_current_usd - sgov_excess_usd) if can_use_sgov_reserve else 0.0
         )
         current_deployable_pool_usd = max(0.0, cash_usd) + sgov_excess_usd + sgov_special_deploy_usd
-        deployable_pool_usd = current_deployable_pool_usd + planned_new_cash_deployable_usd
+        deployable_pool_usd = current_deployable_pool_usd
         bought_symbols_this_month = [
             sym for sym in budget_usage.get("bought_symbols", []) if sym in usd_symbols and sym != "SGOV"
         ]
+        bought_intensity_by_symbol = {
+            str(sym).upper(): _normalize_rebalance_intensity(intensity)
+            for sym, intensity in dict(budget_usage.get("bought_intensity_by_symbol", {})).items()
+            if str(sym).upper() in usd_symbols and str(sym).upper() != "SGOV"
+        }
+        for sym in bought_symbols_this_month:
+            bought_intensity_by_symbol.setdefault(sym, "normal")
         save_execution = False
         clear_execution = False
         edited_used_budget_usd = used_budget_usd
         edited_planned_new_cash_usd = planned_new_cash_usd
-        edited_bought_symbols = bought_symbols_this_month
+        edited_bought_intensity_by_symbol = dict(bought_intensity_by_symbol)
         if wizard_step == "2 预算与记录":
             st.markdown("##### 2. 预算与本月记录")
             st.caption(
                 f"记录 {current_month_key} 已经用掉的建仓预算，保存到 monthly_budget_usage.json。"
-                "每月计划新投入只用于生成建议，不自动修改持仓或现金；真实买入后你继续在前面的持仓/现金区更新。"
+                "下月起每月计划新投入只用于计划期末目标分母；本月已经到账的钱请手动写到现金或持仓里。"
             )
             with st.form("monthly_budget_usage_form"):
                 edited_planned_new_cash_usd = st.number_input(
-                    "每月计划新投入(USD)",
+                    "下月起每月计划新投入(USD)",
                     min_value=0.0,
                     value=planned_new_cash_usd,
                     step=50.0,
                     format="%.2f",
                     key=f"monthly_planned_cash_{current_month_key}",
+                    help="从下个月开始计入未来总资金；本月已入金请手动录入现金/持仓，避免重复计算。",
                 )
                 edited_used_budget_usd = st.number_input(
                     "本月已用预算(USD)",
@@ -3020,25 +3254,41 @@ with st.expander("再平衡买入建议", expanded=False):
                     key=f"monthly_budget_used_{current_month_key}",
                 )
                 buyable_symbols = [sym for sym in usd_symbols if sym != "SGOV"]
-                edited_bought_symbols = st.multiselect(
-                    "本月已经买过的标的（正常/小加不重复；中加/大加继续建议）",
-                    options=buyable_symbols,
-                    default=bought_symbols_this_month,
-                    key=f"monthly_budget_bought_symbols_{current_month_key}",
-                )
+                st.caption("记录本月每个标的已执行的最高档位；后续若跌到更深档，只建议补买档位差额。")
+                edited_bought_intensity_by_symbol = {}
+                tier_options = list(_REBALANCE_INTENSITY_LABELS.keys())
+                tier_label_to_key = {label: key for key, label in _REBALANCE_INTENSITY_LABELS.items()}
+                for sym in buyable_symbols:
+                    default_tier = _normalize_rebalance_intensity(bought_intensity_by_symbol.get(sym, "none"))
+                    default_label = _REBALANCE_INTENSITY_LABELS[default_tier]
+                    selected_label = st.selectbox(
+                        f"{sym} 本月已执行最高档位",
+                        options=[_REBALANCE_INTENSITY_LABELS[key] for key in tier_options],
+                        index=[_REBALANCE_INTENSITY_LABELS[key] for key in tier_options].index(default_label),
+                        key=f"monthly_budget_bought_tier_{current_month_key}_{sym}",
+                    )
+                    selected_tier = tier_label_to_key[selected_label]
+                    if selected_tier != "none":
+                        edited_bought_intensity_by_symbol[sym] = selected_tier
                 save_exec_col, clear_exec_col = st.columns([0.25, 0.25])
                 save_execution = save_exec_col.form_submit_button("保存并下一步")
                 clear_execution = clear_exec_col.form_submit_button("清零本月已用")
         if save_execution:
             used_budget_usd = float(edited_used_budget_usd)
             planned_new_cash_usd = float(edited_planned_new_cash_usd)
-            bought_symbols_this_month = [str(sym).upper() for sym in edited_bought_symbols]
+            bought_intensity_by_symbol = {
+                str(sym).upper(): _normalize_rebalance_intensity(intensity)
+                for sym, intensity in edited_bought_intensity_by_symbol.items()
+                if _normalize_rebalance_intensity(intensity) != "none"
+            }
+            bought_symbols_this_month = sorted(bought_intensity_by_symbol.keys())
             _save_monthly_budget_usage(
                 cloud_user_id,
                 current_month_key,
                 used_budget_usd,
                 bought_symbols_this_month,
                 planned_new_cash_usd,
+                bought_intensity_by_symbol,
             )
             st.session_state["rebalance_wizard_step"] = "3 生成建议"
             st.session_state["rebalance_generated"] = False
@@ -3053,6 +3303,7 @@ with st.expander("再平衡买入建议", expanded=False):
                 used_budget_usd,
                 bought_symbols_this_month,
                 planned_new_cash_usd,
+                {},
             )
             st.success("已清零本月已用预算。")
     
@@ -3067,11 +3318,14 @@ with st.expander("再平衡买入建议", expanded=False):
             gap_usd = target_usd - current_usd
             drawdown_pct = drawdown_pct_by_symbol.get(sym)
             strategy, multiplier, action, signal, intensity = _rebalance_strategy_signal(sym, drawdown_pct, rebalance_phase)
-            already_bought_this_month = sym != "SGOV" and sym in bought_symbols_this_month
-            if already_bought_this_month and intensity not in {"medium", "large"}:
+            previous_intensity = _normalize_rebalance_intensity(bought_intensity_by_symbol.get(sym, "none"))
+            previous_multiplier = _rebalance_intensity_multiplier(sym, rebalance_phase, previous_intensity)
+            additional_multiplier = max(0.0, float(multiplier) - previous_multiplier)
+            already_bought_this_month = sym != "SGOV" and previous_intensity != "none"
+            if already_bought_this_month and additional_multiplier <= 1e-9:
                 continue
             base_budget_usd = max(0.0, gap_usd) / build_month_count
-            raw_buy_usd = min(max(0.0, gap_usd), base_budget_usd * multiplier)
+            raw_buy_usd = min(max(0.0, gap_usd), base_budget_usd * additional_multiplier)
             if sym == "SGOV":
                 raw_buy_usd = 0.0
                 action = "作为弹药库"
@@ -3092,8 +3346,13 @@ with st.expander("再平衡买入建议", expanded=False):
                 note = "小加档：主要使用当月现金流，尽量不动 SGOV。"
             else:
                 note = "按当前阶段的常规月度节奏执行。"
-            if already_bought_this_month and intensity in {"medium", "large"}:
-                note = f"本月已买过，但现在升级到{action}档，允许继续给出加仓建议。"
+            if already_bought_this_month:
+                previous_label = _REBALANCE_INTENSITY_LABELS.get(previous_intensity, "已买")
+                current_label = _REBALANCE_INTENSITY_LABELS.get(_normalize_rebalance_intensity(intensity), str(action))
+                note = (
+                    f"本月已执行到{previous_label}档；当前为{current_label}档，"
+                    f"本次只补买档位差额（{additional_multiplier:.2f}x）。"
+                )
             if sym != "SGOV":
                 full_rebalance_need_usd += max(0.0, gap_usd)
             signal_remaining_usd = max(0.0, raw_buy_usd)
@@ -3134,7 +3393,7 @@ with st.expander("再平衡买入建议", expanded=False):
             st.markdown("##### 3. 生成买入建议")
             preview_c1, preview_c2, preview_c3, preview_c4 = st.columns(4)
             preview_c1.metric("计划期末资产(USD)", f"{planned_usd_total_usd:,.2f}")
-            preview_c2.metric("本月新增可买(USD)", f"{planned_new_cash_deployable_usd:,.2f}")
+            preview_c2.metric("未来新增可买(USD)", f"{planned_future_cash_deployable_usd:,.2f}")
             preview_c3.metric("本轮可用资金(USD)", f"{remaining_deployable_budget_usd:,.2f}")
             preview_c4.metric("当前信号建议(USD)", f"{remaining_signal_buy_usd:,.2f}")
             run_budget_usd = st.number_input(
@@ -3195,21 +3454,27 @@ with st.expander("再平衡买入建议", expanded=False):
         if not st.session_state.get("rebalance_generated", False):
             st.info("确认本轮预算后，点击「生成买入建议」查看结果。")
             st.stop()
+        bought_tier_text = "无"
+        if bought_intensity_by_symbol:
+            bought_tier_text = ", ".join(
+                f"{sym}:{_REBALANCE_INTENSITY_LABELS.get(_normalize_rebalance_intensity(tier), tier)}"
+                for sym, tier in sorted(bought_intensity_by_symbol.items())
+            )
         st.caption(
             f"自动判断阶段：{auto_phase}；当前执行阶段：{rebalance_phase}。"
             f"本轮按当前现金/SGOV可动用资金 USD {current_deployable_pool_usd:,.2f} "
-            f"+ 本月计划新投入可买部分 USD {planned_new_cash_deployable_usd:,.2f} 生成建议。"
+            "生成建议；下月起计划新投入不进入本轮可用资金。"
             f"目标分母按当前美元资产 USD {usd_total_usd:,.2f} "
-            f"+ 未来 {int(build_months)} 个月新投入 USD {planned_total_new_cash_usd:,.2f} "
+            f"+ 下月起未来 {int(future_cash_month_count)} 个月新投入 USD {planned_future_new_cash_usd:,.2f} "
             f"= USD {planned_usd_total_usd:,.2f} 计算。"
             f"当前计划可动用建仓池 USD {deployable_pool_usd:,.2f}，按计划期末仓位缺口和 {int(build_months)} 个月进度计算，"
             f"月度参考进度 USD {monthly_budget_usd:,.2f}。"
             f"本月已用预算 USD {total_executed_usd:,.2f}，参考剩余额度 USD {remaining_reference_budget_usd:,.2f}，"
             f"剩余可动用建仓池 USD {remaining_deployable_budget_usd:,.2f}。"
-            f"本月已买过标的：{', '.join(bought_symbols_this_month) if bought_symbols_this_month else '无'}"
-            "（正常/小加不重复；若跌到中加/大加会重新建议）。"
+            f"本月已执行档位：{bought_tier_text}。"
+            "若后续跌到更深档，系统只按档位倍数差额给出补买建议。"
             f"SGOV 当前 USD {sgov_current_usd:,.2f}，计划期末 20% 目标 USD {planned_sgov_target_usd:,.2f}，"
-            f"本月新增资金中预留给 SGOV USD {planned_new_cash_sgov_reserve_usd:,.2f}，"
+            f"未来新增资金中计划预留给 SGOV USD {planned_future_cash_sgov_reserve_usd:,.2f}，"
             f"可随时挪用 SGOV USD {sgov_excess_usd:,.2f}，"
             f"{'已触发大加档，可额外动用目标内 SGOV USD ' + format(sgov_special_deploy_usd, ',.2f') + '（可用完，后续补回）' if can_use_sgov_reserve else '未触发大加档，目标内 20% SGOV 暂不动用'}。"
             f"当前信号建议 USD {remaining_signal_buy_usd:,.2f}；"
@@ -3217,17 +3482,15 @@ with st.expander("再平衡买入建议", expanded=False):
             f"最终建议买入 USD {actual_strategy_budget_usd:,.2f}；"
             f"留待后续/等待触发资金 USD {waiting_trigger_usd:,.2f}。"
         )
-        st.dataframe(
+        _render_themed_table(
             strategy_df,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "当前占美元资产%": st.column_config.NumberColumn("当前占美元资产%", format="%.2f%%"),
-                "目标占美元资产%": st.column_config.NumberColumn("目标占美元资产%", format="%.2f%%"),
-                "到目标缺口(USD)": st.column_config.NumberColumn("到目标缺口(USD)", format="%.2f"),
-                "60日回撤%": st.column_config.NumberColumn("60日回撤%", format="%.2f%%"),
-                "建议买入(USD)": st.column_config.NumberColumn("建议买入(USD)", format="%.2f"),
-                "建议买入(股)": st.column_config.NumberColumn("建议买入(股)", format="%.4f"),
+            formatters={
+                "当前占美元资产%": "{:.2f}%",
+                "目标占美元资产%": "{:.2f}%",
+                "到目标缺口(USD)": "{:.2f}",
+                "60日回撤%": "{:.2f}%",
+                "建议买入(USD)": "{:.2f}",
+                "建议买入(股)": "{:.4f}",
             },
         )
     
