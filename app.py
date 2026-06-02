@@ -3172,7 +3172,7 @@ with rebalance_rule_col:
             hide_index=True,
         )
 
-with st.expander("再平衡买入建议", expanded=False):
+with st.expander("再平衡模块", expanded=False):
     if usd_total_cny <= 0:
         st.info("美元资产总额为 0，暂无法生成再平衡建议。")
     else:
@@ -3210,7 +3210,7 @@ with st.expander("再平衡买入建议", expanded=False):
     
         st.session_state.setdefault("rebalance_wizard_step", "1 确认阶段")
         st.session_state.setdefault("rebalance_generated", False)
-        rebalance_steps = ["1 确认阶段", "2 预算与记录", "3 生成建议"]
+        rebalance_steps = ["1 确认阶段", "2 预算设置", "3 生成建议", "4 买入确认"]
         current_wizard_step = str(st.session_state.get("rebalance_wizard_step", rebalance_steps[0]))
         if current_wizard_step not in rebalance_steps:
             current_wizard_step = rebalance_steps[0]
@@ -3248,8 +3248,9 @@ with st.expander("再平衡买入建议", expanded=False):
             st.caption(
                 f"自动判断：{auto_phase}。建仓期默认按当前持仓缺口和剩余月份推进，不把平均进度当成硬性月预算。"
             )
-            if st.button("确认阶段，下一步", key="rebalance_confirm_phase"):
-                st.session_state["rebalance_wizard_step"] = "2 预算与记录"
+            _, _, next_col = st.columns([0.25, 0.5, 0.25])
+            if next_col.button("下一步", type="primary", key="rebalance_confirm_phase"):
+                st.session_state["rebalance_wizard_step"] = "2 预算设置"
                 st.session_state["rebalance_generated"] = False
                 st.rerun()
         else:
@@ -3303,14 +3304,14 @@ with st.expander("再平衡买入建议", expanded=False):
         for sym in bought_symbols_this_month:
             bought_intensity_by_symbol.setdefault(sym, "normal")
         save_execution = False
-        clear_execution = False
+        budget_back = False
         edited_planned_new_cash_usd = planned_new_cash_usd
         edited_bought_amount_by_symbol = dict(bought_amount_by_symbol)
         edited_bought_intensity_by_symbol = dict(bought_intensity_by_symbol)
-        if wizard_step == "2 预算与记录":
-            st.markdown("##### 2. 预算与本月记录")
+        if wizard_step == "2 预算设置":
+            st.markdown("##### 2. 预算设置")
             st.caption(
-                f"记录 {current_month_key} 已经用掉的建仓预算，保存到 monthly_budget_usage.json。"
+                f"设置 {current_month_key} 的未来资金假设，保存到 monthly_budget_usage.json。"
                 "下月起每月计划新投入只用于计划期末目标分母；本月已经到账的钱请手动写到现金或持仓里。"
             )
             with st.form("monthly_budget_usage_form"):
@@ -3323,44 +3324,14 @@ with st.expander("再平衡买入建议", expanded=False):
                     key=f"monthly_planned_cash_{current_month_key}",
                     help="从下个月开始计入未来总资金；本月已入金请手动录入现金/持仓，避免重复计算。",
                 )
-                buyable_symbols = [sym for sym in usd_symbols if sym != "SGOV"]
-                st.caption("记录本月每个标的已买入金额和最高执行档位；总已用预算会自动按各标的金额汇总。")
-                edited_bought_amount_by_symbol = {}
-                edited_bought_intensity_by_symbol = {}
-                tier_options = list(_REBALANCE_INTENSITY_LABELS.keys())
-                tier_label_to_key = {label: key for key, label in _REBALANCE_INTENSITY_LABELS.items()}
-                for sym in buyable_symbols:
-                    amount_col, tier_col = st.columns([0.46, 0.54])
-                    with amount_col:
-                        bought_amount = st.number_input(
-                            f"{sym} 本月已买入金额(USD)",
-                            min_value=0.0,
-                            value=float(bought_amount_by_symbol.get(sym, 0.0)),
-                            step=10.0,
-                            format="%.2f",
-                            key=f"monthly_budget_bought_amount_{current_month_key}_{sym}",
-                        )
-                    if bought_amount > 0:
-                        edited_bought_amount_by_symbol[sym] = float(bought_amount)
-                    default_tier = _normalize_rebalance_intensity(bought_intensity_by_symbol.get(sym, "none"))
-                    if default_tier == "none" and bought_amount > 0:
-                        default_tier = "normal"
-                    default_label = _REBALANCE_INTENSITY_LABELS[default_tier]
-                    with tier_col:
-                        selected_label = st.selectbox(
-                            f"{sym} 本月已执行最高档位",
-                            options=[_REBALANCE_INTENSITY_LABELS[key] for key in tier_options],
-                            index=[_REBALANCE_INTENSITY_LABELS[key] for key in tier_options].index(default_label),
-                            key=f"monthly_budget_bought_tier_{current_month_key}_{sym}",
-                        )
-                    selected_tier = tier_label_to_key[selected_label]
-                    if selected_tier != "none":
-                        edited_bought_intensity_by_symbol[sym] = selected_tier
-                edited_used_budget_usd = sum(edited_bought_amount_by_symbol.values())
-                st.caption(f"本月已用预算自动汇总：USD {edited_used_budget_usd:,.2f}")
-                save_exec_col, clear_exec_col = st.columns([0.25, 0.25])
-                save_execution = save_exec_col.form_submit_button("保存并下一步")
-                clear_execution = clear_exec_col.form_submit_button("清零本月已用")
+                edited_used_budget_usd = used_budget_usd
+                back_col, _, next_col = st.columns([0.25, 0.5, 0.25])
+                budget_back = back_col.form_submit_button("上一步")
+                save_execution = next_col.form_submit_button("下一步")
+        if budget_back:
+            st.session_state["rebalance_wizard_step"] = "1 确认阶段"
+            st.session_state["rebalance_generated"] = False
+            st.rerun()
         if save_execution:
             used_budget_usd = float(edited_used_budget_usd)
             planned_new_cash_usd = float(edited_planned_new_cash_usd)
@@ -3385,23 +3356,9 @@ with st.expander("再平衡买入建议", expanded=False):
                 bought_amount_by_symbol,
             )
             st.session_state["rebalance_wizard_step"] = "3 生成建议"
-            st.session_state["rebalance_generated"] = False
-            st.success("已保存本月预算使用。")
+            st.session_state["rebalance_generated"] = True
+            st.success("已保存预算设置。")
             st.rerun()
-        if clear_execution:
-            used_budget_usd = 0.0
-            bought_symbols_this_month = []
-            bought_amount_by_symbol = {}
-            _save_monthly_budget_usage(
-                cloud_user_id,
-                current_month_key,
-                used_budget_usd,
-                bought_symbols_this_month,
-                planned_new_cash_usd,
-                {},
-                {},
-            )
-            st.success("已清零本月已用预算。")
     
         strategy_rows: list[dict[str, Any]] = []
         full_rebalance_need_usd = 0.0
@@ -3503,6 +3460,7 @@ with st.expander("再平衡买入建议", expanded=False):
                     "说明": note,
                     "_raw_buy_usd": raw_buy_usd,
                     "_signal_remaining_usd": signal_remaining_usd,
+                    "_intensity": intensity,
                 }
             )
     
@@ -3517,30 +3475,7 @@ with st.expander("再平衡买入建议", expanded=False):
         )
         if wizard_step == "3 生成建议":
             st.markdown("##### 3. 生成买入建议")
-            preview_c1, preview_c2, preview_c3, preview_c4 = st.columns(4)
-            preview_c1.metric("计划期末资产(USD)", f"{planned_usd_total_usd:,.2f}")
-            preview_c2.metric("未来新增可买(USD)", f"{planned_future_cash_deployable_usd:,.2f}")
-            preview_c3.metric("本轮可用资金(USD)", f"{remaining_deployable_budget_usd:,.2f}")
-            preview_c4.metric("当前信号建议(USD)", f"{remaining_signal_buy_usd:,.2f}")
-            run_budget_usd = st.number_input(
-                "本轮最高可用预算(USD)",
-                min_value=0.0,
-                max_value=max(0.0, remaining_deployable_budget_usd),
-                value=float(suggested_run_budget_usd),
-                step=50.0,
-                format="%.2f",
-                key=f"rebalance_run_budget_{current_month_key}",
-                help="月度参考不是硬上限。没触发可以少用；触发中加/大加时，可以把没用掉的资金滚到本轮一起用。",
-            )
-            action_c1, action_c2 = st.columns([0.25, 0.75])
-            if action_c1.button("生成买入建议", type="primary", key="rebalance_generate_btn"):
-                st.session_state["rebalance_generated"] = True
-            if action_c2.button("返回修改预算", key="rebalance_back_to_budget"):
-                st.session_state["rebalance_wizard_step"] = "2 预算与记录"
-                st.session_state["rebalance_generated"] = False
-                st.rerun()
-        else:
-            run_budget_usd = float(suggested_run_budget_usd)
+        run_budget_usd = float(suggested_run_budget_usd)
         strategy_budget_usd = min(run_budget_usd, remaining_signal_buy_usd)
         cash_scale = (strategy_budget_usd / remaining_signal_buy_usd) if remaining_signal_buy_usd > 0 else 0.0
         for row in strategy_rows:
@@ -3559,7 +3494,7 @@ with st.expander("再平衡买入建议", expanded=False):
             by=["_signal_remaining_usd", "到目标缺口(USD)"],
             ascending=[False, False],
         )
-        strategy_df = strategy_df.drop(columns=["_symbol", "_raw_buy_usd", "_signal_remaining_usd"])
+        strategy_df = strategy_df.drop(columns=["_symbol", "_raw_buy_usd", "_signal_remaining_usd", "_intensity"])
         strategy_columns = [
             "标的",
             "阶段",
@@ -3576,10 +3511,7 @@ with st.expander("再平衡买入建议", expanded=False):
             "说明",
         ]
         strategy_df = strategy_df[[col for col in strategy_columns if col in strategy_df.columns]]
-        if wizard_step != "3 生成建议":
-            st.stop()
-        if not st.session_state.get("rebalance_generated", False):
-            st.info("确认本轮预算后，点击「生成买入建议」查看结果。")
+        if wizard_step not in {"3 生成建议", "4 买入确认"}:
             st.stop()
         bought_tier_text = "无"
         bought_record_symbols = sorted(set(bought_intensity_by_symbol.keys()) | set(bought_amount_by_symbol.keys()))
@@ -3609,8 +3541,6 @@ with st.expander("再平衡买入建议", expanded=False):
             f"未来新增资金中计划预留给 SGOV USD {planned_future_cash_sgov_reserve_usd:,.2f}，"
             f"可随时挪用 SGOV USD {sgov_excess_usd:,.2f}，"
             f"{'已触发大加档，可额外动用目标内 SGOV USD ' + format(sgov_special_deploy_usd, ',.2f') + '（可用完，后续补回）' if can_use_sgov_reserve else '未触发大加档，目标内 20% SGOV 暂不动用'}。"
-            f"当前信号建议 USD {remaining_signal_buy_usd:,.2f}；"
-            f"本轮最高可用预算 USD {run_budget_usd:,.2f}；"
             f"最终建议买入 USD {actual_strategy_budget_usd:,.2f}；"
             f"留待后续/等待触发资金 USD {waiting_trigger_usd:,.2f}。"
         )
@@ -3626,4 +3556,136 @@ with st.expander("再平衡买入建议", expanded=False):
                 "建议买入(股)": "{:.4f}",
             },
         )
+        if wizard_step == "3 生成建议":
+            back_col, _, next_col = st.columns([0.25, 0.5, 0.25])
+            if back_col.button("上一步", key="rebalance_back_from_result"):
+                st.session_state["rebalance_wizard_step"] = "2 预算设置"
+                st.session_state["rebalance_generated"] = False
+                st.rerun()
+            if next_col.button("下一步", type="primary", key="rebalance_to_confirm_execution"):
+                st.session_state["rebalance_wizard_step"] = "4 买入确认"
+                st.rerun()
+        elif wizard_step == "4 买入确认":
+            st.markdown("##### 4. 买入确认")
+            st.caption("按实际成交填写。默认值来自上一步建议；保存后会同步本月已买记录和持仓均价。")
+            execution_rows = [
+                row for row in strategy_rows
+                if str(row.get("_symbol", "")) != "SGOV" and float(row.get("建议买入(USD)", 0.0)) > 0
+            ]
+            if not execution_rows:
+                st.info("本轮没有需要确认的买入建议。")
+            else:
+                with st.form("rebalance_execution_confirm_form"):
+                    execution_inputs: dict[str, dict[str, float | str]] = {}
+                    st.caption("成交均价按 买入金额 / 买入股数 自动计算。")
+                    header_cols = st.columns([0.16, 0.28, 0.28, 0.28])
+                    header_cols[0].markdown("**标的**")
+                    header_cols[1].markdown("**当前档位**")
+                    header_cols[2].markdown("**买入金额(USD)**")
+                    header_cols[3].markdown("**买入股数**")
+                    for row in execution_rows:
+                        sym = str(row.get("_symbol", ""))
+                        suggested_usd = float(row.get("建议买入(USD)", 0.0))
+                        current_price = float(prices_now.get(sym, 0.0))
+                        suggested_shares = float(row.get("建议买入(股)", 0.0))
+                        if suggested_shares <= 0 and current_price > 0:
+                            suggested_shares = suggested_usd / current_price
+                        tier_options = list(_REBALANCE_INTENSITY_LABELS.keys())
+                        tier_labels = [_REBALANCE_INTENSITY_LABELS[key] for key in tier_options]
+                        tier_label_to_key = {label: key for key, label in _REBALANCE_INTENSITY_LABELS.items()}
+                        default_tier = _normalize_rebalance_intensity(row.get("_intensity", "normal"))
+                        default_label = _REBALANCE_INTENSITY_LABELS.get(default_tier, _REBALANCE_INTENSITY_LABELS["normal"])
+                        label_col, tier_col, amount_col, shares_col = st.columns([0.16, 0.28, 0.28, 0.28])
+                        with label_col:
+                            st.markdown(f"**{sym}**")
+                        with tier_col:
+                            selected_label = st.selectbox(
+                                "当前档位",
+                                options=tier_labels,
+                                index=tier_labels.index(default_label) if default_label in tier_labels else tier_labels.index(_REBALANCE_INTENSITY_LABELS["normal"]),
+                                key=f"rebalance_exec_tier_{current_month_key}_{sym}",
+                                label_visibility="collapsed",
+                            )
+                        with amount_col:
+                            actual_usd = st.number_input(
+                                "买入金额(USD)",
+                                min_value=0.0,
+                                value=max(0.0, suggested_usd),
+                                step=10.0,
+                                format="%.2f",
+                                key=f"rebalance_exec_amount_{current_month_key}_{sym}",
+                                label_visibility="collapsed",
+                            )
+                        with shares_col:
+                            actual_shares = st.number_input(
+                                "买入股数",
+                                min_value=0.0,
+                                value=max(0.0, suggested_shares),
+                                step=0.0001,
+                                format="%.4f",
+                                key=f"rebalance_exec_shares_{current_month_key}_{sym}",
+                                label_visibility="collapsed",
+                            )
+                        execution_inputs[sym] = {
+                            "amount": float(actual_usd),
+                            "shares": float(actual_shares),
+                            "intensity": tier_label_to_key[selected_label],
+                        }
+                    back_col, _, save_col = st.columns([0.25, 0.5, 0.25])
+                    execution_back = back_col.form_submit_button("上一步")
+                    save_execution_confirm = save_col.form_submit_button("确认并同步持仓", type="primary")
+                if execution_back:
+                    st.session_state["rebalance_wizard_step"] = "3 生成建议"
+                    st.rerun()
+                if save_execution_confirm:
+                    updated_holdings = {
+                        sym: dict(item)
+                        for sym, item in holdings.items()
+                    }
+                    updated_balances = dict(balances_for_view)
+                    updated_amounts = dict(bought_amount_by_symbol)
+                    updated_intensity = dict(bought_intensity_by_symbol)
+                    total_execution_usd = 0.0
+                    executed_symbols: list[str] = []
+                    for sym, item in execution_inputs.items():
+                        amount = max(0.0, float(item.get("amount", 0.0)))
+                        shares = max(0.0, float(item.get("shares", 0.0)))
+                        price = (amount / shares) if amount > 0 and shares > 0 else 0.0
+                        if amount <= 0 or shares <= 0 or price <= 0:
+                            continue
+                        updated_holdings[sym] = _merge_buy(updated_holdings.get(sym, {"shares": 0.0, "avg_cost": price}), shares, price)
+                        updated_amounts[sym] = max(0.0, float(updated_amounts.get(sym, 0.0))) + amount
+                        new_intensity = _normalize_rebalance_intensity(item.get("intensity", "normal"))
+                        old_intensity = _normalize_rebalance_intensity(updated_intensity.get(sym, "none"))
+                        if _REBALANCE_INTENSITY_ORDER.get(new_intensity, 0) > _REBALANCE_INTENSITY_ORDER.get(old_intensity, 0):
+                            updated_intensity[sym] = new_intensity
+                        executed_symbols.append(sym)
+                        total_execution_usd += amount
+                    if total_execution_usd <= 0:
+                        st.warning("没有填写有效成交，未保存。")
+                    else:
+                        updated_balances["cash_usd"] = max(
+                            0.0,
+                            float(updated_balances.get("cash_usd", 0.0)) - total_execution_usd,
+                        )
+                        updated_symbols = sorted(set(updated_intensity.keys()) | set(updated_amounts.keys()))
+                        _save_monthly_budget_usage(
+                            cloud_user_id,
+                            current_month_key,
+                            sum(updated_amounts.values()),
+                            updated_symbols,
+                            planned_new_cash_usd,
+                            updated_intensity,
+                            updated_amounts,
+                        )
+                        save_mode = _save_user_state(cloud_user_id, updated_holdings, updated_balances)
+                        st.success(
+                            f"已同步买入确认：{', '.join(executed_symbols)}，合计 USD {total_execution_usd:,.2f}。"
+                            f"持仓已保存到{'云端数据库' if save_mode == 'cloud' else '本地文件'}。"
+                        )
+                        if total_execution_usd > float(balances_for_view.get("cash_usd", 0.0)):
+                            st.warning("本次买入金额超过当前现金，已将现金扣到 0；如果动用了 SGOV，请手动更新 SGOV/现金。")
+                        st.session_state["rebalance_wizard_step"] = "1 确认阶段"
+                        st.session_state["rebalance_generated"] = False
+                        st.rerun()
     
