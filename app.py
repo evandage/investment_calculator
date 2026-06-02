@@ -230,6 +230,15 @@ _REBALANCE_INTENSITY_LABELS = {
     "medium": "中加",
     "large": "大加",
 }
+_NORMAL_SPLIT_WEEKLY_UP_THRESHOLD_PCT = {
+    "VOO": 2.2,
+    "QQQ": 3.2,
+    "MSFT": 3.0,
+    "GOOGL": 5.0,
+    "NVDA": 7.0,
+    "AVGO": 8.0,
+    "ISRG": 3.6,
+}
 
 
 def _normalize_rebalance_intensity(value: Any) -> str:
@@ -1176,6 +1185,32 @@ def _fetch_yfinance_adjusted_daily_return(symbol: str) -> float | None:
         return None
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _fetch_yfinance_adjusted_weekly_returns(symbols: tuple[str, ...]) -> dict[str, float]:
+    """Return approx 1-week adjusted returns for US symbols."""
+    try:
+        import yfinance as yf
+    except Exception:
+        return {}
+
+    out: dict[str, float] = {}
+    for sym in symbols:
+        try:
+            hist = yf.Ticker(sym).history(period="10d", interval="1d", auto_adjust=True)
+            if hist.empty or "Close" not in hist.columns:
+                continue
+            closes = pd.to_numeric(hist["Close"], errors="coerce").dropna()
+            if len(closes) < 2:
+                continue
+            base = float(closes.iloc[-6]) if len(closes) >= 6 else float(closes.iloc[0])
+            current = float(closes.iloc[-1])
+            if base > 0 and current > 0:
+                out[sym] = (current / base - 1.0) * 100.0
+        except Exception:
+            continue
+    return out
+
+
 def _fetch_fund_nav_price_change(code: str) -> tuple[float, float, str] | None:
     """东方财富历史净值：返回(最新确认单位净值, 日增长率%, 净值日期)。"""
     url = f"https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=1"
@@ -1787,6 +1822,7 @@ def _load_monthly_budget_usage(user_id: str, month_key: str) -> dict[str, Any]:
         "used_budget_usd": 0.0,
         "planned_new_cash_usd": 700.0,
         "bought_symbols": [],
+        "bought_amount_by_symbol": {},
         "bought_intensity_by_symbol": {},
         "updated_at": "",
     }
@@ -1806,6 +1842,23 @@ def _load_monthly_budget_usage(user_id: str, month_key: str) -> dict[str, Any]:
                 for sym in raw_symbols
                 if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
             ]
+        raw_amounts = raw.get("bought_amount_by_symbol", {})
+        if isinstance(raw_amounts, dict):
+            clean_amounts: dict[str, float] = {}
+            for sym, amount in raw_amounts.items():
+                usym = str(sym).upper()
+                if usym not in _ASSET_META or _ASSET_META[usym]["currency"] != "USD":
+                    continue
+                try:
+                    val = max(0.0, float(amount))
+                except (TypeError, ValueError):
+                    val = 0.0
+                if val > 0:
+                    clean_amounts[usym] = val
+            month_data["bought_amount_by_symbol"] = clean_amounts
+            if clean_amounts:
+                month_data["used_budget_usd"] = sum(clean_amounts.values())
+                month_data["bought_symbols"] = sorted(set(month_data["bought_symbols"]) | set(clean_amounts.keys()))
         raw_intensity = raw.get("bought_intensity_by_symbol", {})
         if isinstance(raw_intensity, dict):
             month_data["bought_intensity_by_symbol"] = {
@@ -1831,6 +1884,7 @@ def _save_monthly_budget_usage(
     bought_symbols: list[str] | None = None,
     planned_new_cash_usd: float = 700.0,
     bought_intensity_by_symbol: dict[str, str] | None = None,
+    bought_amount_by_symbol: dict[str, float] | None = None,
 ) -> None:
     store = _load_monthly_budget_usage_store()
     user_key = str(user_id or "local").strip() or "local"
@@ -1857,10 +1911,25 @@ def _save_monthly_budget_usage(
         for sym in (bought_symbols or normalized_intensity.keys())
         if str(sym).upper() in _ASSET_META and _ASSET_META[str(sym).upper()]["currency"] == "USD"
     ]
+    normalized_amounts: dict[str, float] = {}
+    for sym, amount in (bought_amount_by_symbol or {}).items():
+        usym = str(sym).upper()
+        if usym not in _ASSET_META or _ASSET_META[usym]["currency"] != "USD":
+            continue
+        try:
+            val = max(0.0, float(amount))
+        except (TypeError, ValueError):
+            val = 0.0
+        if val > 0:
+            normalized_amounts[usym] = val
+    if normalized_amounts:
+        normalized_symbols = sorted(set(normalized_symbols) | set(normalized_amounts.keys()))
+        used = sum(normalized_amounts.values())
     user_store[month_key] = {
         "used_budget_usd": used,
         "planned_new_cash_usd": planned_cash_usd,
         "bought_symbols": normalized_symbols,
+        "bought_amount_by_symbol": normalized_amounts,
         "bought_intensity_by_symbol": normalized_intensity,
         "updated_at": datetime.now(_TZ_SHANGHAI).isoformat(timespec="seconds"),
     }
@@ -3217,17 +3286,26 @@ with st.expander("再平衡买入建议", expanded=False):
         bought_symbols_this_month = [
             sym for sym in budget_usage.get("bought_symbols", []) if sym in usd_symbols and sym != "SGOV"
         ]
+        raw_bought_amounts = budget_usage.get("bought_amount_by_symbol", {})
+        bought_amount_by_symbol = {
+            str(sym).upper(): max(0.0, float(amount))
+            for sym, amount in (raw_bought_amounts if isinstance(raw_bought_amounts, dict) else {}).items()
+            if str(sym).upper() in usd_symbols and str(sym).upper() != "SGOV"
+        }
+        if bought_amount_by_symbol:
+            used_budget_usd = sum(bought_amount_by_symbol.values())
+        raw_bought_intensity = budget_usage.get("bought_intensity_by_symbol", {})
         bought_intensity_by_symbol = {
             str(sym).upper(): _normalize_rebalance_intensity(intensity)
-            for sym, intensity in dict(budget_usage.get("bought_intensity_by_symbol", {})).items()
+            for sym, intensity in (raw_bought_intensity if isinstance(raw_bought_intensity, dict) else {}).items()
             if str(sym).upper() in usd_symbols and str(sym).upper() != "SGOV"
         }
         for sym in bought_symbols_this_month:
             bought_intensity_by_symbol.setdefault(sym, "normal")
         save_execution = False
         clear_execution = False
-        edited_used_budget_usd = used_budget_usd
         edited_planned_new_cash_usd = planned_new_cash_usd
+        edited_bought_amount_by_symbol = dict(bought_amount_by_symbol)
         edited_bought_intensity_by_symbol = dict(bought_intensity_by_symbol)
         if wizard_step == "2 预算与记录":
             st.markdown("##### 2. 预算与本月记录")
@@ -3245,43 +3323,58 @@ with st.expander("再平衡买入建议", expanded=False):
                     key=f"monthly_planned_cash_{current_month_key}",
                     help="从下个月开始计入未来总资金；本月已入金请手动录入现金/持仓，避免重复计算。",
                 )
-                edited_used_budget_usd = st.number_input(
-                    "本月已用预算(USD)",
-                    min_value=0.0,
-                    value=used_budget_usd,
-                    step=10.0,
-                    format="%.2f",
-                    key=f"monthly_budget_used_{current_month_key}",
-                )
                 buyable_symbols = [sym for sym in usd_symbols if sym != "SGOV"]
-                st.caption("记录本月每个标的已执行的最高档位；后续若跌到更深档，只建议补买档位差额。")
+                st.caption("记录本月每个标的已买入金额和最高执行档位；总已用预算会自动按各标的金额汇总。")
+                edited_bought_amount_by_symbol = {}
                 edited_bought_intensity_by_symbol = {}
                 tier_options = list(_REBALANCE_INTENSITY_LABELS.keys())
                 tier_label_to_key = {label: key for key, label in _REBALANCE_INTENSITY_LABELS.items()}
                 for sym in buyable_symbols:
+                    amount_col, tier_col = st.columns([0.46, 0.54])
+                    with amount_col:
+                        bought_amount = st.number_input(
+                            f"{sym} 本月已买入金额(USD)",
+                            min_value=0.0,
+                            value=float(bought_amount_by_symbol.get(sym, 0.0)),
+                            step=10.0,
+                            format="%.2f",
+                            key=f"monthly_budget_bought_amount_{current_month_key}_{sym}",
+                        )
+                    if bought_amount > 0:
+                        edited_bought_amount_by_symbol[sym] = float(bought_amount)
                     default_tier = _normalize_rebalance_intensity(bought_intensity_by_symbol.get(sym, "none"))
+                    if default_tier == "none" and bought_amount > 0:
+                        default_tier = "normal"
                     default_label = _REBALANCE_INTENSITY_LABELS[default_tier]
-                    selected_label = st.selectbox(
-                        f"{sym} 本月已执行最高档位",
-                        options=[_REBALANCE_INTENSITY_LABELS[key] for key in tier_options],
-                        index=[_REBALANCE_INTENSITY_LABELS[key] for key in tier_options].index(default_label),
-                        key=f"monthly_budget_bought_tier_{current_month_key}_{sym}",
-                    )
+                    with tier_col:
+                        selected_label = st.selectbox(
+                            f"{sym} 本月已执行最高档位",
+                            options=[_REBALANCE_INTENSITY_LABELS[key] for key in tier_options],
+                            index=[_REBALANCE_INTENSITY_LABELS[key] for key in tier_options].index(default_label),
+                            key=f"monthly_budget_bought_tier_{current_month_key}_{sym}",
+                        )
                     selected_tier = tier_label_to_key[selected_label]
                     if selected_tier != "none":
                         edited_bought_intensity_by_symbol[sym] = selected_tier
+                edited_used_budget_usd = sum(edited_bought_amount_by_symbol.values())
+                st.caption(f"本月已用预算自动汇总：USD {edited_used_budget_usd:,.2f}")
                 save_exec_col, clear_exec_col = st.columns([0.25, 0.25])
                 save_execution = save_exec_col.form_submit_button("保存并下一步")
                 clear_execution = clear_exec_col.form_submit_button("清零本月已用")
         if save_execution:
             used_budget_usd = float(edited_used_budget_usd)
             planned_new_cash_usd = float(edited_planned_new_cash_usd)
+            bought_amount_by_symbol = {
+                str(sym).upper(): max(0.0, float(amount))
+                for sym, amount in edited_bought_amount_by_symbol.items()
+                if max(0.0, float(amount)) > 0
+            }
             bought_intensity_by_symbol = {
                 str(sym).upper(): _normalize_rebalance_intensity(intensity)
                 for sym, intensity in edited_bought_intensity_by_symbol.items()
                 if _normalize_rebalance_intensity(intensity) != "none"
             }
-            bought_symbols_this_month = sorted(bought_intensity_by_symbol.keys())
+            bought_symbols_this_month = sorted(set(bought_intensity_by_symbol.keys()) | set(bought_amount_by_symbol.keys()))
             _save_monthly_budget_usage(
                 cloud_user_id,
                 current_month_key,
@@ -3289,6 +3382,7 @@ with st.expander("再平衡买入建议", expanded=False):
                 bought_symbols_this_month,
                 planned_new_cash_usd,
                 bought_intensity_by_symbol,
+                bought_amount_by_symbol,
             )
             st.session_state["rebalance_wizard_step"] = "3 生成建议"
             st.session_state["rebalance_generated"] = False
@@ -3297,6 +3391,7 @@ with st.expander("再平衡买入建议", expanded=False):
         if clear_execution:
             used_budget_usd = 0.0
             bought_symbols_this_month = []
+            bought_amount_by_symbol = {}
             _save_monthly_budget_usage(
                 cloud_user_id,
                 current_month_key,
@@ -3304,11 +3399,13 @@ with st.expander("再平衡买入建议", expanded=False):
                 bought_symbols_this_month,
                 planned_new_cash_usd,
                 {},
+                {},
             )
             st.success("已清零本月已用预算。")
     
         strategy_rows: list[dict[str, Any]] = []
         full_rebalance_need_usd = 0.0
+        weekly_return_pct_by_symbol = _fetch_yfinance_adjusted_weekly_returns(tuple(sym for sym in usd_symbols if sym != "SGOV"))
         for sym in usd_symbols:
             meta = _ASSET_META[sym]
             current_cny = value_cny_by_symbol.get(sym, 0.0)
@@ -3322,10 +3419,27 @@ with st.expander("再平衡买入建议", expanded=False):
             previous_multiplier = _rebalance_intensity_multiplier(sym, rebalance_phase, previous_intensity)
             additional_multiplier = max(0.0, float(multiplier) - previous_multiplier)
             already_bought_this_month = sym != "SGOV" and previous_intensity != "none"
-            if already_bought_this_month and additional_multiplier <= 1e-9:
-                continue
+            weekly_return_pct = weekly_return_pct_by_symbol.get(sym)
+            weekly_split_threshold_pct = _NORMAL_SPLIT_WEEKLY_UP_THRESHOLD_PCT.get(sym, 3.0)
+            normal_split_factor = 1.0
+            amount_already_bought_usd = bought_amount_by_symbol.get(sym, 0.0)
+            if (
+                sym != "SGOV"
+                and intensity == "normal"
+                and not already_bought_this_month
+                and isinstance(weekly_return_pct, (int, float))
+                and float(weekly_return_pct) >= weekly_split_threshold_pct
+            ):
+                normal_split_factor = 0.5
+                action = f"{action}（分批）"
             base_budget_usd = max(0.0, gap_usd) / build_month_count
-            raw_buy_usd = min(max(0.0, gap_usd), base_budget_usd * additional_multiplier)
+            planned_tier_buy_usd = min(max(0.0, gap_usd), base_budget_usd * float(multiplier))
+            raw_buy_usd = min(max(0.0, gap_usd), base_budget_usd * additional_multiplier * normal_split_factor)
+            if already_bought_this_month and intensity == "normal":
+                raw_buy_usd = max(0.0, planned_tier_buy_usd - amount_already_bought_usd)
+                additional_multiplier = (raw_buy_usd / base_budget_usd) if base_budget_usd > 0 else 0.0
+            if already_bought_this_month and raw_buy_usd <= 1e-9:
+                continue
             if sym == "SGOV":
                 raw_buy_usd = 0.0
                 action = "作为弹药库"
@@ -3346,13 +3460,24 @@ with st.expander("再平衡买入建议", expanded=False):
                 note = "小加档：主要使用当月现金流，尽量不动 SGOV。"
             else:
                 note = "按当前阶段的常规月度节奏执行。"
+            if normal_split_factor < 1.0 and isinstance(weekly_return_pct, (int, float)):
+                note = (
+                    f"近一周上涨 {float(weekly_return_pct):+.2f}%（分批阈值 {weekly_split_threshold_pct:.1f}%），未触发回撤档；"
+                    "本次只执行 50% normal，剩余 normal 下周二复查。"
+                )
             if already_bought_this_month:
                 previous_label = _REBALANCE_INTENSITY_LABELS.get(previous_intensity, "已买")
                 current_label = _REBALANCE_INTENSITY_LABELS.get(_normalize_rebalance_intensity(intensity), str(action))
-                note = (
-                    f"本月已执行到{previous_label}档；当前为{current_label}档，"
-                    f"本次只补买档位差额（{additional_multiplier:.2f}x）。"
-                )
+                if intensity == "normal":
+                    note = (
+                        f"本月已执行到{previous_label}档，已买 USD {amount_already_bought_usd:,.2f}；"
+                        "当前仍为 normal，本次补齐本月 normal 剩余额度。"
+                    )
+                else:
+                    note = (
+                        f"本月已执行到{previous_label}档；当前为{current_label}档，"
+                        f"本次只补买档位差额（{additional_multiplier:.2f}x）。"
+                    )
             if sym != "SGOV":
                 full_rebalance_need_usd += max(0.0, gap_usd)
             signal_remaining_usd = max(0.0, raw_buy_usd)
@@ -3372,6 +3497,7 @@ with st.expander("再平衡买入建议", expanded=False):
                     "目标占美元资产%": round(target_pct * 100.0, 2),
                     "到目标缺口(USD)": round(gap_usd, 2),
                     "60日回撤%": round(float(drawdown_pct), 2) if isinstance(drawdown_pct, (int, float)) else None,
+                    "近一周涨跌%": round(float(weekly_return_pct), 2) if isinstance(weekly_return_pct, (int, float)) else None,
                     "回撤档位": signal,
                     "建议买入(USD)": 0.0,
                     "说明": note,
@@ -3443,6 +3569,7 @@ with st.expander("再平衡买入建议", expanded=False):
             "目标占美元资产%",
             "到目标缺口(USD)",
             "60日回撤%",
+            "近一周涨跌%",
             "回撤档位",
             "建议买入(USD)",
             "建议买入(股)",
@@ -3455,10 +3582,15 @@ with st.expander("再平衡买入建议", expanded=False):
             st.info("确认本轮预算后，点击「生成买入建议」查看结果。")
             st.stop()
         bought_tier_text = "无"
-        if bought_intensity_by_symbol:
+        bought_record_symbols = sorted(set(bought_intensity_by_symbol.keys()) | set(bought_amount_by_symbol.keys()))
+        if bought_record_symbols:
             bought_tier_text = ", ".join(
-                f"{sym}:{_REBALANCE_INTENSITY_LABELS.get(_normalize_rebalance_intensity(tier), tier)}"
-                for sym, tier in sorted(bought_intensity_by_symbol.items())
+                (
+                    f"{sym}:"
+                    f"{_REBALANCE_INTENSITY_LABELS.get(_normalize_rebalance_intensity(bought_intensity_by_symbol.get(sym, 'none')), '未买')}"
+                    f"/USD {bought_amount_by_symbol.get(sym, 0.0):,.2f}"
+                )
+                for sym in bought_record_symbols
             )
         st.caption(
             f"自动判断阶段：{auto_phase}；当前执行阶段：{rebalance_phase}。"
@@ -3489,6 +3621,7 @@ with st.expander("再平衡买入建议", expanded=False):
                 "目标占美元资产%": "{:.2f}%",
                 "到目标缺口(USD)": "{:.2f}",
                 "60日回撤%": "{:.2f}%",
+                "近一周涨跌%": "{:.2f}%",
                 "建议买入(USD)": "{:.2f}",
                 "建议买入(股)": "{:.4f}",
             },

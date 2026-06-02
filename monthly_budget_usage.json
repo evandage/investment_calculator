@@ -10,7 +10,9 @@
       "used_budget_usd": 0.0,
       "planned_new_cash_usd": 700.0,
       "bought_symbols": [],
-      "updated_at": "2026-06-02T09:41:21+08:00"
+      "bought_amount_by_symbol": {},
+      "bought_intensity_by_symbol": {},
+      "updated_at": "2026-06-02T10:57:33+08:00"
     }
   }
 }
