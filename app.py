@@ -2934,9 +2934,18 @@ usd_total_usd = (usd_total_cny / fx) if fx > 0 else 0.0
 def _usd_target_pct(sym: str) -> float:
     return (_TARGET_WEIGHTS[sym] / usd_target_weight_total * 100.0) if usd_target_weight_total > 0 else 0.0
 
+
+def _usd_amount_label(value_cny: float | None) -> str:
+    if value_cny is None:
+        return ""
+    value_usd = (value_cny / fx) if fx > 0 else 0.0
+    return f"USD {value_usd:,.2f} / CNY {value_cny:,.2f}"
+
+
 voo_current = value_cny_by_symbol.get("VOO", 0.0)
 qqq_current = value_cny_by_symbol.get("QQQ", 0.0)
 sgov_current = value_cny_by_symbol.get("SGOV", 0.0)
+satellite_current = sum(value_cny_by_symbol.get(sym, 0.0) for sym in _SATELLITE_SYMBOLS)
 
 ratio_denominator = usd_total_cny if usd_total_cny > 0 else 0.0
 voo_ratio = (voo_current / ratio_denominator * 100.0) if ratio_denominator > 0 else 0.0
@@ -2962,16 +2971,16 @@ sgov_target = _usd_target_pct("SGOV")
 
 group1_df = pd.DataFrame(
     [
-        {"标的组": "VOO", "类型": "当前比例%", "成分": "VOO", "比例%": round(voo_ratio, 2)},
-        {"标的组": "VOO", "类型": "目标比例%", "成分": "目标", "比例%": round(voo_target, 2)},
-        {"标的组": "QQQ", "类型": "当前比例%", "成分": "QQQ", "比例%": round(qqq_ratio, 2)},
-        {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2)},
-        {"标的组": "卫星仓位", "类型": "当前比例%", "成分": "卫星仓位", "比例%": round(new4_ratio, 2)},
-        {"标的组": "卫星仓位", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2)},
-        {"标的组": "短债", "类型": "当前比例%", "成分": "SGOV", "比例%": round(sgov_ratio, 2)},
-        {"标的组": "短债", "类型": "目标比例%", "成分": "目标", "比例%": round(sgov_target, 2)},
-        {"标的组": "现金", "类型": "当前比例%", "成分": "现金", "比例%": round(cash_usd_ratio, 2)},
-        {"标的组": "现金", "类型": "目标比例%", "成分": "目标", "比例%": 0.0},
+        {"标的组": "VOO", "类型": "当前比例%", "成分": "VOO", "比例%": round(voo_ratio, 2), "金额": _usd_amount_label(voo_current)},
+        {"标的组": "VOO", "类型": "目标比例%", "成分": "目标", "比例%": round(voo_target, 2), "金额": _usd_amount_label(usd_total_cny * voo_target / 100.0)},
+        {"标的组": "QQQ", "类型": "当前比例%", "成分": "QQQ", "比例%": round(qqq_ratio, 2), "金额": _usd_amount_label(qqq_current)},
+        {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2), "金额": _usd_amount_label(usd_total_cny * qqq_target / 100.0)},
+        {"标的组": "卫星仓位", "类型": "当前比例%", "成分": "卫星仓位", "比例%": round(new4_ratio, 2), "金额": _usd_amount_label(satellite_current)},
+        {"标的组": "卫星仓位", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2), "金额": _usd_amount_label(usd_total_cny * new4_target / 100.0)},
+        {"标的组": "短债", "类型": "当前比例%", "成分": "SGOV", "比例%": round(sgov_ratio, 2), "金额": _usd_amount_label(sgov_current)},
+        {"标的组": "短债", "类型": "目标比例%", "成分": "目标", "比例%": round(sgov_target, 2), "金额": _usd_amount_label(usd_total_cny * sgov_target / 100.0)},
+        {"标的组": "现金", "类型": "当前比例%", "成分": "现金", "比例%": round(cash_usd_ratio, 2), "金额": _usd_amount_label(usd_extra_value_cny)},
+        {"标的组": "现金", "类型": "目标比例%", "成分": "目标", "比例%": 0.0, "金额": _usd_amount_label(0.0)},
     ]
 )
 
@@ -2991,7 +3000,7 @@ group1_chart = (
             ),
         ),
         order=alt.Order("成分:N", sort="ascending"),
-        tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f")],
+        tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f"), "金额:N"],
     )
     .properties(title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比")
 )
@@ -3009,6 +3018,7 @@ tech_split_df = pd.DataFrame(
                     (satellite_ratio_by_symbol[sym] / tech_denominator * 100.0) if tech_denominator > 0 else 0.0,
                     2,
                 ),
+                "金额": _usd_amount_label(value_cny_by_symbol.get(sym, 0.0)),
                 "浮盈亏(CNY)": round(pnl_cny_by_symbol.get(sym, 0.0), 2),
                 "浮盈亏标签": f"¥ {pnl_cny_by_symbol.get(sym, 0.0):+,.0f}",
             },
@@ -3016,6 +3026,11 @@ tech_split_df = pd.DataFrame(
                 "标的": sym,
                 "类型": "目标占卫星仓位%",
                 "比例%": round(_SATELLITE_TARGET_PARTS[sym] / satellite_target_parts_total * 100.0, 2),
+                "金额": _usd_amount_label(
+                    satellite_current * _SATELLITE_TARGET_PARTS[sym] / satellite_target_parts_total
+                    if satellite_target_parts_total > 0
+                    else 0.0
+                ),
                 "浮盈亏(CNY)": None,
                 "浮盈亏标签": "",
             },
@@ -3039,6 +3054,7 @@ tech_split_bars = (
             "标的:N",
             "类型:N",
             alt.Tooltip("比例%:Q", format=".2f"),
+            "金额:N",
         ],
     )
 )
