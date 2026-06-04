@@ -19,6 +19,11 @@ import pandas as pd
 import requests
 import streamlit as st
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
+
 st.set_page_config(
     page_title="Investment Dashboard",
     page_icon="📈",
@@ -1542,7 +1547,7 @@ def _fetch_fund_price_change(code: str) -> tuple[float, float, str] | None:
     return None
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=3, show_spinner=False)
 def _fetch_spot_prices_meta() -> dict[str, object]:
     out: dict[str, float] = {}
     daily_change_pct_by_symbol: dict[str, float] = {}
@@ -2498,6 +2503,31 @@ st.sidebar.caption(
 st.sidebar.caption(
     f"OpenD {futu_host}:{futu_port}：{futu_status_text} ｜ 当前：{provider_labels.get(effective_market_provider, effective_market_provider)}"
 )
+realtime_quotes_enabled = st.sidebar.checkbox(
+    "实时刷新行情",
+    value=True,
+    key="realtime_quotes_enabled",
+    help="基于当前数据源定时刷新页面；Futu OpenD 可用时会重新拉取快照，腾讯仅作兜底。",
+)
+realtime_quotes_interval_seconds = int(
+    st.sidebar.number_input(
+        "刷新间隔(秒)",
+        min_value=3,
+        max_value=60,
+        value=10,
+        step=1,
+        key="realtime_quotes_interval_seconds",
+        disabled=not realtime_quotes_enabled,
+    )
+)
+if realtime_quotes_enabled:
+    if st_autorefresh is not None:
+        st_autorefresh(
+            interval=realtime_quotes_interval_seconds * 1000,
+            key="market_realtime_autorefresh",
+        )
+    else:
+        st.sidebar.warning("缺少 streamlit-autorefresh，自动刷新未启用。")
 previous_market_provider = st.session_state.get("_last_effective_market_data_provider")
 if previous_market_provider is None:
     st.session_state["_last_effective_market_data_provider"] = effective_market_provider
@@ -2599,6 +2629,7 @@ if refresh_prices_clicked:
 _ensure_fx_session_default()
 _ensure_price_session_defaults()
 spot_meta = _fetch_spot_prices_meta()
+st.sidebar.caption(f"行情刷新：{spot_meta.get('fetched_at', '-')}")
 fx_meta = _fetch_usdcny_rate_meta()
 fx = float(st.session_state.get("inp_fx", st.session_state.def_fx))
 spot_prices = spot_meta.get("prices", {})

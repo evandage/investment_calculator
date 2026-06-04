@@ -1,3 +1,4 @@
 streamlit
+streamlit-autorefresh>=1.0.1
 futu-api>=10.4.6408
 plotly>=5.18.0
