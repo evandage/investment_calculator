@@ -1336,21 +1336,17 @@ def _fetch_futu_us_price_change() -> dict[str, dict[str, object]]:
             overnight_price = _coerce_float(_row_get(row, "overnight_price"))
             overnight_change_pct = _coerce_float(_row_get(row, "overnight_change_rate"))
             market_state = market_states.get(code, "")
-            market_state_upper = market_state.upper()
             regular_price = last_price
-            session = "regular"
+            session = _futu_market_session(market_state)
             extended_price: float | None = None
             extended_change_pct: float | None = None
-            if "PRE" in market_state_upper:
-                session = "premarket"
+            if session == "premarket":
                 extended_price = pre_price
                 extended_change_pct = pre_change_pct
-            elif "OVERNIGHT" in market_state_upper:
-                session = "overnight"
+            elif session == "overnight":
                 extended_price = overnight_price
                 extended_change_pct = overnight_change_pct
-            elif "AFTER" in market_state_upper or "POST" in market_state_upper:
-                session = "postmarket"
+            elif session == "postmarket":
                 extended_price = post_price
                 extended_change_pct = post_change_pct
 
@@ -1381,6 +1377,36 @@ def _fetch_futu_us_price_change() -> dict[str, dict[str, object]]:
         except Exception:
             pass
     return out
+
+
+def _is_us_regular_market_hours_now() -> bool:
+    now = datetime.now(ZoneInfo("America/New_York"))
+    if now.weekday() >= 5:
+        return False
+    minutes = now.hour * 60 + now.minute
+    return 9 * 60 + 30 <= minutes < 16 * 60
+
+
+def _futu_market_session(market_state: str) -> str:
+    state = re.sub(r"[^A-Z0-9]+", "_", market_state.upper()).strip("_")
+    if not state:
+        return "regular"
+    if _is_us_regular_market_hours_now():
+        return "regular"
+    if ("PRE_MARKET" in state or "PREMARKET" in state) and not any(
+        marker in state for marker in ("END", "CLOSE", "CLOSED")
+    ):
+        return "premarket"
+    if "OVERNIGHT" in state and not any(marker in state for marker in ("END", "CLOSE", "CLOSED")):
+        return "overnight"
+    if (
+        "AFTER_MARKET" in state
+        or "AFTERHOURS" in state
+        or "POST_MARKET" in state
+        or "POSTMARKET" in state
+    ) and not any(marker in state for marker in ("END", "CLOSE", "CLOSED")):
+        return "postmarket"
+    return "regular"
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
