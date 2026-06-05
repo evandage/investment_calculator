@@ -1,8 +1,20 @@
 :root {
   color-scheme: light dark;
   font-family: Inter, "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #0f172a;
+  background: #08111f;
   color: #e5e7eb;
+  --panel: rgba(15, 23, 42, 0.72);
+  --panel-strong: rgba(15, 23, 42, 0.9);
+  --line: rgba(148, 163, 184, 0.2);
+  --line-strong: rgba(148, 163, 184, 0.34);
+  --text-soft: #94a3b8;
+  --text-main: #f8fafc;
+  --cyan: #38bdf8;
+  --blue: #2563eb;
+  --violet: #8b5cf6;
+  --green: #22c55e;
+  --red: #ef4444;
+  --amber: #f59e0b;
 }
 
 * {
@@ -13,8 +25,23 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.98)),
-    #111827;
+    linear-gradient(115deg, rgba(37, 99, 235, 0.2), transparent 28%),
+    linear-gradient(245deg, rgba(20, 184, 166, 0.16), transparent 32%),
+    linear-gradient(180deg, #08111f 0%, #0f172a 48%, #111827 100%);
+  min-height: 100vh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 82%);
 }
 
 button,
@@ -24,20 +51,29 @@ select {
 }
 
 button {
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: rgba(15, 23, 42, 0.92);
-  color: #e5e7eb;
+  border: 1px solid var(--line-strong);
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.86));
+  color: var(--text-main);
   border-radius: 8px;
   padding: 9px 12px;
   cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: rgba(56, 189, 248, 0.62);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+  transform: translateY(-1px);
 }
 
 button.primary {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: linear-gradient(135deg, #2563eb, #14b8a6);
+  border-color: rgba(56, 189, 248, 0.58);
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  box-shadow: 0 14px 34px rgba(37, 99, 235, 0.28);
 }
 
 button:disabled {
@@ -49,17 +85,25 @@ input,
 select {
   width: 100%;
   min-width: 88px;
-  border: 1px solid rgba(148, 163, 184, 0.34);
-  background: rgba(15, 23, 42, 0.72);
-  color: #e5e7eb;
+  border: 1px solid var(--line-strong);
+  background: rgba(2, 6, 23, 0.44);
+  color: var(--text-main);
   border-radius: 7px;
   padding: 8px 9px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.72);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
 }
 
 .appShell {
   width: min(1440px, 100%);
   margin: 0 auto;
-  padding: 18px;
+  padding: 22px;
 }
 
 .topbar,
@@ -72,24 +116,52 @@ select {
 }
 
 .topbar {
+  position: relative;
   margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.58)),
+    rgba(2, 6, 23, 0.42);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+}
+
+.topbar::after {
+  content: "";
+  position: absolute;
+  inset: auto 16px 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), var(--green), transparent);
+  opacity: 0.9;
 }
 
 .pageNav {
   display: flex;
-  gap: 8px;
-  margin: 0 0 14px;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 6px;
   overflow-x: auto;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .pageNav button {
   white-space: nowrap;
+  border-color: transparent;
+  background: transparent;
 }
 
 .pageNav button.active {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.96), rgba(20, 184, 166, 0.88));
+  border-color: rgba(56, 189, 248, 0.48);
   color: #fff;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.24);
 }
 
 h1,
@@ -99,16 +171,19 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(1.4rem, 2.2vw, 2rem);
+  font-size: clamp(1.55rem, 2.4vw, 2.15rem);
+  color: var(--text-main);
+  font-weight: 900;
 }
 
 h2 {
   font-size: 1.12rem;
   margin: 22px 0 12px;
+  color: var(--text-main);
 }
 
 .muted {
-  color: #94a3b8;
+  color: var(--text-soft);
   font-size: 0.88rem;
 }
 
@@ -130,22 +205,43 @@ h2 {
 
 .summaryItem,
 .dailyCard {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(30, 41, 59, 0.72);
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    linear-gradient(160deg, rgba(30, 41, 59, 0.9), rgba(2, 6, 23, 0.58)),
+    rgba(15, 23, 42, 0.8);
   border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.16);
+  padding: 14px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+}
+
+.summaryItem::before,
+.dailyCard::before,
+.assetMetricCard::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--green), var(--amber));
+  opacity: 0.78;
 }
 
 .summaryItem span {
   display: block;
-  color: #94a3b8;
-  font-size: 0.84rem;
-  margin-bottom: 5px;
+  color: #cbd5e1;
+  font-size: 0.88rem;
 }
 
 .summaryItem strong {
-  font-size: 1rem;
+  color: #f8fafc;
+  font-size: 1.18rem;
+  font-weight: 900;
+  text-align: center;
 }
 
 .assetSections {
@@ -171,10 +267,11 @@ h2 {
 }
 
 .assetMetricCard {
+  position: relative;
   min-height: 96px;
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  border: 1px solid rgba(148, 163, 184, 0.24);
   background:
-    linear-gradient(135deg, rgba(30, 41, 59, 0.86), rgba(15, 23, 42, 0.72)),
+    linear-gradient(160deg, rgba(30, 41, 59, 0.9), rgba(2, 6, 23, 0.58)),
     rgba(15, 23, 42, 0.8);
   border-radius: 8px;
   padding: 14px;
@@ -182,7 +279,8 @@ h2 {
   align-content: center;
   justify-items: center;
   gap: 4px;
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
 }
 
 .assetMetricCard span {
@@ -200,7 +298,8 @@ h2 {
   font-style: normal;
   border-radius: 999px;
   padding: 2px 8px;
-  background: rgba(148, 163, 184, 0.14);
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.18);
   font-size: 0.84rem;
   font-weight: 800;
 }
@@ -227,11 +326,14 @@ h2 {
 }
 
 .budgetPanel {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.56);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.52)),
+    rgba(15, 23, 42, 0.56);
   border-radius: 8px;
   padding: 12px;
   margin: 10px 0 14px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.2);
 }
 
 .compactHeader h2 {
@@ -276,6 +378,7 @@ h2 {
 
 .dailyCard {
   min-height: 126px;
+  text-align: center;
 }
 
 .wideCard {
@@ -284,21 +387,28 @@ h2 {
 
 .cardTitle {
   font-weight: 800;
-  margin-bottom: 6px;
+  color: #cbd5e1;
+  margin-bottom: 2px;
 }
 
 .priceLine {
-  color: #cbd5e1;
-  font-weight: 700;
-  margin-bottom: 4px;
+  color: #f8fafc;
+  font-size: 1.12rem;
+  font-weight: 900;
+  margin-bottom: 2px;
+}
+
+.dailyCard > div:not(.cardTitle):not(.priceLine) {
+  font-size: 0.95rem;
+  font-weight: 800;
 }
 
 .up {
-  color: #22c55e;
+  color: var(--green);
 }
 
 .down {
-  color: #ef4444;
+  color: var(--red);
 }
 
 .flat {
@@ -313,11 +423,14 @@ h2 {
 }
 
 .chartPanel {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(2, 6, 23, 0.54)),
+    rgba(15, 23, 42, 0.58);
   border-radius: 8px;
-  padding: 12px;
+  padding: 14px;
   min-width: 0;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.2);
 }
 
 .chartPanel h2 {
@@ -347,9 +460,10 @@ h2 {
 }
 
 .barTrack {
-  height: 10px;
+  height: 11px;
   border-radius: 999px;
-  background: rgba(51, 65, 85, 0.82);
+  background: rgba(15, 23, 42, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.12);
   overflow: hidden;
 }
 
@@ -360,11 +474,11 @@ h2 {
 }
 
 .barFill.up {
-  background: #22c55e;
+  background: linear-gradient(90deg, #16a34a, #22c55e, #86efac);
 }
 
 .barFill.down {
-  background: #ef4444;
+  background: linear-gradient(90deg, #991b1b, #ef4444, #fca5a5);
 }
 
 .barFill.flat {
@@ -372,11 +486,11 @@ h2 {
 }
 
 .barFill.current {
-  background: #38bdf8;
+  background: linear-gradient(180deg, #7dd3fc, #0284c7);
 }
 
 .barFill.target {
-  background: #a78bfa;
+  background: linear-gradient(180deg, #c4b5fd, #7c3aed);
 }
 
 .barValue,
@@ -415,7 +529,9 @@ h2 {
   gap: 8px;
   height: 210px;
   padding-top: 20px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background-image: linear-gradient(180deg, transparent 0, transparent 49px, rgba(148, 163, 184, 0.08) 50px);
+  background-size: 100% 50px;
 }
 
 .verticalBar {
@@ -494,6 +610,10 @@ h2 {
   gap: 10px;
   flex-wrap: wrap;
   margin: 10px 0 12px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.26);
 }
 
 .toolbarRow select {
@@ -502,9 +622,10 @@ h2 {
 
 .segmented {
   display: inline-flex;
-  border: 1px solid rgba(148, 163, 184, 0.34);
+  border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 8px;
   overflow: hidden;
+  background: rgba(2, 6, 23, 0.34);
 }
 
 .segmented button {
@@ -514,7 +635,7 @@ h2 {
 }
 
 .segmented button.active {
-  background: #2563eb;
+  background: linear-gradient(135deg, var(--blue), var(--violet));
   color: #fff;
 }
 
@@ -564,8 +685,10 @@ h2 {
 
 .tableWrap {
   overflow: auto;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 8px;
+  background: rgba(2, 6, 23, 0.28);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18);
 }
 
 table {
@@ -586,9 +709,9 @@ td {
 thead th {
   position: sticky;
   top: 0;
-  background: #111827;
+  background: rgba(15, 23, 42, 0.98);
   z-index: 2;
-  color: #94a3b8;
+  color: #cbd5e1;
   font-weight: 700;
 }
 
@@ -598,7 +721,12 @@ thead th:first-child {
   left: 0;
   z-index: 3;
   text-align: left;
-  background: #111827;
+  background: rgba(15, 23, 42, 0.98);
+}
+
+tbody tr:hover td,
+tbody tr:hover th {
+  background-color: rgba(30, 41, 59, 0.42);
 }
 
 tbody th {
@@ -644,7 +772,9 @@ tbody th {
   overflow: auto;
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 8px;
-  background: #0f172a;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.94)),
+    #0f172a;
   padding: 16px;
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
 }

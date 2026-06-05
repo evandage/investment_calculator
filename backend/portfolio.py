@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from typing import Any
 
@@ -22,6 +23,8 @@ from .storage import load_monthly_usage, load_user_state, save_monthly_usage, sa
 
 BUILD_TARGET_YEAR = 2026
 BUILD_TARGET_MONTH = 10
+_DRAWDOWN_CACHE: dict[str, tuple[dict[str, float | None], float]] = {}
+_DRAWDOWN_CACHE_TTL_SECONDS = 21600
 
 
 def default_build_months(now: datetime | None = None) -> int:
@@ -79,7 +82,7 @@ def rebalance_rules_payload(
                 "items": [
                     "先用月初口径持仓计算缺口：月初口径 = 当前持仓金额 - 本月已买金额。",
                     "再按档位倍率计算本月计划应买，VOO 建仓期至少按 1 股规划。",
-                    "Forward PE 高于合理区间的卫星个股按 50% 分批买入。",
+                    "Forward PE 不改变计划应买金额，只给出估值分批系数；建仓期仍按计划买够。",
                     "可动用资金不足时按比例缩放计划应买；建议买入 = max(0, 计划应买 - 本月已买)。",
                 ],
             },
@@ -172,6 +175,44 @@ def pe_judgment(symbol: str, forward_pe: float | None) -> str:
     return "偏贵"
 
 
+def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[str, float | None]:
+    now = time.time()
+    cached = _DRAWDOWN_CACHE.get(symbol)
+    if cached and now - cached[1] < _DRAWDOWN_CACHE_TTL_SECONDS:
+        metrics = dict(cached[0])
+    else:
+        metrics = {"drawdown_pct": None, "rebound_pct": None, "peak": None, "trough": None}
+        try:
+            import chart_boards
+
+            chart_boards.configure_market_provider("tencent")
+            df = chart_boards.fetch_ohlcv(symbol, "1d", "3mo", cache_only=False)
+            if df is not None and not df.empty and "Close" in df.columns:
+                closes = [float(v) for v in df["Close"].dropna().tail(60).tolist() if float(v) > 0]
+                if closes:
+                    peak = max(closes)
+                    trough = min(closes)
+                    last = closes[-1]
+                    metrics = {
+                        "drawdown_pct": (last / peak - 1.0) * 100.0 if peak > 0 else None,
+                        "rebound_pct": (last / trough - 1.0) * 100.0 if trough > 0 else None,
+                        "peak": peak,
+                        "trough": trough,
+                    }
+        except Exception:
+            metrics = {"drawdown_pct": None, "rebound_pct": None, "peak": None, "trough": None}
+        _DRAWDOWN_CACHE[symbol] = (dict(metrics), now)
+
+    price = float(current_price or 0.0)
+    peak = metrics.get("peak")
+    trough = metrics.get("trough")
+    if price > 0 and isinstance(peak, (int, float)) and peak > 0:
+        metrics["drawdown_pct"] = (price / float(peak) - 1.0) * 100.0
+    if price > 0 and isinstance(trough, (int, float)) and trough > 0:
+        metrics["rebound_pct"] = (price / float(trough) - 1.0) * 100.0
+    return metrics
+
+
 def _daily_amount(value: float, pct: float) -> float:
     ratio = pct / 100.0
     if abs(1.0 + ratio) <= 1e-9:
@@ -249,16 +290,18 @@ def build_visualizations(
         "SGOV": TARGET_WEIGHTS["SGOV"],
         "CASH": 0.0,
     }
+    allocation_target_total = sum(target_map.values())
     allocation_compare = []
     for key, label, symbols in allocation_order:
         amount_cny = usd_cash_cny if key == "CASH" else sum(value_cny_by_symbol.get(sym, 0.0) for sym in symbols)
-        target_cny = allocation_total_cny * target_map[key] if allocation_total_cny > 0 else 0.0
+        normalized_target = target_map[key] / allocation_target_total if allocation_target_total > 0 else 0.0
+        target_cny = allocation_total_cny * normalized_target if allocation_total_cny > 0 else 0.0
         allocation_compare.append(
             {
                 "key": key,
                 "label": label,
                 "current_pct": amount_cny / allocation_total_cny * 100.0 if allocation_total_cny > 0 else 0.0,
-                "target_pct": target_map[key] * 100.0,
+                "target_pct": normalized_target * 100.0,
                 "current_usd": amount_cny / fx if fx > 0 else 0.0,
                 "target_usd": target_cny / fx if fx > 0 else 0.0,
             }
@@ -317,6 +360,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         total_cost_cny += cost_cny
         value_cny_by_symbol[sym] = value_cny
         fpe = forward_pe.get(sym)
+        sixty_day = fetch_60d_metrics(sym, price) if meta["currency"] == "USD" else {}
         rows.append(
             {
                 "symbol": sym,
@@ -336,6 +380,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "daily_pct": float(quote.get("regular_change_pct", quote.get("change_pct", 0.0))),
                 "effective_daily_pct": float(quote.get("change_pct", 0.0)),
                 "extended_pct": quote.get("extended_change_pct"),
+                "drawdown_pct": sixty_day.get("drawdown_pct"),
+                "rebound_pct": sixty_day.get("rebound_pct"),
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym) if sym in SATELLITE_SYMBOLS else "-",
                 "pe_judgment": pe_judgment(sym, fpe),
@@ -492,6 +538,7 @@ def build_rebalance_v2(
     used_budget_usd = sum(float(v) for v in bought_amounts.values())
 
     rows: list[dict[str, Any]] = []
+    full_rebalance_need_usd = 0.0
     has_large_trigger = False
     for item in holding_rows:
         sym = item["symbol"]
@@ -503,7 +550,8 @@ def build_rebalance_v2(
         target_pct = TARGET_WEIGHTS[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
         gap = target_usd - planning_current
-        multiplier, action, signal, intensity = signal_for_drawdown(sym, None, phase)
+        drawdown_pct = item.get("drawdown_pct")
+        multiplier, action, signal, intensity = signal_for_drawdown(sym, drawdown_pct, phase)
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
         if INTENSITY_ORDER.get(previous, 0) > INTENSITY_ORDER.get(intensity, 0):
             multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
@@ -517,11 +565,20 @@ def build_rebalance_v2(
         if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
             planned = max(planned, float(market["quotes"][sym]["price"]))
 
+        previous_multiplier = intensity_multiplier(sym, phase, previous)
+        additional_multiplier = max(0.0, float(multiplier) - previous_multiplier)
+        already_bought_this_month = previous != "none"
         fpe = item.get("forward_pe")
         band = PE_BANDS.get(sym)
         split = 0.5 if sym in SATELLITE_SYMBOLS and isinstance(fpe, (int, float)) and band and fpe > band[1] else 1.0
-        raw_planned = planned * split
-        raw_suggested = max(0.0, raw_planned - already)
+        raw_planned = planned
+        raw_suggested = min(max(0.0, gap), base_budget * additional_multiplier)
+        if already_bought_this_month:
+            raw_suggested = max(0.0, raw_planned - already)
+            additional_multiplier = raw_suggested / base_budget if base_budget > 0 else 0.0
+        if already_bought_this_month and raw_suggested <= 1e-9:
+            raw_suggested = 0.0
+            additional_multiplier = 0.0
         if gap <= 0 and sym != "VOO":
             raw_suggested = 0.0
             action = "暂不买入"
@@ -536,9 +593,19 @@ def build_rebalance_v2(
         else:
             note_parts.append("当前可动用资金不足或档位额度已用完，先保留观察。")
         if split < 1.0:
-            note_parts.append("Forward PE 高于合理区间，本月按 50% 分批买入。")
+            note_parts.append("Forward PE 高于合理区间，建议执行时分批，估值提示系数 0.50；计划金额仍按建仓节奏买够。")
         if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
             note_parts.append("建仓期 VOO 至少按 1 股规划。")
+        if already_bought_this_month:
+            previous_label = INTENSITY_LABELS.get(previous, "已买")
+            current_label = INTENSITY_LABELS.get(normalize_intensity(intensity), str(action))
+            if raw_suggested <= 1e-9:
+                note_parts.append(f"本月已执行到{previous_label}档，已买 USD {already:,.2f}；当前无需系统建议买入。")
+            elif normalize_intensity(intensity) == "normal":
+                note_parts.append(f"本月已执行到{previous_label}档，当前仍为 normal，本次补齐本月 normal 剩余额度。")
+            else:
+                note_parts.append(f"本月已执行到{previous_label}档；当前为{current_label}档，本次只补买档位差额（{additional_multiplier:.2f}x）。")
+        full_rebalance_need_usd += max(0.0, gap)
 
         rows.append(
             {
@@ -555,10 +622,12 @@ def build_rebalance_v2(
                 "actual_bought_usd": already,
                 "month_start_value_usd": planning_current,
                 "gap_usd": gap,
+                "drawdown_pct": drawdown_pct,
                 "target_pct": target_pct * 100.0,
                 "current_pct": current_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym),
+                "valuation_split_factor": split,
                 "note": " ".join(note_parts),
             }
         )
@@ -567,11 +636,21 @@ def build_rebalance_v2(
     deployable_pool_usd = cash_usd + sgov_available_usd
     remaining_deployable_usd = max(0.0, deployable_pool_usd - used_budget_usd)
     raw_total = sum(float(row["raw_suggested_buy_usd"]) for row in rows)
-    scale = min(1.0, remaining_deployable_usd / raw_total) if raw_total > 0 else 1.0
+    monthly_budget_usd = min(deployable_pool_usd, full_rebalance_need_usd) / max(1, build_month_count)
+    remaining_reference_budget_usd = max(0.0, monthly_budget_usd - used_budget_usd)
+    suggested_run_budget_usd = min(remaining_deployable_usd, max(remaining_reference_budget_usd, raw_total))
+    strategy_budget_usd = min(suggested_run_budget_usd, raw_total)
+    scale = strategy_budget_usd / raw_total if raw_total > 0 else 0.0
     for row in rows:
-        scaled_planned = row["raw_planned_buy_usd"] * scale
-        row["planned_buy_usd"] = scaled_planned
-        row["suggested_buy_usd"] = max(0.0, scaled_planned - float(row["actual_bought_usd"]))
+        row["planned_buy_usd"] = row["raw_planned_buy_usd"]
+        row["suggested_buy_usd"] = float(row["raw_suggested_buy_usd"]) * scale
+        if (
+            row["symbol"] == "VOO"
+            and phase == REBALANCE_PHASE_BUILD
+            and float(row["raw_suggested_buy_usd"]) > 0
+            and float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0) > 0
+        ):
+            row["suggested_buy_usd"] = max(row["suggested_buy_usd"], float(market["quotes"][row["symbol"]]["price"]))
         price = float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0)
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
 
@@ -585,6 +664,9 @@ def build_rebalance_v2(
         "future_cash_months": future_cash_months,
         "deployable_pool_usd": deployable_pool_usd,
         "remaining_deployable_usd": remaining_deployable_usd,
+        "monthly_budget_usd": monthly_budget_usd,
+        "remaining_reference_budget_usd": remaining_reference_budget_usd,
+        "strategy_budget_usd": strategy_budget_usd,
         "suggestion_scale": scale,
         "sgov_excess_usd": sgov_excess_usd,
         "sgov_available_usd": sgov_available_usd,
