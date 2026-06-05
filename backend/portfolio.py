@@ -226,13 +226,9 @@ def _currency_value_to_cny(value: float, currency: str, fx: float) -> float:
 
 def _quote_price_line(symbol: str, quote: dict[str, Any]) -> str:
     currency = ASSET_META[symbol]["currency"]
-    regular = float(quote.get("regular_price") or quote.get("price") or 0.0)
-    effective = float(quote.get("price") or regular)
+    effective = float(quote.get("price") or quote.get("regular_price") or 0.0)
     decimals = 2 if currency == "USD" else 4
-    text = f"{currency} {regular:,.{decimals}f}"
-    if quote.get("session") != "regular" and effective > 0 and abs(effective - regular) > 1e-9:
-        text += f"（{effective:,.{decimals}f}）"
-    return text
+    return f"{currency} {effective:,.{decimals}f}"
 
 
 def build_visualizations(
@@ -400,30 +396,21 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         holding = holdings[sym]
         shares = float(holding["shares"])
         currency = ASSET_META[sym]["currency"]
-        regular_price = float(quote.get("regular_price") or quote.get("price") or 0.0)
-        effective_price = float(quote.get("price") or regular_price)
-        regular_value = shares * regular_price
-        regular_value_cny = regular_value * fx if currency == "USD" else regular_value
-        regular_pct = float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
-        change_cny = _daily_amount(regular_value_cny, regular_pct)
-        extended_change = shares * (effective_price - regular_price) if quote.get("session") != "regular" else None
-        extended_change_cny = (
-            extended_change * fx if extended_change is not None and currency == "USD" else extended_change
-        )
+        effective_price = float(quote.get("price") or quote.get("regular_price") or 0.0)
+        effective_value = shares * effective_price
+        effective_value_cny = effective_value * fx if currency == "USD" else effective_value
+        effective_pct = float(quote.get("change_pct", quote.get("regular_change_pct", 0.0)))
+        change_cny = _daily_amount(effective_value_cny, effective_pct)
         card = {
                 "symbol": sym,
                 "label": ASSET_META[sym]["label"],
                 "price_line": _quote_price_line(sym, quote),
-                "regular_pct": regular_pct,
-                "extended_pct": quote.get("extended_change_pct"),
+                "regular_pct": effective_pct,
+                "extended_pct": None,
                 "change_usd": change_cny / fx if fx > 0 else 0.0,
                 "change_cny": change_cny,
-                "extended_change_usd": (
-                    extended_change if currency == "USD" else extended_change_cny / fx
-                )
-                if extended_change_cny is not None and fx > 0
-                else None,
-                "extended_change_cny": extended_change_cny,
+                "extended_change_usd": None,
+                "extended_change_cny": None,
             }
         daily_cards.append(card)
         card_by_symbol[sym] = card
@@ -433,40 +420,23 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         sum(
             value_cny_by_symbol.get(sym, 0.0)
             / satellite_value_cny
-            * float(quotes[sym].get("regular_change_pct", quotes[sym].get("change_pct", 0.0)))
+            * float(quotes[sym].get("change_pct", quotes[sym].get("regular_change_pct", 0.0)))
             for sym in SATELLITE_SYMBOLS
         )
         if satellite_value_cny > 0
         else 0.0
     )
-    satellite_extended_values = [card_by_symbol[sym].get("extended_pct") for sym in SATELLITE_SYMBOLS]
-    satellite_extended_pct = (
-        sum(
-            value_cny_by_symbol.get(sym, 0.0) / satellite_value_cny * float(card_by_symbol[sym].get("extended_pct"))
-            for sym in SATELLITE_SYMBOLS
-            if isinstance(card_by_symbol[sym].get("extended_pct"), (int, float))
-        )
-        if satellite_value_cny > 0 and any(isinstance(v, (int, float)) for v in satellite_extended_values)
-        else None
-    )
     satellite_change_cny = sum(float(card_by_symbol[sym].get("change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
-    satellite_extended_change_cny = (
-        sum(float(card_by_symbol[sym].get("extended_change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
-        if any(card_by_symbol[sym].get("extended_change_cny") is not None for sym in SATELLITE_SYMBOLS)
-        else None
-    )
     satellite_card = {
         "symbol": "SATELLITE",
         "label": "卫星仓位",
         "price_line": "",
         "regular_pct": satellite_regular_pct,
-        "extended_pct": satellite_extended_pct,
+        "extended_pct": None,
         "change_usd": satellite_change_cny / fx if fx > 0 else 0.0,
         "change_cny": satellite_change_cny,
-        "extended_change_usd": satellite_extended_change_cny / fx
-        if satellite_extended_change_cny is not None and fx > 0
-        else None,
-        "extended_change_cny": satellite_extended_change_cny,
+        "extended_change_usd": None,
+        "extended_change_cny": None,
         "wide": True,
     }
     daily_cards.insert(2, satellite_card)

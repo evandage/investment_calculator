@@ -244,6 +244,18 @@ h2 {
   text-align: center;
 }
 
+.summaryItem strong.up {
+  color: var(--green);
+}
+
+.summaryItem strong.down {
+  color: var(--red);
+}
+
+.summaryItem strong.flat {
+  color: #cbd5e1;
+}
+
 .assetSections {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -363,6 +375,10 @@ h2 {
 
 .editableHoldingsTable td {
   font-variant-numeric: tabular-nums;
+}
+
+.editableHoldingsTable {
+  min-width: 1280px;
 }
 
 .saveMessage {
@@ -685,10 +701,13 @@ h2 {
 
 .tableWrap {
   overflow: auto;
+  max-width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 8px;
   background: rgba(2, 6, 23, 0.28);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18);
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
@@ -744,6 +763,10 @@ tbody th {
 .actions {
   justify-content: flex-end;
   margin-top: 12px;
+}
+
+.inlineActions {
+  margin-top: 0;
 }
 
 .rulesToolbar,

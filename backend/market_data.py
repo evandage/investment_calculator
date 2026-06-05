@@ -28,6 +28,7 @@ from .config import (
 
 _QUOTES_CACHE: dict[str, Any] | None = None
 _QUOTES_CACHE_AT = 0.0
+_QUOTES_CACHE_TTL_SECONDS = 1.0
 _FUND_QUOTES_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _FUND_QUOTES_CACHE_LOADED = False
 _FUND_QUOTES_CACHE_FILE = ROOT_DIR / ".fund_quotes_cache.json"
@@ -195,37 +196,33 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
                 continue
             last_price = _coerce_float(_row_get(row, "last_price") or _row_get(row, "cur_price") or _row_get(row, "price"))
             prev_close = _coerce_float(_row_get(row, "prev_close_price") or _row_get(row, "prev_close"))
-            pre_price = _coerce_float(_row_get(row, "pre_market_price") or _row_get(row, "pre_price"))
             pre_change_pct = _coerce_float(_row_get(row, "pre_change_rate"))
-            after_price = _coerce_float(_row_get(row, "after_market_price") or _row_get(row, "after_price"))
             after_change_pct = _coerce_float(_row_get(row, "after_change_rate"))
-            overnight_price = _coerce_float(_row_get(row, "overnight_price"))
             overnight_change_pct = _coerce_float(_row_get(row, "overnight_change_rate"))
             state = states.get(code, "")
             state_upper = state.upper()
             session = "regular"
-            extended_price: float | None = None
             extended_change_pct: float | None = None
             if "PRE" in state_upper:
-                session, extended_price, extended_change_pct = "premarket", pre_price, pre_change_pct
+                session, extended_change_pct = "premarket", pre_change_pct
             elif "OVERNIGHT" in state_upper:
-                session, extended_price, extended_change_pct = "overnight", overnight_price, overnight_change_pct
+                session, extended_change_pct = "overnight", overnight_change_pct
             elif "AFTER" in state_upper or "POST" in state_upper:
-                session, extended_price, extended_change_pct = "postmarket", after_price, after_change_pct
+                session, extended_change_pct = "postmarket", after_change_pct
             if not last_price or last_price <= 0:
                 continue
             base = prev_close if prev_close and prev_close > 0 else last_price
-            price = extended_price if session != "regular" and extended_price and extended_price > 0 else last_price
+            price = last_price
             out[sym] = {
                 "symbol": sym,
                 "price": price,
                 "regular_price": last_price,
                 "change_pct": (price / base - 1.0) * 100.0 if base > 0 else 0.0,
                 "regular_change_pct": (last_price / base - 1.0) * 100.0 if base > 0 else 0.0,
-                "extended_price": extended_price,
+                "extended_price": None,
                 "extended_change_pct": extended_change_pct,
                 "session": session,
-                "source": "Futu OpenD" if session == "regular" else "Futu OpenD 扩展盘",
+                "source": "Futu OpenD 快照",
             }
     except Exception:
         return {}
@@ -453,7 +450,7 @@ def fetch_forward_pe(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, 
 def fetch_quotes() -> dict[str, Any]:
     global _QUOTES_CACHE, _QUOTES_CACHE_AT
     now = time.time()
-    if _QUOTES_CACHE is not None and now - _QUOTES_CACHE_AT < 5:
+    if _QUOTES_CACHE is not None and now - _QUOTES_CACHE_AT < _QUOTES_CACHE_TTL_SECONDS:
         return dict(_QUOTES_CACHE)
     provider = "futu" if is_futu_opend_available() else "tencent"
     quotes = fetch_futu_us_quotes() if provider == "futu" else {}

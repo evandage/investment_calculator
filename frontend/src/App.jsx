@@ -21,6 +21,13 @@ function fmtPct(value) {
   return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
 }
 
+function fmtCardPriceLine(value) {
+  const text = String(value || "");
+  const effective = text.match(/^([A-Z]{3})\s+[^（(]+[（(]\s*([^）)]+)\s*[）)]/);
+  if (effective) return `${effective[1]} ${effective[2]}`;
+  return text.replace(/\s*[（(][^）)]*[）)]/g, "");
+}
+
 function tone(value) {
   const num = Number(value || 0);
   if (num > 0) return "up";
@@ -54,7 +61,7 @@ function useDashboard() {
 
   useEffect(() => {
     load();
-    const id = window.setInterval(load, 15000);
+    const id = window.setInterval(load, 1000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -128,18 +135,15 @@ function DailyCards({ cards }) {
       {cards.map((card) => (
         <article className={`dailyCard ${card.wide ? "wideCard" : ""}`} key={card.symbol}>
           <div className="cardTitle">{card.label}</div>
-          {card.price_line ? <div className="priceLine">{card.price_line}</div> : null}
+          {card.price_line ? <div className="priceLine">{fmtCardPriceLine(card.price_line)}</div> : null}
           <div className={tone(card.regular_pct)}>
             {fmtPct(card.regular_pct)}
-            {card.extended_pct != null ? <span className={tone(card.extended_pct)}> ({fmtPct(card.extended_pct)})</span> : null}
           </div>
           <div className={tone(card.change_usd)}>
             {fmtMoney(card.change_usd, "USD")}
-            {card.extended_change_usd != null ? <span className={tone(card.extended_change_usd)}> ({card.extended_change_usd.toFixed(2)})</span> : null}
           </div>
           <div className={tone(card.change_cny)}>
             {fmtMoney(card.change_cny, "CNY")}
-            {card.extended_change_cny != null ? <span className={tone(card.extended_change_cny)}> ({card.extended_change_cny.toFixed(2)})</span> : null}
           </div>
         </article>
       ))}
@@ -399,10 +403,11 @@ function AssetMetricCards({ data, holdings, balances }) {
 function EditableHoldingsPage({ data, onSaved }) {
   const [holdings, setHoldings] = useState({});
   const [balances, setBalances] = useState({});
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
+  function resetDraft() {
     setHoldings(Object.fromEntries(data.holdings.map((row) => [row.symbol, { shares: String(row.shares ?? 0), avg_cost: String(row.avg_cost ?? 0) }])));
     setBalances({
       cash_usd: String(data.balances?.cash_usd ?? 0),
@@ -411,6 +416,10 @@ function EditableHoldingsPage({ data, onSaved }) {
       realized_cny: String(data.balances?.realized_cny ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
+  }
+
+  useEffect(() => {
+    resetDraft();
   }, [data]);
 
   function updateHolding(symbol, key, value) {
@@ -433,6 +442,7 @@ function EditableHoldingsPage({ data, onSaved }) {
       if (!balancesResp.ok) throw new Error(`balances HTTP ${balancesResp.status}`);
       await onSaved();
       setMessage("已保存");
+      setEditing(false);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -444,22 +454,31 @@ function EditableHoldingsPage({ data, onSaved }) {
     <section>
       <div className="sectionHeader">
         <h2>我的持仓</h2>
-        <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 保存持仓</button>
+        <div className="actions inlineActions">
+          {editing ? <button onClick={() => { resetDraft(); setEditing(false); }} disabled={saving}>取消编辑</button> : null}
+          {editing ? (
+            <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 保存持仓</button>
+          ) : (
+            <button className="primary" onClick={() => setEditing(true)}>编辑持仓</button>
+          )}
+        </div>
       </div>
       {message ? <div className={message === "已保存" ? "saveMessage up" : "saveMessage down"}>{message}</div> : null}
       <AssetMetricCards data={data} holdings={holdings} balances={balances} />
-      <div className="balanceEditGrid">
-        <label>USD现金<input value={balances.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
-        <label>CNY现金<input value={balances.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
-        <label>USD已变现<input value={balances.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
-        <label>CNY已变现<input value={balances.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
-        <label>SGOV股息<input value={balances.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
-      </div>
+      {editing ? (
+        <div className="balanceEditGrid">
+          <label>USD现金<input value={balances.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
+          <label>CNY现金<input value={balances.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
+          <label>USD已变现<input value={balances.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
+          <label>CNY已变现<input value={balances.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
+          <label>SGOV股息<input value={balances.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
+        </div>
+      ) : null}
       <div className="tableWrap">
         <table className="editableHoldingsTable">
           <thead>
             <tr>
-              <th>标的</th><th>当前价</th><th>当日涨跌</th><th>数量</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE</th><th>PE区间</th>
+              <th>标的</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>数量</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE</th><th>PE区间</th>
             </tr>
           </thead>
           <tbody>
@@ -468,8 +487,10 @@ function EditableHoldingsPage({ data, onSaved }) {
                 <th>{row.label}</th>
                 <td>{fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
-                <td><input className="tableInput" value={holdings[row.symbol]?.shares ?? ""} onChange={(event) => updateHolding(row.symbol, "shares", event.target.value)} inputMode="decimal" /></td>
-                <td><input className="tableInput" value={holdings[row.symbol]?.avg_cost ?? ""} onChange={(event) => updateHolding(row.symbol, "avg_cost", event.target.value)} inputMode="decimal" /></td>
+                <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
+                <td className={tone(row.rebound_pct)}>{row.rebound_pct == null ? "-" : fmtPct(row.rebound_pct)}</td>
+                <td>{editing ? <input className="tableInput" value={holdings[row.symbol]?.shares ?? ""} onChange={(event) => updateHolding(row.symbol, "shares", event.target.value)} inputMode="decimal" /> : Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                <td>{editing ? <input className="tableInput" value={holdings[row.symbol]?.avg_cost ?? ""} onChange={(event) => updateHolding(row.symbol, "avg_cost", event.target.value)} inputMode="decimal" /> : fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
                 <td className={peTone(row)}>{row.forward_pe ? row.forward_pe.toFixed(2) : "-"}</td>
@@ -548,7 +569,7 @@ function Rebalance({ data, onSaved }) {
         <div className="sectionHeader compactHeader">
           <h2>预算设置</h2>
           <span className="muted">
-            未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
+            未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · 月初口径已扣除本月确认买入 · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
             {data.rebalance.sgov_large_trigger_enabled ? " · 大档位已启用SGOV资金" : " · 普通情况SGOV保留20%"}
           </span>
         </div>
@@ -588,13 +609,15 @@ function Rebalance({ data, onSaved }) {
         <table>
           <thead>
             <tr>
-              <th>标的</th><th>计划应买</th><th>建议买入</th><th>实际已买</th><th>档位</th><th>估值系数</th><th>建议股数</th><th>说明</th>
+              <th>标的</th><th>月初口径</th><th>目标缺口</th><th>计划应买</th><th>建议买入</th><th>实际已买</th><th>档位</th><th>估值系数</th><th>建议股数</th><th>说明</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.symbol}>
                 <th>{row.symbol}</th>
+                <td>{fmtMoney(row.month_start_value_usd, "USD")}</td>
+                <td>{fmtMoney(row.gap_usd, "USD")}</td>
                 <td>{fmtMoney(row.planned_buy_usd, "USD")}</td>
                 <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, "USD")}</td>
                 <td className={row.actual_bought_usd > row.planned_buy_usd ? "down" : "up"}>{fmtMoney(row.actual_bought_usd, "USD")}</td>

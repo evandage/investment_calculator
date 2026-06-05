@@ -164,6 +164,6 @@ async def quotes_ws(websocket: WebSocket) -> None:
     try:
         while True:
             await websocket.send_json(fetch_quotes())
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
     except WebSocketDisconnect:
         return
