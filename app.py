@@ -297,6 +297,20 @@ def _rebalance_intensity_multiplier(symbol: str, phase: str, intensity: str) -> 
     return 0.0
 
 
+def _rebalance_signal_for_intensity(symbol: str, phase: str, intensity: str) -> tuple[float, str, str, str]:
+    intensity = _normalize_rebalance_intensity(intensity)
+    rule = _REBALANCE_RULES.get(phase, {}).get(symbol)
+    if rule is None or intensity == "none":
+        return 0.0, "暂无规则", "暂无策略规则", "normal"
+    normal_multiplier, normal_action, normal_signal, normal_intensity = rule["normal"]
+    if intensity == "normal":
+        return float(normal_multiplier), str(normal_action), str(normal_signal), str(normal_intensity)
+    for _, multiplier, action, signal, band_intensity in rule["bands"]:
+        if str(band_intensity) == intensity:
+            return float(multiplier), str(action), str(signal), str(band_intensity)
+    return float(normal_multiplier), str(normal_action), str(normal_signal), str(normal_intensity)
+
+
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _UI_THEMES = {
     "浅色：绿跌红涨": {
@@ -2759,7 +2773,7 @@ def _render_chart_board() -> None:
         _chart_user_avg_cost = None
 
     _chart_api = _load_chart_boards_api()
-    chart_provider = _chart_api["configure_market_provider"](_market_data_provider())
+    chart_provider = _chart_api["configure_market_provider"]("tencent")
     chart_theme_options = list(_chart_api["CHART_THEME_OPTIONS"])
     chart_theme = st.sidebar.selectbox(
         "K线配色主题",
@@ -3013,8 +3027,6 @@ satellite_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in _SATELLIT
 satellite_regular_value_cny = 0.0
 satellite_daily_change_cny = 0.0
 satellite_extended_change_cny = 0.0
-satellite_extended_price_weighted_sum = 0.0
-satellite_extended_price_weight_sum = 0.0
 for sym in _SATELLITE_SYMBOLS:
     d = float(regular_change_pct_by_symbol.get(sym, daily_change_pct_by_symbol.get(sym, 0.0)))
     d_ratio = d / 100.0
@@ -3030,11 +3042,6 @@ for sym in _SATELLITE_SYMBOLS:
     ext_pct = extended_change_pct_by_symbol.get(sym)
     if isinstance(ext_pct, (int, float)):
         satellite_extended_change_cny += current_value_native * (float(ext_pct) / 100.0) * fx
-        extended_px = float(prices_now.get(sym, 0.0))
-        if shares_now > 0 and current_px > 0 and extended_px > 0:
-            weight = shares_now * current_px
-            satellite_extended_price_weighted_sum += extended_px * weight
-            satellite_extended_price_weight_sum += weight
 satellite_daily_pct = (
     sum(
         (
@@ -3059,16 +3066,6 @@ satellite_extended_pct = (
 satellite_daily_color = _change_color_by_pct(satellite_daily_pct, theme=theme)
 satellite_daily_change_usd = (satellite_daily_change_cny / fx) if fx > 0 else 0.0
 satellite_extended_change_usd = (satellite_extended_change_cny / fx) if fx > 0 else None
-satellite_extended_price = (
-    satellite_extended_price_weighted_sum / satellite_extended_price_weight_sum
-    if satellite_extended_price_weight_sum > 0
-    else None
-)
-satellite_extended_price_line = (
-    f"<div class='daily-card-line'>夜盘加权价 {satellite_extended_price:,.2f}</div>"
-    if isinstance(satellite_extended_price, (int, float))
-    else ""
-)
 satellite_card_html = (
     f"<div class='daily-card daily-card-wide' style='--daily-color:{satellite_daily_color};'>"
     "<div class='daily-card-title'>卫星仓位</div>"
@@ -3076,7 +3073,6 @@ satellite_card_html = (
     f"<div class='daily-card-line'>{_daily_value_with_extension(f'{satellite_daily_pct:+.2f}%', f'{satellite_extended_pct:+.2f}%' if isinstance(satellite_extended_pct, (int, float)) else None, satellite_extended_pct)}</div>"
     f"<div class='daily-card-line'>{_daily_value_with_extension(f'USD {satellite_daily_change_usd:+,.2f}', f'{satellite_extended_change_usd:+,.2f}' if isinstance(satellite_extended_change_usd, (int, float)) and isinstance(satellite_extended_pct, (int, float)) else None, satellite_extended_pct)}</div>"
     f"<div class='daily-card-line'>{_daily_value_with_extension(f'CNY {satellite_daily_change_cny:+,.2f}', f'{satellite_extended_change_cny:+,.2f}' if isinstance(satellite_extended_pct, (int, float)) else None, satellite_extended_pct)}</div>"
-    f"{satellite_extended_price_line}"
     "</div>"
     "</div>"
 )
@@ -3115,6 +3111,12 @@ for sym in daily_card_symbols:
     ext_pct_text: str | None = None
     ext_usd_text: str | None = None
     ext_cny_text: str | None = None
+    effective_px = float(prices_now.get(sym, current_px))
+    price_currency = "USD" if meta["currency"] == "USD" else "CNY"
+    price_decimals = 2 if meta["currency"] == "USD" else 4
+    price_line = f"{price_currency} {current_px:,.{price_decimals}f}"
+    if session_label and effective_px > 0 and abs(effective_px - current_px) > 1e-9:
+        price_line = f"{price_line}（{effective_px:,.{price_decimals}f}）"
     if session_label and isinstance(extended_pct, (int, float)):
         ext_ratio = float(extended_pct) / 100.0
         ext_amount_native = current_value_native * ext_ratio
@@ -3135,6 +3137,7 @@ for sym in daily_card_symbols:
         usd_line = _daily_value_with_extension(f"USD {usd_main:+,.2f}", ext_usd_text, extended_pct)
         cny_line = _daily_value_with_extension(f"CNY {daily_amount_native:+,.2f}", ext_cny_text, extended_pct)
     daily_amount_text = (
+        f"<div class='daily-card-line'>{price_line}</div>"
         f"<div class='daily-card-line'>{pct_line}</div>"
         f"<div class='daily-card-line'>{usd_line}</div>"
         f"<div class='daily-card-line'>{cny_line}</div>"
@@ -3744,6 +3747,18 @@ with st.expander("再平衡模块", expanded=False):
             drawdown_pct = drawdown_pct_by_symbol.get(sym)
             strategy, multiplier, action, signal, intensity = _rebalance_strategy_signal(sym, drawdown_pct, rebalance_phase)
             previous_intensity = _normalize_rebalance_intensity(bought_intensity_by_symbol.get(sym, "none"))
+            current_intensity = _normalize_rebalance_intensity(intensity)
+            if (
+                sym != "SGOV"
+                and _REBALANCE_INTENSITY_ORDER.get(previous_intensity, 0)
+                > _REBALANCE_INTENSITY_ORDER.get(current_intensity, 0)
+            ):
+                multiplier, action, signal, intensity = _rebalance_signal_for_intensity(
+                    sym,
+                    rebalance_phase,
+                    previous_intensity,
+                )
+                action = f"维持本月已确认{_REBALANCE_INTENSITY_LABELS.get(previous_intensity, '已买')}档"
             previous_multiplier = _rebalance_intensity_multiplier(sym, rebalance_phase, previous_intensity)
             additional_multiplier = max(0.0, float(multiplier) - previous_multiplier)
             already_bought_this_month = sym != "SGOV" and previous_intensity != "none"
@@ -3766,7 +3781,7 @@ with st.expander("再平衡模块", expanded=False):
                 max(0.0, gap_usd),
                 base_budget_usd * additional_multiplier * valuation_split_factor,
             )
-            if already_bought_this_month and intensity == "normal":
+            if already_bought_this_month:
                 raw_buy_usd = max(0.0, valuation_adjusted_planned_tier_buy_usd - amount_already_bought_usd)
                 additional_multiplier = (raw_buy_usd / base_budget_usd) if base_budget_usd > 0 else 0.0
             if already_bought_this_month and raw_buy_usd <= 1e-9:
@@ -3962,6 +3977,21 @@ with st.expander("再平衡模块", expanded=False):
             if not execution_rows:
                 st.info("本轮没有需要确认的买入建议。")
             else:
+                _, clear_col = st.columns([0.72, 0.28])
+                clear_execution_records = clear_col.button(
+                    "清零待确认买入",
+                    key=f"clear_rebalance_execution_{current_month_key}",
+                    help="只把当前买入确认表单里的金额和股数清零，不影响本月已买记录和持仓。",
+                    use_container_width=True,
+                )
+                if clear_execution_records:
+                    for row in execution_rows:
+                        sym = str(row.get("_symbol", ""))
+                        if not sym:
+                            continue
+                        st.session_state[f"rebalance_exec_amount_{current_month_key}_{sym}"] = 0.0
+                        st.session_state[f"rebalance_exec_shares_{current_month_key}_{sym}"] = 0.0
+                    st.success("已清零当前待确认的买入金额和股数；本月已买记录未改变。")
                 with st.form("rebalance_execution_confirm_form"):
                     execution_inputs: dict[str, dict[str, float | str]] = {}
                     st.caption("建议为 0 的标的也会显示；如需强行买入，手动填写金额和股数即可。成交均价按 买入金额 / 买入股数 自动计算。")

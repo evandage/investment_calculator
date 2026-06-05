@@ -35,7 +35,7 @@ _TENCENT_HEADERS = {
     "User-Agent": _EASTMONEY_HEADERS["User-Agent"],
     "Referer": "https://finance.qq.com/",
 }
-_HTTP_TIMEOUT = (5, 45)
+_HTTP_TIMEOUT = (3, 12)
 
 _YF_TIMEOUT = float(os.environ.get("YFINANCE_CHART_TIMEOUT", "90"))
 _YF_RETRIES = max(1, int(os.environ.get("YFINANCE_CHART_RETRIES", "4")))
@@ -758,6 +758,8 @@ def _fetch_from_source(
             if interval != "1d":
                 d = _fix_intraday_last_bar_volume(d)
             return _normalize_plot_time_index(d, symbol), "eastmoney"
+    if provider != "yfinance":
+        return pd.DataFrame(), provider
     if yfinance_start_naive_local is not None:
         d = _fetch_yfinance_ohlcv_from(symbol, interval, yfinance_start_naive_local)
     else:
@@ -1761,7 +1763,7 @@ def fig_15m_vwap_rsi(
     if df.empty:
         fig = go.Figure()
         fig.add_annotation(
-            text="暂无 15 分钟数据（yfinance 对部分标的/时段有限制）",
+            text="暂无 15 分钟数据（腾讯/东财暂未返回该标的分时 K 线）",
             xref="paper",
             yref="paper",
             x=0.5,
@@ -2044,7 +2046,7 @@ def fig_5m_vwap_rsi7(
     if df.empty:
         fig = go.Figure()
         fig.add_annotation(
-            text="暂无 5 分钟数据（yfinance 对部分标的/时段有限制）",
+            text="暂无 5 分钟数据（腾讯/东财暂未返回该标的分时 K 线）",
             xref="paper",
             yref="paper",
             x=0.5,
