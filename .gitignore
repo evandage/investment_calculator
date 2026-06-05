@@ -1,5 +1,10 @@
 __pycache__/
 *.py[cod]
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.fund_quotes_cache.json
+.fx_rate_cache.json
 
 # *.json
 *.sql

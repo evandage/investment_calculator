@@ -1,0 +1,182 @@
+from __future__ import annotations
+
+import time
+from datetime import datetime, timedelta
+from typing import Any, Literal
+
+from .config import FUTU_US
+from .market_data import futu_opend_config, is_futu_opend_available
+
+Interval = Literal["1d", "15m", "5m"]
+
+_OHLCV_CACHE: dict[tuple[str, str], tuple[dict[str, Any], float]] = {}
+_OHLCV_TTL_SECONDS = {"1d": 300, "15m": 45, "5m": 30}
+
+
+def _period_for_interval(interval: Interval) -> str:
+    return "5y" if interval == "1d" else "2d"
+
+
+def _futu_ktype(interval: Interval) -> str:
+    try:
+        from futu import KLType
+
+        return {
+            "1d": KLType.K_DAY,
+            "15m": KLType.K_15M,
+            "5m": KLType.K_5M,
+        }[interval]
+    except Exception:
+        return {"1d": "K_DAY", "15m": "K_15M", "5m": "K_5M"}[interval]
+
+
+def _row_value(row: Any, key: str, default: Any = None) -> Any:
+    try:
+        return row.get(key, default)
+    except AttributeError:
+        try:
+            return row[key]
+        except Exception:
+            return default
+
+
+def _ts_to_lightweight(value: Any, interval: Interval) -> int | str | None:
+    try:
+        ts = datetime.fromisoformat(str(value).replace(" ", "T"))
+    except ValueError:
+        return None
+    if interval == "1d":
+        return ts.date().isoformat()
+    return int(ts.timestamp())
+
+
+def _clean_bar(row: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        return {
+            "time": row["time"],
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+            "volume": float(row.get("volume") or 0.0),
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
+    if symbol not in FUTU_US or not is_futu_opend_available():
+        return [], "futu_unavailable"
+    try:
+        from futu import AuType, KL_FIELD, OpenQuoteContext, RET_OK
+    except Exception as exc:
+        return [], f"futu_import_failed: {exc}"
+
+    host, port = futu_opend_config()
+    code = FUTU_US[symbol]
+    end = datetime.now()
+    start = end - (timedelta(days=365 * 3 + 30) if interval == "1d" else timedelta(days=2))
+    ctx = None
+    bars: list[dict[str, Any]] = []
+    try:
+        ctx = OpenQuoteContext(host=host, port=port)
+        ret, data, _ = ctx.request_history_kline(
+            code,
+            start=start.strftime("%Y-%m-%d"),
+            end=end.strftime("%Y-%m-%d"),
+            ktype=_futu_ktype(interval),
+            autype=AuType.QFQ,
+            fields=[KL_FIELD.ALL],
+            max_count=1000,
+            extended_time=True,
+        )
+        if ret != RET_OK or data is None:
+            return [], "futu_empty"
+        for i in range(len(data)):
+            item = data.iloc[i] if hasattr(data, "iloc") else data[i]
+            ts = _ts_to_lightweight(_row_value(item, "time_key"), interval)
+            if ts is None:
+                continue
+            bar = _clean_bar(
+                {
+                    "time": ts,
+                    "open": _row_value(item, "open"),
+                    "high": _row_value(item, "high"),
+                    "low": _row_value(item, "low"),
+                    "close": _row_value(item, "close"),
+                    "volume": _row_value(item, "volume"),
+                }
+            )
+            if bar:
+                bars.append(bar)
+    except Exception as exc:
+        return [], f"futu_failed: {exc}"
+    finally:
+        try:
+            if ctx is not None:
+                ctx.close()
+        except Exception:
+            pass
+    return bars, "futu"
+
+
+def _fetch_tencent_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
+    try:
+        import chart_boards
+    except Exception as exc:
+        return [], f"tencent_import_failed: {exc}"
+    try:
+        chart_boards.configure_market_provider("tencent")
+        df = chart_boards.fetch_ohlcv(symbol, interval, _period_for_interval(interval), cache_only=False)
+    except Exception as exc:
+        return [], f"tencent_failed: {exc}"
+    if df is None or df.empty:
+        return [], "tencent_empty"
+    bars: list[dict[str, Any]] = []
+    for idx, row in df.iterrows():
+        ts = _ts_to_lightweight(idx, interval)
+        if ts is None:
+            continue
+        bar = _clean_bar(
+            {
+                "time": ts,
+                "open": row.get("Open"),
+                "high": row.get("High"),
+                "low": row.get("Low"),
+                "close": row.get("Close"),
+                "volume": row.get("Volume"),
+            }
+        )
+        if bar:
+            bars.append(bar)
+    return bars, "tencent"
+
+
+def fetch_ohlcv(symbol: str, interval: str) -> dict[str, Any]:
+    sym = str(symbol or "VOO").upper()
+    if sym not in FUTU_US:
+        sym = "VOO"
+    iv = interval if interval in {"1d", "15m", "5m"} else "1d"
+    key = (sym, iv)
+    now = time.time()
+    cached = _OHLCV_CACHE.get(key)
+    ttl = _OHLCV_TTL_SECONDS[iv]  # type: ignore[index]
+    if cached and now - cached[1] < ttl:
+        return dict(cached[0])
+
+    bars, source = _fetch_futu_ohlcv(sym, iv)  # type: ignore[arg-type]
+    fallback_source = ""
+    if not bars:
+        fallback_source = source
+        bars, source = _fetch_tencent_ohlcv(sym, iv)  # type: ignore[arg-type]
+
+    payload = {
+        "symbol": sym,
+        "interval": iv,
+        "source": source,
+        "fallback_reason": fallback_source,
+        "bars": bars[-1200:] if iv == "1d" else bars[-800:],
+    }
+    if bars:
+        _OHLCV_CACHE[key] = (dict(payload), now)
+    return payload

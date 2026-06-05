@@ -1,0 +1,1045 @@
+﻿import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, RefreshCcw, Save } from "lucide-react";
+import { CandlestickSeries, createChart, HistogramSeries } from "lightweight-charts";
+
+const Plot = lazy(() => import("react-plotly.js"));
+
+const API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  `${window.location.protocol}//${window.location.hostname}:8010`;
+
+function fmtMoney(value, currency = "USD", digits = 2) {
+  const num = Number(value || 0);
+  return `${currency} ${num.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`;
+}
+
+function fmtPct(value) {
+  const num = Number(value || 0);
+  return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
+}
+
+function tone(value) {
+  const num = Number(value || 0);
+  if (num > 0) return "up";
+  if (num < 0) return "down";
+  return "flat";
+}
+
+function useDashboard() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function load() {
+    try {
+      setError("");
+      const response = await fetch(`${API_BASE}/api/dashboard?user_id=evan`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setData(await response.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    const id = window.setInterval(load, 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return { data, loading, error, load };
+}
+
+function Header({ data, onRefresh }) {
+  const market = data?.market;
+  return (
+    <header className="topbar">
+      <div>
+        <h1>Investment Dashboard</h1>
+        <div className="muted">
+          {market ? `琛屾儏婧?${market.provider} 路 ${market.fetched_at}` : "姝ｅ湪杩炴帴鍚庣"}
+        </div>
+      </div>
+      <button className="iconButton" onClick={onRefresh} title="鍒锋柊">
+        <RefreshCcw size={18} />
+      </button>
+    </header>
+  );
+}
+
+function PageNav({ page, setPage }) {
+  const items = [
+    ["dashboard", "Dashboard"],
+    ["holdings", "我的持仓"],
+    ["rebalance", "再平衡建议"],
+    ["kline", "K线"],
+  ];
+  return (
+    <nav className="pageNav">
+      {items.map(([key, label]) => (
+        <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function Summary({ data }) {
+  const summary = data.summary;
+  return (
+    <section className="summaryGrid">
+      <div className="summaryItem">
+        <span>鎬昏祫浜</span>
+        <strong>{fmtMoney(summary.total_assets_cny, "CNY")}</strong>
+      </div>
+      <div className="summaryItem">
+        <span>鎸佷粨鐩堜簭</span>
+        <strong className={tone(summary.total_pnl_cny)}>
+          {fmtMoney(summary.total_pnl_cny, "CNY")} 路 {fmtPct(summary.total_pnl_pct)}
+        </strong>
+      </div>
+      <div className="summaryItem">
+        <span>褰撴棩鍔犳潈</span>
+        <strong className={tone(summary.weighted_daily_pct)}>{fmtPct(summary.weighted_daily_pct)}</strong>
+      </div>
+      <div className="summaryItem">
+        <span>姹囩巼</span>
+        <strong>{Number(summary.fx || 0).toFixed(4)}</strong>
+      </div>
+    </section>
+  );
+}
+
+function DailyCards({ cards }) {
+  return (
+    <section className="cardGrid">
+      {cards.map((card) => (
+        <article className={`dailyCard ${card.wide ? "wideCard" : ""}`} key={card.symbol}>
+          <div className="cardTitle">{card.label}</div>
+          {card.price_line ? <div className="priceLine">{card.price_line}</div> : null}
+          <div className={tone(card.regular_pct)}>
+            {fmtPct(card.regular_pct)}
+            {card.extended_pct != null ? <span className={tone(card.extended_pct)}> ({fmtPct(card.extended_pct)})</span> : null}
+          </div>
+          <div className={tone(card.change_usd)}>
+            {fmtMoney(card.change_usd, "USD")}
+            {card.extended_change_usd != null ? <span className={tone(card.extended_change_usd)}> ({card.extended_change_usd.toFixed(2)})</span> : null}
+          </div>
+          <div className={tone(card.change_cny)}>
+            {fmtMoney(card.change_cny, "CNY")}
+            {card.extended_change_cny != null ? <span className={tone(card.extended_change_cny)}> ({card.extended_change_cny.toFixed(2)})</span> : null}
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function BarList({ title, rows, valueKey, formatValue }) {
+  const max = Math.max(1, ...rows.map((row) => Math.abs(Number(row[valueKey] || 0))));
+  return (
+    <section className="chartPanel">
+      <h2>{title}</h2>
+      <div className="barList">
+        {rows.map((row) => {
+          const value = Number(row[valueKey] || 0);
+          return (
+            <div className="barRow" key={row.symbol || row.label}>
+              <div className="barLabel">{row.label || row.symbol}</div>
+              <div className="barTrack">
+                <div
+                  className={`barFill ${tone(value)}`}
+                  style={{ width: `${Math.max(3, Math.abs(value) / max * 100)}%` }}
+                />
+              </div>
+              <div className={`barValue ${tone(value)}`}>{formatValue(value, row)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CompareBars({ title, rows, amountKey = "current_usd" }) {
+  const max = Math.max(1, ...rows.flatMap((row) => [Number(row.current_pct || 0), Number(row.target_pct || 0)]));
+  return (
+    <section className="chartPanel verticalChartPanel">
+      <h2>{title}</h2>
+      <div className="verticalBars">
+        {rows.map((row) => (
+          <div className="verticalGroup" key={row.key || row.symbol} title={`褰撳墠 ${Number(row.current_pct || 0).toFixed(2)}% 路 ${fmtMoney(row[amountKey], "USD")} / 鐩爣 ${Number(row.target_pct || 0).toFixed(2)}%`}>
+            <div className="verticalPlot">
+              <div className="verticalBar current" style={{ height: `${Number(row.current_pct || 0) / max * 100}%` }}>
+                <span>{Number(row.current_pct || 0).toFixed(1)}%</span>
+              </div>
+              <div className="verticalBar target" style={{ height: `${Number(row.target_pct || 0) / max * 100}%` }}>
+                <span>{Number(row.target_pct || 0).toFixed(1)}%</span>
+              </div>
+            </div>
+            <div className="verticalLabel">{row.label}</div>
+            <div className="verticalAmount">{fmtMoney(row[amountKey], "USD")}</div>
+          </div>
+        ))}
+      </div>
+      <div className="legendLine">
+        <span><i className="legendSwatch current" />褰撳墠</span>
+        <span><i className="legendSwatch target" />鐩爣</span>
+      </div>
+    </section>
+  );
+}
+
+function Visualizations({ data }) {
+  const viz = data.visualizations || {};
+  return (
+    <section className="visualGrid">
+      <BarList
+        title="核心仓位浮盈亏排名"
+        rows={viz.pnl_rank || []}
+        valueKey="pnl_cny"
+        formatValue={(value) => fmtMoney(value, "CNY")}
+      />
+      <BarList
+        title="卫星仓位浮盈亏排名"
+        rows={viz.satellite_pnl_rank || []}
+        valueKey="pnl"
+        formatValue={(value) => fmtMoney(value, "USD")}
+      />
+      <CompareBars
+        title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比"
+        rows={viz.allocation_compare || []}
+      />
+      <CompareBars
+        title="鍗槦浠撲綅鍐呴儴鍗犳瘮"
+        rows={viz.satellite_split || []}
+      />
+    </section>
+  );
+}
+
+function LightweightChart({ bars }) {
+  const hostRef = useRef(null);
+
+  useEffect(() => {
+    if (!hostRef.current || !bars?.length) return undefined;
+    const chart = createChart(hostRef.current, {
+      layout: {
+        background: { color: "#0b0f14" },
+        textColor: "#cbd5e1",
+        fontFamily: "Inter, Microsoft YaHei, system-ui, sans-serif",
+      },
+      grid: {
+        vertLines: { color: "rgba(148, 163, 184, 0.08)" },
+        horzLines: { color: "rgba(148, 163, 184, 0.08)" },
+      },
+      rightPriceScale: { borderColor: "rgba(148, 163, 184, 0.18)" },
+      timeScale: { borderColor: "rgba(148, 163, 184, 0.18)", timeVisible: true },
+      crosshair: { mode: 1 },
+      autoSize: true,
+    });
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: "#22c55e",
+      downColor: "#ef4444",
+      borderUpColor: "#22c55e",
+      borderDownColor: "#ef4444",
+      wickUpColor: "#22c55e",
+      wickDownColor: "#ef4444",
+    });
+    candleSeries.setData(bars.map((bar) => ({
+      time: bar.time,
+      open: Number(bar.open),
+      high: Number(bar.high),
+      low: Number(bar.low),
+      close: Number(bar.close),
+    })));
+    const volumeSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: "volume" },
+      priceScaleId: "",
+    });
+    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    volumeSeries.setData(bars.map((bar) => ({
+      time: bar.time,
+      value: Number(bar.volume || 0),
+      color: Number(bar.close) >= Number(bar.open) ? "rgba(34, 197, 94, 0.38)" : "rgba(239, 68, 68, 0.38)",
+    })));
+    chart.timeScale().fitContent();
+    return () => chart.remove();
+  }, [bars]);
+
+  return <div className="lwChart" ref={hostRef} />;
+}
+
+function KlinePage() {
+  const [mode, setMode] = useState("template");
+  const [symbol, setSymbol] = useState("VOO");
+  const [interval, setInterval] = useState("1d");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const qs = new URLSearchParams({ symbol, interval });
+      const endpoint = mode === "template" ? "chart-board" : "ohlcv";
+      const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setData(await response.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, [mode, symbol, interval]);
+
+  const figure = data?.figure;
+
+  return (
+    <section className="chartPanel technicalPanel">
+      <div className="sectionHeader">
+        <h2>K绾</h2>
+        <button onClick={load} disabled={loading}>鍒锋柊K绾</button>
+      </div>
+      <div className="toolbarRow">
+        <div className="segmented">
+          <button className={mode === "futu" ? "active" : ""} onClick={() => setMode("futu")}>Futu杞婚噺</button>
+          <button className={mode === "template" ? "active" : ""} onClick={() => setMode("template")}>鎴戠殑妯℃澘</button>
+        </div>
+        <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
+          {["VOO", "QQQ", "ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"].map((item) => (
+            <option key={item} value={item}>{item}</option>
+          ))}
+        </select>
+        {[
+          ["1d", "鏃ョ嚎"],
+          ["15m", "15m"],
+          ["5m", "5m"],
+        ].map(([value, label]) => (
+          <label className="checkItem" key={value}>
+            <input type="radio" name="interval" checked={interval === value} onChange={() => setInterval(value)} />
+            {label}
+          </label>
+        ))}
+      </div>
+      {data && mode === "futu" ? <div className="muted">K线源：{data.source}{data.fallback_reason ? ` · 兜底原因：${data.fallback_reason}` : ""} · {data.bars?.length || 0} 根</div> : null}
+      {data && mode === "template" ? <div className="muted">妯℃澘锛氭垜鐨勬棫鐗堟妧鏈湅鏉?路 {data.interval}</div> : null}
+      {loading ? <div className="muted">K绾垮姞杞戒腑</div> : null}
+      {error || data?.error ? <div className="errorInline">K绾垮姞杞藉け璐ワ細{error || data.error}</div> : null}
+      {mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} /> : null}
+      {mode === "template" && figure ? (
+        <div className="plotWrap">
+          <Suspense fallback={<div className="muted plotLoading">妯℃澘鍥惧姞杞戒腑</div>}>
+            <Plot
+              data={figure.data}
+              layout={{ ...figure.layout, autosize: true }}
+              config={{ responsive: true, displaylogo: false, scrollZoom: true }}
+              useResizeHandler
+              style={{ width: "100%", height: "100%" }}
+            />
+          </Suspense>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function HoldingsTable({ rows }) {
+  return (
+    <section>
+      <h2>鎴戠殑鎸佷粨</h2>
+      <div className="rulesToolbar">
+        <span className="muted">
+          寤轰粨鍒?{data.rebalance.build_target} 路 鏈潵鍏ラ噾 {data.rebalance.future_cash_months} 涓湀 路 璁″垝鍒嗘瘝 {fmtMoney(data.rebalance.planned_total_usd, "USD")} 路 缂╂斁 {Number(data.rebalance.suggestion_scale || 1).toFixed(2)}
+        </span>
+        <button onClick={() => setRulesOpen(true)}>绠楁硶瑙勫垯</button>
+      </div>
+      {rulesOpen ? (
+        <div className="modalBackdrop" role="presentation" onClick={() => setRulesOpen(false)}>
+          <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <h2>{data.rebalance.rules?.title || "绠楁硶瑙勫垯"}</h2>
+              <button onClick={() => setRulesOpen(false)}>鍏抽棴</button>
+            </div>
+            {(data.rebalance.rules?.sections || []).map((section) => (
+              <section className="ruleSection" key={section.heading}>
+                <h3>{section.heading}</h3>
+                <ul>
+                  {(section.items || []).map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>鏍囩殑</th>
+              <th>浠锋牸</th>
+              <th>褰撴棩</th>
+              <th>鏁伴噺</th>
+              <th>鎴愭湰</th>
+              <th>甯傚€</th>
+              <th>鐩堜簭</th>
+              <th>Forward PE</th>
+              <th>PE鍖洪棿</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.symbol}>
+                <th>{row.label}</th>
+                <td>{fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}</td>
+                <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
+                <td>{Number(row.shares).toFixed(4)}</td>
+                <td>{fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
+                <td>{fmtMoney(row.value, row.currency)}</td>
+                <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
+                <td className={row.pe_judgment === "鍋忚吹" ? "down" : row.pe_judgment === "鍋忎綆" ? "up" : ""}>
+                  {row.forward_pe ? row.forward_pe.toFixed(2) : "-"}
+                </td>
+                <td>{row.pe_band}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function HoldingsEditor({ data, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [holdings, setHoldings] = useState({});
+  const [balances, setBalances] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setHoldings(
+      Object.fromEntries(
+        data.holdings.map((row) => [
+          row.symbol,
+          {
+            shares: String(row.shares ?? 0),
+            avg_cost: String(row.avg_cost ?? 0),
+          },
+        ])
+      )
+    );
+    setBalances({
+      cash_usd: String(data.balances?.cash_usd ?? 0),
+      cash_cny: String(data.balances?.cash_cny ?? 0),
+      realized_usd: String(data.balances?.realized_usd ?? 0),
+      realized_cny: String(data.balances?.realized_cny ?? 0),
+      sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
+    });
+  }, [data]);
+
+  function updateHolding(symbol, key, value) {
+    setHoldings((prev) => ({ ...prev, [symbol]: { ...prev[symbol], [key]: value } }));
+  }
+
+  async function save() {
+    setSaving(true);
+    setMessage("");
+    try {
+      const cleanHoldings = Object.fromEntries(
+        Object.entries(holdings).map(([symbol, item]) => [
+          symbol,
+          {
+            shares: Number(item.shares || 0),
+            avg_cost: Number(item.avg_cost || 0),
+          },
+        ])
+      );
+      const cleanBalances = Object.fromEntries(
+        Object.entries(balances).map(([key, value]) => [key, Number(value || 0)])
+      );
+      const h = await fetch(`${API_BASE}/api/holdings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ holdings: cleanHoldings }),
+      });
+      if (!h.ok) throw new Error(`holdings HTTP ${h.status}`);
+      const b = await fetch(`${API_BASE}/api/balances`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balances: cleanBalances }),
+      });
+      if (!b.ok) throw new Error(`balances HTTP ${b.status}`);
+      await onSaved();
+      setMessage("已保存");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <div className="sectionHeader">
+        <h2>缂栬緫鎸佷粨</h2>
+        <button onClick={() => setOpen((value) => !value)}>{open ? "鏀惰捣缂栬緫" : "缂栬緫鎸佷粨"}</button>
+      </div>
+      {!open ? <div className="muted">鐐瑰嚮鈥滅紪杈戞寔浠撯€濆悗淇敼鏁伴噺銆佹垚鏈拰鐜伴噾銆</div> : null}
+      {open ? (
+      <>
+        {message ? <div className={message === "已保存" ? "saveMessage up" : "saveMessage down"}>{message}</div> : null}
+        <div className="editGrid">
+        <label>
+          USD鐜伴噾
+          <input value={balances.cash_usd ?? ""} onChange={(e) => setBalances((prev) => ({ ...prev, cash_usd: e.target.value }))} inputMode="decimal" />
+        </label>
+        <label>
+          CNY鐜伴噾
+          <input value={balances.cash_cny ?? ""} onChange={(e) => setBalances((prev) => ({ ...prev, cash_cny: e.target.value }))} inputMode="decimal" />
+        </label>
+        <label>
+          USD宸插彉鐜?          <input value={balances.realized_usd ?? ""} onChange={(e) => setBalances((prev) => ({ ...prev, realized_usd: e.target.value }))} inputMode="decimal" />
+        </label>
+        <label>
+          CNY宸插彉鐜?          <input value={balances.realized_cny ?? ""} onChange={(e) => setBalances((prev) => ({ ...prev, realized_cny: e.target.value }))} inputMode="decimal" />
+        </label>
+        <label>
+          SGOV鑲℃伅
+          <input value={balances.sgov_dividend_usd ?? ""} onChange={(e) => setBalances((prev) => ({ ...prev, sgov_dividend_usd: e.target.value }))} inputMode="decimal" />
+        </label>
+      </div>
+      <div className="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>鏍囩殑</th>
+              <th>鏁伴噺</th>
+              <th>鎸佷粨鎴愭湰</th>
+              <th>褰撳墠浠</th>
+              <th>甯傚€</th>
+              <th>鐩堜簭</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.holdings.map((row) => (
+              <tr key={row.symbol}>
+                <th>{row.label}</th>
+                <td>
+                  <input value={holdings[row.symbol]?.shares ?? ""} onChange={(e) => updateHolding(row.symbol, "shares", e.target.value)} inputMode="decimal" />
+                </td>
+                <td>
+                  <input value={holdings[row.symbol]?.avg_cost ?? ""} onChange={(e) => updateHolding(row.symbol, "avg_cost", e.target.value)} inputMode="decimal" />
+                </td>
+                <td>{fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}</td>
+                <td>{fmtMoney(row.value, row.currency)}</td>
+                <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+      </div>
+      <div className="actions">
+        <button className="primary" onClick={save} disabled={saving}>
+          <Save size={16} /> 淇濆瓨鎸佷粨
+        </button>
+      </div>
+      </>
+      ) : null}
+    </section>
+  );
+}
+
+function AssetMetricCards({ data, holdings, balances }) {
+  const fx = Number(data.summary?.fx || 7.1);
+  const rows = data.holdings.map((row) => {
+    const draft = holdings[row.symbol] || {};
+    const shares = Number(draft.shares ?? row.shares ?? 0);
+    const avgCost = Number(draft.avg_cost ?? row.avg_cost ?? 0);
+    const price = Number(row.price || 0);
+    const value = shares * price;
+    const cost = shares * avgCost;
+    const isUsd = row.currency === "USD";
+    return {
+      ...row,
+      shares,
+      avgCost,
+      value,
+      cost,
+      valueCny: isUsd ? value * fx : value,
+      costCny: isUsd ? cost * fx : cost,
+    };
+  });
+
+  const usdRows = rows.filter((row) => row.currency === "USD");
+  const usdCost = usdRows.reduce((sum, row) => sum + row.cost, 0);
+  const usdValue = usdRows.reduce((sum, row) => sum + row.value, 0);
+  const usdUnrealized = usdValue - usdCost;
+  const usdCash = Number(balances.cash_usd || 0);
+  const usdRealized = Number(balances.realized_usd || 0) + Number(balances.sgov_dividend_usd || 0);
+  const usdTotal = usdValue + usdCash;
+  const usdReturn = usdCost ? (usdUnrealized / usdCost) * 100 : 0;
+
+  const totalCostCny = rows.reduce((sum, row) => sum + row.costCny, 0);
+  const totalValueCny = rows.reduce((sum, row) => sum + row.valueCny, 0);
+  const totalUnrealizedCny = totalValueCny - totalCostCny;
+  const cashCny = Number(balances.cash_cny || 0) + usdCash * fx;
+  const totalRealizedCny = Number(balances.realized_cny || 0) + usdRealized * fx;
+  const totalAssetsCny = totalValueCny + cashCny;
+  const totalReturn = totalCostCny ? (totalUnrealizedCny / totalCostCny) * 100 : 0;
+
+  return (
+    <div className="assetSections">
+      <div className="assetMetricBlock">
+        <h2>缇庡厓璧勪骇</h2>
+        <div className="assetMetricGrid">
+          <div className="assetMetricCard">
+            <span>宸插彉鐜扮泩浜</span>
+            <strong>{fmtMoney(usdRealized, "USD")}</strong>
+          </div>
+          <div className="assetMetricCard">
+            <span>鏈疄鐜版诞鐩堜簭</span>
+            <strong className={tone(usdUnrealized)}>{fmtMoney(usdUnrealized, "USD")}</strong>
+            <em className={tone(usdReturn)}>{fmtPct(usdReturn)}</em>
+          </div>
+        </div>
+        <p className="assetCaption">
+          鎴愭湰 {fmtMoney(usdCost, "USD")} | 鎸佷粨甯傚€?{fmtMoney(usdValue, "USD")} | 宸插彉鐜扮泩浜?{fmtMoney(usdRealized, "USD")} | 鐜伴噾 {fmtMoney(usdCash, "USD")} | 鎬昏祫浜?{fmtMoney(usdTotal, "USD")} | 鏀剁泭鐜?= 鏈疄鐜版诞鐩堜簭 / 缇庡厓鎸佷粨鎴愭湰 = {fmtPct(usdReturn)}
+        </p>
+      </div>
+      <div className="assetMetricBlock">
+        <h2>鎬昏祫浜э紙鎶樺悎CNY锛</h2>
+        <div className="assetMetricGrid">
+          <div className="assetMetricCard">
+            <span>宸插彉鐜扮泩浜</span>
+            <strong>{fmtMoney(totalRealizedCny, "CNY")}</strong>
+          </div>
+          <div className="assetMetricCard">
+            <span>鏈疄鐜版诞鐩堜簭</span>
+            <strong className={tone(totalUnrealizedCny)}>{fmtMoney(totalUnrealizedCny, "CNY")}</strong>
+            <em className={tone(totalReturn)}>{fmtPct(totalReturn)}</em>
+          </div>
+        </div>
+        <p className="assetCaption">
+          鎴愭湰 {fmtMoney(totalCostCny, "CNY")} | 鎸佷粨甯傚€?{fmtMoney(totalValueCny, "CNY")} | 宸插彉鐜扮泩浜?{fmtMoney(totalRealizedCny, "CNY")} | 鐜伴噾 {fmtMoney(cashCny, "CNY")} | 鎬昏祫浜?{fmtMoney(totalAssetsCny, "CNY")} | 鏀剁泭鐜?= 鏈疄鐜版诞鐩堜簭 / 鎸佷粨鎴愭湰 = {fmtPct(totalReturn)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function EditableHoldingsPage({ data, onSaved }) {
+  const [holdings, setHoldings] = useState({});
+  const [balances, setBalances] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setHoldings(
+      Object.fromEntries(
+        data.holdings.map((row) => [
+          row.symbol,
+          {
+            shares: String(row.shares ?? 0),
+            avg_cost: String(row.avg_cost ?? 0),
+          },
+        ])
+      )
+    );
+    setBalances({
+      cash_usd: String(data.balances?.cash_usd ?? 0),
+      cash_cny: String(data.balances?.cash_cny ?? 0),
+      realized_usd: String(data.balances?.realized_usd ?? 0),
+      realized_cny: String(data.balances?.realized_cny ?? 0),
+      sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
+    });
+  }, [data]);
+
+  function updateHolding(symbol, key, value) {
+    setHoldings((prev) => ({ ...prev, [symbol]: { ...prev[symbol], [key]: value } }));
+  }
+
+  function updateBalance(key, value) {
+    setBalances((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function save() {
+    setSaving(true);
+    setMessage("");
+    try {
+      const cleanHoldings = Object.fromEntries(
+        Object.entries(holdings).map(([symbol, item]) => [
+          symbol,
+          {
+            shares: Number(item.shares || 0),
+            avg_cost: Number(item.avg_cost || 0),
+          },
+        ])
+      );
+      const cleanBalances = Object.fromEntries(
+        Object.entries(balances).map(([key, value]) => [key, Number(value || 0)])
+      );
+      const holdingsResp = await fetch(`${API_BASE}/api/holdings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ holdings: cleanHoldings }),
+      });
+      if (!holdingsResp.ok) throw new Error(`holdings HTTP ${holdingsResp.status}`);
+      const balancesResp = await fetch(`${API_BASE}/api/balances`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balances: cleanBalances }),
+      });
+      if (!balancesResp.ok) throw new Error(`balances HTTP ${balancesResp.status}`);
+      await onSaved();
+      setMessage("已保存");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <div className="sectionHeader">
+        <h2>鎴戠殑鎸佷粨</h2>
+        <button className="primary" onClick={save} disabled={saving}>
+          <Save size={16} /> 淇濆瓨鎸佷粨
+        </button>
+      </div>
+      {message ? <div className={message === "已保存" ? "saveMessage up" : "saveMessage down"}>{message}</div> : null}
+      <AssetMetricCards data={data} holdings={holdings} balances={balances} />
+      <div className="balanceEditGrid">
+        <label>
+          USD鐜伴噾
+          <input value={balances.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" />
+        </label>
+        <label>
+          CNY鐜伴噾
+          <input value={balances.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" />
+        </label>
+        <label>
+          USD宸插彉鐜?          <input value={balances.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" />
+        </label>
+        <label>
+          CNY宸插彉鐜?          <input value={balances.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" />
+        </label>
+        <label>
+          SGOV鑲℃伅
+          <input value={balances.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" />
+        </label>
+      </div>
+      <div className="tableWrap">
+        <table className="editableHoldingsTable">
+          <thead>
+            <tr>
+              <th>鏍囩殑</th>
+              <th>褰撳墠浠</th>
+              <th>褰撴棩娑ㄨ穼</th>
+              <th>鏁伴噺</th>
+              <th>鎴愭湰</th>
+              <th>甯傚€</th>
+              <th>鐩堜簭</th>
+              <th>Forward PE</th>
+              <th>PE鍖洪棿</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.holdings.map((row) => (
+              <tr key={row.symbol}>
+                <th>{row.label}</th>
+                <td>{fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}</td>
+                <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
+                <td>
+                  <input className="tableInput" value={holdings[row.symbol]?.shares ?? ""} onChange={(event) => updateHolding(row.symbol, "shares", event.target.value)} inputMode="decimal" />
+                </td>
+                <td>
+                  <input className="tableInput" value={holdings[row.symbol]?.avg_cost ?? ""} onChange={(event) => updateHolding(row.symbol, "avg_cost", event.target.value)} inputMode="decimal" />
+                </td>
+                <td>{fmtMoney(row.value, row.currency)}</td>
+                <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
+                <td className={row.pe_judgment === "鍋忚吹" ? "down" : row.pe_judgment === "鍋忎綆" ? "up" : ""}>
+                  {row.forward_pe ? row.forward_pe.toFixed(2) : "-"}
+                </td>
+                <td>{row.pe_band || "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function Rebalance({ data, onSaved }) {
+  const rows = data.rebalance.rows;
+  const [editing, setEditing] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [inputs, setInputs] = useState({});
+  const [budgetInputs, setBudgetInputs] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [savingBudget, setSavingBudget] = useState(false);
+
+  useEffect(() => {
+    const next = {};
+    rows.forEach((row) => {
+      next[row.symbol] = {
+        amount_usd: Number(row.suggested_buy_usd || 0).toFixed(2),
+        shares: "",
+        intensity: row.intensity || "normal",
+      };
+    });
+    setInputs(next);
+    setBudgetInputs(
+      Object.fromEntries(
+        Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [
+          month,
+          Number(amount || 0).toFixed(2),
+        ])
+      )
+    );
+  }, [data.rebalance.month_key, rows]);
+
+  const total = useMemo(
+    () => Object.values(inputs).reduce((sum, item) => sum + Number(item.amount_usd || 0), 0),
+    [inputs]
+  );
+  const futureBudgetTotal = useMemo(
+    () => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0),
+    [budgetInputs]
+  );
+
+  function update(symbol, key, value) {
+    setInputs((prev) => ({ ...prev, [symbol]: { ...prev[symbol], [key]: value } }));
+  }
+
+  function updateBudget(month, value) {
+    setBudgetInputs((prev) => ({ ...prev, [month]: value }));
+  }
+
+  function clearPending() {
+    setInputs((prev) =>
+      Object.fromEntries(
+        Object.keys(prev).map((symbol) => [symbol, { ...prev[symbol], amount_usd: "0.00", shares: "0" }])
+      )
+    );
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const executions = Object.entries(inputs)
+        .map(([symbol, item]) => ({
+          symbol,
+          amount_usd: Number(item.amount_usd || 0),
+          shares: Number(item.shares || 0),
+          intensity: item.intensity,
+        }))
+        .filter((item) => item.amount_usd > 0 && item.shares > 0);
+      const response = await fetch(`${API_BASE}/api/rebalance/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: data.user_id, executions }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveBudget() {
+    setSavingBudget(true);
+    try {
+      const planned_cash_by_month = Object.fromEntries(
+        Object.entries(budgetInputs).map(([month, value]) => [month, Number(value || 0)])
+      );
+      const response = await fetch(`${API_BASE}/api/rebalance/budget`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: data.user_id, planned_cash_by_month }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await onSaved();
+    } finally {
+      setSavingBudget(false);
+    }
+  }
+
+  return (
+    <section>
+      <div className="budgetPanel">
+        <div className="sectionHeader compactHeader">
+          <h2>预算设置</h2>
+          <span className="muted">
+            未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
+            {data.rebalance.sgov_large_trigger_enabled ? " · 大档位已启用SGOV资金" : " · 普通情况SGOV保留20%"}
+          </span>
+        </div>
+        <div className="budgetEditGrid">
+          {Object.entries(budgetInputs).map(([month, value]) => (
+            <label key={month}>
+              {month} 可投入(USD)
+              <input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" />
+            </label>
+          ))}
+        </div>
+        <div className="actions">
+          <button className="primary" onClick={saveBudget} disabled={savingBudget}>
+            <Save size={16} /> 保存预算并刷新建议
+          </button>
+        </div>
+      </div>
+      <div className="sectionHeader">
+        <h2>鍐嶅钩琛″缓璁</h2>
+        <span className="muted">
+          {data.rebalance.month_key} 路 鍙姩鐢?{fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} 路 寰呯‘璁?{fmtMoney(total, "USD")}
+        </span>
+      </div>
+      <div className="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>鏍囩殑</th>
+              <th>璁″垝搴斾拱</th>
+              <th>寤鸿涔板叆</th>
+              <th>瀹為檯宸蹭拱</th>
+              <th>妗ｄ綅</th>
+              <th>寤鸿鑲℃暟</th>
+              <th>璇存槑</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.symbol}>
+                <th>{row.symbol}</th>
+                <td>{fmtMoney(row.planned_buy_usd, "USD")}</td>
+                <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, "USD")}</td>
+                <td className={row.actual_bought_usd > row.planned_buy_usd ? "down" : "up"}>
+                  {fmtMoney(row.actual_bought_usd, "USD")}
+                </td>
+                <td>
+                  {row.signal || row.intensity}
+                </td>
+                <td>{Number(row.suggested_buy_shares || 0).toFixed(4)}</td>
+                <td className="note">{row.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="sectionHeader subHeader">
+        <h2>涔板叆纭</h2>
+        <button onClick={() => setEditing((value) => !value)}>{editing ? "鏀惰捣缂栬緫" : "缂栬緫涔板叆"}</button>
+      </div>
+      {!editing ? <div className="muted">鐐瑰嚮鈥滅紪杈戜拱鍏モ€濆悗濉啓瀹為檯鎴愪氦閲戦鍜岃偂鏁帮紱寤鸿琛ㄤ細涓€鐩翠繚鐣欐樉绀恒€</div> : null}
+      {editing ? (
+      <>
+      <div className="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>鏍囩殑</th>
+              <th>褰撳墠妗ｄ綅</th>
+              <th>纭閲戦</th>
+              <th>纭鑲℃暟</th>
+              <th>寤鸿涔板叆</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.symbol}>
+                <th>{row.symbol}</th>
+                <td>
+                  <select value={inputs[row.symbol]?.intensity || row.intensity} onChange={(e) => update(row.symbol, "intensity", e.target.value)}>
+                    <option value="normal">鏅€</option>
+                    <option value="small">灏忓姞</option>
+                    <option value="medium">涓姞</option>
+                    <option value="large">澶у姞</option>
+                  </select>
+                </td>
+                <td>
+                  <input value={inputs[row.symbol]?.amount_usd ?? ""} onChange={(e) => update(row.symbol, "amount_usd", e.target.value)} inputMode="decimal" />
+                </td>
+                <td>
+                  <input value={inputs[row.symbol]?.shares ?? ""} onChange={(e) => update(row.symbol, "shares", e.target.value)} inputMode="decimal" />
+                </td>
+                <td>{fmtMoney(row.suggested_buy_usd, "USD")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="actions">
+        <button onClick={clearPending}>娓呴浂寰呯‘璁や拱鍏</button>
+        <button className="primary" onClick={save} disabled={saving}>
+          <Save size={16} /> 纭骞跺悓姝ユ寔浠?        </button>
+      </div>
+      </>
+      ) : null}
+    </section>
+  );
+}
+
+function DashboardPage({ data }) {
+  return (
+    <>
+      <Summary data={data} />
+      <DailyCards cards={data.daily_cards} />
+      <Visualizations data={data} />
+    </>
+  );
+}
+
+function HoldingsPage({ data, onSaved }) {
+  return <EditableHoldingsPage data={data} onSaved={onSaved} />;
+}
+
+function RebalancePage({ data, onSaved }) {
+  return (
+    <>
+      <Summary data={data} />
+      <Rebalance data={data} onSaved={onSaved} />
+    </>
+  );
+}
+
+export default function App() {
+  const { data, loading, error, load } = useDashboard();
+  const [page, setPage] = useState("dashboard");
+
+  if (loading) {
+    return <main className="appShell"><div className="loading"><Activity /> 鍔犺浇涓</div></main>;
+  }
+  if (error || !data) {
+    return (
+      <main className="appShell">
+        <div className="error">后端连接失败：{error}</div>
+        <button onClick={load}>閲嶈瘯</button>
+      </main>
+    );
+  }
+  return (
+    <main className="appShell">
+      <Header data={data} onRefresh={load} />
+      <PageNav page={page} setPage={setPage} />
+      {page === "dashboard" ? <DashboardPage data={data} /> : null}
+      {page === "holdings" ? <HoldingsPage data={data} onSaved={load} /> : null}
+      {page === "rebalance" ? <RebalancePage data={data} onSaved={load} /> : null}
+      {page === "kline" ? <KlinePage /> : null}
+    </main>
+  );
+}
+
