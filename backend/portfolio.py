@@ -74,7 +74,7 @@ def rebalance_rules_payload(
                 "items": [
                     f"建仓期默认计算到 {BUILD_TARGET_YEAR}-{BUILD_TARGET_MONTH:02d}，当前共 {build_months} 个月。",
                     f"未来入金按下个月起计算，共 {future_cash_months} 个月，每月 USD {planned_new_cash_usd:,.2f}。",
-                    "目标分母 = 当前美元资产 + 未来每月计划入金；当前月已到账资金请写入现金或持仓，避免重复计算。",
+                    "目标分母 = 当前美元持仓 + USD 现金 + 未来每月计划入金；SGOV 已包含在当前美元资产内，超过 20% 的部分只进入可动用资金池，不重复加进目标分母。",
                 ],
             },
             {
@@ -82,7 +82,7 @@ def rebalance_rules_payload(
                 "items": [
                     "先用月初口径持仓计算缺口：月初口径 = 当前持仓金额 - 本月已买金额。",
                     "再按档位倍率计算本月计划应买，VOO 建仓期至少按 1 股规划。",
-                    "Forward PE 不改变计划应买金额，只给出估值分批系数；建仓期仍按计划买够。",
+                    "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股看 Forward PE，VOO/QQQ 看近 5 个交易日涨幅。",
                     "可动用资金不足时按比例缩放计划应买；建议买入 = max(0, 计划应买 - 本月已买)。",
                 ],
             },
@@ -175,13 +175,33 @@ def pe_judgment(symbol: str, forward_pe: float | None) -> str:
     return "偏贵"
 
 
+def valuation_split_for_row(symbol: str, item: dict[str, Any]) -> tuple[float, str]:
+    fpe = item.get("forward_pe")
+    band = PE_BANDS.get(symbol)
+    if symbol in SATELLITE_SYMBOLS and isinstance(fpe, (int, float)) and band and fpe > band[1]:
+        return 0.5, "Forward PE 高于合理区间，建议执行时分批，估值/追高系数 0.50。"
+
+    recent_5d = item.get("recent_5d_pct")
+    if symbol == "VOO" and isinstance(recent_5d, (int, float)):
+        if recent_5d >= 3.0:
+            return 0.5, f"VOO 近 5 个交易日涨幅 {recent_5d:.2f}%，短期偏热，建议分批，估值/追高系数 0.50。"
+        if recent_5d >= 2.0:
+            return 0.75, f"VOO 近 5 个交易日涨幅 {recent_5d:.2f}%，本轮稍微分批，估值/追高系数 0.75。"
+    if symbol == "QQQ" and isinstance(recent_5d, (int, float)):
+        if recent_5d >= 4.0:
+            return 0.5, f"QQQ 近 5 个交易日涨幅 {recent_5d:.2f}%，短期偏热，建议分批，估值/追高系数 0.50。"
+        if recent_5d >= 3.0:
+            return 0.75, f"QQQ 近 5 个交易日涨幅 {recent_5d:.2f}%，本轮稍微分批，估值/追高系数 0.75。"
+    return 1.0, ""
+
+
 def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[str, float | None]:
     now = time.time()
     cached = _DRAWDOWN_CACHE.get(symbol)
     if cached and now - cached[1] < _DRAWDOWN_CACHE_TTL_SECONDS:
         metrics = dict(cached[0])
     else:
-        metrics = {"drawdown_pct": None, "rebound_pct": None, "peak": None, "trough": None}
+        metrics = {"drawdown_pct": None, "rebound_pct": None, "recent_5d_pct": None, "peak": None, "trough": None, "prev_5d": None}
         try:
             import chart_boards
 
@@ -193,14 +213,17 @@ def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[s
                     peak = max(closes)
                     trough = min(closes)
                     last = closes[-1]
+                    prev_5d = closes[-6] if len(closes) >= 6 else None
                     metrics = {
                         "drawdown_pct": (last / peak - 1.0) * 100.0 if peak > 0 else None,
                         "rebound_pct": (last / trough - 1.0) * 100.0 if trough > 0 else None,
+                        "recent_5d_pct": (last / prev_5d - 1.0) * 100.0 if prev_5d and prev_5d > 0 else None,
                         "peak": peak,
                         "trough": trough,
+                        "prev_5d": prev_5d,
                     }
         except Exception:
-            metrics = {"drawdown_pct": None, "rebound_pct": None, "peak": None, "trough": None}
+            metrics = {"drawdown_pct": None, "rebound_pct": None, "recent_5d_pct": None, "peak": None, "trough": None, "prev_5d": None}
         _DRAWDOWN_CACHE[symbol] = (dict(metrics), now)
 
     price = float(current_price or 0.0)
@@ -210,6 +233,9 @@ def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[s
         metrics["drawdown_pct"] = (price / float(peak) - 1.0) * 100.0
     if price > 0 and isinstance(trough, (int, float)) and trough > 0:
         metrics["rebound_pct"] = (price / float(trough) - 1.0) * 100.0
+    prev_5d = metrics.get("prev_5d")
+    if price > 0 and isinstance(prev_5d, (int, float)) and prev_5d > 0:
+        metrics["recent_5d_pct"] = (price / float(prev_5d) - 1.0) * 100.0
     return metrics
 
 
@@ -220,15 +246,23 @@ def _daily_amount(value: float, pct: float) -> float:
     return value - value / (1.0 + ratio)
 
 
+def _fmt_usd_compact(value: float) -> str:
+    return f"{float(value):,.0f}" if abs(float(value)) >= 100 else f"{float(value):,.2f}"
+
+
 def _currency_value_to_cny(value: float, currency: str, fx: float) -> float:
     return value * fx if currency == "USD" else value
 
 
 def _quote_price_line(symbol: str, quote: dict[str, Any]) -> str:
     currency = ASSET_META[symbol]["currency"]
-    effective = float(quote.get("price") or quote.get("regular_price") or 0.0)
+    regular = float(quote.get("regular_price") or quote.get("price") or 0.0)
     decimals = 2 if currency == "USD" else 4
-    return f"{currency} {effective:,.{decimals}f}"
+    text = f"{currency} {regular:,.{decimals}f}"
+    effective = float(quote.get("price") or regular)
+    if quote.get("session") != "regular" and effective > 0 and abs(effective - regular) > 1e-9:
+        text += f"（{effective:,.{decimals}f}）"
+    return text
 
 
 def build_visualizations(
@@ -378,6 +412,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "extended_pct": quote.get("extended_change_pct"),
                 "drawdown_pct": sixty_day.get("drawdown_pct"),
                 "rebound_pct": sixty_day.get("rebound_pct"),
+                "recent_5d_pct": sixty_day.get("recent_5d_pct"),
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym) if sym in SATELLITE_SYMBOLS else "-",
                 "pe_judgment": pe_judgment(sym, fpe),
@@ -396,47 +431,69 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         holding = holdings[sym]
         shares = float(holding["shares"])
         currency = ASSET_META[sym]["currency"]
-        effective_price = float(quote.get("price") or quote.get("regular_price") or 0.0)
-        effective_value = shares * effective_price
-        effective_value_cny = effective_value * fx if currency == "USD" else effective_value
-        effective_pct = float(quote.get("change_pct", quote.get("regular_change_pct", 0.0)))
-        change_cny = _daily_amount(effective_value_cny, effective_pct)
+        regular_price = float(quote.get("regular_price") or quote.get("price") or 0.0)
+        regular_value = shares * regular_price
+        regular_value_cny = regular_value * fx if currency == "USD" else regular_value
+        regular_pct = float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
+        change_cny = _daily_amount(regular_value_cny, regular_pct)
+        extended_pct = quote.get("extended_change_pct") if quote.get("session") != "regular" else None
+        extended_change_cny = None
+        if isinstance(extended_pct, (int, float)):
+            extended_change = regular_value * (float(extended_pct) / 100.0)
+            extended_change_cny = extended_change * fx if currency == "USD" else extended_change
         card = {
                 "symbol": sym,
                 "label": ASSET_META[sym]["label"],
                 "price_line": _quote_price_line(sym, quote),
-                "regular_pct": effective_pct,
-                "extended_pct": None,
+                "regular_pct": regular_pct,
+                "extended_pct": extended_pct,
                 "change_usd": change_cny / fx if fx > 0 else 0.0,
                 "change_cny": change_cny,
-                "extended_change_usd": None,
-                "extended_change_cny": None,
+                "extended_change_usd": extended_change_cny / fx if extended_change_cny is not None and fx > 0 else None,
+                "extended_change_cny": extended_change_cny,
             }
         daily_cards.append(card)
         card_by_symbol[sym] = card
 
-    satellite_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in SATELLITE_SYMBOLS)
+    satellite_value_cny = sum(
+        float(holdings[sym]["shares"]) * float(quotes[sym].get("regular_price") or quotes[sym].get("price") or 0.0) * fx
+        for sym in SATELLITE_SYMBOLS
+    )
     satellite_regular_pct = (
         sum(
-            value_cny_by_symbol.get(sym, 0.0)
+            (
+                float(holdings[sym]["shares"])
+                * float(quotes[sym].get("regular_price") or quotes[sym].get("price") or 0.0)
+                * fx
+            )
             / satellite_value_cny
-            * float(quotes[sym].get("change_pct", quotes[sym].get("regular_change_pct", 0.0)))
+            * float(quotes[sym].get("regular_change_pct", quotes[sym].get("change_pct", 0.0)))
             for sym in SATELLITE_SYMBOLS
         )
         if satellite_value_cny > 0
         else 0.0
     )
     satellite_change_cny = sum(float(card_by_symbol[sym].get("change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
+    satellite_extended_change_cny = (
+        sum(float(card_by_symbol[sym].get("extended_change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
+        if any(card_by_symbol[sym].get("extended_change_cny") is not None for sym in SATELLITE_SYMBOLS)
+        else None
+    )
+    satellite_extended_pct = (
+        satellite_extended_change_cny / satellite_value_cny * 100.0
+        if satellite_extended_change_cny is not None and satellite_value_cny > 0
+        else None
+    )
     satellite_card = {
         "symbol": "SATELLITE",
         "label": "卫星仓位",
         "price_line": "",
         "regular_pct": satellite_regular_pct,
-        "extended_pct": None,
+        "extended_pct": satellite_extended_pct,
         "change_usd": satellite_change_cny / fx if fx > 0 else 0.0,
         "change_cny": satellite_change_cny,
-        "extended_change_usd": None,
-        "extended_change_cny": None,
+        "extended_change_usd": satellite_extended_change_cny / fx if satellite_extended_change_cny is not None and fx > 0 else None,
+        "extended_change_cny": satellite_extended_change_cny,
         "wide": True,
     }
     daily_cards.insert(2, satellite_card)
@@ -497,14 +554,14 @@ def build_rebalance_v2(
     bought_intensities = {sym: normalize_intensity(v) for sym, v in usage.get("bought_intensity_by_symbol", {}).items()}
 
     usd_weight_total = sum(TARGET_WEIGHTS[s] for s in USD_SYMBOLS)
-    usd_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS)
+    cash_usd = float(balances.get("cash_usd", 0.0))
+    usd_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS) + cash_usd * fx
     usd_total_usd = usd_total_cny / fx if fx > 0 else 0.0
-    planned_total_usd = usd_total_usd + future_cash_total_usd
     sgov_target_pct = TARGET_WEIGHTS["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
     sgov_current_usd = value_cny_by_symbol.get("SGOV", 0.0) / fx if fx > 0 else 0.0
+    planned_total_usd = usd_total_usd + future_cash_total_usd
     planned_sgov_target_usd = sgov_target_pct * planned_total_usd
     sgov_excess_usd = max(0.0, sgov_current_usd - planned_sgov_target_usd)
-    cash_usd = float(balances.get("cash_usd", 0.0))
     used_budget_usd = sum(float(v) for v in bought_amounts.values())
 
     rows: list[dict[str, Any]] = []
@@ -534,17 +591,25 @@ def build_rebalance_v2(
         planned = min(max(0.0, gap), base_budget * multiplier)
         if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
             planned = max(planned, float(market["quotes"][sym]["price"]))
+        planned_formula_parts = [
+            f"目标 {_fmt_usd_compact(target_usd)} - 月初 {_fmt_usd_compact(planning_current)} = 缺口 {_fmt_usd_compact(gap)}",
+            f"缺口 / {build_month_count}月 = {_fmt_usd_compact(base_budget)}",
+            f"x {float(multiplier):.2f}档 = {_fmt_usd_compact(base_budget * multiplier)}",
+            f"取不超过缺口 => {_fmt_usd_compact(min(max(0.0, gap), base_budget * multiplier))}",
+        ]
+        if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
+            planned_formula_parts.append(f"VOO 至少 1 股 => {_fmt_usd_compact(planned)}")
+        planned_formula = "；".join(planned_formula_parts)
 
         previous_multiplier = intensity_multiplier(sym, phase, previous)
         additional_multiplier = max(0.0, float(multiplier) - previous_multiplier)
         already_bought_this_month = previous != "none"
         fpe = item.get("forward_pe")
-        band = PE_BANDS.get(sym)
-        split = 0.5 if sym in SATELLITE_SYMBOLS and isinstance(fpe, (int, float)) and band and fpe > band[1] else 1.0
+        split, split_note = valuation_split_for_row(sym, item)
         raw_planned = planned
-        raw_suggested = min(max(0.0, gap), base_budget * additional_multiplier)
+        raw_suggested = min(max(0.0, gap), base_budget * additional_multiplier) * split
         if already_bought_this_month:
-            raw_suggested = max(0.0, raw_planned - already)
+            raw_suggested = max(0.0, raw_planned * split - already)
             additional_multiplier = raw_suggested / base_budget if base_budget > 0 else 0.0
         if already_bought_this_month and raw_suggested <= 1e-9:
             raw_suggested = 0.0
@@ -562,8 +627,8 @@ def build_rebalance_v2(
             note_parts.append("当前仓位已达到或高于目标，系统建议不买。")
         else:
             note_parts.append("当前可动用资金不足或档位额度已用完，先保留观察。")
-        if split < 1.0:
-            note_parts.append("Forward PE 高于合理区间，建议执行时分批，估值提示系数 0.50；计划金额仍按建仓节奏买够。")
+        if split_note:
+            note_parts.append(f"{split_note} 计划金额仍按建仓节奏买够。")
         if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
             note_parts.append("建仓期 VOO 至少按 1 股规划。")
         if already_bought_this_month:
@@ -587,12 +652,17 @@ def build_rebalance_v2(
                 "intensity": intensity,
                 "planned_buy_usd": raw_planned,
                 "raw_planned_buy_usd": raw_planned,
+                "planned_buy_formula": planned_formula,
+                "target_usd": target_usd,
+                "base_budget_usd": base_budget,
+                "signal_multiplier": float(multiplier),
                 "suggested_buy_usd": raw_suggested,
                 "raw_suggested_buy_usd": raw_suggested,
                 "actual_bought_usd": already,
                 "month_start_value_usd": planning_current,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
+                "recent_5d_pct": item.get("recent_5d_pct"),
                 "target_pct": target_pct * 100.0,
                 "current_pct": current_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "forward_pe": fpe,
@@ -618,6 +688,7 @@ def build_rebalance_v2(
             row["symbol"] == "VOO"
             and phase == REBALANCE_PHASE_BUILD
             and float(row["raw_suggested_buy_usd"]) > 0
+            and float(row.get("valuation_split_factor") or 1.0) >= 1.0
             and float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0) > 0
         ):
             row["suggested_buy_usd"] = max(row["suggested_buy_usd"], float(market["quotes"][row["symbol"]]["price"]))
@@ -629,6 +700,7 @@ def build_rebalance_v2(
         "planned_new_cash_usd": planned_new_cash_usd,
         "future_cash_by_month": future_cash_by_month,
         "future_cash_total_usd": future_cash_total_usd,
+        "base_planned_total_usd": planned_total_usd,
         "build_target": f"{BUILD_TARGET_YEAR}-{BUILD_TARGET_MONTH:02d}",
         "build_months": build_month_count,
         "future_cash_months": future_cash_months,

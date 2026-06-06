@@ -7,6 +7,7 @@ import socket
 import time
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -39,6 +40,7 @@ _FX_CACHE_FILE = ROOT_DIR / ".fx_rate_cache.json"
 _FX_CACHE_TTL_SECONDS = 60
 _FORWARD_PE_CACHE: dict[str, float] | None = None
 _FORWARD_PE_CACHE_AT = 0.0
+NY_TZ = ZoneInfo("America/New_York")
 
 
 def futu_opend_config() -> tuple[str, int]:
@@ -87,6 +89,25 @@ def _row_get(row: Any, key: str, default: Any = None) -> Any:
     except Exception:
         pass
     return val
+
+
+def _infer_us_session(state: str = "") -> str:
+    now = datetime.now(NY_TZ)
+    minutes = now.hour * 60 + now.minute
+    if 4 * 60 <= minutes < 9 * 60 + 30:
+        return "premarket"
+    if 9 * 60 + 30 <= minutes < 16 * 60:
+        return "regular"
+    if 16 * 60 <= minutes < 20 * 60:
+        return "postmarket"
+    return "overnight"
+
+
+def _price_matches_change_pct(price: float | None, base: float | None, pct: float | None) -> bool:
+    if not price or not base or base <= 0 or pct is None:
+        return False
+    implied = (price / base - 1.0) * 100.0
+    return abs(implied - pct) <= max(0.15, abs(pct) * 0.2)
 
 
 def _load_fund_quotes_cache() -> None:
@@ -196,30 +217,57 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
                 continue
             last_price = _coerce_float(_row_get(row, "last_price") or _row_get(row, "cur_price") or _row_get(row, "price"))
             prev_close = _coerce_float(_row_get(row, "prev_close_price") or _row_get(row, "prev_close"))
+            pre_price = _coerce_float(
+                _row_get(row, "pre_market_price")
+                or _row_get(row, "pre_price")
+                or _row_get(row, "preMarketPrice")
+            )
             pre_change_pct = _coerce_float(_row_get(row, "pre_change_rate"))
+            after_price = _coerce_float(
+                _row_get(row, "after_market_price")
+                or _row_get(row, "after_hours_price")
+                or _row_get(row, "after_price")
+                or _row_get(row, "postMarketPrice")
+            )
             after_change_pct = _coerce_float(_row_get(row, "after_change_rate"))
+            overnight_price = _coerce_float(_row_get(row, "overnight_price"))
             overnight_change_pct = _coerce_float(_row_get(row, "overnight_change_rate"))
             state = states.get(code, "")
-            state_upper = state.upper()
-            session = "regular"
+            session = _infer_us_session(state)
+            extended_price: float | None = None
             extended_change_pct: float | None = None
-            if "PRE" in state_upper:
-                session, extended_change_pct = "premarket", pre_change_pct
-            elif "OVERNIGHT" in state_upper:
-                session, extended_change_pct = "overnight", overnight_change_pct
-            elif "AFTER" in state_upper or "POST" in state_upper:
-                session, extended_change_pct = "postmarket", after_change_pct
+            if session == "premarket":
+                extended_price, extended_change_pct = pre_price, pre_change_pct
+            elif session == "overnight":
+                extended_price, extended_change_pct = overnight_price, overnight_change_pct
+                if (
+                    not _price_matches_change_pct(overnight_price, last_price, overnight_change_pct)
+                    and _price_matches_change_pct(after_price, last_price, after_change_pct)
+                ):
+                    extended_price, extended_change_pct = after_price, after_change_pct
+            elif session == "postmarket":
+                extended_price, extended_change_pct = after_price, after_change_pct
             if not last_price or last_price <= 0:
                 continue
             base = prev_close if prev_close and prev_close > 0 else last_price
-            price = last_price
+            price = extended_price if session != "regular" and extended_price and extended_price > 0 else last_price
+            if (
+                session != "regular"
+                and extended_change_pct is None
+                and extended_price
+                and extended_price > 0
+                and last_price > 0
+            ):
+                extended_change_pct = (extended_price / last_price - 1.0) * 100.0
+            if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9:
+                extended_price = None
             out[sym] = {
                 "symbol": sym,
                 "price": price,
                 "regular_price": last_price,
                 "change_pct": (price / base - 1.0) * 100.0 if base > 0 else 0.0,
                 "regular_change_pct": (last_price / base - 1.0) * 100.0 if base > 0 else 0.0,
-                "extended_price": None,
+                "extended_price": extended_price,
                 "extended_change_pct": extended_change_pct,
                 "session": session,
                 "source": "Futu OpenD 快照",

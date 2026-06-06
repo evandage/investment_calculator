@@ -760,6 +760,20 @@ tbody th {
   color: #cbd5e1;
 }
 
+.planCell {
+  min-width: 220px;
+  vertical-align: top;
+}
+
+.cellSubtext {
+  margin-top: 4px;
+  max-width: 240px;
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+
 .actions {
   justify-content: flex-end;
   margin-top: 12px;

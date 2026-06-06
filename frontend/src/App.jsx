@@ -22,10 +22,7 @@ function fmtPct(value) {
 }
 
 function fmtCardPriceLine(value) {
-  const text = String(value || "");
-  const effective = text.match(/^([A-Z]{3})\s+[^（(]+[（(]\s*([^）)]+)\s*[）)]/);
-  if (effective) return `${effective[1]} ${effective[2]}`;
-  return text.replace(/\s*[（(][^）)]*[）)]/g, "");
+  return String(value || "");
 }
 
 function tone(value) {
@@ -36,17 +33,28 @@ function tone(value) {
 }
 
 function peTone(row) {
+  if ((row.symbol === "VOO" || row.symbol === "QQQ") && Number(row.recent_5d_pct || 0) >= (row.symbol === "QQQ" ? 3 : 2)) return "down";
   if (row.pe_judgment === "偏贵") return "down";
   if (row.pe_judgment === "偏低") return "up";
   return "";
+}
+
+function valuationLabel(row) {
+  if (row.symbol === "VOO" || row.symbol === "QQQ") {
+    return row.recent_5d_pct == null ? "-" : `5日 ${fmtPct(row.recent_5d_pct)}`;
+  }
+  return row.forward_pe ? row.forward_pe.toFixed(2) : "-";
 }
 
 function useDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const loadingRef = useRef(false);
 
   async function load() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     try {
       setError("");
       const response = await fetch(`${API_BASE}/api/dashboard?user_id=evan`);
@@ -55,6 +63,7 @@ function useDashboard() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }
@@ -138,12 +147,15 @@ function DailyCards({ cards }) {
           {card.price_line ? <div className="priceLine">{fmtCardPriceLine(card.price_line)}</div> : null}
           <div className={tone(card.regular_pct)}>
             {fmtPct(card.regular_pct)}
+            {card.extended_pct != null ? <span className={tone(card.extended_pct)}>（{fmtPct(card.extended_pct)}）</span> : null}
           </div>
           <div className={tone(card.change_usd)}>
             {fmtMoney(card.change_usd, "USD")}
+            {card.extended_change_usd != null ? <span className={tone(card.extended_change_usd)}>（{Number(card.extended_change_usd).toFixed(2)}）</span> : null}
           </div>
           <div className={tone(card.change_cny)}>
             {fmtMoney(card.change_cny, "CNY")}
+            {card.extended_change_cny != null ? <span className={tone(card.extended_change_cny)}>（{Number(card.extended_change_cny).toFixed(2)}）</span> : null}
           </div>
         </article>
       ))}
@@ -478,7 +490,7 @@ function EditableHoldingsPage({ data, onSaved }) {
         <table className="editableHoldingsTable">
           <thead>
             <tr>
-              <th>标的</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>数量</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE</th><th>PE区间</th>
+              <th>标的</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>数量</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE/近5日</th><th>PE区间</th>
             </tr>
           </thead>
           <tbody>
@@ -493,7 +505,7 @@ function EditableHoldingsPage({ data, onSaved }) {
                 <td>{editing ? <input className="tableInput" value={holdings[row.symbol]?.avg_cost ?? ""} onChange={(event) => updateHolding(row.symbol, "avg_cost", event.target.value)} inputMode="decimal" /> : fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
-                <td className={peTone(row)}>{row.forward_pe ? row.forward_pe.toFixed(2) : "-"}</td>
+                <td className={peTone(row)}>{valuationLabel(row)}</td>
                 <td>{row.pe_band || "-"}</td>
               </tr>
             ))}
@@ -609,7 +621,7 @@ function Rebalance({ data, onSaved }) {
         <table>
           <thead>
             <tr>
-              <th>标的</th><th>月初口径</th><th>目标缺口</th><th>计划应买</th><th>建议买入</th><th>实际已买</th><th>档位</th><th>估值系数</th><th>建议股数</th><th>说明</th>
+              <th>标的</th><th>月初口径</th><th>目标缺口</th><th>计划应买</th><th>建议买入</th><th>实际已买</th><th>档位</th><th>估值/追高系数</th><th>建议股数</th><th>说明</th>
             </tr>
           </thead>
           <tbody>
@@ -618,7 +630,10 @@ function Rebalance({ data, onSaved }) {
                 <th>{row.symbol}</th>
                 <td>{fmtMoney(row.month_start_value_usd, "USD")}</td>
                 <td>{fmtMoney(row.gap_usd, "USD")}</td>
-                <td>{fmtMoney(row.planned_buy_usd, "USD")}</td>
+                <td className="planCell">
+                  <div>{fmtMoney(row.planned_buy_usd, "USD")}</div>
+                  {row.planned_buy_formula ? <div className="cellSubtext">{row.planned_buy_formula}</div> : null}
+                </td>
                 <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, "USD")}</td>
                 <td className={row.actual_bought_usd > row.planned_buy_usd ? "down" : "up"}>{fmtMoney(row.actual_bought_usd, "USD")}</td>
                 <td>{row.signal || row.intensity}</td>
