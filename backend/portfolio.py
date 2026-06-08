@@ -203,28 +203,28 @@ def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[s
     else:
         metrics = {"drawdown_pct": None, "rebound_pct": None, "recent_5d_pct": None, "peak": None, "trough": None, "prev_5d": None}
         try:
-            import chart_boards
+            from .ohlcv import fetch_ohlcv
 
-            chart_boards.configure_market_provider("tencent")
-            df = chart_boards.fetch_ohlcv(symbol, "1d", "3mo", cache_only=False)
-            if df is not None and not df.empty and "Close" in df.columns:
-                closes = [float(v) for v in df["Close"].dropna().tail(60).tolist() if float(v) > 0]
-                if closes:
-                    peak = max(closes)
-                    trough = min(closes)
-                    last = closes[-1]
-                    prev_5d = closes[-6] if len(closes) >= 6 else None
-                    metrics = {
-                        "drawdown_pct": (last / peak - 1.0) * 100.0 if peak > 0 else None,
-                        "rebound_pct": (last / trough - 1.0) * 100.0 if trough > 0 else None,
-                        "recent_5d_pct": (last / prev_5d - 1.0) * 100.0 if prev_5d and prev_5d > 0 else None,
-                        "peak": peak,
-                        "trough": trough,
-                        "prev_5d": prev_5d,
-                    }
+            payload = fetch_ohlcv(symbol, "1d")
+            bars = payload.get("bars") if isinstance(payload, dict) else []
+            closes = [float(bar.get("close")) for bar in (bars or [])[-60:] if isinstance(bar, dict) and float(bar.get("close") or 0) > 0]
+            if closes:
+                peak = max(closes)
+                trough = min(closes)
+                last = closes[-1]
+                prev_5d = closes[-6] if len(closes) >= 6 else None
+                metrics = {
+                    "drawdown_pct": (last / peak - 1.0) * 100.0 if peak > 0 else None,
+                    "rebound_pct": (last / trough - 1.0) * 100.0 if trough > 0 else None,
+                    "recent_5d_pct": (last / prev_5d - 1.0) * 100.0 if prev_5d and prev_5d > 0 else None,
+                    "peak": peak,
+                    "trough": trough,
+                    "prev_5d": prev_5d,
+                }
         except Exception:
             metrics = {"drawdown_pct": None, "rebound_pct": None, "recent_5d_pct": None, "peak": None, "trough": None, "prev_5d": None}
-        _DRAWDOWN_CACHE[symbol] = (dict(metrics), now)
+        if metrics.get("peak") and metrics.get("trough"):
+            _DRAWDOWN_CACHE[symbol] = (dict(metrics), now)
 
     price = float(current_price or 0.0)
     peak = metrics.get("peak")

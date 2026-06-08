@@ -4,6 +4,7 @@ import json
 import os
 import re
 import socket
+import threading
 import time
 from datetime import datetime
 from typing import Any
@@ -40,6 +41,13 @@ _FX_CACHE_FILE = ROOT_DIR / ".fx_rate_cache.json"
 _FX_CACHE_TTL_SECONDS = 60
 _FORWARD_PE_CACHE: dict[str, float] | None = None
 _FORWARD_PE_CACHE_AT = 0.0
+_FUTU_SUB_LOCK = threading.RLock()
+_FUTU_SUB_CTX: Any | None = None
+_FUTU_SUB_STARTED = False
+_FUTU_SUB_LAST_ERROR = ""
+_FUTU_SUB_QUOTES: dict[str, dict[str, Any]] = {}
+_FUTU_SUB_UPDATED_AT: dict[str, float] = {}
+_FUTU_SUB_TTL_SECONDS = 300.0
 NY_TZ = ZoneInfo("America/New_York")
 
 
@@ -93,7 +101,27 @@ def _row_get(row: Any, key: str, default: Any = None) -> Any:
 
 def _infer_us_session(state: str = "") -> str:
     now = datetime.now(NY_TZ)
+    normalized_state = str(state or "").lower()
+    if any(key in normalized_state for key in ("pre_market", "premarket", "pre-market")):
+        return "premarket"
+    if any(key in normalized_state for key in ("after_hours", "after_hour", "post_market", "postmarket", "after-hours")):
+        return "postmarket"
+    if "overnight" in normalized_state:
+        return "overnight"
+    if "open" in normalized_state and not any(key in normalized_state for key in ("pre", "after", "post", "overnight")):
+        return "regular"
+    if any(key in normalized_state for key in ("closed", "close", "rest")):
+        return "closed"
+
+    weekday = now.weekday()
     minutes = now.hour * 60 + now.minute
+    if weekday == 5:
+        return "closed"
+    if weekday == 6 and minutes < 20 * 60:
+        return "closed"
+    if weekday == 4 and minutes >= 20 * 60:
+        return "closed"
+
     if 4 * 60 <= minutes < 9 * 60 + 30:
         return "premarket"
     if 9 * 60 + 30 <= minutes < 16 * 60:
@@ -108,6 +136,193 @@ def _price_matches_change_pct(price: float | None, base: float | None, pct: floa
         return False
     implied = (price / base - 1.0) * 100.0
     return abs(implied - pct) <= max(0.15, abs(pct) * 0.2)
+
+
+def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | None:
+    last_price = _coerce_float(_row_get(row, "last_price") or _row_get(row, "cur_price") or _row_get(row, "price"))
+    prev_close = _coerce_float(_row_get(row, "prev_close_price") or _row_get(row, "prev_close"))
+    pre_price = _coerce_float(
+        _row_get(row, "pre_market_price")
+        or _row_get(row, "pre_price")
+        or _row_get(row, "preMarketPrice")
+    )
+    pre_change_pct = _coerce_float(_row_get(row, "pre_change_rate"))
+    after_price = _coerce_float(
+        _row_get(row, "after_market_price")
+        or _row_get(row, "after_hours_price")
+        or _row_get(row, "after_price")
+        or _row_get(row, "postMarketPrice")
+    )
+    after_change_pct = _coerce_float(_row_get(row, "after_change_rate"))
+    overnight_price = _coerce_float(_row_get(row, "overnight_price"))
+    overnight_change_pct = _coerce_float(_row_get(row, "overnight_change_rate"))
+    session = _infer_us_session(state)
+    extended_price: float | None = None
+    extended_change_pct: float | None = None
+    if session == "premarket":
+        extended_price, extended_change_pct = pre_price, pre_change_pct
+    elif session == "overnight":
+        extended_price, extended_change_pct = overnight_price, overnight_change_pct
+        if (
+            not _price_matches_change_pct(overnight_price, last_price, overnight_change_pct)
+            and _price_matches_change_pct(after_price, last_price, after_change_pct)
+        ):
+            extended_price, extended_change_pct = after_price, after_change_pct
+    elif session == "postmarket":
+        extended_price, extended_change_pct = after_price, after_change_pct
+    if not last_price or last_price <= 0:
+        return None
+    base = prev_close if prev_close and prev_close > 0 else last_price
+    price = extended_price if session != "regular" and session != "closed" and extended_price and extended_price > 0 else last_price
+    if (
+        session not in {"regular", "closed"}
+        and extended_change_pct is None
+        and extended_price
+        and extended_price > 0
+        and last_price > 0
+    ):
+        extended_change_pct = (extended_price / last_price - 1.0) * 100.0
+    if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9 or session == "closed":
+        extended_price = None
+        extended_change_pct = None
+    return {
+        "symbol": sym,
+        "price": price,
+        "regular_price": last_price,
+        "change_pct": (price / base - 1.0) * 100.0 if base > 0 else 0.0,
+        "regular_change_pct": (last_price / base - 1.0) * 100.0 if base > 0 else 0.0,
+        "extended_price": extended_price,
+        "extended_change_pct": extended_change_pct,
+        "session": "regular" if session == "closed" else session,
+        "source": "Futu OpenD 订阅",
+    }
+
+
+def _update_futu_subscription_quotes(data: Any) -> None:
+    code_to_sym = {code: sym for sym, code in FUTU_US.items()}
+    now = time.time()
+    next_quotes: dict[str, dict[str, Any]] = {}
+    for i in range(len(data)):
+        row = data.iloc[i] if hasattr(data, "iloc") else data[i]
+        code = str(_row_get(row, "code", ""))
+        sym = code_to_sym.get(code)
+        if not sym:
+            continue
+        quote = _build_futu_quote(sym, row)
+        if quote:
+            next_quotes[sym] = quote
+    if not next_quotes:
+        return
+    with _FUTU_SUB_LOCK:
+        for sym, quote in next_quotes.items():
+            _FUTU_SUB_QUOTES[sym] = quote
+            _FUTU_SUB_UPDATED_AT[sym] = now
+
+
+def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
+    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR
+    with _FUTU_SUB_LOCK:
+        if _FUTU_SUB_STARTED and _FUTU_SUB_CTX is not None and not force:
+            return futu_subscription_status()
+        if _FUTU_SUB_CTX is not None:
+            try:
+                _FUTU_SUB_CTX.close()
+            except Exception:
+                pass
+        _FUTU_SUB_CTX = None
+        _FUTU_SUB_STARTED = False
+        _FUTU_SUB_LAST_ERROR = ""
+
+    if not is_futu_opend_available():
+        with _FUTU_SUB_LOCK:
+            _FUTU_SUB_LAST_ERROR = "Futu OpenD unavailable"
+        return futu_subscription_status()
+
+    try:
+        from futu import OpenQuoteContext, RET_OK, StockQuoteHandlerBase, SubType
+    except Exception as exc:
+        with _FUTU_SUB_LOCK:
+            _FUTU_SUB_LAST_ERROR = f"futu_import_failed: {exc}"
+        return futu_subscription_status()
+
+    class QuoteHandler(StockQuoteHandlerBase):
+        def on_recv_rsp(self, rsp_pb: Any) -> tuple[int, Any]:
+            ret_code, data = super().on_recv_rsp(rsp_pb)
+            if ret_code == RET_OK:
+                _update_futu_subscription_quotes(data)
+            return ret_code, data
+
+    host, port = futu_opend_config()
+    ctx = None
+    try:
+        ctx = OpenQuoteContext(host=host, port=port)
+        ctx.set_handler(QuoteHandler())
+        ret, msg = ctx.subscribe(
+            [FUTU_US[sym] for sym in USD_SYMBOLS],
+            [SubType.QUOTE],
+            is_first_push=True,
+            subscribe_push=True,
+        )
+        if ret != RET_OK:
+            try:
+                ctx.close()
+            except Exception:
+                pass
+            with _FUTU_SUB_LOCK:
+                _FUTU_SUB_LAST_ERROR = str(msg)
+            return futu_subscription_status()
+        with _FUTU_SUB_LOCK:
+            _FUTU_SUB_CTX = ctx
+            _FUTU_SUB_STARTED = True
+            _FUTU_SUB_LAST_ERROR = ""
+    except Exception as exc:
+        try:
+            if ctx is not None:
+                ctx.close()
+        except Exception:
+            pass
+        with _FUTU_SUB_LOCK:
+            _FUTU_SUB_LAST_ERROR = str(exc)
+    return futu_subscription_status()
+
+
+def stop_futu_quote_subscription() -> None:
+    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED
+    with _FUTU_SUB_LOCK:
+        ctx = _FUTU_SUB_CTX
+        _FUTU_SUB_CTX = None
+        _FUTU_SUB_STARTED = False
+    try:
+        if ctx is not None:
+            ctx.close()
+    except Exception:
+        pass
+
+
+def get_futu_subscription_quotes(max_age: float = _FUTU_SUB_TTL_SECONDS) -> dict[str, dict[str, Any]]:
+    now = time.time()
+    with _FUTU_SUB_LOCK:
+        return {
+            sym: dict(quote)
+            for sym, quote in _FUTU_SUB_QUOTES.items()
+            if now - _FUTU_SUB_UPDATED_AT.get(sym, 0.0) <= max_age
+        }
+
+
+def futu_subscription_status() -> dict[str, Any]:
+    now = time.time()
+    with _FUTU_SUB_LOCK:
+        ages = {
+            sym: round(now - updated_at, 2)
+            for sym, updated_at in _FUTU_SUB_UPDATED_AT.items()
+        }
+        return {
+            "started": _FUTU_SUB_STARTED,
+            "symbols": sorted(_FUTU_SUB_QUOTES.keys()),
+            "fresh_symbols": sorted(get_futu_subscription_quotes().keys()),
+            "ages_seconds": ages,
+            "last_error": _FUTU_SUB_LAST_ERROR,
+        }
 
 
 def _load_fund_quotes_cache() -> None:
@@ -500,11 +715,21 @@ def fetch_quotes() -> dict[str, Any]:
     now = time.time()
     if _QUOTES_CACHE is not None and now - _QUOTES_CACHE_AT < _QUOTES_CACHE_TTL_SECONDS:
         return dict(_QUOTES_CACHE)
-    provider = "futu" if is_futu_opend_available() else "tencent"
-    quotes = fetch_futu_us_quotes() if provider == "futu" else {}
+    futu_available = is_futu_opend_available()
+    if futu_available:
+        start_futu_quote_subscription()
+    subscription_quotes = get_futu_subscription_quotes() if futu_available else {}
+    provider = "futu-subscribe" if subscription_quotes else ("futu" if futu_available else "tencent")
+    quotes = dict(subscription_quotes)
+    if futu_available and len(quotes) < len(USD_SYMBOLS):
+        snapshot_quotes = fetch_futu_us_quotes()
+        for sym, quote in snapshot_quotes.items():
+            quotes.setdefault(sym, quote)
     if not quotes:
         provider = "tencent"
         quotes = fetch_tencent_us_quotes()
+    elif subscription_quotes and len(subscription_quotes) < len(USD_SYMBOLS):
+        provider = "futu-subscribe+snapshot"
     for sym in USD_SYMBOLS:
         if sym not in quotes:
             fallback = fetch_sina_us_quote(sym)
@@ -531,11 +756,12 @@ def fetch_quotes() -> dict[str, Any]:
             }
     payload = {
         "provider": provider,
-        "futu_available": is_futu_opend_available(),
+        "futu_available": futu_available,
+        "futu_subscription": futu_subscription_status(),
         "fetched_at": datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds"),
         "quotes": quotes,
         "fx": fetch_fx_usdcny(),
-        "forward_pe": fetch_forward_pe() if provider == "futu" else {},
+        "forward_pe": fetch_forward_pe() if futu_available else {},
         "pe_bands": PE_BANDS,
     }
     _QUOTES_CACHE = payload

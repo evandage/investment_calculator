@@ -526,13 +526,14 @@ function Rebalance({ data, onSaved }) {
   const [savingBudget, setSavingBudget] = useState(false);
 
   useEffect(() => {
+    setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+    if (editing) return;
     const next = {};
     rows.forEach((row) => {
       next[row.symbol] = { amount_usd: Number(row.suggested_buy_usd || 0).toFixed(2), shares: "", intensity: row.intensity || "normal" };
     });
     setInputs(next);
-    setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
-  }, [data.rebalance.month_key, rows]);
+  }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month]);
 
   const total = useMemo(() => Object.values(inputs).reduce((sum, item) => sum + Number(item.amount_usd || 0), 0), [inputs]);
   const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
@@ -557,6 +558,7 @@ function Rebalance({ data, onSaved }) {
         .filter((item) => item.amount_usd > 0 && item.shares > 0);
       const response = await fetch(`${API_BASE}/api/rebalance/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, executions }) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setEditing(false);
       await onSaved();
     } finally {
       setSaving(false);

@@ -9,7 +9,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .market_data import fetch_quotes, futu_opend_config, is_futu_opend_available
+from .market_data import (
+    fetch_quotes,
+    futu_opend_config,
+    futu_subscription_status,
+    is_futu_opend_available,
+    start_futu_quote_subscription,
+    stop_futu_quote_subscription,
+)
 from .ohlcv import fetch_ohlcv
 from .portfolio import build_dashboard, confirm_buys, save_rebalance_budget
 from .storage import load_balances, load_holdings, save_balances, save_holdings
@@ -73,12 +80,23 @@ def root() -> dict[str, str]:
     }
 
 
+@app.on_event("startup")
+def startup() -> None:
+    start_futu_quote_subscription()
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    stop_futu_quote_subscription()
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     host, port = futu_opend_config()
     return {
         "ok": True,
         "futu": {"host": host, "port": port, "available": is_futu_opend_available()},
+        "futu_subscription": futu_subscription_status(),
     }
 
 
