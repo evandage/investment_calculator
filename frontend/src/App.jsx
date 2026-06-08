@@ -77,6 +77,32 @@ function useDashboard() {
   return { data, loading, error, load };
 }
 
+function useTableGestureScroll() {
+  useEffect(() => {
+    function onWheel(event) {
+      const wrap = event.target?.closest?.(".tableWrap");
+      if (!wrap) return;
+      const maxScrollLeft = wrap.scrollWidth - wrap.clientWidth;
+      if (maxScrollLeft <= 1) return;
+      const targetTag = String(event.target?.tagName || "").toLowerCase();
+      if (["input", "select", "textarea", "button"].includes(targetTag)) return;
+
+      const horizontalDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : 0;
+      const shiftedDelta = event.shiftKey && Math.abs(event.deltaY) > 0 ? event.deltaY : 0;
+      const delta = horizontalDelta || shiftedDelta;
+      if (!delta) return;
+
+      const next = Math.max(0, Math.min(maxScrollLeft, wrap.scrollLeft + delta));
+      if (Math.abs(next - wrap.scrollLeft) < 0.5) return;
+      event.preventDefault();
+      wrap.scrollLeft = next;
+    }
+
+    document.addEventListener("wheel", onWheel, { passive: false });
+    return () => document.removeEventListener("wheel", onWheel);
+  }, []);
+}
+
 function Header({ data, onRefresh }) {
   const market = data?.market;
   return (
@@ -713,6 +739,7 @@ function RebalancePage({ data, onSaved }) {
 export default function App() {
   const { data, loading, error, load } = useDashboard();
   const [page, setPage] = useState("dashboard");
+  useTableGestureScroll();
 
   if (loading) {
     return <main className="appShell"><div className="loading"><Activity /> 加载中</div></main>;
