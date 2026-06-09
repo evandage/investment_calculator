@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from calendar import monthrange
 from datetime import datetime
 from typing import Any
 
@@ -25,6 +26,7 @@ BUILD_TARGET_YEAR = 2026
 BUILD_TARGET_MONTH = 10
 _DRAWDOWN_CACHE: dict[str, tuple[dict[str, float | None], float]] = {}
 _DRAWDOWN_CACHE_TTL_SECONDS = 21600
+QQQ_MONTH_END_WINDOW_DAYS = 5
 
 
 def default_build_months(now: datetime | None = None) -> int:
@@ -109,15 +111,70 @@ def normalize_intensity(value: Any) -> str:
         "none": "none",
         "normal": "normal",
         "regular": "normal",
+        "probe": "probe",
+        "dip": "probe",
+        "month_end": "month_end",
+        "month-end": "month_end",
+        "monthend": "month_end",
         "small": "small",
-        "probe": "small",
         "medium": "medium",
         "large": "large",
     }.get(v, "none")
 
 
+def intensity_rank(value: Any) -> int:
+    return {
+        "none": 0,
+        "normal": 1,
+        "probe": 2,
+        "month_end": 3,
+        "small": 4,
+        "medium": 5,
+        "large": 6,
+    }.get(normalize_intensity(value), 0)
+
+
+def intensity_label(value: Any) -> str:
+    intensity = normalize_intensity(value)
+    return {
+        "probe": "QQQ -2%分批",
+        "month_end": "QQQ月底补齐",
+    }.get(intensity, INTENSITY_LABELS.get(intensity, str(intensity)))
+
+
+def is_month_end_window(now: datetime) -> bool:
+    last_day = monthrange(now.year, now.month)[1]
+    return now.day >= max(1, last_day - QQQ_MONTH_END_WINDOW_DAYS + 1)
+
+
+def qqq_build_signal(drawdown_pct: float | None, now: datetime | None = None) -> tuple[float, str, str, str]:
+    if isinstance(drawdown_pct, (int, float)):
+        drawdown = float(drawdown_pct)
+        if drawdown <= -13.0:
+            return 4.0, "QQQ大加", "4x", "large"
+        if drawdown <= -10.0:
+            return 2.5, "QQQ中加", "2.5x", "medium"
+        if drawdown <= -5.0:
+            return 1.5, "QQQ小加", "1.5x", "small"
+        if drawdown <= -2.0:
+            return 0.8, "QQQ -2%分批", "0.8x", "probe"
+    if now is not None and is_month_end_window(now):
+        return 1.0, "QQQ月底补齐", "1.0x", "month_end"
+    return 0.6, "QQQ月初分批", "0.6x", "normal"
+
+
 def intensity_multiplier(symbol: str, phase: str, intensity: str) -> float:
     intensity = normalize_intensity(intensity)
+    if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
+        return {
+            "none": 0.0,
+            "normal": 0.6,
+            "probe": 0.8,
+            "month_end": 1.0,
+            "small": 1.5,
+            "medium": 2.5,
+            "large": 4.0,
+        }.get(intensity, 0.0)
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     if not rule or intensity == "none":
         return 0.0
@@ -130,6 +187,8 @@ def intensity_multiplier(symbol: str, phase: str, intensity: str) -> float:
 
 
 def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> tuple[float, str, str, str]:
+    if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
+        return qqq_build_signal(drawdown_pct)
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     if not rule:
         return 0.0, "暂无规则", "暂无规则", "normal"
@@ -145,6 +204,17 @@ def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> 
 def signal_for_intensity(symbol: str, phase: str, intensity: str) -> tuple[float, str, str, str]:
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     intensity = normalize_intensity(intensity)
+    if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
+        multiplier = intensity_multiplier(symbol, phase, intensity)
+        action, signal = {
+            "normal": ("QQQ月初分批", "0.6x"),
+            "probe": ("QQQ -2%分批", "0.8x"),
+            "month_end": ("QQQ月底补齐", "1.0x"),
+            "small": ("QQQ小加", "1.5x"),
+            "medium": ("QQQ中加", "2.5x"),
+            "large": ("QQQ大加", "4x"),
+        }.get(intensity, ("暂无规则", "暂无规则"))
+        return multiplier, action, signal, intensity
     if not rule or intensity == "none":
         return 0.0, "暂无规则", "暂无规则", "normal"
     if intensity == "normal":
@@ -579,8 +649,12 @@ def build_rebalance_v2(
         gap = target_usd - planning_current
         drawdown_pct = item.get("drawdown_pct")
         multiplier, action, signal, intensity = signal_for_drawdown(sym, drawdown_pct, phase)
+        if sym == "QQQ" and phase == REBALANCE_PHASE_BUILD and intensity_rank(intensity) < intensity_rank("small"):
+            month_end_multiplier, month_end_action, month_end_signal, month_end_intensity = qqq_build_signal(drawdown_pct, now)
+            if month_end_multiplier > multiplier:
+                multiplier, action, signal, intensity = month_end_multiplier, month_end_action, month_end_signal, month_end_intensity
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
-        if INTENSITY_ORDER.get(previous, 0) > INTENSITY_ORDER.get(intensity, 0):
+        if intensity_rank(previous) > intensity_rank(intensity):
             multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
             action = f"保持本月已确认{INTENSITY_LABELS.get(previous, '已买')}档"
 
@@ -589,8 +663,6 @@ def build_rebalance_v2(
 
         base_budget = max(0.0, gap) / max(1, build_month_count)
         planned = min(max(0.0, gap), base_budget * multiplier)
-        if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
-            planned = max(planned, float(market["quotes"][sym]["price"]))
         planned_formula_parts = [
             f"目标 {_fmt_usd_compact(target_usd)} - 月初 {_fmt_usd_compact(planning_current)} = 缺口 {_fmt_usd_compact(gap)}",
             f"缺口 / {build_month_count}月 = {_fmt_usd_compact(base_budget)}",
@@ -684,14 +756,6 @@ def build_rebalance_v2(
     for row in rows:
         row["planned_buy_usd"] = row["raw_planned_buy_usd"]
         row["suggested_buy_usd"] = float(row["raw_suggested_buy_usd"]) * scale
-        if (
-            row["symbol"] == "VOO"
-            and phase == REBALANCE_PHASE_BUILD
-            and float(row["raw_suggested_buy_usd"]) > 0
-            and float(row.get("valuation_split_factor") or 1.0) >= 1.0
-            and float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0) > 0
-        ):
-            row["suggested_buy_usd"] = max(row["suggested_buy_usd"], float(market["quotes"][row["symbol"]]["price"]))
         price = float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0)
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
 
@@ -754,13 +818,11 @@ def build_rebalance(
         drawdown = None
         multiplier, action, signal, intensity = signal_for_drawdown(sym, drawdown, phase)
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
-        if INTENSITY_ORDER.get(previous, 0) > INTENSITY_ORDER.get(intensity, 0):
+        if intensity_rank(previous) > intensity_rank(intensity):
             multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
             action = f"维持本月已确认{INTENSITY_LABELS.get(previous, '已买')}档"
         base_budget = max(0.0, gap) / max(1, build_months)
         planned = min(max(0.0, gap), base_budget * multiplier)
-        if sym == "VOO":
-            planned = max(planned, float(market["quotes"][sym]["price"]))
         fpe = item.get("forward_pe")
         band = PE_BANDS.get(sym)
         split = 0.5 if sym in SATELLITE_SYMBOLS and isinstance(fpe, (int, float)) and band and fpe > band[1] else 1.0

@@ -690,6 +690,8 @@ function Rebalance({ data, onSaved }) {
                     <td>
                       <select value={inputs[row.symbol]?.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
                         <option value="normal">普通</option>
+                        <option value="probe">QQQ -2%分批</option>
+                        <option value="month_end">QQQ月底补齐</option>
                         <option value="small">小加</option>
                         <option value="medium">中加</option>
                         <option value="large">大加</option>
