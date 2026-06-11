@@ -1575,6 +1575,55 @@ def anchored_vwap_and_bands(
     return result, upper, lower, anchor_date, label
 
 
+def _focus_intraday_price_axis(
+    fig: go.Figure,
+    df: pd.DataFrame,
+    avwap: pd.Series,
+    atr_values: pd.Series,
+    last_close: float,
+    avwap_label: str,
+    theme: dict[str, Any],
+) -> list[float]:
+    y_lo = float(df["Low"].min())
+    y_hi = float(df["High"].max())
+    candle_span = max(y_hi - y_lo, max(abs(last_close) * 0.005, 1e-9))
+    atr_clean = atr_values.replace([np.inf, -np.inf], np.nan).dropna()
+    atr_pad = float(atr_clean.iloc[-1]) if not atr_clean.empty else 0.0
+    y_pad = max(atr_pad, candle_span * 0.12)
+    price_y_range = [y_lo - y_pad, y_hi + y_pad]
+
+    avwap_clean = avwap.replace([np.inf, -np.inf], np.nan).dropna()
+    if avwap_clean.empty:
+        return price_y_range
+
+    current_avwap = float(avwap_clean.iloc[-1])
+    if price_y_range[0] <= current_avwap <= price_y_range[1]:
+        return price_y_range
+
+    for trace in fig.data:
+        if str(getattr(trace, "name", "")).startswith("AVWAP"):
+            trace.visible = False
+
+    above = current_avwap > price_y_range[1]
+    distance_pct = (current_avwap / last_close - 1.0) * 100.0 if last_close > 0 else 0.0
+    fig.add_annotation(
+        x=df.index.max(),
+        y=price_y_range[1] if above else price_y_range[0],
+        xref="x1",
+        yref="y1",
+        text=f"{'↑' if above else '↓'} {avwap_label} AVWAP {current_avwap:.2f}（{distance_pct:+.2f}%）",
+        showarrow=False,
+        xanchor="right",
+        yanchor="top" if above else "bottom",
+        font=dict(color=theme["vwap"], size=11),
+        bgcolor=theme["paper"],
+        bordercolor=theme["vwap"],
+        borderwidth=1,
+        borderpad=4,
+    )
+    return price_y_range
+
+
 def multiframe_signal_bundle(symbol: str) -> dict[str, Any]:
     """多周期一致性粗评分：日线趋势 + 15m 相对 VWAP + 5m RSI 节奏。"""
     out: dict[str, Any] = {
@@ -2137,17 +2186,18 @@ def fig_15m_vwap_rsi(
     )
     _apply_chart_theme(fig, theme)
     vmax = float(vol.max()) if len(vol) else 0.0
-    y_lo = float(df["Low"].min())
-    y_hi = float(df["High"].max())
-    avwap_range = pd.concat([vw, v_hi, v_lo]).replace([np.inf, -np.inf], np.nan).dropna()
-    if not avwap_range.empty:
-        y_lo = min(y_lo, float(avwap_range.min()))
-        y_hi = max(y_hi, float(avwap_range.max()))
+    price_y_range = _focus_intraday_price_axis(
+        fig,
+        df,
+        vw,
+        atr_v,
+        last_close,
+        avwap_label,
+        theme,
+    )
     if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
-        y_lo = min(y_lo, float(user_avg_cost))
-        y_hi = max(y_hi, float(user_avg_cost))
-    y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
-    price_y_range = [y_lo - y_pad, y_hi + y_pad]
+        price_y_range[0] = min(price_y_range[0], float(user_avg_cost))
+        price_y_range[1] = max(price_y_range[1], float(user_avg_cost))
     fig.update_yaxes(
         title_text="价格",
         row=1,
@@ -2411,17 +2461,18 @@ def fig_5m_vwap_rsi7(
     )
     _apply_chart_theme(fig, theme)
     vmax = float(vol.max()) if len(vol) else 0.0
-    y_lo = float(df["Low"].min())
-    y_hi = float(df["High"].max())
-    avwap_range = pd.concat([vw, v_hi, v_lo]).replace([np.inf, -np.inf], np.nan).dropna()
-    if not avwap_range.empty:
-        y_lo = min(y_lo, float(avwap_range.min()))
-        y_hi = max(y_hi, float(avwap_range.max()))
+    price_y_range = _focus_intraday_price_axis(
+        fig,
+        df,
+        vw,
+        atr_v,
+        last_close,
+        avwap_label,
+        theme,
+    )
     if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
-        y_lo = min(y_lo, float(user_avg_cost))
-        y_hi = max(y_hi, float(user_avg_cost))
-    y_pad = float(atr_v.iloc[-1]) if len(atr_v.dropna()) else max((y_hi - y_lo) * 0.08, 1e-9)
-    price_y_range = [y_lo - y_pad, y_hi + y_pad]
+        price_y_range[0] = min(price_y_range[0], float(user_avg_cost))
+        price_y_range[1] = max(price_y_range[1], float(user_avg_cost))
     fig.update_yaxes(
         title_text="价格",
         row=1,
