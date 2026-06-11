@@ -5,7 +5,7 @@ import importlib
 import json
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -18,7 +18,7 @@ from .market_data import (
     stop_futu_quote_subscription,
 )
 from .ohlcv import fetch_ohlcv
-from .portfolio import build_dashboard, confirm_buys, save_rebalance_budget
+from .portfolio import build_dashboard, confirm_trades, save_rebalance_budget
 from .storage import load_balances, load_holdings, save_balances, save_holdings
 
 
@@ -32,6 +32,7 @@ class BalancesPayload(BaseModel):
 
 class ExecutionItem(BaseModel):
     symbol: str
+    action: str = "buy"
     amount_usd: float
     shares: float
     intensity: str = "normal"
@@ -125,7 +126,11 @@ def chart_board(
     if sym not in CHART_LABELS:
         sym = "VOO"
     chart_api = importlib.import_module("chart_boards")
-    chart_api.configure_market_provider("tencent")
+    chart_api.configure_market_provider("futu")
+    holding = load_holdings().get(sym, {})
+    shares = float(holding.get("shares", 0.0) or 0.0)
+    avg_cost = float(holding.get("avg_cost", 0.0) or 0.0)
+    user_avg_cost = avg_cost if shares > 0 and avg_cost > 0 else None
     calls = {
         "1d": chart_api.fig_daily,
         "15m": chart_api.fig_15m_vwap_rsi,
@@ -133,11 +138,19 @@ def chart_board(
     }
     key = interval if interval in calls else "1d"
     try:
-        fig = calls[key](sym, CHART_LABELS[sym], chart_theme=theme, cache_only=False)
+        fig = calls[key](
+            sym,
+            CHART_LABELS[sym],
+            chart_theme=theme,
+            user_avg_cost=user_avg_cost if key == "1d" else None,
+            cache_only=False,
+        )
         return {
             "symbol": sym,
             "interval": key,
             "source": "my-template",
+            "market_provider": chart_api.get_market_provider(),
+            "user_avg_cost": user_avg_cost if key == "1d" else None,
             "figure": json.loads(fig.to_json()),
             "error": "",
         }
@@ -164,7 +177,10 @@ def update_balances(payload: BalancesPayload) -> dict[str, Any]:
 
 @app.post("/api/rebalance/confirm")
 def confirm_execution(payload: ExecutionPayload) -> dict[str, Any]:
-    result = confirm_buys(payload.user_id, [item.model_dump() for item in payload.executions])
+    try:
+        result = confirm_trades(payload.user_id, [item.model_dump() for item in payload.executions])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     result["dashboard"] = build_dashboard(payload.user_id)
     return result
 

@@ -345,8 +345,8 @@ function KlinePage() {
       </div>
       <div className="toolbarRow">
         <div className="segmented">
-          <button className={mode === "futu" ? "active" : ""} onClick={() => setMode("futu")}>Futu轻量</button>
           <button className={mode === "template" ? "active" : ""} onClick={() => setMode("template")}>我的模板</button>
+          <button className={mode === "futu" ? "active" : ""} onClick={() => setMode("futu")}>Futu轻量</button>
         </div>
         <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
           {["VOO", "QQQ", "ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"].map((item) => <option key={item} value={item}>{item}</option>)}
@@ -360,7 +360,7 @@ function KlinePage() {
       </div>
       {data && mode === "futu" ? <div className="muted">K线源：{data.source}{data.fallback_reason ? ` · 兜底原因：${data.fallback_reason}` : ""} · {data.bars?.length || 0} 根</div> : null}
       {data?.fallback_template ? <div className="muted">轻量K线无数据，已自动切到我的模板 · {data.fallback_template.interval}</div> : null}
-      {data && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · {data.interval}</div> : null}
+      {data && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} /> : null}
@@ -457,8 +457,9 @@ function EditableHoldingsPage({ data, onSaved }) {
   }
 
   useEffect(() => {
+    if (editing) return;
     resetDraft();
-  }, [data]);
+  }, [data, editing]);
 
   function updateHolding(symbol, key, value) {
     setHoldings((prev) => ({ ...prev, [symbol]: { ...prev[symbol], [key]: value } }));
@@ -556,12 +557,19 @@ function Rebalance({ data, onSaved }) {
     if (editing) return;
     const next = {};
     rows.forEach((row) => {
-      next[row.symbol] = { amount_usd: Number(row.suggested_buy_usd || 0).toFixed(2), shares: "", intensity: row.intensity || "normal" };
+      next[row.symbol] = { action: "buy", amount_usd: Number(row.suggested_buy_usd || 0).toFixed(2), shares: "", intensity: row.intensity || "normal" };
     });
     setInputs(next);
   }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month]);
 
-  const total = useMemo(() => Object.values(inputs).reduce((sum, item) => sum + Number(item.amount_usd || 0), 0), [inputs]);
+  const tradeTotals = useMemo(() => Object.values(inputs).reduce(
+    (totals, item) => {
+      const key = item.action === "sell" ? "sell" : "buy";
+      totals[key] += Number(item.amount_usd || 0);
+      return totals;
+    },
+    { buy: 0, sell: 0 },
+  ), [inputs]);
   const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
 
   function update(symbol, key, value) {
@@ -580,10 +588,13 @@ function Rebalance({ data, onSaved }) {
     setSaving(true);
     try {
       const executions = Object.entries(inputs)
-        .map(([symbol, item]) => ({ symbol, amount_usd: Number(item.amount_usd || 0), shares: Number(item.shares || 0), intensity: item.intensity }))
+        .map(([symbol, item]) => ({ symbol, action: item.action || "buy", amount_usd: Number(item.amount_usd || 0), shares: Number(item.shares || 0), intensity: item.intensity }))
         .filter((item) => item.amount_usd > 0 && item.shares > 0);
       const response = await fetch(`${API_BASE}/api/rebalance/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, executions }) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${response.status}`);
+      }
       setEditing(false);
       await onSaved();
     } finally {
@@ -624,7 +635,7 @@ function Rebalance({ data, onSaved }) {
       </div>
       <div className="sectionHeader">
         <h2>再平衡建议</h2>
-        <span className="muted">{data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} · 待确认 {fmtMoney(total, "USD")}</span>
+        <span className="muted">{data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} · 待买 {fmtMoney(tradeTotals.buy, "USD")} · 待卖 {fmtMoney(tradeTotals.sell, "USD")}</span>
       </div>
       <div className="rulesToolbar">
         <span className="muted">
@@ -649,7 +660,7 @@ function Rebalance({ data, onSaved }) {
         <table>
           <thead>
             <tr>
-              <th>标的</th><th>月初口径</th><th>目标缺口</th><th>计划应买</th><th>建议买入</th><th>实际已买</th><th>档位</th><th>估值/追高系数</th><th>建议股数</th><th>说明</th>
+              <th>标的</th><th>月初口径</th><th>目标缺口</th><th>计划应买</th><th>建议买入</th><th>净买入</th><th>差值</th><th>档位</th><th>估值/追高系数</th><th>建议股数</th><th>说明</th>
             </tr>
           </thead>
           <tbody>
@@ -663,7 +674,8 @@ function Rebalance({ data, onSaved }) {
                   {row.planned_buy_formula ? <div className="cellSubtext">{row.planned_buy_formula}</div> : null}
                 </td>
                 <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, "USD")}</td>
-                <td className={row.actual_bought_usd > row.planned_buy_usd ? "down" : "up"}>{fmtMoney(row.actual_bought_usd, "USD")}</td>
+                <td>{fmtMoney(row.net_bought_usd, "USD")}</td>
+                <td className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, "USD")}</td>
                 <td>{row.signal || row.intensity}</td>
                 <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
                 <td>{Number(row.suggested_buy_shares || 0).toFixed(4)}</td>
@@ -674,19 +686,25 @@ function Rebalance({ data, onSaved }) {
         </table>
       </div>
       <div className="sectionHeader subHeader">
-        <h2>买入确认</h2>
-        <button onClick={() => setEditing((value) => !value)}>{editing ? "收起编辑" : "编辑买入"}</button>
+        <h2>买卖确认</h2>
+        <button onClick={() => setEditing((value) => !value)}>{editing ? "收起编辑" : "编辑买卖"}</button>
       </div>
-      {!editing ? <div className="muted">点击“编辑买入”后填写实际成交金额和股数；建议表会一直保留显示。</div> : null}
+      {!editing ? <div className="muted">点击“编辑买卖”后选择方向并填写实际成交金额和股数；卖出会同步现金、持仓和已实现盈亏。</div> : null}
       {editing ? (
         <>
           <div className="tableWrap">
             <table>
-              <thead><tr><th>标的</th><th>当前档位</th><th>确认金额</th><th>确认股数</th><th>建议买入</th></tr></thead>
+              <thead><tr><th>标的</th><th>方向</th><th>当前档位</th><th>成交金额</th><th>成交股数</th><th>建议买入</th></tr></thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.symbol}>
                     <th>{row.symbol}</th>
+                    <td>
+                      <select value={inputs[row.symbol]?.action || "buy"} onChange={(event) => update(row.symbol, "action", event.target.value)}>
+                        <option value="buy">买入</option>
+                        <option value="sell">卖出</option>
+                      </select>
+                    </td>
                     <td>
                       <select value={inputs[row.symbol]?.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
                         <option value="normal">普通</option>
@@ -706,8 +724,8 @@ function Rebalance({ data, onSaved }) {
             </table>
           </div>
           <div className="actions">
-            <button onClick={clearPending}>清零待确认买入</button>
-            <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 确认并同步持仓</button>
+            <button onClick={clearPending}>清零待确认交易</button>
+            <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 确认买卖并同步持仓</button>
           </div>
         </>
       ) : null}

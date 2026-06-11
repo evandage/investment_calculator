@@ -115,6 +115,7 @@ def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:
         "planned_cash_by_month": {},
         "bought_symbols": [],
         "bought_amount_by_symbol": {},
+        "sold_amount_by_symbol": {},
         "bought_intensity_by_symbol": {},
         "updated_at": "",
     }
@@ -146,6 +147,18 @@ def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:
         if value > 0:
             amounts[usym] = value
     out["bought_amount_by_symbol"] = amounts
+    sold_amounts: dict[str, float] = {}
+    for sym, amount in (raw.get("sold_amount_by_symbol") or {}).items():
+        usym = str(sym).upper()
+        if usym not in ASSET_META or ASSET_META[usym]["currency"] != "USD":
+            continue
+        try:
+            value = max(0.0, float(amount))
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            sold_amounts[usym] = value
+    out["sold_amount_by_symbol"] = sold_amounts
     intensities = {}
     for sym, intensity in (raw.get("bought_intensity_by_symbol") or {}).items():
         usym = str(sym).upper()
@@ -168,6 +181,7 @@ def save_monthly_usage(
     planned_cash_by_month: dict[str, float] | None = None,
     bought_amount_by_symbol: dict[str, float],
     bought_intensity_by_symbol: dict[str, str],
+    sold_amount_by_symbol: dict[str, float] | None = None,
 ) -> None:
     store = load_monthly_usage_store()
     user_key = str(user_id or "local").strip() or "local"
@@ -184,6 +198,11 @@ def save_monthly_usage(
         for sym, intensity in bought_intensity_by_symbol.items()
         if str(sym).upper() in ASSET_META and ASSET_META[str(sym).upper()]["currency"] == "USD" and str(intensity or "none") != "none"
     }
+    clean_sold_amounts = {
+        str(sym).upper(): max(0.0, float(amount))
+        for sym, amount in (sold_amount_by_symbol or {}).items()
+        if str(sym).upper() in ASSET_META and ASSET_META[str(sym).upper()]["currency"] == "USD" and float(amount) > 0
+    }
     clean_month_budget = {
         str(month): max(0.0, float(amount))
         for month, amount in (planned_cash_by_month or {}).items()
@@ -196,6 +215,7 @@ def save_monthly_usage(
         "planned_cash_by_month": clean_month_budget,
         "bought_symbols": symbols,
         "bought_amount_by_symbol": clean_amounts,
+        "sold_amount_by_symbol": clean_sold_amounts,
         "bought_intensity_by_symbol": clean_intensity,
         "updated_at": datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds"),
     }

@@ -621,6 +621,7 @@ def build_rebalance_v2(
     }
     future_cash_total_usd = sum(future_cash_by_month.values())
     bought_amounts = dict(usage.get("bought_amount_by_symbol", {}))
+    sold_amounts = dict(usage.get("sold_amount_by_symbol", {}))
     bought_intensities = {sym: normalize_intensity(v) for sym, v in usage.get("bought_intensity_by_symbol", {}).items()}
 
     usd_weight_total = sum(TARGET_WEIGHTS[s] for s in USD_SYMBOLS)
@@ -643,7 +644,8 @@ def build_rebalance_v2(
             continue
         current_usd = item["value_cny"] / fx if fx > 0 else 0.0
         already = float(bought_amounts.get(sym, 0.0))
-        planning_current = max(0.0, current_usd - already)
+        already_sold = float(sold_amounts.get(sym, 0.0))
+        planning_current = max(0.0, current_usd - already + already_sold)
         target_pct = TARGET_WEIGHTS[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
         gap = target_usd - planning_current
@@ -678,6 +680,7 @@ def build_rebalance_v2(
         already_bought_this_month = previous != "none"
         fpe = item.get("forward_pe")
         split, split_note = valuation_split_for_row(sym, item)
+        net_bought = already - already_sold
         raw_planned = planned
         raw_suggested = min(max(0.0, gap), base_budget * additional_multiplier) * split
         if already_bought_this_month:
@@ -731,6 +734,10 @@ def build_rebalance_v2(
                 "suggested_buy_usd": raw_suggested,
                 "raw_suggested_buy_usd": raw_suggested,
                 "actual_bought_usd": already,
+                "actual_sold_usd": already_sold,
+                "net_bought_usd": net_bought,
+                "planned_after_valuation_usd": raw_planned * split,
+                "buy_difference_usd": raw_planned * split - net_bought,
                 "month_start_value_usd": planning_current,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
@@ -872,22 +879,29 @@ def save_rebalance_budget(user_id: str, planned_cash_by_month: dict[str, float])
         planned_cash_by_month=clean,
         bought_amount_by_symbol=dict(usage.get("bought_amount_by_symbol", {})),
         bought_intensity_by_symbol=dict(usage.get("bought_intensity_by_symbol", {})),
+        sold_amount_by_symbol=dict(usage.get("sold_amount_by_symbol", {})),
     )
     return {"saved": True, "month_key": month_key, "planned_cash_by_month": clean}
 
 
-def confirm_buys(user_id: str, executions: list[dict[str, Any]]) -> dict[str, Any]:
+def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, Any]:
     holdings, balances, _ = load_user_state(user_id)
     now = datetime.now(TZ_SHANGHAI)
     month_key = now.strftime("%Y-%m")
     usage = load_monthly_usage(user_id, month_key)
     amounts = dict(usage.get("bought_amount_by_symbol", {}))
+    sold_amounts = dict(usage.get("sold_amount_by_symbol", {}))
     intensities = dict(usage.get("bought_intensity_by_symbol", {}))
-    total = 0.0
+    total_bought = 0.0
+    total_sold = 0.0
+    realized_pnl = 0.0
     for item in executions:
         sym = str(item.get("symbol", "")).upper()
         if sym not in USD_SYMBOLS or sym == "SGOV":
             continue
+        action = str(item.get("action", "buy")).lower()
+        if action not in {"buy", "sell"}:
+            raise ValueError(f"{sym} 的交易方向无效")
         amount = max(0.0, float(item.get("amount_usd", 0.0) or 0.0))
         shares = max(0.0, float(item.get("shares", 0.0) or 0.0))
         if amount <= 0 or shares <= 0:
@@ -896,6 +910,23 @@ def confirm_buys(user_id: str, executions: list[dict[str, Any]]) -> dict[str, An
         old = holdings[sym]
         old_shares = float(old["shares"])
         old_cost = float(old["avg_cost"])
+        if action == "sell":
+            if shares > old_shares + 1e-9:
+                raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
+            new_shares = max(0.0, old_shares - shares)
+            sale_pnl = amount - shares * old_cost
+            if new_shares > 1e-9:
+                remaining_cost = max(0.0, old_shares * old_cost - amount)
+                new_avg_cost = remaining_cost / new_shares
+                holdings[sym] = {"shares": new_shares, "avg_cost": new_avg_cost}
+                realized_pnl += max(0.0, amount - old_shares * old_cost)
+            else:
+                holdings[sym] = {"shares": 0.0, "avg_cost": 0.0}
+                realized_pnl += sale_pnl
+            sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
+            total_sold += amount
+            continue
+
         new_shares = old_shares + shares
         holdings[sym] = {"shares": new_shares, "avg_cost": (old_shares * old_cost + shares * price) / new_shares}
         amounts[sym] = float(amounts.get(sym, 0.0)) + amount
@@ -903,8 +934,9 @@ def confirm_buys(user_id: str, executions: list[dict[str, Any]]) -> dict[str, An
         old_intensity = normalize_intensity(intensities.get(sym, "none"))
         if INTENSITY_ORDER.get(new_intensity, 0) > INTENSITY_ORDER.get(old_intensity, 0):
             intensities[sym] = new_intensity
-        total += amount
-    balances["cash_usd"] = max(0.0, float(balances.get("cash_usd", 0.0)) - total)
+        total_bought += amount
+    balances["cash_usd"] = max(0.0, float(balances.get("cash_usd", 0.0)) - total_bought + total_sold)
+    balances["realized_usd"] = float(balances.get("realized_usd", 0.0)) + realized_pnl
     save_user_state(user_id, holdings, balances)
     save_monthly_usage(
         user_id,
@@ -913,5 +945,12 @@ def confirm_buys(user_id: str, executions: list[dict[str, Any]]) -> dict[str, An
         planned_cash_by_month=dict(usage.get("planned_cash_by_month", {})),
         bought_amount_by_symbol=amounts,
         bought_intensity_by_symbol=intensities,
+        sold_amount_by_symbol=sold_amounts,
     )
-    return {"saved": True, "total_usd": total, "month_key": month_key}
+    return {
+        "saved": True,
+        "total_bought_usd": total_bought,
+        "total_sold_usd": total_sold,
+        "realized_pnl_usd": realized_pnl,
+        "month_key": month_key,
+    }

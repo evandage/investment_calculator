@@ -222,6 +222,8 @@ def configure_market_provider(provider: str | None = None) -> str:
         _MARKET_DATA_PROVIDER = "eastmoney"
     elif p in {"yfinance", "yf", "yahoo", "us"}:
         _MARKET_DATA_PROVIDER = "yfinance"
+    elif p in {"futu", "futunn", "opend"}:
+        _MARKET_DATA_PROVIDER = "futu"
     else:
         _MARKET_DATA_PROVIDER = "tencent"
     return _MARKET_DATA_PROVIDER
@@ -739,6 +741,34 @@ def _fetch_from_source(
     yfinance_start_naive_local: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, str]:
     provider = get_market_provider()
+    if provider == "futu":
+        try:
+            from backend.ohlcv import _fetch_futu_ohlcv
+
+            bars, _ = _fetch_futu_ohlcv(symbol, interval)
+            if bars:
+                d = pd.DataFrame(bars).rename(
+                    columns={
+                        "open": "Open",
+                        "high": "High",
+                        "low": "Low",
+                        "close": "Close",
+                        "volume": "Volume",
+                    }
+                )
+                if interval == "1d":
+                    d.index = pd.to_datetime(d.pop("time"), errors="coerce")
+                else:
+                    d.index = pd.to_datetime(d.pop("time"), unit="s", errors="coerce")
+                d = d.loc[~d.index.isna(), ["Open", "High", "Low", "Close", "Volume"]]
+                if not d.empty:
+                    if interval != "1d":
+                        d = _fix_intraday_last_bar_volume(d)
+                    return _normalize_plot_time_index(d, symbol), "futu"
+        except Exception:
+            pass
+        return pd.DataFrame(), "futu"
+
     if provider == "tencent":
         d = _fetch_tencent_ohlcv(symbol, interval, lmt=eastmoney_lmt)
         if not d.empty:
