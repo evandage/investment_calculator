@@ -121,6 +121,7 @@ def chart_board(
     symbol: str = "VOO",
     interval: str = "1d",
     theme: str = "Trading Dark",
+    avwap_mode: str = "earnings",
 ) -> dict[str, Any]:
     sym = str(symbol or "VOO").upper()
     if sym not in CHART_LABELS:
@@ -138,20 +139,26 @@ def chart_board(
     }
     key = interval if interval in calls else "1d"
     try:
-        fig = calls[key](
-            sym,
-            CHART_LABELS[sym],
-            chart_theme=theme,
-            user_avg_cost=user_avg_cost if key == "1d" else None,
-            cache_only=False,
-        )
+        kwargs = {
+            "chart_theme": theme,
+            "user_avg_cost": user_avg_cost if key == "1d" else None,
+            "cache_only": False,
+        }
+        if key != "1d":
+            kwargs["avwap_mode"] = avwap_mode
+        fig = calls[key](sym, CHART_LABELS[sym], **kwargs)
+        figure = json.loads(fig.to_json())
+        avwap_meta = (figure.get("layout") or {}).get("meta") or {}
         return {
             "symbol": sym,
             "interval": key,
             "source": "my-template",
             "market_provider": chart_api.get_market_provider(),
             "user_avg_cost": user_avg_cost if key == "1d" else None,
-            "figure": json.loads(fig.to_json()),
+            "avwap_mode": avwap_meta.get("avwap_mode"),
+            "avwap_label": avwap_meta.get("avwap_label"),
+            "avwap_anchor": avwap_meta.get("avwap_anchor"),
+            "figure": figure,
             "error": "",
         }
     except Exception as exc:

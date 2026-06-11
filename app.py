@@ -2807,6 +2807,18 @@ def _render_chart_board() -> None:
         help="关闭某个周期后，该周期对应的图表不会触发 fetch_ohlcv()，通常能显著减少加载时间。",
     )
     _interval_keys = [_interval_display_map[x] for x in _interval_pick] or ["1d"]
+    _avwap_mode_labels = {
+        "最近财报日": "earnings",
+        "最近60日历史高点": "high_60d",
+        "最近60日大跌低点": "selloff_60d",
+        "今日开盘": "today_open",
+    }
+    _avwap_pick = st.sidebar.selectbox(
+        "AVWAP 锚点",
+        options=list(_avwap_mode_labels.keys()),
+        key="chart_avwap_mode",
+    )
+    _avwap_mode = _avwap_mode_labels[_avwap_pick]
 
     _prog_slot = st.empty()
     _fig_d = _fig_15 = _fig_5 = None
@@ -2834,6 +2846,7 @@ def _render_chart_board() -> None:
                         _chart_pick,
                         chart_theme=chart_theme,
                         user_avg_cost=None,
+                        avwap_mode=_avwap_mode,
                         cache_only=chart_cache_only,
                     )
                 ] = ("15m", "15m（15m）")
@@ -2845,6 +2858,7 @@ def _render_chart_board() -> None:
                         _chart_pick,
                         chart_theme=chart_theme,
                         user_avg_cost=None,
+                        avwap_mode=_avwap_mode,
                         cache_only=chart_cache_only,
                     )
                 ] = ("5m", "5m（5m）")
@@ -2862,7 +2876,7 @@ def _render_chart_board() -> None:
                     _chart_errs[_kind] = str(e)
         _prog_slot.empty()
 
-    _tab_d, _tab_15, _tab_5 = st.tabs(["日线（EMA·ATR·MACD）", "15m（VWAP·RSI·MACD）", "5m（VWAP·RSI·MACD）"])
+    _tab_d, _tab_15, _tab_5 = st.tabs(["日线（EMA·MACD）", "15m（AVWAP·RSI·MACD）", "5m（AVWAP·RSI·MACD）"])
     _plotly_static_axes_config = {
         "scrollZoom": False,
         "displayModeBar": False,

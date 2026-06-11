@@ -1,12 +1,52 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, RefreshCcw, Save } from "lucide-react";
-import { CandlestickSeries, createChart, HistogramSeries } from "lightweight-charts";
+import { CandlestickSeries, createChart, HistogramSeries, TickMarkType } from "lightweight-charts";
 
 const Plot = lazy(() => import("react-plotly.js"));
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
   `${window.location.protocol}//${window.location.hostname}:8010`;
+
+const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
+const shanghaiDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: SHANGHAI_TIME_ZONE,
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const shanghaiDateFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: SHANGHAI_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const shanghaiTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: SHANGHAI_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function timeToDate(time) {
+  if (typeof time === "number") return new Date(time * 1000);
+  if (typeof time === "string") return new Date(`${time}T00:00:00+08:00`);
+  return new Date(Date.UTC(time.year, time.month - 1, time.day));
+}
+
+function formatShanghaiChartTime(time) {
+  return shanghaiDateTimeFormatter.format(timeToDate(time)).replace(/\//g, "-");
+}
+
+function formatShanghaiTick(time, tickMarkType) {
+  const date = timeToDate(time);
+  if (tickMarkType === TickMarkType.Time || tickMarkType === TickMarkType.TimeWithSeconds) {
+    return shanghaiTimeFormatter.format(date);
+  }
+  return shanghaiDateFormatter.format(date).replace(/\//g, "-");
+}
 
 function fmtMoney(value, currency = "USD", digits = 2) {
   const num = Number(value || 0);
@@ -268,7 +308,15 @@ function LightweightChart({ bars }) {
       layout: { background: { color: "#0b0f14" }, textColor: "#cbd5e1", fontFamily: "Inter, Microsoft YaHei, system-ui, sans-serif" },
       grid: { vertLines: { color: "rgba(148, 163, 184, 0.08)" }, horzLines: { color: "rgba(148, 163, 184, 0.08)" } },
       rightPriceScale: { borderColor: "rgba(148, 163, 184, 0.18)" },
-      timeScale: { borderColor: "rgba(148, 163, 184, 0.18)", timeVisible: true },
+      timeScale: {
+        borderColor: "rgba(148, 163, 184, 0.18)",
+        timeVisible: true,
+        tickMarkFormatter: formatShanghaiTick,
+      },
+      localization: {
+        locale: "zh-CN",
+        timeFormatter: formatShanghaiChartTime,
+      },
       crosshair: { mode: 1 },
       autoSize: true,
     });
@@ -299,6 +347,7 @@ function KlinePage() {
   const [mode, setMode] = useState("template");
   const [symbol, setSymbol] = useState("VOO");
   const [interval, setInterval] = useState("1d");
+  const [avwapMode, setAvwapMode] = useState("earnings");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -307,7 +356,7 @@ function KlinePage() {
     setLoading(true);
     setError("");
     try {
-      const qs = new URLSearchParams({ symbol, interval });
+      const qs = new URLSearchParams({ symbol, interval, avwap_mode: avwapMode });
       const endpoint = mode === "template" ? "chart-board" : "ohlcv";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -332,7 +381,7 @@ function KlinePage() {
 
   useEffect(() => {
     load();
-  }, [mode, symbol, interval]);
+  }, [mode, symbol, interval, avwapMode]);
 
   const figure = data?.figure;
   const fallbackFigure = data?.fallback_template?.figure;
@@ -357,10 +406,18 @@ function KlinePage() {
             {label}
           </label>
         ))}
+        {mode === "template" && interval !== "1d" ? (
+          <select value={avwapMode} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
+            <option value="earnings">AVWAP：最近财报日</option>
+            <option value="high_60d">AVWAP：最近60日历史高点</option>
+            <option value="selloff_60d">AVWAP：最近60日大跌低点</option>
+            <option value="today_open">AVWAP：今日开盘</option>
+          </select>
+        ) : null}
       </div>
-      {data && mode === "futu" ? <div className="muted">K线源：{data.source}{data.fallback_reason ? ` · 兜底原因：${data.fallback_reason}` : ""} · {data.bars?.length || 0} 根</div> : null}
+      {data && mode === "futu" ? <div className="muted">K线源：{data.source}{data.fallback_reason ? ` · 兜底原因：${data.fallback_reason}` : ""} · {data.bars?.length || 0} 根 · 时间：北京时间</div> : null}
       {data?.fallback_template ? <div className="muted">轻量K线无数据，已自动切到我的模板 · {data.fallback_template.interval}</div> : null}
-      {data && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
+      {data && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} /> : null}

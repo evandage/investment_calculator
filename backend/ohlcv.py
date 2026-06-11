@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from .config import FUTU_US
 from .market_data import futu_opend_config, is_futu_opend_available
@@ -11,6 +12,7 @@ Interval = Literal["1d", "15m", "5m"]
 
 _OHLCV_CACHE: dict[tuple[str, str], tuple[dict[str, Any], float]] = {}
 _OHLCV_TTL_SECONDS = {"1d": 300, "15m": 45, "5m": 30}
+_TZ_NEW_YORK = ZoneInfo("America/New_York")
 
 
 def _period_for_interval(interval: Interval) -> str:
@@ -40,13 +42,19 @@ def _row_value(row: Any, key: str, default: Any = None) -> Any:
             return default
 
 
-def _ts_to_lightweight(value: Any, interval: Interval) -> int | str | None:
+def _ts_to_lightweight(
+    value: Any,
+    interval: Interval,
+    source_tz: ZoneInfo | None = None,
+) -> int | str | None:
     try:
         ts = datetime.fromisoformat(str(value).replace(" ", "T"))
     except ValueError:
         return None
     if interval == "1d":
         return ts.date().isoformat()
+    if ts.tzinfo is None and source_tz is not None:
+        ts = ts.replace(tzinfo=source_tz)
     return int(ts.timestamp())
 
 
@@ -62,6 +70,22 @@ def _clean_bar(row: dict[str, Any]) -> dict[str, Any] | None:
         }
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def _latest_us_trading_day_bars(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not bars:
+        return bars
+    dated: list[tuple[dict[str, Any], object]] = []
+    for bar in bars:
+        try:
+            trading_day = datetime.fromtimestamp(int(bar["time"]), _TZ_NEW_YORK).date()
+        except (KeyError, TypeError, ValueError, OSError):
+            continue
+        dated.append((bar, trading_day))
+    if not dated:
+        return []
+    latest_day = max(day for _, day in dated)
+    return [bar for bar, day in dated if day == latest_day]
 
 
 def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
@@ -94,7 +118,11 @@ def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, A
             return [], "futu_empty"
         for i in range(len(data)):
             item = data.iloc[i] if hasattr(data, "iloc") else data[i]
-            ts = _ts_to_lightweight(_row_value(item, "time_key"), interval)
+            ts = _ts_to_lightweight(
+                _row_value(item, "time_key"),
+                interval,
+                source_tz=_TZ_NEW_YORK,
+            )
             if ts is None:
                 continue
             bar = _clean_bar(
@@ -175,7 +203,7 @@ def fetch_ohlcv(symbol: str, interval: str) -> dict[str, Any]:
         "interval": iv,
         "source": source,
         "fallback_reason": fallback_source,
-        "bars": bars[-1200:] if iv == "1d" else bars[-800:],
+        "bars": bars[-1200:] if iv == "1d" else _latest_us_trading_day_bars(bars),
     }
     if bars:
         _OHLCV_CACHE[key] = (dict(payload), now)

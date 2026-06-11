@@ -48,6 +48,22 @@ _SUPABASE_READ_ONLY = bool(int(os.environ.get("SUPABASE_READ_ONLY", "0")))
 _LAST_SYNC_AT: dict[tuple[str, str], float] = {}
 _SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")))
 _MARKET_DATA_PROVIDER = "tencent"
+_EARNINGS_DATE_CACHE: dict[str, tuple[pd.Timestamp | None, float]] = {}
+_EARNINGS_DATE_TTL_SECONDS = 6 * 60 * 60
+
+AVWAP_MODE_LABELS = {
+    "earnings": "最近财报日",
+    "high_60d": "最近60日历史高点",
+    "selloff_60d": "最近60日大跌低点",
+    "today_open": "今日开盘",
+}
+
+
+def _naive_day(value: Any) -> pd.Timestamp:
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_localize(None)
+    return ts.normalize()
 
 # Supabase 行情缓存保留期（避免分钟线无限增长导致切换标的变慢）
 # - 1d：需要足够长用于 EMA200/MACD/ATR 计算（这里留 ~450 天）
@@ -759,7 +775,7 @@ def _fetch_from_source(
                 if interval == "1d":
                     d.index = pd.to_datetime(d.pop("time"), errors="coerce")
                 else:
-                    d.index = pd.to_datetime(d.pop("time"), unit="s", errors="coerce")
+                    d.index = pd.to_datetime(d.pop("time"), unit="s", utc=True, errors="coerce")
                 d = d.loc[~d.index.isna(), ["Open", "High", "Low", "Close", "Volume"]]
                 if not d.empty:
                     if interval != "1d":
@@ -1182,6 +1198,13 @@ def slice_intraday_today_or_yesterday(df: pd.DataFrame, symbol: str) -> tuple[pd
     return out, note
 
 
+def _shanghai_plot_index(index: pd.Index) -> pd.DatetimeIndex:
+    idx = pd.DatetimeIndex(index)
+    if idx.tz is None:
+        idx = idx.tz_localize(ZoneInfo("America/New_York"), ambiguous="infer", nonexistent="shift_forward")
+    return idx.tz_convert(ZoneInfo("Asia/Shanghai")).tz_localize(None)
+
+
 def fetch_ohlcv(
     symbol: str,
     interval: Literal["1d", "15m", "5m"],
@@ -1429,6 +1452,129 @@ def vwap_and_bands(df: pd.DataFrame, n_std: float = 1.0) -> tuple[pd.Series, pd.
     )
 
 
+def _latest_earnings_date(symbol: str) -> pd.Timestamp | None:
+    cached = _EARNINGS_DATE_CACHE.get(symbol)
+    now = time.time()
+    if cached and now - cached[1] < _EARNINGS_DATE_TTL_SECONDS:
+        return cached[0]
+
+    result: pd.Timestamp | None = None
+    ctx = None
+    try:
+        from backend.config import FUTU_US
+        from backend.market_data import futu_opend_config, is_futu_opend_available
+        from futu import OpenQuoteContext, RET_OK
+
+        code = FUTU_US.get(symbol)
+        if code and is_futu_opend_available():
+            host, port = futu_opend_config()
+            ctx = OpenQuoteContext(host=host, port=port)
+            ret, data = ctx.get_financials_earnings_price_history(code)
+            if ret == RET_OK and data is not None and not data.empty:
+                values = pd.to_datetime(data.get("pub_trading_day_str"), errors="coerce").dropna()
+                if not values.empty:
+                    today = pd.Timestamp.now(tz=_market_tz(symbol)).tz_localize(None).normalize()
+                    past = values[values <= today]
+                    if not past.empty:
+                        result = pd.Timestamp(past.max()).normalize()
+    except Exception:
+        result = None
+    finally:
+        try:
+            if ctx is not None:
+                ctx.close()
+        except Exception:
+            pass
+
+    _EARNINGS_DATE_CACHE[symbol] = (result, now)
+    return result
+
+
+def _avwap_anchor_date(
+    symbol: str,
+    daily: pd.DataFrame,
+    intraday: pd.DataFrame,
+    mode: str,
+) -> tuple[pd.Timestamp, str]:
+    normalized_mode = mode if mode in AVWAP_MODE_LABELS else "earnings"
+    current_day = _naive_day(intraday.index[-1])
+    if normalized_mode == "today_open":
+        return current_day, AVWAP_MODE_LABELS[normalized_mode]
+
+    recent = daily.tail(60)
+    if recent.empty:
+        return current_day, AVWAP_MODE_LABELS["today_open"]
+
+    if normalized_mode == "earnings":
+        earnings_date = _latest_earnings_date(symbol)
+        if earnings_date is not None:
+            return earnings_date, AVWAP_MODE_LABELS[normalized_mode]
+        normalized_mode = "selloff_60d"
+
+    if normalized_mode == "high_60d":
+        anchor = _naive_day(recent["High"].astype(float).idxmax())
+    else:
+        daily_returns = recent["Close"].astype(float).pct_change()
+        valid_returns = daily_returns.dropna()
+        anchor = (
+            _naive_day(valid_returns.idxmin())
+            if not valid_returns.empty
+            else _naive_day(recent.index[0])
+        )
+    return anchor, AVWAP_MODE_LABELS[normalized_mode]
+
+
+def anchored_vwap_and_bands(
+    symbol: str,
+    intraday: pd.DataFrame,
+    mode: str,
+    *,
+    n_std: float = 1.0,
+    cache_only: bool = False,
+) -> tuple[pd.Series, pd.Series, pd.Series, pd.Timestamp, str]:
+    if intraday.empty:
+        empty = pd.Series(dtype=float)
+        return empty, empty, empty, pd.Timestamp.now().normalize(), AVWAP_MODE_LABELS["today_open"]
+
+    daily = fetch_ohlcv(symbol, "1d", "5y", cache_only=cache_only)
+    anchor_date, label = _avwap_anchor_date(symbol, daily, intraday, mode)
+    current_day = _naive_day(intraday.index[-1])
+
+    base_volume = 0.0
+    base_pv = 0.0
+    base_p2v = 0.0
+    if not daily.empty and anchor_date < current_day:
+        daily_dates = pd.DatetimeIndex([_naive_day(value) for value in daily.index])
+        base = daily.loc[(daily_dates >= anchor_date) & (daily_dates < current_day)]
+        if not base.empty:
+            base_tp = (base["High"] + base["Low"] + base["Close"]) / 3.0
+            base_vol = base["Volume"].fillna(0.0).astype(float).clip(lower=0.0)
+            base_volume = float(base_vol.sum())
+            base_pv = float((base_tp * base_vol).sum())
+            base_p2v = float(((base_tp**2) * base_vol).sum())
+
+    intraday_dates = pd.DatetimeIndex([_naive_day(value) for value in intraday.index])
+    active = intraday.loc[intraday_dates >= anchor_date]
+    result = pd.Series(np.nan, index=intraday.index, dtype=float)
+    upper = result.copy()
+    lower = result.copy()
+    if active.empty:
+        return result, upper, lower, anchor_date, label
+
+    tp = (active["High"] + active["Low"] + active["Close"]) / 3.0
+    vol = active["Volume"].fillna(0.0).astype(float).clip(lower=0.0)
+    cum_volume = base_volume + vol.cumsum()
+    cum_pv = base_pv + (tp * vol).cumsum()
+    cum_p2v = base_p2v + ((tp**2) * vol).cumsum()
+    avwap = cum_pv / cum_volume.replace(0, np.nan)
+    variance = (cum_p2v / cum_volume.replace(0, np.nan) - avwap**2).clip(lower=0.0)
+    sigma = np.sqrt(variance)
+    result.loc[active.index] = avwap
+    upper.loc[active.index] = avwap + n_std * sigma
+    lower.loc[active.index] = avwap - n_std * sigma
+    return result, upper, lower, anchor_date, label
+
+
 def multiframe_signal_bundle(symbol: str) -> dict[str, Any]:
     """多周期一致性粗评分：日线趋势 + 15m 相对 VWAP + 5m RSI 节奏。"""
     out: dict[str, Any] = {
@@ -1529,8 +1675,6 @@ def fig_daily(
     e20, e50, e100, e200 = ema(c, 20), ema(c, 50), ema(c, 100), ema(c, 200)
     r14 = rsi(c, 14)
     atr_v = atr_series(df, 14)
-    upper = c + 1.0 * atr_v
-    lower = c - 1.0 * atr_v
     m_line, m_sig, m_hist = macd_series(c)
 
     # 默认展示最近 N 根「交易日」K 线（非日历天），与页面 60 日回撤口径保持一致。
@@ -1541,8 +1685,6 @@ def fig_daily(
     vis_e100 = e100.reindex(vis_df.index)
     vis_e200 = e200.reindex(vis_df.index)
     vis_r14 = r14.reindex(vis_df.index)
-    vis_upper = upper.reindex(vis_df.index)
-    vis_lower = lower.reindex(vis_df.index)
     vis_m_line = m_line.reindex(vis_df.index)
     vis_m_sig = m_sig.reindex(vis_df.index)
     vis_m_hist = m_hist.reindex(vis_df.index)
@@ -1618,30 +1760,6 @@ def fig_daily(
             col=1,
             secondary_y=False,
         )
-    fig.add_trace(
-        go.Scatter(
-            x=vis_df.index,
-            y=vis_upper,
-            name="收盘+1ATR",
-            line=dict(width=1, dash="dot", color=theme["atr_upper"]),
-        ),
-        row=1,
-        col=1,
-        secondary_y=False,
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=vis_df.index,
-            y=vis_lower,
-            name="收盘−1ATR",
-            line=dict(width=1, dash="dot", color=theme["atr_lower"]),
-        ),
-        row=1,
-        col=1,
-        secondary_y=False,
-    )
-
     fig.add_trace(
         go.Bar(
             x=vis_df.index,
@@ -1785,6 +1903,7 @@ def fig_15m_vwap_rsi(
     *,
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
+    avwap_mode: str = "earnings",
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
@@ -1804,7 +1923,12 @@ def fig_15m_vwap_rsi(
         _apply_chart_theme(fig, theme)
         return fig
 
-    vw, v_hi, v_lo = vwap_and_bands(df)
+    vw, v_hi, v_lo, avwap_anchor, avwap_label = anchored_vwap_and_bands(
+        symbol,
+        df,
+        avwap_mode,
+        cache_only=cache_only,
+    )
     cl = df["Close"]
     last_close = float(cl.iloc[-1]) if len(cl) else 0.0
     p_min = float(df["Low"].min())
@@ -1816,13 +1940,12 @@ def fig_15m_vwap_rsi(
     r14 = rsi(cl, 14)
     r14_ma = ema(r14, 9)
     atr_v = atr_series(df, 14)
-    upper = cl + 1.0 * atr_v
-    lower = cl - 1.0 * atr_v
     m_line, m_sig, m_hist = macd_series(cl)
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
 
     vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(df, bins=24)
+    df.index = _shanghai_plot_index(df.index)
 
     fig = make_subplots(
         rows=3,
@@ -1853,7 +1976,7 @@ def fig_15m_vwap_rsi(
         go.Scatter(
             x=df.index,
             y=v_hi,
-            name="VWAP+1σ",
+            name="AVWAP+1σ",
             line=dict(color=theme["vwap_band"], width=1, dash="dot"),
             legendgroup="vwap_band",
         ),
@@ -1865,7 +1988,7 @@ def fig_15m_vwap_rsi(
         go.Scatter(
             x=df.index,
             y=v_lo,
-            name="VWAP−1σ",
+            name="AVWAP−1σ",
             line=dict(color=theme["vwap_band"], width=1, dash="dot"),
             fill="tonexty",
             fillcolor=theme["vwap_fill"],
@@ -1879,30 +2002,8 @@ def fig_15m_vwap_rsi(
         go.Scatter(
             x=df.index,
             y=vw,
-            name="VWAP",
+            name=f"AVWAP · {avwap_label}",
             line=dict(color=theme["vwap"], width=1.35),
-        ),
-        row=1,
-        col=1,
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=upper,
-            name="收盘+1ATR",
-            line=dict(width=1, dash="dot", color=theme["atr_upper"]),
-        ),
-        row=1,
-        col=1,
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=lower,
-            name="收盘−1ATR",
-            line=dict(width=1, dash="dot", color=theme["atr_lower"]),
         ),
         row=1,
         col=1,
@@ -2028,11 +2129,20 @@ def fig_15m_vwap_rsi(
         height=980,
         xaxis_rangeslider_visible=False,
         barmode="overlay",
+        meta={
+            "avwap_mode": avwap_mode,
+            "avwap_label": avwap_label,
+            "avwap_anchor": avwap_anchor.strftime("%Y-%m-%d"),
+        },
     )
     _apply_chart_theme(fig, theme)
     vmax = float(vol.max()) if len(vol) else 0.0
     y_lo = float(df["Low"].min())
     y_hi = float(df["High"].max())
+    avwap_range = pd.concat([vw, v_hi, v_lo]).replace([np.inf, -np.inf], np.nan).dropna()
+    if not avwap_range.empty:
+        y_lo = min(y_lo, float(avwap_range.min()))
+        y_hi = max(y_hi, float(avwap_range.max()))
     if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
         y_lo = min(y_lo, float(user_avg_cost))
         y_hi = max(y_hi, float(user_avg_cost))
@@ -2068,6 +2178,7 @@ def fig_5m_vwap_rsi7(
     *,
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
+    avwap_mode: str = "earnings",
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
@@ -2087,19 +2198,23 @@ def fig_5m_vwap_rsi7(
         _apply_chart_theme(fig, theme)
         return fig
 
-    vw, v_hi, v_lo = vwap_and_bands(df)
+    vw, v_hi, v_lo, avwap_anchor, avwap_label = anchored_vwap_and_bands(
+        symbol,
+        df,
+        avwap_mode,
+        cache_only=cache_only,
+    )
     cl = df["Close"]
     last_close = float(cl.iloc[-1]) if len(cl) else 0.0
     r7 = rsi(cl, 7)
     r7_ma = ema(r7, 9)
     atr_v = atr_series(df, 14)
-    upper = cl + 1.0 * atr_v
-    lower = cl - 1.0 * atr_v
     m_line, m_sig, m_hist = macd_series(cl)
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
 
     vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(df, bins=24)
+    df.index = _shanghai_plot_index(df.index)
 
     fig = make_subplots(
         rows=3,
@@ -2129,7 +2244,7 @@ def fig_5m_vwap_rsi7(
         go.Scatter(
             x=df.index,
             y=v_hi,
-            name="VWAP+1σ",
+            name="AVWAP+1σ",
             line=dict(color=theme["vwap_band"], width=1, dash="dot"),
             legendgroup="vwap_band",
         ),
@@ -2141,7 +2256,7 @@ def fig_5m_vwap_rsi7(
         go.Scatter(
             x=df.index,
             y=v_lo,
-            name="VWAP−1σ",
+            name="AVWAP−1σ",
             line=dict(color=theme["vwap_band"], width=1, dash="dot"),
             fill="tonexty",
             fillcolor=theme["vwap_fill"],
@@ -2155,30 +2270,8 @@ def fig_5m_vwap_rsi7(
         go.Scatter(
             x=df.index,
             y=vw,
-            name="VWAP",
+            name=f"AVWAP · {avwap_label}",
             line=dict(color=theme["vwap"], width=1.35),
-        ),
-        row=1,
-        col=1,
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=upper,
-            name="收盘+1ATR",
-            line=dict(width=1, dash="dot", color=theme["atr_upper"]),
-        ),
-        row=1,
-        col=1,
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=lower,
-            name="收盘−1ATR",
-            line=dict(width=1, dash="dot", color=theme["atr_lower"]),
         ),
         row=1,
         col=1,
@@ -2310,11 +2403,20 @@ def fig_5m_vwap_rsi7(
         height=980,
         xaxis_rangeslider_visible=False,
         barmode="overlay",
+        meta={
+            "avwap_mode": avwap_mode,
+            "avwap_label": avwap_label,
+            "avwap_anchor": avwap_anchor.strftime("%Y-%m-%d"),
+        },
     )
     _apply_chart_theme(fig, theme)
     vmax = float(vol.max()) if len(vol) else 0.0
     y_lo = float(df["Low"].min())
     y_hi = float(df["High"].max())
+    avwap_range = pd.concat([vw, v_hi, v_lo]).replace([np.inf, -np.inf], np.nan).dropna()
+    if not avwap_range.empty:
+        y_lo = min(y_lo, float(avwap_range.min()))
+        y_hi = max(y_hi, float(avwap_range.max()))
     if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
         y_lo = min(y_lo, float(user_avg_cost))
         y_hi = max(y_hi, float(user_avg_cost))
