@@ -364,11 +364,14 @@ def build_visualizations(
                 }
             )
         elif sym in ("VOO", "QQQ", "SGOV", "001015", "006382"):
+            pnl_cny = float(row["pnl_cny"])
+            if sym == "SGOV":
+                pnl_cny += float(balances.get("sgov_dividend_usd", 0.0)) * fx
             pnl_rank.append(
                 {
                     "symbol": sym,
                     "label": row["label"],
-                    "pnl_cny": row["pnl_cny"],
+                    "pnl_cny": pnl_cny,
                     "currency": "CNY",
                 }
             )
