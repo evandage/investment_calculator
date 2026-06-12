@@ -139,13 +139,17 @@ def chart_board(
     }
     key = interval if interval in calls else "1d"
     try:
+        effective_avwap_mode = avwap_mode
+        if sym in {"VOO", "QQQ", "SGOV"} and effective_avwap_mode == "earnings":
+            effective_avwap_mode = "high_60d"
+        if key == "1d" and effective_avwap_mode == "today_open":
+            effective_avwap_mode = "earnings" if sym not in {"VOO", "QQQ", "SGOV"} else "high_60d"
         kwargs = {
             "chart_theme": theme,
             "user_avg_cost": user_avg_cost if key == "1d" else None,
             "cache_only": False,
         }
-        if key != "1d":
-            kwargs["avwap_mode"] = avwap_mode
+        kwargs["avwap_mode"] = effective_avwap_mode
         fig = calls[key](sym, CHART_LABELS[sym], **kwargs)
         figure = json.loads(fig.to_json())
         avwap_meta = (figure.get("layout") or {}).get("meta") or {}

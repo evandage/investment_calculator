@@ -29,6 +29,12 @@ const shanghaiTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+const newYorkSessionFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "America/New_York",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 function timeToDate(time) {
   if (typeof time === "number") return new Date(time * 1000);
@@ -46,6 +52,15 @@ function formatShanghaiTick(time, tickMarkType) {
     return shanghaiTimeFormatter.format(date);
   }
   return shanghaiDateFormatter.format(date).replace(/\//g, "-");
+}
+
+function isRegularUsSession(time) {
+  if (typeof time !== "number") return true;
+  const parts = newYorkSessionFormatter.formatToParts(new Date(time * 1000));
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  const totalMinutes = hour * 60 + minute;
+  return totalMinutes >= 9 * 60 + 30 && totalMinutes < 16 * 60;
 }
 
 function fmtMoney(value, currency = "USD", digits = 2) {
@@ -328,10 +343,24 @@ function LightweightChart({ bars }) {
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
     });
-    candleSeries.setData(bars.map((bar) => ({ time: bar.time, open: Number(bar.open), high: Number(bar.high), low: Number(bar.low), close: Number(bar.close) })));
+    candleSeries.setData(bars.map((bar) => {
+      const extended = !isRegularUsSession(bar.time);
+      const rising = Number(bar.close) >= Number(bar.open);
+      const color = rising ? "#22c55e" : "#ef4444";
+      return {
+        time: bar.time,
+        open: Number(bar.open),
+        high: Number(bar.high),
+        low: Number(bar.low),
+        close: Number(bar.close),
+        color: extended ? "rgba(0, 0, 0, 0)" : color,
+        borderColor: color,
+        wickColor: color,
+      };
+    }));
     const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "" });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    volumeSeries.setData(bars.map((bar) => ({
+    volumeSeries.setData(bars.filter((bar) => isRegularUsSession(bar.time)).map((bar) => ({
       time: bar.time,
       value: Number(bar.volume || 0),
       color: Number(bar.close) >= Number(bar.open) ? "rgba(34, 197, 94, 0.38)" : "rgba(239, 68, 68, 0.38)",
@@ -356,7 +385,13 @@ function KlinePage() {
     setLoading(true);
     setError("");
     try {
-      const qs = new URLSearchParams({ symbol, interval, avwap_mode: avwapMode });
+      const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
+      let effectiveAvwapMode = avwapMode;
+      if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
+      if (interval === "1d" && effectiveAvwapMode === "today_open") {
+        effectiveAvwapMode = isEtfSymbol ? "high_60d" : "earnings";
+      }
+      const qs = new URLSearchParams({ symbol, interval, avwap_mode: effectiveAvwapMode });
       const endpoint = mode === "template" ? "chart-board" : "ohlcv";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -385,6 +420,7 @@ function KlinePage() {
 
   const figure = data?.figure;
   const fallbackFigure = data?.fallback_template?.figure;
+  const isEtf = ["VOO", "QQQ", "SGOV"].includes(symbol);
 
   return (
     <section className="chartPanel technicalPanel">
@@ -406,12 +442,12 @@ function KlinePage() {
             {label}
           </label>
         ))}
-        {mode === "template" && interval !== "1d" ? (
-          <select value={avwapMode} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
-            <option value="earnings">AVWAP：最近财报日</option>
+        {mode === "template" ? (
+          <select value={isEtf && avwapMode === "earnings" ? "high_60d" : (interval === "1d" && avwapMode === "today_open" ? (isEtf ? "high_60d" : "earnings") : avwapMode)} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
+            {!isEtf ? <option value="earnings">AVWAP：最近财报日</option> : null}
             <option value="high_60d">AVWAP：最近60日历史高点</option>
             <option value="selloff_60d">AVWAP：最近60日大跌低点</option>
-            <option value="today_open">AVWAP：今日开盘</option>
+            {interval !== "1d" ? <option value="today_open">AVWAP：今日开盘</option> : null}
           </select>
         ) : null}
       </div>

@@ -2807,12 +2807,16 @@ def _render_chart_board() -> None:
         help="关闭某个周期后，该周期对应的图表不会触发 fetch_ohlcv()，通常能显著减少加载时间。",
     )
     _interval_keys = [_interval_display_map[x] for x in _interval_pick] or ["1d"]
-    _avwap_mode_labels = {
-        "最近财报日": "earnings",
-        "最近60日历史高点": "high_60d",
-        "最近60日大跌低点": "selloff_60d",
-        "今日开盘": "today_open",
-    }
+    _avwap_mode_labels = {}
+    if _chart_yf not in {"VOO", "QQQ", "SGOV"}:
+        _avwap_mode_labels["最近财报日"] = "earnings"
+    _avwap_mode_labels.update(
+        {
+            "最近60日历史高点": "high_60d",
+            "最近60日大跌低点": "selloff_60d",
+            "今日开盘": "today_open",
+        }
+    )
     _avwap_pick = st.sidebar.selectbox(
         "AVWAP 锚点",
         options=list(_avwap_mode_labels.keys()),
@@ -2835,6 +2839,7 @@ def _render_chart_board() -> None:
                         _chart_pick,
                         chart_theme=chart_theme,
                         user_avg_cost=_chart_user_avg_cost,
+                        avwap_mode=_avwap_mode,
                         cache_only=chart_cache_only,
                     )
                 ] = ("1d", "日线（1d）")

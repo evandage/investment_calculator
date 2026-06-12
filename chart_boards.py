@@ -50,6 +50,7 @@ _SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")
 _MARKET_DATA_PROVIDER = "tencent"
 _EARNINGS_DATE_CACHE: dict[str, tuple[pd.Timestamp | None, float]] = {}
 _EARNINGS_DATE_TTL_SECONDS = 6 * 60 * 60
+_ETF_SYMBOLS = {"VOO", "QQQ", "SGOV"}
 
 AVWAP_MODE_LABELS = {
     "earnings": "最近财报日",
@@ -278,14 +279,78 @@ def _candlestick_kwargs(theme: dict[str, Any]) -> dict[str, Any]:
     return {
         "increasing": dict(
             line=dict(color=theme["up_line"], width=0.85),
-            fillcolor=theme["up_fill"],
+            fillcolor=theme["up_line"],
         ),
         "decreasing": dict(
             line=dict(color=theme["dn_line"], width=0.85),
-            fillcolor=theme["dn_fill"],
+            fillcolor=theme["dn_line"],
         ),
         "whiskerwidth": 0.38,
     }
+
+
+def _extended_candlestick_kwargs(theme: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "increasing": dict(
+            line=dict(color=theme["up_line"], width=1.1),
+            fillcolor="rgba(0, 0, 0, 0)",
+        ),
+        "decreasing": dict(
+            line=dict(color=theme["dn_line"], width=1.1),
+            fillcolor="rgba(0, 0, 0, 0)",
+        ),
+        "whiskerwidth": 0.38,
+    }
+
+
+def _regular_us_session_mask(index: pd.Index) -> np.ndarray:
+    idx = pd.DatetimeIndex(index)
+    if idx.tz is None:
+        idx = idx.tz_localize(ZoneInfo("America/New_York"), ambiguous="infer", nonexistent="shift_forward")
+    else:
+        idx = idx.tz_convert(ZoneInfo("America/New_York"))
+    minutes = idx.hour * 60 + idx.minute
+    return np.asarray((minutes >= 9 * 60 + 30) & (minutes < 16 * 60))
+
+
+def _add_intraday_candlesticks(
+    fig: go.Figure,
+    df: pd.DataFrame,
+    theme: dict[str, Any],
+    regular_mask: np.ndarray,
+) -> None:
+    regular = df.loc[regular_mask]
+    extended = df.loc[~regular_mask]
+    if not regular.empty:
+        fig.add_trace(
+            go.Candlestick(
+                x=regular.index,
+                open=regular["Open"],
+                high=regular["High"],
+                low=regular["Low"],
+                close=regular["Close"],
+                name="K线",
+                **_candlestick_kwargs(theme),
+            ),
+            row=1,
+            col=1,
+            secondary_y=False,
+        )
+    if not extended.empty:
+        fig.add_trace(
+            go.Candlestick(
+                x=extended.index,
+                open=extended["Open"],
+                high=extended["High"],
+                low=extended["Low"],
+                close=extended["Close"],
+                name="扩展盘",
+                **_extended_candlestick_kwargs(theme),
+            ),
+            row=1,
+            col=1,
+            secondary_y=False,
+        )
 
 
 def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
@@ -1506,10 +1571,13 @@ def _avwap_anchor_date(
         return current_day, AVWAP_MODE_LABELS["today_open"]
 
     if normalized_mode == "earnings":
-        earnings_date = _latest_earnings_date(symbol)
-        if earnings_date is not None:
-            return earnings_date, AVWAP_MODE_LABELS[normalized_mode]
-        normalized_mode = "selloff_60d"
+        if symbol in _ETF_SYMBOLS:
+            normalized_mode = "high_60d"
+        else:
+            earnings_date = _latest_earnings_date(symbol)
+            if earnings_date is not None:
+                return earnings_date, AVWAP_MODE_LABELS[normalized_mode]
+            normalized_mode = "selloff_60d"
 
     if normalized_mode == "high_60d":
         anchor = _naive_day(recent["High"].astype(float).idxmax())
@@ -1573,6 +1641,28 @@ def anchored_vwap_and_bands(
     upper.loc[active.index] = avwap + n_std * sigma
     lower.loc[active.index] = avwap - n_std * sigma
     return result, upper, lower, anchor_date, label
+
+
+def daily_anchored_vwap(
+    symbol: str,
+    daily: pd.DataFrame,
+    mode: str,
+) -> tuple[pd.Series, pd.Timestamp, str]:
+    if daily.empty:
+        return pd.Series(dtype=float), pd.Timestamp.now().normalize(), AVWAP_MODE_LABELS["earnings"]
+
+    daily_mode = mode if mode in {"earnings", "high_60d", "selloff_60d"} else "earnings"
+    anchor_date, label = _avwap_anchor_date(symbol, daily, daily, daily_mode)
+    daily_dates = pd.DatetimeIndex([_naive_day(value) for value in daily.index])
+    active = daily.loc[daily_dates >= anchor_date]
+    result = pd.Series(np.nan, index=daily.index, dtype=float)
+    if active.empty:
+        return result, anchor_date, label
+
+    typical_price = (active["High"] + active["Low"] + active["Close"]) / 3.0
+    volume = active["Volume"].fillna(0.0).astype(float).clip(lower=0.0)
+    result.loc[active.index] = (typical_price * volume).cumsum() / volume.cumsum().replace(0, np.nan)
+    return result, anchor_date, label
 
 
 def _focus_intraday_price_axis(
@@ -1695,6 +1785,7 @@ def fig_daily(
     *,
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
+    avwap_mode: str = "earnings",
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
@@ -1725,6 +1816,7 @@ def fig_daily(
     r14 = rsi(c, 14)
     atr_v = atr_series(df, 14)
     m_line, m_sig, m_hist = macd_series(c)
+    daily_avwap, avwap_anchor, avwap_label = daily_anchored_vwap(symbol, df, avwap_mode)
 
     # 默认展示最近 N 根「交易日」K 线（非日历天），与页面 60 日回撤口径保持一致。
     _n_daily_visible = 60
@@ -1734,6 +1826,7 @@ def fig_daily(
     vis_e100 = e100.reindex(vis_df.index)
     vis_e200 = e200.reindex(vis_df.index)
     vis_r14 = r14.reindex(vis_df.index)
+    vis_daily_avwap = daily_avwap.reindex(vis_df.index)
     vis_m_line = m_line.reindex(vis_df.index)
     vis_m_sig = m_sig.reindex(vis_df.index)
     vis_m_hist = m_hist.reindex(vis_df.index)
@@ -1809,6 +1902,18 @@ def fig_daily(
             col=1,
             secondary_y=False,
         )
+    fig.add_trace(
+        go.Scatter(
+            x=vis_df.index,
+            y=vis_daily_avwap,
+            name=f"AVWAP · {avwap_label}",
+            line=dict(color=theme["vwap"], width=1.6),
+            connectgaps=False,
+        ),
+        row=1,
+        col=1,
+        secondary_y=False,
+    )
     fig.add_trace(
         go.Bar(
             x=vis_df.index,
@@ -1901,17 +2006,26 @@ def fig_daily(
         height=980,
         xaxis_rangeslider_visible=False,
         barmode="overlay",
+        meta={
+            "avwap_mode": avwap_mode if avwap_mode != "today_open" else "earnings",
+            "avwap_label": avwap_label,
+            "avwap_anchor": avwap_anchor.strftime("%Y-%m-%d"),
+        },
     )
     _apply_chart_theme(fig, theme)
     vmax_vis = float(vis_vol.max()) if len(vis_vol) else 0.0
-    y_lo = float(vis_df["Low"].min())
-    y_hi = float(vis_df["High"].max())
+    price_y_range = _focus_intraday_price_axis(
+        fig,
+        vis_df,
+        vis_daily_avwap,
+        atr_v.reindex(vis_df.index),
+        last_close,
+        avwap_label,
+        theme,
+    )
     if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
-        y_lo = min(y_lo, float(user_avg_cost))
-        y_hi = max(y_hi, float(user_avg_cost))
-    atr_vis = atr_v.reindex(vis_df.index).dropna()
-    y_pad = float(atr_vis.iloc[-1]) if len(atr_vis) else max((y_hi - y_lo) * 0.06, 1e-9)
-    price_y_range = [y_lo - y_pad, y_hi + y_pad]
+        price_y_range[0] = min(price_y_range[0], float(user_avg_cost))
+        price_y_range[1] = max(price_y_range[1], float(user_avg_cost))
     fig.update_yaxes(
         title_text="价格",
         row=1,
@@ -1993,7 +2107,11 @@ def fig_15m_vwap_rsi(
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
 
-    vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(df, bins=24)
+    regular_session_mask = _regular_us_session_mask(df.index)
+    regular_df = df.loc[regular_session_mask]
+    vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(regular_df, bins=24)
+    regular_vol = vol.loc[regular_session_mask]
+    regular_vcols = [color for color, is_regular in zip(vcols, regular_session_mask) if is_regular]
     df.index = _shanghai_plot_index(df.index)
 
     fig = make_subplots(
@@ -2006,20 +2124,7 @@ def fig_15m_vwap_rsi(
         row_heights=[0.52, 0.22, 0.26],
         column_widths=[0.82, 0.18],
     )
-    fig.add_trace(
-        go.Candlestick(
-            x=df.index,
-            open=df["Open"],
-            high=df["High"],
-            low=df["Low"],
-            close=df["Close"],
-            name="K线",
-            **_candlestick_kwargs(theme),
-        ),
-        row=1,
-        col=1,
-        secondary_y=False,
-    )
+    _add_intraday_candlesticks(fig, df, theme, regular_session_mask)
 
     fig.add_trace(
         go.Scatter(
@@ -2060,10 +2165,10 @@ def fig_15m_vwap_rsi(
     )
     fig.add_trace(
         go.Bar(
-            x=df.index,
-            y=vol,
-            name="成交量",
-            marker_color=vcols,
+            x=df.index[regular_session_mask],
+            y=regular_vol,
+            name="成交量（正常盘）",
+            marker_color=regular_vcols,
             marker_line_width=0,
             showlegend=False,
             hovertemplate="成交量: %{y:,.0f}<extra></extra>",
@@ -2164,7 +2269,7 @@ def fig_15m_vwap_rsi(
                 width=vp_width.values,
                 customdata=np.column_stack([vp_low.values, vp_high.values]),
                 orientation="h",
-                name="价位成交量",
+                name="价位成交量（正常盘）",
                 marker_color=theme["vp_bar"],
                 marker_line_width=0,
                 showlegend=False,
@@ -2185,7 +2290,7 @@ def fig_15m_vwap_rsi(
         },
     )
     _apply_chart_theme(fig, theme)
-    vmax = float(vol.max()) if len(vol) else 0.0
+    vmax = float(regular_vol.max()) if len(regular_vol) else 0.0
     price_y_range = _focus_intraday_price_axis(
         fig,
         df,
@@ -2263,7 +2368,11 @@ def fig_5m_vwap_rsi7(
     vol = df["Volume"].fillna(0.0).astype(float)
     vcols = _volume_bar_colors(df, theme)
 
-    vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(df, bins=24)
+    regular_session_mask = _regular_us_session_mask(df.index)
+    regular_df = df.loc[regular_session_mask]
+    vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(regular_df, bins=24)
+    regular_vol = vol.loc[regular_session_mask]
+    regular_vcols = [color for color, is_regular in zip(vcols, regular_session_mask) if is_regular]
     df.index = _shanghai_plot_index(df.index)
 
     fig = make_subplots(
@@ -2276,20 +2385,7 @@ def fig_5m_vwap_rsi7(
         row_heights=[0.52, 0.22, 0.26],
         column_widths=[0.82, 0.18],
     )
-    fig.add_trace(
-        go.Candlestick(
-            x=df.index,
-            open=df["Open"],
-            high=df["High"],
-            low=df["Low"],
-            close=df["Close"],
-            name="K线",
-            **_candlestick_kwargs(theme),
-        ),
-        row=1,
-        col=1,
-        secondary_y=False,
-    )
+    _add_intraday_candlesticks(fig, df, theme, regular_session_mask)
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -2329,10 +2425,10 @@ def fig_5m_vwap_rsi7(
     )
     fig.add_trace(
         go.Bar(
-            x=df.index,
-            y=vol,
-            name="成交量",
-            marker_color=vcols,
+            x=df.index[regular_session_mask],
+            y=regular_vol,
+            name="成交量（正常盘）",
+            marker_color=regular_vcols,
             marker_line_width=0,
             showlegend=False,
             hovertemplate="成交量: %{y:,.0f}<extra></extra>",
@@ -2439,7 +2535,7 @@ def fig_5m_vwap_rsi7(
                 width=vp_width.values,
                 customdata=np.column_stack([vp_low.values, vp_high.values]),
                 orientation="h",
-                name="价位成交量",
+                name="价位成交量（正常盘）",
                 marker_color=theme["vp_bar"],
                 marker_line_width=0,
                 showlegend=False,
@@ -2460,7 +2556,7 @@ def fig_5m_vwap_rsi7(
         },
     )
     _apply_chart_theme(fig, theme)
-    vmax = float(vol.max()) if len(vol) else 0.0
+    vmax = float(regular_vol.max()) if len(regular_vol) else 0.0
     price_y_range = _focus_intraday_price_axis(
         fig,
         df,
