@@ -380,7 +380,7 @@ def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
             font_family=_CH_FONT_FAMILY,
         ),
         margin=dict(l=52, r=right_margin, t=18, b=44),
-        dragmode=False,
+        dragmode="zoom",
     )
     fig.update_xaxes(
         showgrid=True,
@@ -394,7 +394,7 @@ def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
         spikemode="across",
         spikesnap="cursor",
         spikedash="solid",
-        fixedrange=True,
+        fixedrange=False,
     )
     fig.update_yaxes(
         showgrid=True,
@@ -403,7 +403,7 @@ def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
         zeroline=False,
         showline=False,
         tickfont=dict(size=10, color=theme["muted"]),
-        fixedrange=True,
+        fixedrange=False,
     )
 
 

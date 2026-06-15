@@ -519,14 +519,50 @@ function KlinePage() {
       {mode === "futu" && !data?.bars?.length && fallbackFigure ? (
         <div className="plotWrap">
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
-            <Plot data={fallbackFigure.data} layout={{ ...fallbackFigure.layout, autosize: true }} config={{ responsive: true, displaylogo: false, scrollZoom: true }} useResizeHandler style={{ width: "100%", height: "100%" }} />
+            <Plot
+              data={fallbackFigure.data}
+              layout={{
+                ...fallbackFigure.layout,
+                autosize: true,
+                dragmode: "zoom",
+                uirevision: `fallback-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+              }}
+              config={{
+                responsive: true,
+                displaylogo: false,
+                displayModeBar: true,
+                scrollZoom: true,
+                doubleClick: "reset+autosize",
+                modeBarButtonsToRemove: ["select2d", "lasso2d"],
+              }}
+              useResizeHandler
+              style={{ width: "100%", height: "100%" }}
+            />
           </Suspense>
         </div>
       ) : null}
       {mode === "template" && figure ? (
         <div className="plotWrap">
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
-            <Plot data={figure.data} layout={{ ...figure.layout, autosize: true }} config={{ responsive: true, displaylogo: false, scrollZoom: true }} useResizeHandler style={{ width: "100%", height: "100%" }} />
+            <Plot
+              data={figure.data}
+              layout={{
+                ...figure.layout,
+                autosize: true,
+                dragmode: "zoom",
+                uirevision: `template-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+              }}
+              config={{
+                responsive: true,
+                displaylogo: false,
+                displayModeBar: true,
+                scrollZoom: true,
+                doubleClick: "reset+autosize",
+                modeBarButtonsToRemove: ["select2d", "lasso2d"],
+              }}
+              useResizeHandler
+              style={{ width: "100%", height: "100%" }}
+            />
           </Suspense>
         </div>
       ) : null}
