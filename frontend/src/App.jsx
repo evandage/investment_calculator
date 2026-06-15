@@ -314,7 +314,7 @@ function Visualizations({ data }) {
   );
 }
 
-function LightweightChart({ bars }) {
+function LightweightChart({ bars, showExtended }) {
   const hostRef = useRef(null);
 
   useEffect(() => {
@@ -343,7 +343,8 @@ function LightweightChart({ bars }) {
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
     });
-    candleSeries.setData(bars.map((bar) => {
+    const visibleBars = showExtended ? bars : bars.filter((bar) => isRegularUsSession(bar.time));
+    candleSeries.setData(visibleBars.map((bar) => {
       const extended = !isRegularUsSession(bar.time);
       const rising = Number(bar.close) >= Number(bar.open);
       const color = rising ? "#22c55e" : "#ef4444";
@@ -367,7 +368,7 @@ function LightweightChart({ bars }) {
     })));
     chart.timeScale().fitContent();
     return () => chart.remove();
-  }, [bars]);
+  }, [bars, showExtended]);
 
   return <div className="lwChart" ref={hostRef} />;
 }
@@ -377,9 +378,11 @@ function KlinePage() {
   const [symbol, setSymbol] = useState("VOO");
   const [interval, setInterval] = useState("1d");
   const [avwapMode, setAvwapMode] = useState("earnings");
+  const [showExtended, setShowExtended] = useState(true);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -391,7 +394,7 @@ function KlinePage() {
       if (interval === "1d" && effectiveAvwapMode === "today_open") {
         effectiveAvwapMode = isEtfSymbol ? "high_60d" : "earnings";
       }
-      const qs = new URLSearchParams({ symbol, interval, avwap_mode: effectiveAvwapMode });
+      const qs = new URLSearchParams({ symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) });
       const endpoint = mode === "template" ? "chart-board" : "ohlcv";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -416,7 +419,52 @@ function KlinePage() {
 
   useEffect(() => {
     load();
-  }, [mode, symbol, interval, avwapMode]);
+  }, [mode, symbol, interval, avwapMode, showExtended]);
+
+  useEffect(() => {
+    if (mode !== "template") {
+      setRealtimeConnected(false);
+      return undefined;
+    }
+    const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
+    let effectiveAvwapMode = avwapMode;
+    if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
+    if (interval === "1d" && effectiveAvwapMode === "today_open") {
+      effectiveAvwapMode = isEtfSymbol ? "high_60d" : "earnings";
+    }
+    const qs = new URLSearchParams({ symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) });
+    const wsBase = API_BASE.replace(/^http/, "ws");
+    let disposed = false;
+    let socket;
+    let reconnectTimer;
+
+    function connect() {
+      socket = new WebSocket(`${wsBase}/ws/chart-board?${qs.toString()}`);
+      socket.onopen = () => setRealtimeConnected(false);
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          setData(payload);
+          setRealtimeConnected(Boolean(payload.kline_subscription));
+          setError("");
+        } catch {
+          // Ignore malformed frames and wait for the next K-line update.
+        }
+      };
+      socket.onerror = () => setRealtimeConnected(false);
+      socket.onclose = () => {
+        setRealtimeConnected(false);
+        if (!disposed) reconnectTimer = window.setTimeout(connect, 2000);
+      };
+    }
+
+    connect();
+    return () => {
+      disposed = true;
+      window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [mode, symbol, interval, avwapMode, showExtended]);
 
   const figure = data?.figure;
   const fallbackFigure = data?.fallback_template?.figure;
@@ -450,13 +498,18 @@ function KlinePage() {
             {interval !== "1d" ? <option value="today_open">AVWAP：今日开盘</option> : null}
           </select>
         ) : null}
+        {interval !== "1d" ? (
+          <button className={showExtended ? "active" : ""} onClick={() => setShowExtended((value) => !value)}>
+            扩展盘：{showExtended ? "显示" : "隐藏"}
+          </button>
+        ) : null}
       </div>
       {data && mode === "futu" ? <div className="muted">K线源：{data.source}{data.fallback_reason ? ` · 兜底原因：${data.fallback_reason}` : ""} · {data.bars?.length || 0} 根 · 时间：北京时间</div> : null}
       {data?.fallback_template ? <div className="muted">轻量K线无数据，已自动切到我的模板 · {data.fallback_template.interval}</div> : null}
-      {data && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
+      {data && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
-      {mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} /> : null}
+      {mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} showExtended={showExtended} /> : null}
       {mode === "futu" && !data?.bars?.length && fallbackFigure ? (
         <div className="plotWrap">
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>

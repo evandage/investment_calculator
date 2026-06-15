@@ -318,6 +318,7 @@ def _add_intraday_candlesticks(
     df: pd.DataFrame,
     theme: dict[str, Any],
     regular_mask: np.ndarray,
+    show_extended: bool = True,
 ) -> None:
     regular = df.loc[regular_mask]
     extended = df.loc[~regular_mask]
@@ -336,7 +337,7 @@ def _add_intraday_candlesticks(
             col=1,
             secondary_y=False,
         )
-    if not extended.empty:
+    if show_extended and not extended.empty:
         fig.add_trace(
             go.Candlestick(
                 x=extended.index,
@@ -354,6 +355,7 @@ def _add_intraday_candlesticks(
 
 
 def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
+    right_margin = max(18, int(fig.layout.margin.r or 0))
     fig.update_layout(
         paper_bgcolor=theme["paper"],
         plot_bgcolor=theme["plot"],
@@ -377,7 +379,7 @@ def _apply_chart_theme(fig: go.Figure, theme: dict[str, Any]) -> None:
             font_size=11,
             font_family=_CH_FONT_FAMILY,
         ),
-        margin=dict(l=52, r=18, t=18, b=44),
+        margin=dict(l=52, r=right_margin, t=18, b=44),
         dragmode=False,
     )
     fig.update_xaxes(
@@ -824,9 +826,10 @@ def _fetch_from_source(
     provider = get_market_provider()
     if provider == "futu":
         try:
-            from backend.ohlcv import _fetch_futu_ohlcv
+            from backend.ohlcv import fetch_ohlcv as fetch_futu_ohlcv
 
-            bars, _ = _fetch_futu_ohlcv(symbol, interval)
+            payload = fetch_futu_ohlcv(symbol, interval)
+            bars = payload.get("bars") or []
             if bars:
                 d = pd.DataFrame(bars).rename(
                     columns={
@@ -1714,6 +1717,40 @@ def _focus_intraday_price_axis(
     return price_y_range
 
 
+def _add_latest_price_line(
+    fig: go.Figure,
+    price: float,
+    theme: dict[str, Any],
+) -> None:
+    if not np.isfinite(price) or price <= 0:
+        return
+    color = theme["rsi_mid"]
+    fig.add_hline(
+        y=price,
+        line_dash="dash",
+        line_width=1.15,
+        line_color=color,
+        row=1,
+        col=1,
+    )
+    fig.add_annotation(
+        x=1.005,
+        y=price,
+        xref="paper",
+        yref="y1",
+        text=f"最新 {price:.2f}",
+        showarrow=False,
+        xanchor="left",
+        yanchor="middle",
+        font=dict(color=color, size=11),
+        bgcolor=theme["paper"],
+        bordercolor=color,
+        borderwidth=1,
+        borderpad=3,
+    )
+    fig.update_layout(margin=dict(r=92))
+
+
 def multiframe_signal_bundle(symbol: str) -> dict[str, Any]:
     """多周期一致性粗评分：日线趋势 + 15m 相对 VWAP + 5m RSI 节奏。"""
     out: dict[str, Any] = {
@@ -1862,6 +1899,7 @@ def fig_daily(
         col=1,
         secondary_y=False,
     )
+    _add_latest_price_line(fig, last_close, theme)
 
     # 叠加用户“持仓成本”水平线 + 涨跌幅标注
     if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
@@ -2067,10 +2105,13 @@ def fig_15m_vwap_rsi(
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
     avwap_mode: str = "earnings",
+    show_extended: bool = True,
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "15m", "2d", cache_only=cache_only)
+    if not show_extended and not df.empty:
+        df = df.loc[_regular_us_session_mask(df.index)].copy()
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
     if df.empty:
         fig = go.Figure()
@@ -2124,7 +2165,8 @@ def fig_15m_vwap_rsi(
         row_heights=[0.52, 0.22, 0.26],
         column_widths=[0.82, 0.18],
     )
-    _add_intraday_candlesticks(fig, df, theme, regular_session_mask)
+    _add_intraday_candlesticks(fig, df, theme, regular_session_mask, show_extended)
+    _add_latest_price_line(fig, last_close, theme)
 
     fig.add_trace(
         go.Scatter(
@@ -2334,10 +2376,13 @@ def fig_5m_vwap_rsi7(
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
     avwap_mode: str = "earnings",
+    show_extended: bool = True,
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "5m", "2d", cache_only=cache_only)
+    if not show_extended and not df.empty:
+        df = df.loc[_regular_us_session_mask(df.index)].copy()
     df, _ = slice_intraday_today_or_yesterday(df, symbol)
     if df.empty:
         fig = go.Figure()
@@ -2385,7 +2430,8 @@ def fig_5m_vwap_rsi7(
         row_heights=[0.52, 0.22, 0.26],
         column_widths=[0.82, 0.18],
     )
-    _add_intraday_candlesticks(fig, df, theme, regular_session_mask)
+    _add_intraday_candlesticks(fig, df, theme, regular_session_mask, show_extended)
+    _add_latest_price_line(fig, last_close, theme)
     fig.add_trace(
         go.Scatter(
             x=df.index,

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .market_data import (
     fetch_quotes,
     futu_opend_config,
+    get_futu_kline_revision,
     futu_subscription_status,
     is_futu_opend_available,
     start_futu_quote_subscription,
@@ -112,16 +113,16 @@ def dashboard(user_id: str = "evan") -> dict[str, Any]:
 
 
 @app.get("/api/ohlcv")
-def ohlcv(symbol: str = "VOO", interval: str = "1d") -> dict[str, Any]:
-    return fetch_ohlcv(symbol, interval)
+def ohlcv(symbol: str = "VOO", interval: str = "1d", show_extended: bool = True) -> dict[str, Any]:
+    return fetch_ohlcv(symbol, interval, show_extended)
 
 
-@app.get("/api/chart-board")
-def chart_board(
+def _build_chart_board(
     symbol: str = "VOO",
     interval: str = "1d",
     theme: str = "Trading Dark",
     avwap_mode: str = "earnings",
+    show_extended: bool = True,
 ) -> dict[str, Any]:
     sym = str(symbol or "VOO").upper()
     if sym not in CHART_LABELS:
@@ -150,6 +151,8 @@ def chart_board(
             "cache_only": False,
         }
         kwargs["avwap_mode"] = effective_avwap_mode
+        if key != "1d":
+            kwargs["show_extended"] = show_extended
         fig = calls[key](sym, CHART_LABELS[sym], **kwargs)
         figure = json.loads(fig.to_json())
         avwap_meta = (figure.get("layout") or {}).get("meta") or {}
@@ -162,11 +165,23 @@ def chart_board(
             "avwap_mode": avwap_meta.get("avwap_mode"),
             "avwap_label": avwap_meta.get("avwap_label"),
             "avwap_anchor": avwap_meta.get("avwap_anchor"),
+            "show_extended": show_extended if key != "1d" else None,
             "figure": figure,
             "error": "",
         }
     except Exception as exc:
         return {"symbol": sym, "interval": key, "source": "my-template", "figure": None, "error": str(exc)}
+
+
+@app.get("/api/chart-board")
+def chart_board(
+    symbol: str = "VOO",
+    interval: str = "1d",
+    theme: str = "Trading Dark",
+    avwap_mode: str = "earnings",
+    show_extended: bool = True,
+) -> dict[str, Any]:
+    return _build_chart_board(symbol, interval, theme, avwap_mode, show_extended)
 
 
 @app.get("/api/holdings")
@@ -210,5 +225,48 @@ async def quotes_ws(websocket: WebSocket) -> None:
         while True:
             await websocket.send_json(fetch_quotes())
             await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        return
+
+
+@app.websocket("/ws/chart-board")
+async def chart_board_ws(websocket: WebSocket) -> None:
+    await websocket.accept()
+    symbol = str(websocket.query_params.get("symbol", "VOO")).upper()
+    interval = str(websocket.query_params.get("interval", "1d"))
+    theme = str(websocket.query_params.get("theme", "Trading Dark"))
+    avwap_mode = str(websocket.query_params.get("avwap_mode", "earnings"))
+    show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
+    if symbol not in CHART_LABELS:
+        symbol = "VOO"
+    if interval not in {"1d", "15m", "5m"}:
+        interval = "1d"
+
+    last_revision = -1
+    last_sent_at = 0.0
+    try:
+        while True:
+            revision = get_futu_kline_revision(symbol, interval)
+            now = asyncio.get_running_loop().time()
+            if last_revision < 0 or (revision != last_revision and now - last_sent_at >= 1.5):
+                payload = await asyncio.to_thread(
+                    _build_chart_board,
+                    symbol,
+                    interval,
+                    theme,
+                    avwap_mode,
+                    show_extended,
+                )
+                payload["realtime"] = True
+                payload["revision"] = revision
+                subscription = futu_subscription_status()
+                payload["kline_subscription"] = (
+                    not subscription.get("kline_error")
+                    and symbol in set(subscription.get("kline_symbols") or [])
+                )
+                await websocket.send_json(payload)
+                last_revision = revision
+                last_sent_at = now
+            await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         return

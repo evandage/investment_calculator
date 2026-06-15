@@ -48,6 +48,9 @@ _FUTU_SUB_LAST_ERROR = ""
 _FUTU_SUB_QUOTES: dict[str, dict[str, Any]] = {}
 _FUTU_SUB_UPDATED_AT: dict[str, float] = {}
 _FUTU_SUB_TTL_SECONDS = 300.0
+_FUTU_SUB_KLINES: dict[tuple[str, str], dict[str, Any]] = {}
+_FUTU_SUB_KLINE_REVISIONS: dict[tuple[str, str], int] = {}
+_FUTU_SUB_KLINE_ERROR = ""
 NY_TZ = ZoneInfo("America/New_York")
 
 
@@ -219,8 +222,31 @@ def _update_futu_subscription_quotes(data: Any) -> None:
             _FUTU_SUB_UPDATED_AT[sym] = now
 
 
+def _update_futu_subscription_klines(data: Any) -> None:
+    code_to_sym = {code: sym for sym, code in FUTU_US.items()}
+    interval_by_type = {"K_DAY": "1d", "K_15M": "15m", "K_5M": "5m"}
+    with _FUTU_SUB_LOCK:
+        for i in range(len(data)):
+            row = data.iloc[i] if hasattr(data, "iloc") else data[i]
+            sym = code_to_sym.get(str(_row_get(row, "code", "")))
+            interval = interval_by_type.get(str(_row_get(row, "k_type", "")))
+            if not sym or not interval:
+                continue
+            key = (sym, interval)
+            _FUTU_SUB_KLINES[key] = {
+                "time_key": str(_row_get(row, "time_key", "")),
+                "open": _coerce_float(_row_get(row, "open")),
+                "high": _coerce_float(_row_get(row, "high")),
+                "low": _coerce_float(_row_get(row, "low")),
+                "close": _coerce_float(_row_get(row, "close")),
+                "volume": _coerce_float(_row_get(row, "volume")) or 0.0,
+                "updated_at": time.time(),
+            }
+            _FUTU_SUB_KLINE_REVISIONS[key] = _FUTU_SUB_KLINE_REVISIONS.get(key, 0) + 1
+
+
 def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
-    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR
+    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR, _FUTU_SUB_KLINE_ERROR
     with _FUTU_SUB_LOCK:
         if _FUTU_SUB_STARTED and _FUTU_SUB_CTX is not None and not force:
             return futu_subscription_status()
@@ -232,6 +258,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         _FUTU_SUB_CTX = None
         _FUTU_SUB_STARTED = False
         _FUTU_SUB_LAST_ERROR = ""
+        _FUTU_SUB_KLINE_ERROR = ""
 
     if not is_futu_opend_available():
         with _FUTU_SUB_LOCK:
@@ -239,7 +266,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         return futu_subscription_status()
 
     try:
-        from futu import OpenQuoteContext, RET_OK, StockQuoteHandlerBase, SubType
+        from futu import AuType, CurKlineHandlerBase, KLType, OpenQuoteContext, RET_OK, StockQuoteHandlerBase, SubType
     except Exception as exc:
         with _FUTU_SUB_LOCK:
             _FUTU_SUB_LAST_ERROR = f"futu_import_failed: {exc}"
@@ -252,11 +279,19 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
                 _update_futu_subscription_quotes(data)
             return ret_code, data
 
+    class KlineHandler(CurKlineHandlerBase):
+        def on_recv_rsp(self, rsp_pb: Any) -> tuple[int, Any]:
+            ret_code, data = super().on_recv_rsp(rsp_pb)
+            if ret_code == RET_OK:
+                _update_futu_subscription_klines(data)
+            return ret_code, data
+
     host, port = futu_opend_config()
     ctx = None
     try:
         ctx = OpenQuoteContext(host=host, port=port)
         ctx.set_handler(QuoteHandler())
+        ctx.set_handler(KlineHandler())
         ret, msg = ctx.subscribe(
             [FUTU_US[sym] for sym in USD_SYMBOLS],
             [SubType.QUOTE],
@@ -271,6 +306,25 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
             with _FUTU_SUB_LOCK:
                 _FUTU_SUB_LAST_ERROR = str(msg)
             return futu_subscription_status()
+        kline_ret, kline_msg = ctx.subscribe(
+            [FUTU_US[sym] for sym in USD_SYMBOLS],
+            [SubType.K_DAY, SubType.K_15M, SubType.K_5M],
+            is_first_push=True,
+            subscribe_push=True,
+            extended_time=True,
+        )
+        if kline_ret != RET_OK:
+            _FUTU_SUB_KLINE_ERROR = str(kline_msg)
+        else:
+            for sym in USD_SYMBOLS:
+                code = FUTU_US[sym]
+                for interval, ktype in (("1d", KLType.K_DAY), ("15m", KLType.K_15M), ("5m", KLType.K_5M)):
+                    seed_ret, seed_data = ctx.get_cur_kline(code, 1, ktype=ktype, autype=AuType.QFQ)
+                    if seed_ret != RET_OK or seed_data is None or len(seed_data) == 0:
+                        continue
+                    seed = seed_data.copy()
+                    seed["k_type"] = {"1d": "K_DAY", "15m": "K_15M", "5m": "K_5M"}[interval]
+                    _update_futu_subscription_klines(seed)
         with _FUTU_SUB_LOCK:
             _FUTU_SUB_CTX = ctx
             _FUTU_SUB_STARTED = True
@@ -309,6 +363,17 @@ def get_futu_subscription_quotes(max_age: float = _FUTU_SUB_TTL_SECONDS) -> dict
         }
 
 
+def get_futu_subscription_kline(symbol: str, interval: str) -> dict[str, Any] | None:
+    with _FUTU_SUB_LOCK:
+        bar = _FUTU_SUB_KLINES.get((symbol, interval))
+        return dict(bar) if bar else None
+
+
+def get_futu_kline_revision(symbol: str, interval: str) -> int:
+    with _FUTU_SUB_LOCK:
+        return int(_FUTU_SUB_KLINE_REVISIONS.get((symbol, interval), 0))
+
+
 def futu_subscription_status() -> dict[str, Any]:
     now = time.time()
     with _FUTU_SUB_LOCK:
@@ -322,6 +387,8 @@ def futu_subscription_status() -> dict[str, Any]:
             "fresh_symbols": sorted(get_futu_subscription_quotes().keys()),
             "ages_seconds": ages,
             "last_error": _FUTU_SUB_LAST_ERROR,
+            "kline_symbols": sorted({symbol for symbol, _ in _FUTU_SUB_KLINES}),
+            "kline_error": _FUTU_SUB_KLINE_ERROR,
         }
 
 
