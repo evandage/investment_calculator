@@ -361,11 +361,17 @@ function LightweightChart({ bars, showExtended }) {
     }));
     const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "" });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    volumeSeries.setData(bars.filter((bar) => isRegularUsSession(bar.time)).map((bar) => ({
-      time: bar.time,
-      value: Number(bar.volume || 0),
-      color: Number(bar.close) >= Number(bar.open) ? "rgba(34, 197, 94, 0.38)" : "rgba(239, 68, 68, 0.38)",
-    })));
+    volumeSeries.setData(visibleBars.filter((bar) => Number.isFinite(Number(bar.volume)) && Number(bar.volume) > 0).map((bar) => {
+      const extended = !isRegularUsSession(bar.time);
+      const rising = Number(bar.close) >= Number(bar.open);
+      return {
+        time: bar.time,
+        value: Number(bar.volume),
+        color: rising
+          ? `rgba(34, 197, 94, ${extended ? 0.2 : 0.38})`
+          : `rgba(239, 68, 68, ${extended ? 0.2 : 0.38})`,
+      };
+    }));
     chart.timeScale().fitContent();
     return () => chart.remove();
   }, [bars, showExtended]);

@@ -826,10 +826,9 @@ def _fetch_from_source(
     provider = get_market_provider()
     if provider == "futu":
         try:
-            from backend.ohlcv import fetch_ohlcv as fetch_futu_ohlcv
+            from backend.ohlcv import _fetch_futu_ohlcv
 
-            payload = fetch_futu_ohlcv(symbol, interval)
-            bars = payload.get("bars") or []
+            bars, _ = _fetch_futu_ohlcv(symbol, interval)
             if bars:
                 d = pd.DataFrame(bars).rename(
                     columns={
@@ -1361,6 +1360,13 @@ def _volume_bar_colors(df: pd.DataFrame, theme: dict[str, Any]) -> list[str]:
     ]
 
 
+def _with_rgba_alpha(color: str, alpha: float) -> str:
+    if color.startswith("rgba(") and color.endswith(")") and "," in color:
+        prefix, _, _ = color.rpartition(",")
+        return f"{prefix}, {alpha:.2f})"
+    return color
+
+
 def _volume_profile_by_price(
     df: pd.DataFrame,
     bins: int = 24,
@@ -1721,24 +1727,28 @@ def _add_latest_price_line(
     fig: go.Figure,
     price: float,
     theme: dict[str, Any],
+    change_pct: float | None = None,
 ) -> None:
     if not np.isfinite(price) or price <= 0:
         return
     color = theme["rsi_mid"]
     fig.add_hline(
         y=price,
+        name="latest_price_line",
         line_dash="dash",
         line_width=1.15,
         line_color=color,
         row=1,
         col=1,
     )
+    change_text = f"<br>{change_pct:+.2f}%" if change_pct is not None and np.isfinite(change_pct) else ""
     fig.add_annotation(
+        name="latest_price_label",
         x=1.005,
         y=price,
         xref="paper",
         yref="y1",
-        text=f"最新 {price:.2f}",
+        text=f"最新 {price:.2f}{change_text}",
         showarrow=False,
         xanchor="left",
         yanchor="middle",
@@ -1748,7 +1758,7 @@ def _add_latest_price_line(
         borderwidth=1,
         borderpad=3,
     )
-    fig.update_layout(margin=dict(r=92))
+    fig.update_layout(margin=dict(r=76))
 
 
 def multiframe_signal_bundle(symbol: str) -> dict[str, Any]:
@@ -1823,6 +1833,8 @@ def fig_daily(
     chart_theme: str = "Classic Light",
     user_avg_cost: float | None = None,
     avwap_mode: str = "earnings",
+    latest_price: float | None = None,
+    latest_change_pct: float | None = None,
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
@@ -1899,7 +1911,7 @@ def fig_daily(
         col=1,
         secondary_y=False,
     )
-    _add_latest_price_line(fig, last_close, theme)
+    _add_latest_price_line(fig, float(latest_price or last_close), theme, latest_change_pct)
 
     # 叠加用户“持仓成本”水平线 + 涨跌幅标注
     if user_avg_cost is not None and _cost_visible(float(user_avg_cost)):
@@ -2106,6 +2118,8 @@ def fig_15m_vwap_rsi(
     user_avg_cost: float | None = None,
     avwap_mode: str = "earnings",
     show_extended: bool = True,
+    latest_price: float | None = None,
+    latest_change_pct: float | None = None,
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
@@ -2151,8 +2165,15 @@ def fig_15m_vwap_rsi(
     regular_session_mask = _regular_us_session_mask(df.index)
     regular_df = df.loc[regular_session_mask]
     vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(regular_df, bins=24)
-    regular_vol = vol.loc[regular_session_mask]
-    regular_vcols = [color for color, is_regular in zip(vcols, regular_session_mask) if is_regular]
+    volume_mask = np.isfinite(vol.to_numpy()) & (vol.to_numpy() > 0)
+    if not show_extended:
+        volume_mask &= regular_session_mask
+    display_vol = vol.loc[volume_mask]
+    display_vcols = [
+        color if is_regular else _with_rgba_alpha(color, 0.20)
+        for color, is_regular, is_visible in zip(vcols, regular_session_mask, volume_mask)
+        if is_visible
+    ]
     df.index = _shanghai_plot_index(df.index)
 
     fig = make_subplots(
@@ -2166,7 +2187,7 @@ def fig_15m_vwap_rsi(
         column_widths=[0.82, 0.18],
     )
     _add_intraday_candlesticks(fig, df, theme, regular_session_mask, show_extended)
-    _add_latest_price_line(fig, last_close, theme)
+    _add_latest_price_line(fig, float(latest_price or last_close), theme, latest_change_pct)
 
     fig.add_trace(
         go.Scatter(
@@ -2207,10 +2228,10 @@ def fig_15m_vwap_rsi(
     )
     fig.add_trace(
         go.Bar(
-            x=df.index[regular_session_mask],
-            y=regular_vol,
-            name="成交量（正常盘）",
-            marker_color=regular_vcols,
+            x=df.index[volume_mask],
+            y=display_vol,
+            name="成交量",
+            marker_color=display_vcols,
             marker_line_width=0,
             showlegend=False,
             hovertemplate="成交量: %{y:,.0f}<extra></extra>",
@@ -2332,7 +2353,7 @@ def fig_15m_vwap_rsi(
         },
     )
     _apply_chart_theme(fig, theme)
-    vmax = float(regular_vol.max()) if len(regular_vol) else 0.0
+    vmax = float(display_vol.max()) if len(display_vol) else 0.0
     price_y_range = _focus_intraday_price_axis(
         fig,
         df,
@@ -2377,6 +2398,8 @@ def fig_5m_vwap_rsi7(
     user_avg_cost: float | None = None,
     avwap_mode: str = "earnings",
     show_extended: bool = True,
+    latest_price: float | None = None,
+    latest_change_pct: float | None = None,
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
@@ -2416,8 +2439,15 @@ def fig_5m_vwap_rsi7(
     regular_session_mask = _regular_us_session_mask(df.index)
     regular_df = df.loc[regular_session_mask]
     vp_price, vp_vol, vp_low, vp_high, vp_width = _volume_profile_by_price(regular_df, bins=24)
-    regular_vol = vol.loc[regular_session_mask]
-    regular_vcols = [color for color, is_regular in zip(vcols, regular_session_mask) if is_regular]
+    volume_mask = np.isfinite(vol.to_numpy()) & (vol.to_numpy() > 0)
+    if not show_extended:
+        volume_mask &= regular_session_mask
+    display_vol = vol.loc[volume_mask]
+    display_vcols = [
+        color if is_regular else _with_rgba_alpha(color, 0.20)
+        for color, is_regular, is_visible in zip(vcols, regular_session_mask, volume_mask)
+        if is_visible
+    ]
     df.index = _shanghai_plot_index(df.index)
 
     fig = make_subplots(
@@ -2431,7 +2461,7 @@ def fig_5m_vwap_rsi7(
         column_widths=[0.82, 0.18],
     )
     _add_intraday_candlesticks(fig, df, theme, regular_session_mask, show_extended)
-    _add_latest_price_line(fig, last_close, theme)
+    _add_latest_price_line(fig, float(latest_price or last_close), theme, latest_change_pct)
     fig.add_trace(
         go.Scatter(
             x=df.index,
@@ -2471,10 +2501,10 @@ def fig_5m_vwap_rsi7(
     )
     fig.add_trace(
         go.Bar(
-            x=df.index[regular_session_mask],
-            y=regular_vol,
-            name="成交量（正常盘）",
-            marker_color=regular_vcols,
+            x=df.index[volume_mask],
+            y=display_vol,
+            name="成交量",
+            marker_color=display_vcols,
             marker_line_width=0,
             showlegend=False,
             hovertemplate="成交量: %{y:,.0f}<extra></extra>",
@@ -2602,7 +2632,7 @@ def fig_5m_vwap_rsi7(
         },
     )
     _apply_chart_theme(fig, theme)
-    vmax = float(regular_vol.max()) if len(regular_vol) else 0.0
+    vmax = float(display_vol.max()) if len(display_vol) else 0.0
     price_y_range = _focus_intraday_price_axis(
         fig,
         df,

@@ -13,6 +13,8 @@ from .market_data import (
     fetch_quotes,
     futu_opend_config,
     get_futu_kline_revision,
+    get_futu_quote_revision,
+    get_futu_subscription_quotes,
     futu_subscription_status,
     is_futu_opend_available,
     start_futu_quote_subscription,
@@ -140,6 +142,9 @@ def _build_chart_board(
     }
     key = interval if interval in calls else "1d"
     try:
+        quote = get_futu_subscription_quotes().get(sym) or {}
+        latest_price = float(quote.get("price") or 0.0)
+        latest_change_pct = float(quote["change_pct"]) if quote.get("change_pct") is not None else None
         effective_avwap_mode = avwap_mode
         if sym in {"VOO", "QQQ", "SGOV"} and effective_avwap_mode == "earnings":
             effective_avwap_mode = "high_60d"
@@ -149,6 +154,8 @@ def _build_chart_board(
             "chart_theme": theme,
             "user_avg_cost": user_avg_cost if key == "1d" else None,
             "cache_only": False,
+            "latest_price": latest_price if latest_price > 0 else None,
+            "latest_change_pct": latest_change_pct,
         }
         kwargs["avwap_mode"] = effective_avwap_mode
         if key != "1d":
@@ -166,11 +173,31 @@ def _build_chart_board(
             "avwap_label": avwap_meta.get("avwap_label"),
             "avwap_anchor": avwap_meta.get("avwap_anchor"),
             "show_extended": show_extended if key != "1d" else None,
+            "latest_price": latest_price if latest_price > 0 else None,
+            "latest_change_pct": latest_change_pct,
             "figure": figure,
             "error": "",
         }
     except Exception as exc:
         return {"symbol": sym, "interval": key, "source": "my-template", "figure": None, "error": str(exc)}
+
+
+def _patch_latest_price(payload: dict[str, Any], price: float, change_pct: float | None = None) -> None:
+    if price <= 0:
+        return
+    figure = payload.get("figure") or {}
+    layout = figure.get("layout") or {}
+    for shape in layout.get("shapes") or []:
+        if shape.get("name") == "latest_price_line":
+            shape["y0"] = price
+            shape["y1"] = price
+    for annotation in layout.get("annotations") or []:
+        if annotation.get("name") == "latest_price_label":
+            annotation["y"] = price
+            change_text = f"<br>{change_pct:+.2f}%" if change_pct is not None else ""
+            annotation["text"] = f"最新 {price:.2f}{change_text}"
+    payload["latest_price"] = price
+    payload["latest_change_pct"] = change_pct
 
 
 @app.get("/api/chart-board")
@@ -243,12 +270,17 @@ async def chart_board_ws(websocket: WebSocket) -> None:
         interval = "1d"
 
     last_revision = -1
+    last_quote_revision = -1
     last_sent_at = 0.0
+    payload: dict[str, Any] | None = None
     try:
         while True:
             revision = get_futu_kline_revision(symbol, interval)
+            quote_revision = get_futu_quote_revision(symbol)
             now = asyncio.get_running_loop().time()
-            if last_revision < 0 or (revision != last_revision and now - last_sent_at >= 1.5):
+            kline_changed = last_revision < 0 or revision != last_revision
+            quote_changed = quote_revision != last_quote_revision
+            if kline_changed and (last_revision < 0 or now - last_sent_at >= 1.0):
                 payload = await asyncio.to_thread(
                     _build_chart_board,
                     symbol,
@@ -259,6 +291,7 @@ async def chart_board_ws(websocket: WebSocket) -> None:
                 )
                 payload["realtime"] = True
                 payload["revision"] = revision
+                payload["quote_revision"] = quote_revision
                 subscription = futu_subscription_status()
                 payload["kline_subscription"] = (
                     not subscription.get("kline_error")
@@ -266,7 +299,18 @@ async def chart_board_ws(websocket: WebSocket) -> None:
                 )
                 await websocket.send_json(payload)
                 last_revision = revision
+                last_quote_revision = quote_revision
                 last_sent_at = now
-            await asyncio.sleep(0.5)
+            elif quote_changed and payload is not None and now - last_sent_at >= 0.75:
+                quote = get_futu_subscription_quotes().get(symbol) or {}
+                latest_price = float(quote.get("price") or 0.0)
+                latest_change_pct = float(quote["change_pct"]) if quote.get("change_pct") is not None else None
+                if latest_price > 0:
+                    _patch_latest_price(payload, latest_price, latest_change_pct)
+                    payload["quote_revision"] = quote_revision
+                    await websocket.send_json(payload)
+                    last_quote_revision = quote_revision
+                    last_sent_at = now
+            await asyncio.sleep(0.25)
     except WebSocketDisconnect:
         return
