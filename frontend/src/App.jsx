@@ -76,6 +76,14 @@ function fmtPct(value) {
   return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
 }
 
+function dailyAmount(value, pct) {
+  const currentValue = Number(value || 0);
+  const dailyPct = Number(pct || 0);
+  const ratio = dailyPct / 100;
+  if (!Number.isFinite(currentValue) || !Number.isFinite(ratio) || ratio <= -0.9999) return 0;
+  return currentValue - currentValue / (1 + ratio);
+}
+
 function fmtCardPriceLine(value) {
   return String(value || "");
 }
@@ -195,6 +203,12 @@ function PageNav({ page, setPage }) {
 
 function Summary({ data }) {
   const summary = data.summary;
+  const weightedDailyChangeCny = Number.isFinite(Number(summary.weighted_daily_change_cny))
+    ? Number(summary.weighted_daily_change_cny)
+    : (data.holdings || []).reduce(
+        (total, row) => total + dailyAmount(row.value_cny, row.effective_daily_pct),
+        0,
+      );
   return (
     <section className="summaryGrid">
       <div className="summaryItem">
@@ -209,7 +223,9 @@ function Summary({ data }) {
       </div>
       <div className="summaryItem">
         <span>当日加权</span>
-        <strong className={tone(summary.weighted_daily_pct)}>{fmtPct(summary.weighted_daily_pct)}</strong>
+        <strong className={tone(summary.weighted_daily_pct)}>
+          {fmtMoney(weightedDailyChangeCny, "CNY")} · {fmtPct(summary.weighted_daily_pct)}
+        </strong>
       </div>
       <div className="summaryItem">
         <span>汇率</span>

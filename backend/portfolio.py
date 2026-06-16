@@ -576,6 +576,10 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         if total_value_cny > 0
         else 0.0
     )
+    weighted_daily_change_cny = sum(
+        _daily_amount(value_cny_by_symbol.get(s, 0.0), float(quotes[s].get("change_pct", 0.0)))
+        for s in ALL_SYMBOLS
+    )
 
     return {
         "user_id": user_id,
@@ -592,6 +596,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "total_pnl_cny": total_value_cny - total_cost_cny,
             "total_pnl_pct": (total_value_cny - total_cost_cny) / total_cost_cny * 100.0 if total_cost_cny > 0 else 0.0,
             "weighted_daily_pct": weighted_daily_pct,
+            "weighted_daily_change_cny": weighted_daily_change_cny,
+            "weighted_daily_change_usd": weighted_daily_change_cny / fx if fx > 0 else 0.0,
         },
         "daily_cards": daily_cards,
         "visualizations": build_visualizations(rows, balances, value_cny_by_symbol, fx),
