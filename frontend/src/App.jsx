@@ -458,7 +458,8 @@ function KlinePage() {
 
   useEffect(() => {
     if (scope !== "global") return undefined;
-    const id = window.setInterval(() => load({ silent: true }), 5000);
+    setRealtimeConnected(false);
+    const id = window.setInterval(() => load({ silent: true }), 2000);
     return () => window.clearInterval(id);
   }, [scope, interval, showExtended, globalColumns]);
 

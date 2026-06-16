@@ -387,3 +387,4 @@ async def chart_board_ws(websocket: WebSocket) -> None:
             await asyncio.sleep(0.25)
     except WebSocketDisconnect:
         return
+

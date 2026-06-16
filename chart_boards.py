@@ -1355,6 +1355,33 @@ def _intraday_fixed_x_range(index: pd.Index, symbol: str, show_extended: bool) -
     ]
 
 
+def _intraday_open_base_price(df: pd.DataFrame, symbol: str, show_extended: bool) -> float | None:
+    if df.empty:
+        return None
+    tz = _market_tz(symbol)
+    idx = pd.DatetimeIndex(df.index)
+    if idx.tz is None:
+        idx_local = idx.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+    else:
+        idx_local = idx.tz_convert(tz)
+    dates = sorted(pd.unique(idx_local.date))
+    if not dates:
+        return None
+    target_date = dates[-1]
+    target_minutes = 4 * 60 if show_extended else 9 * 60 + 30
+    minutes = idx_local.hour * 60 + idx_local.minute
+    mask = np.asarray((idx_local.date == target_date) & (minutes >= target_minutes))
+    if not mask.any():
+        mask = np.asarray(idx_local.date == target_date)
+    if not mask.any():
+        return None
+    base = pd.to_numeric(df.loc[mask, "Open"], errors="coerce").dropna()
+    if base.empty:
+        return None
+    value = float(base.iloc[0])
+    return value if np.isfinite(value) and value > 0 else None
+
+
 def fetch_ohlcv(
     symbol: str,
     interval: Literal["1d", "15m", "5m"],
@@ -2822,6 +2849,7 @@ def fig_global_kline_board(
             fixed_x_range = _intraday_fixed_x_range(df.index, symbol, show_extended)
             if fixed_x_range is not None:
                 x_ranges.append(fixed_x_range)
+            open_base_price = _intraday_open_base_price(df, symbol, show_extended)
             regular_mask = _regular_us_session_mask(df.index)
             vw, v_hi, v_lo = vwap_and_bands(df)
             df_plot = df.copy()
@@ -2835,6 +2863,10 @@ def fig_global_kline_board(
             vw = pd.Series(dtype=float)
             v_hi = pd.Series(dtype=float)
             v_lo = pd.Series(dtype=float)
+            latest_open = pd.to_numeric(df_plot["Open"], errors="coerce").dropna()
+            open_base_price = float(latest_open.iloc[-1]) if not latest_open.empty else None
+            if open_base_price is not None and (not np.isfinite(open_base_price) or open_base_price <= 0):
+                open_base_price = None
             x_ranges.append([df_plot.index.min() - pd.Timedelta(days=0.45), df_plot.index.max() + pd.Timedelta(days=0.45)])
             fig.add_trace(
                 go.Candlestick(
@@ -2875,9 +2907,11 @@ def fig_global_kline_board(
                     x=df_plot.index,
                     y=v_hi,
                     name=f"{symbol} VWAP+1σ",
+                    mode="lines",
                     line=dict(color=theme["vwap_band"], width=0.8, dash="dot"),
                     legendgroup=f"{symbol}-vwap-band",
                     showlegend=False,
+                    hoverinfo="skip",
                 ),
                 row=row,
                 col=col,
@@ -2888,11 +2922,13 @@ def fig_global_kline_board(
                     x=df_plot.index,
                     y=v_lo,
                     name=f"{symbol} VWAP-1σ",
+                    mode="lines",
                     line=dict(color=theme["vwap_band"], width=0.8, dash="dot"),
                     fill="tonexty",
                     fillcolor=theme["vwap_fill"],
                     legendgroup=f"{symbol}-vwap-band",
                     showlegend=False,
+                    hoverinfo="skip",
                 ),
                 row=row,
                 col=col,
@@ -2903,6 +2939,7 @@ def fig_global_kline_board(
                     x=df_plot.index,
                     y=vw,
                     name=f"{symbol} Today VWAP",
+                    mode="lines",
                     line=dict(color=theme["vwap"], width=1.35),
                     connectgaps=False,
                     showlegend=False,
@@ -2945,7 +2982,19 @@ def fig_global_kline_board(
         quote = (latest_quotes or {}).get(symbol) or {}
         last_close = float(df["Close"].iloc[-1])
         price = float(quote.get("price") or last_close)
-        change_pct = quote.get("change_pct")
+        extended_change_pct = quote.get("extended_change_pct")
+        if interval == "1d":
+            change_pct = quote.get("regular_change_pct", quote.get("change_pct"))
+            if change_pct is None and len(df) >= 2:
+                prev_close = float(df["Close"].iloc[-2])
+                if prev_close > 0:
+                    change_pct = (price / prev_close - 1.0) * 100.0
+        elif interval != "1d" and show_extended and extended_change_pct is not None:
+            change_pct = extended_change_pct
+        elif interval != "1d" and not show_extended:
+            change_pct = quote.get("regular_change_pct", quote.get("change_pct"))
+        else:
+            change_pct = quote.get("regular_change_pct", quote.get("change_pct"))
         label = f"{symbol} {price:.2f}"
         if change_pct is not None and np.isfinite(float(change_pct)):
             label += f"<br>{float(change_pct):+.2f}%"
