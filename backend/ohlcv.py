@@ -107,8 +107,11 @@ def _latest_us_trading_day_bars(bars: list[dict[str, Any]]) -> list[dict[str, An
     return [bar for bar, day in dated if day == latest_day]
 
 
-def _latest_us_regular_session_bars(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    regular: list[dict[str, Any]] = []
+def _latest_us_regular_session_bars(
+    bars: list[dict[str, Any]],
+    min_current_bars: int = 6,
+) -> list[dict[str, Any]]:
+    regular: list[tuple[dict[str, Any], object]] = []
     for bar in bars:
         try:
             local_time = datetime.fromtimestamp(int(bar["time"]), _TZ_NEW_YORK)
@@ -116,8 +119,16 @@ def _latest_us_regular_session_bars(bars: list[dict[str, Any]]) -> list[dict[str
             continue
         minutes = local_time.hour * 60 + local_time.minute
         if 9 * 60 + 30 <= minutes < 16 * 60:
-            regular.append(bar)
-    return _latest_us_trading_day_bars(regular)
+            regular.append((bar, local_time.date()))
+    if not regular:
+        return []
+    dates = sorted({day for _, day in regular})
+    latest = dates[-1]
+    selected = {latest}
+    latest_count = sum(1 for _, day in regular if day == latest)
+    if latest_count < max(1, min_current_bars) and len(dates) > 1:
+        selected.add(dates[-2])
+    return [bar for bar, day in regular if day in selected]
 
 
 def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
@@ -227,7 +238,11 @@ def fetch_ohlcv(symbol: str, interval: str, show_extended: bool = True) -> dict[
         payload["bars"] = (
             merged
             if iv == "1d"
-            else (_latest_us_trading_day_bars(merged) if show_extended else _latest_us_regular_session_bars(merged))
+            else (
+                _latest_us_trading_day_bars(merged)
+                if show_extended
+                else _latest_us_regular_session_bars(merged, 12 if iv == "5m" else 4)
+            )
         )
         payload["source"] = "futu-subscribe"
         return payload
@@ -246,7 +261,11 @@ def fetch_ohlcv(symbol: str, interval: str, show_extended: bool = True) -> dict[
         "bars": (
             bars[-1200:]
             if iv == "1d"
-            else (_latest_us_trading_day_bars(bars) if show_extended else _latest_us_regular_session_bars(bars))
+            else (
+                _latest_us_trading_day_bars(bars)
+                if show_extended
+                else _latest_us_regular_session_bars(bars, 12 if iv == "5m" else 4)
+            )
         ),
     }
     if bars:

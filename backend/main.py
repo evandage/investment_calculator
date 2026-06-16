@@ -182,9 +182,36 @@ def _build_chart_board(
         return {"symbol": sym, "interval": key, "source": "my-template", "figure": None, "error": str(exc)}
 
 
+def _patch_latest_candle(payload: dict[str, Any], price: float) -> None:
+    figure = payload.get("figure") or {}
+    traces = figure.get("data") or []
+    target: dict[str, Any] | None = None
+    target_x = ""
+    for trace in traces:
+        if trace.get("type") != "candlestick":
+            continue
+        xs = trace.get("x") or []
+        if not xs:
+            continue
+        last_x = str(xs[-1])
+        if target is None or last_x > target_x:
+            target = trace
+            target_x = last_x
+    if target is None:
+        return
+    for key in ("close", "high", "low"):
+        values = target.get(key)
+        if not isinstance(values, list) or not values:
+            return
+    target["close"][-1] = price
+    target["high"][-1] = max(float(target["high"][-1]), price)
+    target["low"][-1] = min(float(target["low"][-1]), price)
+
+
 def _patch_latest_price(payload: dict[str, Any], price: float, change_pct: float | None = None) -> None:
     if price <= 0:
         return
+    _patch_latest_candle(payload, price)
     figure = payload.get("figure") or {}
     layout = figure.get("layout") or {}
     for shape in layout.get("shapes") or []:

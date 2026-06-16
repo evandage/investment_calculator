@@ -1265,6 +1265,47 @@ def slice_intraday_today_or_yesterday(df: pd.DataFrame, symbol: str) -> tuple[pd
     return out, note
 
 
+def slice_regular_intraday_with_context(
+    df: pd.DataFrame,
+    symbol: str,
+    *,
+    min_current_bars: int = 6,
+) -> tuple[pd.DataFrame, str]:
+    """Regular-session intraday view.
+
+    If the newest regular session has only a few opening bars, include the
+    previous regular session as context so the chart is not visually empty.
+    """
+    if df.empty:
+        return df, ""
+    tz = _market_tz(symbol)
+    idx = df.index
+    if idx.tz is None:
+        idx_local = idx.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+    else:
+        idx_local = idx.tz_convert(tz)
+    regular_mask = _regular_us_session_mask(idx)
+    regular = df.loc[regular_mask].copy()
+    if regular.empty:
+        return regular, "no regular-session bars"
+
+    regular_idx_local = pd.DatetimeIndex(idx_local[regular_mask])
+    bar_dates = pd.Series(regular_idx_local.date, index=regular.index)
+    dates = sorted(pd.unique(bar_dates))
+    latest = dates[-1]
+    selected_dates = [latest]
+    latest_count = int((bar_dates == latest).sum())
+    if latest_count < max(1, min_current_bars) and len(dates) > 1:
+        selected_dates = [dates[-2], latest]
+    mask = bar_dates.isin(selected_dates)
+    out = regular.loc[mask].copy()
+    out.index = regular_idx_local[mask.to_numpy()]
+    note = f"{latest} regular session"
+    if len(selected_dates) > 1:
+        note += f" + {selected_dates[0]} open context"
+    return out, note
+
+
 def _shanghai_plot_index(index: pd.Index) -> pd.DatetimeIndex:
     idx = pd.DatetimeIndex(index)
     if idx.tz is None:
@@ -2124,9 +2165,10 @@ def fig_15m_vwap_rsi(
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "15m", "2d", cache_only=cache_only)
-    if not show_extended and not df.empty:
-        df = df.loc[_regular_us_session_mask(df.index)].copy()
-    df, _ = slice_intraday_today_or_yesterday(df, symbol)
+    if show_extended:
+        df, _ = slice_intraday_today_or_yesterday(df, symbol)
+    else:
+        df, _ = slice_regular_intraday_with_context(df, symbol, min_current_bars=4)
     if df.empty:
         fig = go.Figure()
         fig.add_annotation(
@@ -2404,9 +2446,10 @@ def fig_5m_vwap_rsi7(
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "5m", "2d", cache_only=cache_only)
-    if not show_extended and not df.empty:
-        df = df.loc[_regular_us_session_mask(df.index)].copy()
-    df, _ = slice_intraday_today_or_yesterday(df, symbol)
+    if show_extended:
+        df, _ = slice_intraday_today_or_yesterday(df, symbol)
+    else:
+        df, _ = slice_regular_intraday_with_context(df, symbol, min_current_bars=12)
     if df.empty:
         fig = go.Figure()
         fig.add_annotation(
