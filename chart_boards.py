@@ -1313,6 +1313,48 @@ def _shanghai_plot_index(index: pd.Index) -> pd.DatetimeIndex:
     return idx.tz_convert(ZoneInfo("Asia/Shanghai")).tz_localize(None)
 
 
+def _intraday_fixed_x_range(index: pd.Index, symbol: str, show_extended: bool) -> list[pd.Timestamp] | None:
+    if len(index) == 0:
+        return None
+    tz = _market_tz(symbol)
+    idx = pd.DatetimeIndex(index)
+    if idx.tz is None:
+        idx = idx.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+    else:
+        idx = idx.tz_convert(tz)
+    dates = sorted(pd.unique(idx.date))
+    if not dates:
+        return None
+    start_date = dates[0]
+    end_date = dates[-1]
+    if show_extended:
+        start_hour, start_minute = 4, 0
+        end_hour, end_minute = 20, 0
+    else:
+        start_hour, start_minute = 9, 30
+        end_hour, end_minute = 16, 0
+    start = pd.Timestamp(
+        year=start_date.year,
+        month=start_date.month,
+        day=start_date.day,
+        hour=start_hour,
+        minute=start_minute,
+        tz=tz,
+    )
+    end = pd.Timestamp(
+        year=end_date.year,
+        month=end_date.month,
+        day=end_date.day,
+        hour=end_hour,
+        minute=end_minute,
+        tz=tz,
+    )
+    return [
+        start.tz_convert(ZoneInfo("Asia/Shanghai")).tz_localize(None),
+        end.tz_convert(ZoneInfo("Asia/Shanghai")).tz_localize(None),
+    ]
+
+
 def fetch_ohlcv(
     symbol: str,
     interval: Literal["1d", "15m", "5m"],
@@ -2216,6 +2258,7 @@ def fig_15m_vwap_rsi(
         for color, is_regular, is_visible in zip(vcols, regular_session_mask, volume_mask)
         if is_visible
     ]
+    fixed_x_range = _intraday_fixed_x_range(df.index, symbol, show_extended)
     df.index = _shanghai_plot_index(df.index)
 
     fig = make_subplots(
@@ -2427,6 +2470,9 @@ def fig_15m_vwap_rsi(
     fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100], title_standoff=8)
     macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
+    if fixed_x_range is not None:
+        for _row in (1, 2, 3):
+            fig.update_xaxes(range=fixed_x_range, row=_row, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, showgrid=False, range=price_y_range, row=1, col=2)
     return fig
@@ -2491,6 +2537,7 @@ def fig_5m_vwap_rsi7(
         for color, is_regular, is_visible in zip(vcols, regular_session_mask, volume_mask)
         if is_visible
     ]
+    fixed_x_range = _intraday_fixed_x_range(df.index, symbol, show_extended)
     df.index = _shanghai_plot_index(df.index)
 
     fig = make_subplots(
@@ -2707,6 +2754,9 @@ def fig_5m_vwap_rsi7(
     fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100], title_standoff=8)
     macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
+    if fixed_x_range is not None:
+        for _row in (1, 2, 3):
+            fig.update_xaxes(range=fixed_x_range, row=_row, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, showgrid=False, range=price_y_range, row=1, col=2)
     return fig
@@ -2718,50 +2768,74 @@ def fig_global_kline_board(
     interval: Literal["1d", "15m", "5m"] = "5m",
     chart_theme: str = "Trading Dark",
     show_extended: bool = True,
+    columns: int = 1,
     latest_quotes: dict[str, dict[str, float]] | None = None,
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    rows = max(1, len(symbols))
+    cols = min(3, max(1, int(columns or 1)))
+    rows = max(1, (len(symbols) + cols - 1) // cols)
     fig = make_subplots(
         rows=rows,
-        cols=1,
+        cols=cols,
+        specs=[[{"secondary_y": True} for _ in range(cols)] for _ in range(rows)],
         shared_xaxes=False,
-        vertical_spacing=0.018,
-        subplot_titles=symbols,
+        vertical_spacing=0.035 if cols > 1 else 0.018,
+        horizontal_spacing=0.055 if cols > 1 else 0.02,
     )
-    for row, symbol in enumerate(symbols, start=1):
+    x_ranges: list[list[pd.Timestamp]] = []
+    for idx, symbol in enumerate(symbols):
+        row = idx // cols + 1
+        col = idx % cols + 1
+        axis_index = idx + 1
+        axis_suffix = "" if axis_index == 1 else str(axis_index)
         period = "5y" if interval == "1d" else "2d"
         df = fetch_ohlcv(symbol, interval, period, cache_only=cache_only)
+        daily_ema: dict[str, pd.Series] = {}
         if interval != "1d":
             if show_extended:
                 df, _ = slice_intraday_today_or_yesterday(df, symbol)
             else:
                 df, _ = slice_regular_intraday_with_context(df, symbol, min_current_bars=12 if interval == "5m" else 4)
         elif not df.empty:
+            close = df["Close"]
+            daily_ema = {
+                "EMA20": ema(close, 20),
+            }
             df = df.tail(90).copy()
 
         if df.empty:
             fig.add_annotation(
                 text=f"{symbol} 暂无数据",
-                xref=f"x{row if row > 1 else ''} domain",
-                yref=f"y{row if row > 1 else ''} domain",
+                xref="x domain",
+                yref="y domain",
                 x=0.5,
                 y=0.5,
                 showarrow=False,
                 font=dict(color=theme["muted"], size=11),
                 row=row,
-                col=1,
+                col=col,
             )
             continue
 
         if interval != "1d":
+            fixed_x_range = _intraday_fixed_x_range(df.index, symbol, show_extended)
+            if fixed_x_range is not None:
+                x_ranges.append(fixed_x_range)
             regular_mask = _regular_us_session_mask(df.index)
+            vw, v_hi, v_lo = vwap_and_bands(df)
             df_plot = df.copy()
             df_plot.index = _shanghai_plot_index(df_plot.index)
-            _add_intraday_candlesticks(fig, df_plot, theme, regular_mask, show_extended, row=row, col=1)
+            vw.index = df_plot.index
+            v_hi.index = df_plot.index
+            v_lo.index = df_plot.index
+            _add_intraday_candlesticks(fig, df_plot, theme, regular_mask, show_extended, row=row, col=col)
         else:
             df_plot = df.copy()
+            vw = pd.Series(dtype=float)
+            v_hi = pd.Series(dtype=float)
+            v_lo = pd.Series(dtype=float)
+            x_ranges.append([df_plot.index.min() - pd.Timedelta(days=0.45), df_plot.index.max() + pd.Timedelta(days=0.45)])
             fig.add_trace(
                 go.Candlestick(
                     x=df_plot.index,
@@ -2776,9 +2850,98 @@ def fig_global_kline_board(
                     showlegend=False,
                 ),
                 row=row,
-                col=1,
+                col=col,
             )
+            for (ema_name, ema_series), ema_color in zip(daily_ema.items(), theme["ema"]):
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_plot.index,
+                        y=ema_series.reindex(df_plot.index),
+                        name=f"{symbol} {ema_name}",
+                        line=dict(width=1.05, color=ema_color),
+                        opacity=0.9,
+                        showlegend=False,
+                    ),
+                    row=row,
+                    col=col,
+                    secondary_y=False,
+                )
 
+        vol = df_plot["Volume"].fillna(0.0).astype(float)
+        vcols = _volume_bar_colors(df_plot, theme)
+        if interval != "1d" and not vw.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=df_plot.index,
+                    y=v_hi,
+                    name=f"{symbol} VWAP+1σ",
+                    line=dict(color=theme["vwap_band"], width=0.8, dash="dot"),
+                    legendgroup=f"{symbol}-vwap-band",
+                    showlegend=False,
+                ),
+                row=row,
+                col=col,
+                secondary_y=False,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=df_plot.index,
+                    y=v_lo,
+                    name=f"{symbol} VWAP-1σ",
+                    line=dict(color=theme["vwap_band"], width=0.8, dash="dot"),
+                    fill="tonexty",
+                    fillcolor=theme["vwap_fill"],
+                    legendgroup=f"{symbol}-vwap-band",
+                    showlegend=False,
+                ),
+                row=row,
+                col=col,
+                secondary_y=False,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=df_plot.index,
+                    y=vw,
+                    name=f"{symbol} Today VWAP",
+                    line=dict(color=theme["vwap"], width=1.35),
+                    connectgaps=False,
+                    showlegend=False,
+                ),
+                row=row,
+                col=col,
+                secondary_y=False,
+            )
+        fig.add_trace(
+            go.Bar(
+                x=df_plot.index,
+                y=vol,
+                name=f"{symbol} Volume",
+                marker_color=[_with_rgba_alpha(color, 0.22) for color in vcols],
+                marker_line_width=0,
+                showlegend=False,
+                hovertemplate="Volume %{y:,.0f}<extra></extra>",
+            ),
+            row=row,
+            col=col,
+            secondary_y=True,
+        )
+        fig.add_annotation(
+            x=0.012,
+            y=0.985,
+            xref="x domain",
+            yref="y domain",
+            text=f"<b>{symbol}</b>",
+            showarrow=False,
+            xanchor="left",
+            yanchor="top",
+            font=dict(color=theme["rsi_mid"], size=14),
+            bgcolor=theme["plot"],
+            bordercolor=theme["rsi_mid"],
+            borderwidth=1,
+            borderpad=4,
+            row=row,
+            col=col,
+        )
         quote = (latest_quotes or {}).get(symbol) or {}
         last_close = float(df["Close"].iloc[-1])
         price = float(quote.get("price") or last_close)
@@ -2792,39 +2955,68 @@ def fig_global_kline_board(
             line_width=0.9,
             line_color=theme["rsi_mid"],
             row=row,
-            col=1,
+            col=col,
         )
         fig.add_annotation(
-            x=1.004,
-            y=price,
-            xref="paper",
-            yref=f"y{row if row > 1 else ''}",
+            x=0.988,
+            y=0.985,
+            xref="x domain",
+            yref="y domain",
             text=label,
             showarrow=False,
-            xanchor="left",
-            yanchor="middle",
+            xanchor="right",
+            yanchor="top",
             font=dict(color=theme["rsi_mid"], size=10),
             bgcolor=theme["paper"],
             bordercolor=theme["rsi_mid"],
             borderwidth=1,
             borderpad=2,
+            row=row,
+            col=col,
         )
         pad = max(float(df["High"].max()) - float(df["Low"].min()), abs(price) * 0.003, 1e-9)
         fig.update_yaxes(
-            title_text=symbol,
+            title_text="",
             range=[float(df["Low"].min()) - pad * 0.12, float(df["High"].max()) + pad * 0.12],
             row=row,
-            col=1,
+            col=col,
+            secondary_y=False,
+        )
+        vmax = float(vol.max()) if len(vol) else 0.0
+        fig.update_yaxes(
+            title_text="",
+            showgrid=False,
+            showticklabels=False,
+            visible=False,
+            range=[0, vmax * 4 if vmax > 0 else 1],
+            row=row,
+            col=col,
+            secondary_y=True,
         )
 
     fig.update_layout(
-        height=max(760, 210 * rows),
+        height=max(760, (310 if cols > 1 else 210) * rows),
         xaxis_rangeslider_visible=False,
         showlegend=False,
-        margin=dict(r=86),
+        margin=dict(r=44 if cols > 1 else 86),
         title=f"全局K线看板 · {interval}",
     )
     _apply_chart_theme(fig, theme)
-    for i in range(1, rows + 1):
-        fig.update_xaxes(rangeslider_visible=False, row=i, col=1)
+    board_x_range = [
+        min(rng[0] for rng in x_ranges),
+        max(rng[1] for rng in x_ranges),
+    ] if x_ranges else None
+    daily_rangebreaks = [dict(bounds=["sat", "mon"])] if interval == "1d" else None
+    for row in range(1, rows + 1):
+        for col in range(1, cols + 1):
+            subplot_index = (row - 1) * cols + col
+            if subplot_index > len(symbols):
+                continue
+            fig.update_xaxes(
+                rangeslider_visible=False,
+                range=board_x_range,
+                rangebreaks=daily_rangebreaks,
+                row=row,
+                col=col,
+            )
     return fig

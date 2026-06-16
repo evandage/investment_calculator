@@ -649,6 +649,10 @@ h2 {
   background: rgba(2, 6, 23, 0.34);
 }
 
+.toolbarRow .segmented:nth-of-type(2) {
+  flex-direction: row-reverse;
+}
+
 .segmented button {
   border: 0;
   border-radius: 0;

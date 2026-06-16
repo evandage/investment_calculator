@@ -95,6 +95,12 @@ function tone(value) {
   return "flat";
 }
 
+function globalKlineColumns(width = window.innerWidth) {
+  if (width >= 1280) return 3;
+  if (width >= 820) return 2;
+  return 1;
+}
+
 function peTone(row) {
   if ((row.symbol === "VOO" || row.symbol === "QQQ") && Number(row.recent_5d_pct || 0) >= (row.symbol === "QQQ" ? 3 : 2)) return "down";
   if (row.pe_judgment === "偏贵") return "down";
@@ -397,7 +403,7 @@ function LightweightChart({ bars, showExtended }) {
 
 function KlinePage() {
   const [mode, setMode] = useState("template");
-  const [scope, setScope] = useState("single");
+  const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState("VOO");
   const [interval, setInterval] = useState("1d");
   const [avwapMode, setAvwapMode] = useState("earnings");
@@ -406,9 +412,11 @@ function KlinePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [globalColumns, setGlobalColumns] = useState(globalKlineColumns);
 
-  async function load() {
-    setLoading(true);
+  async function load(options = {}) {
+    const silent = Boolean(options.silent);
+    if (!silent) setLoading(true);
     setError("");
     try {
       const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
@@ -419,7 +427,7 @@ function KlinePage() {
       }
       const qs = new URLSearchParams(
         scope === "global"
-          ? { interval, show_extended: String(showExtended) }
+          ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
           : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
       );
       const endpoint = scope === "global" ? "chart-board-global" : (mode === "template" ? "chart-board" : "ohlcv");
@@ -440,13 +448,30 @@ function KlinePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
   useEffect(() => {
     load();
-  }, [mode, scope, symbol, interval, avwapMode, showExtended]);
+  }, [mode, scope, symbol, interval, avwapMode, showExtended, globalColumns]);
+
+  useEffect(() => {
+    if (scope !== "global") return undefined;
+    const id = window.setInterval(() => load({ silent: true }), 5000);
+    return () => window.clearInterval(id);
+  }, [scope, interval, showExtended, globalColumns]);
+
+  useEffect(() => {
+    function onResize() {
+      setGlobalColumns((current) => {
+        const next = globalKlineColumns();
+        return next === current ? current : next;
+      });
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     if (mode !== "template" || scope !== "single") {
@@ -543,7 +568,7 @@ function KlinePage() {
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {scope === "single" && mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} showExtended={showExtended} /> : null}
       {scope === "single" && mode === "futu" && !data?.bars?.length && fallbackFigure ? (
-        <div className="plotWrap">
+        <div className="plotWrap" style={fallbackFigure.layout?.height ? { height: `${fallbackFigure.layout.height}px` } : undefined}>
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
             <Plot
               data={fallbackFigure.data}
@@ -568,7 +593,7 @@ function KlinePage() {
         </div>
       ) : null}
       {(scope === "global" || mode === "template") && figure ? (
-        <div className="plotWrap">
+        <div className="plotWrap" style={figure.layout?.height ? { height: `${figure.layout.height}px` } : undefined}>
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
             <Plot
               data={figure.data}
