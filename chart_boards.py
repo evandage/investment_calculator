@@ -319,6 +319,8 @@ def _add_intraday_candlesticks(
     theme: dict[str, Any],
     regular_mask: np.ndarray,
     show_extended: bool = True,
+    row: int = 1,
+    col: int = 1,
 ) -> None:
     regular = df.loc[regular_mask]
     extended = df.loc[~regular_mask]
@@ -333,9 +335,8 @@ def _add_intraday_candlesticks(
                 name="K线",
                 **_candlestick_kwargs(theme),
             ),
-            row=1,
-            col=1,
-            secondary_y=False,
+            row=row,
+            col=col,
         )
     if show_extended and not extended.empty:
         fig.add_trace(
@@ -348,9 +349,8 @@ def _add_intraday_candlesticks(
                 name="扩展盘",
                 **_extended_candlestick_kwargs(theme),
             ),
-            row=1,
-            col=1,
-            secondary_y=False,
+            row=row,
+            col=col,
         )
 
 
@@ -2709,4 +2709,122 @@ def fig_5m_vwap_rsi7(
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, showgrid=False, range=price_y_range, row=1, col=2)
+    return fig
+
+
+def fig_global_kline_board(
+    symbols: list[str],
+    *,
+    interval: Literal["1d", "15m", "5m"] = "5m",
+    chart_theme: str = "Trading Dark",
+    show_extended: bool = True,
+    latest_quotes: dict[str, dict[str, float]] | None = None,
+    cache_only: bool = False,
+) -> go.Figure:
+    theme = get_chart_theme(chart_theme)
+    rows = max(1, len(symbols))
+    fig = make_subplots(
+        rows=rows,
+        cols=1,
+        shared_xaxes=False,
+        vertical_spacing=0.018,
+        subplot_titles=symbols,
+    )
+    for row, symbol in enumerate(symbols, start=1):
+        period = "5y" if interval == "1d" else "2d"
+        df = fetch_ohlcv(symbol, interval, period, cache_only=cache_only)
+        if interval != "1d":
+            if show_extended:
+                df, _ = slice_intraday_today_or_yesterday(df, symbol)
+            else:
+                df, _ = slice_regular_intraday_with_context(df, symbol, min_current_bars=12 if interval == "5m" else 4)
+        elif not df.empty:
+            df = df.tail(90).copy()
+
+        if df.empty:
+            fig.add_annotation(
+                text=f"{symbol} 暂无数据",
+                xref=f"x{row if row > 1 else ''} domain",
+                yref=f"y{row if row > 1 else ''} domain",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(color=theme["muted"], size=11),
+                row=row,
+                col=1,
+            )
+            continue
+
+        if interval != "1d":
+            regular_mask = _regular_us_session_mask(df.index)
+            df_plot = df.copy()
+            df_plot.index = _shanghai_plot_index(df_plot.index)
+            _add_intraday_candlesticks(fig, df_plot, theme, regular_mask, show_extended, row=row, col=1)
+        else:
+            df_plot = df.copy()
+            fig.add_trace(
+                go.Candlestick(
+                    x=df_plot.index,
+                    open=df_plot["Open"],
+                    high=df_plot["High"],
+                    low=df_plot["Low"],
+                    close=df_plot["Close"],
+                    name=symbol,
+                    increasing=dict(line=dict(color=theme["up_line"], width=1.1), fillcolor=theme["up_fill"]),
+                    decreasing=dict(line=dict(color=theme["dn_line"], width=1.1), fillcolor=theme["dn_fill"]),
+                    whiskerwidth=0.35,
+                    showlegend=False,
+                ),
+                row=row,
+                col=1,
+            )
+
+        quote = (latest_quotes or {}).get(symbol) or {}
+        last_close = float(df["Close"].iloc[-1])
+        price = float(quote.get("price") or last_close)
+        change_pct = quote.get("change_pct")
+        label = f"{symbol} {price:.2f}"
+        if change_pct is not None and np.isfinite(float(change_pct)):
+            label += f"<br>{float(change_pct):+.2f}%"
+        fig.add_hline(
+            y=price,
+            line_dash="dash",
+            line_width=0.9,
+            line_color=theme["rsi_mid"],
+            row=row,
+            col=1,
+        )
+        fig.add_annotation(
+            x=1.004,
+            y=price,
+            xref="paper",
+            yref=f"y{row if row > 1 else ''}",
+            text=label,
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            font=dict(color=theme["rsi_mid"], size=10),
+            bgcolor=theme["paper"],
+            bordercolor=theme["rsi_mid"],
+            borderwidth=1,
+            borderpad=2,
+        )
+        pad = max(float(df["High"].max()) - float(df["Low"].min()), abs(price) * 0.003, 1e-9)
+        fig.update_yaxes(
+            title_text=symbol,
+            range=[float(df["Low"].min()) - pad * 0.12, float(df["High"].max()) + pad * 0.12],
+            row=row,
+            col=1,
+        )
+
+    fig.update_layout(
+        height=max(760, 210 * rows),
+        xaxis_rangeslider_visible=False,
+        showlegend=False,
+        margin=dict(r=86),
+        title=f"全局K线看板 · {interval}",
+    )
+    _apply_chart_theme(fig, theme)
+    for i in range(1, rows + 1):
+        fig.update_xaxes(rangeslider_visible=False, row=i, col=1)
     return fig

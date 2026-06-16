@@ -381,6 +381,7 @@ function LightweightChart({ bars, showExtended }) {
 
 function KlinePage() {
   const [mode, setMode] = useState("template");
+  const [scope, setScope] = useState("single");
   const [symbol, setSymbol] = useState("VOO");
   const [interval, setInterval] = useState("1d");
   const [avwapMode, setAvwapMode] = useState("earnings");
@@ -400,12 +401,16 @@ function KlinePage() {
       if (interval === "1d" && effectiveAvwapMode === "today_open") {
         effectiveAvwapMode = isEtfSymbol ? "high_60d" : "earnings";
       }
-      const qs = new URLSearchParams({ symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) });
-      const endpoint = mode === "template" ? "chart-board" : "ohlcv";
+      const qs = new URLSearchParams(
+        scope === "global"
+          ? { interval, show_extended: String(showExtended) }
+          : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
+      );
+      const endpoint = scope === "global" ? "chart-board-global" : (mode === "template" ? "chart-board" : "ohlcv");
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
-      if (mode === "futu" && (!payload.bars || payload.bars.length === 0)) {
+      if (scope === "single" && mode === "futu" && (!payload.bars || payload.bars.length === 0)) {
         const fallbackResponse = await fetch(`${API_BASE}/api/chart-board?${qs.toString()}`);
         if (fallbackResponse.ok) {
           const fallbackPayload = await fallbackResponse.json();
@@ -425,10 +430,10 @@ function KlinePage() {
 
   useEffect(() => {
     load();
-  }, [mode, symbol, interval, avwapMode, showExtended]);
+  }, [mode, scope, symbol, interval, avwapMode, showExtended]);
 
   useEffect(() => {
-    if (mode !== "template") {
+    if (mode !== "template" || scope !== "single") {
       setRealtimeConnected(false);
       return undefined;
     }
@@ -470,7 +475,7 @@ function KlinePage() {
       window.clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [mode, symbol, interval, avwapMode, showExtended]);
+  }, [mode, scope, symbol, interval, avwapMode, showExtended]);
 
   const figure = data?.figure;
   const fallbackFigure = data?.fallback_template?.figure;
@@ -487,16 +492,20 @@ function KlinePage() {
           <button className={mode === "template" ? "active" : ""} onClick={() => setMode("template")}>我的模板</button>
           <button className={mode === "futu" ? "active" : ""} onClick={() => setMode("futu")}>Futu轻量</button>
         </div>
-        <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
-          {["VOO", "QQQ", "ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"].map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
+        <div className="segmented">
+          <button className={scope === "single" ? "active" : ""} onClick={() => setScope("single")}>单标的</button>
+          <button className={scope === "global" ? "active" : ""} onClick={() => { setScope("global"); setMode("template"); }}>全局看板</button>
+        </div>
+        {scope === "single" ? <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
+          {["VOO", "QQQ", "ISRG", "GOOGL", "MSFT", "AVGO", "NVDA"].map((item) => <option key={item} value={item}>{item}</option>)}
+        </select> : null}
         {[["1d", "日线"], ["15m", "15m"], ["5m", "5m"]].map(([value, label]) => (
           <label className="checkItem" key={value}>
             <input type="radio" name="interval" checked={interval === value} onChange={() => setInterval(value)} />
             {label}
           </label>
         ))}
-        {mode === "template" ? (
+        {mode === "template" && scope === "single" ? (
           <select value={isEtf && avwapMode === "earnings" ? "high_60d" : (interval === "1d" && avwapMode === "today_open" ? (isEtf ? "high_60d" : "earnings") : avwapMode)} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
             {!isEtf ? <option value="earnings">AVWAP：最近财报日</option> : null}
             <option value="high_60d">AVWAP：最近60日历史高点</option>
@@ -510,13 +519,14 @@ function KlinePage() {
           </button>
         ) : null}
       </div>
-      {data && mode === "futu" ? <div className="muted">K线源：{data.source}{data.fallback_reason ? ` · 兜底原因：${data.fallback_reason}` : ""} · {data.bars?.length || 0} 根 · 时间：北京时间</div> : null}
+      {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
+      {data && scope === "single" && mode === "futu" ? <div className="muted">K线源：{data.source}{data.fallback_reason ? ` · 兜底原因：${data.fallback_reason}` : ""} · {data.bars?.length || 0} 根 · 时间：北京时间</div> : null}
       {data?.fallback_template ? <div className="muted">轻量K线无数据，已自动切到我的模板 · {data.fallback_template.interval}</div> : null}
-      {data && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
+      {data && scope === "single" && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
-      {mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} showExtended={showExtended} /> : null}
-      {mode === "futu" && !data?.bars?.length && fallbackFigure ? (
+      {scope === "single" && mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} showExtended={showExtended} /> : null}
+      {scope === "single" && mode === "futu" && !data?.bars?.length && fallbackFigure ? (
         <div className="plotWrap">
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
             <Plot
@@ -541,7 +551,7 @@ function KlinePage() {
           </Suspense>
         </div>
       ) : null}
-      {mode === "template" && figure ? (
+      {(scope === "global" || mode === "template") && figure ? (
         <div className="plotWrap">
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
             <Plot
@@ -550,7 +560,7 @@ function KlinePage() {
                 ...figure.layout,
                 autosize: true,
                 dragmode: "zoom",
-                uirevision: `template-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+                uirevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
               }}
               config={{
                 responsive: true,

@@ -59,7 +59,6 @@ CHART_LABELS = {
     "MSFT": "MSFT",
     "AVGO": "AVGO",
     "NVDA": "NVDA",
-    "SGOV": "SGOV",
 }
 
 
@@ -182,6 +181,39 @@ def _build_chart_board(
         return {"symbol": sym, "interval": key, "source": "my-template", "figure": None, "error": str(exc)}
 
 
+def _build_global_chart_board(
+    interval: str = "5m",
+    theme: str = "Trading Dark",
+    show_extended: bool = True,
+) -> dict[str, Any]:
+    chart_api = importlib.import_module("chart_boards")
+    chart_api.configure_market_provider("futu")
+    key = interval if interval in {"1d", "15m", "5m"} else "5m"
+    symbols = list(CHART_LABELS.keys())
+    try:
+        quotes = get_futu_subscription_quotes()
+        fig = chart_api.fig_global_kline_board(
+            symbols,
+            interval=key,
+            chart_theme=theme,
+            show_extended=show_extended,
+            latest_quotes=quotes,
+            cache_only=False,
+        )
+        return {
+            "symbol": "GLOBAL",
+            "symbols": symbols,
+            "interval": key,
+            "source": "my-template-global",
+            "market_provider": chart_api.get_market_provider(),
+            "show_extended": show_extended if key != "1d" else None,
+            "figure": json.loads(fig.to_json()),
+            "error": "",
+        }
+    except Exception as exc:
+        return {"symbol": "GLOBAL", "symbols": symbols, "interval": key, "source": "my-template-global", "figure": None, "error": str(exc)}
+
+
 def _patch_latest_candle(payload: dict[str, Any], price: float) -> None:
     figure = payload.get("figure") or {}
     traces = figure.get("data") or []
@@ -236,6 +268,15 @@ def chart_board(
     show_extended: bool = True,
 ) -> dict[str, Any]:
     return _build_chart_board(symbol, interval, theme, avwap_mode, show_extended)
+
+
+@app.get("/api/chart-board-global")
+def chart_board_global(
+    interval: str = "5m",
+    theme: str = "Trading Dark",
+    show_extended: bool = True,
+) -> dict[str, Any]:
+    return _build_global_chart_board(interval, theme, show_extended)
 
 
 @app.get("/api/holdings")
