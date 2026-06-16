@@ -38,10 +38,10 @@ ensure_python() {
 find_node() {
   if [[ -n "${NODE:-}" && -x "${NODE:-}" ]]; then
     NODE_BIN="$NODE"
-  elif command -v node >/dev/null 2>&1; then
-    NODE_BIN="$(command -v node)"
   elif [[ -x "$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node" ]]; then
     NODE_BIN="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"
+  elif command -v node >/dev/null 2>&1; then
+    NODE_BIN="$(command -v node)"
   elif [[ -x "/Applications/Codex.app/Contents/Resources/node" ]]; then
     NODE_BIN="/Applications/Codex.app/Contents/Resources/node"
   else
@@ -54,12 +54,21 @@ ensure_frontend_deps() {
   find_node
   if [[ ! -d "$APP_DIR/frontend/node_modules" ]]; then
     if ! command -v npm >/dev/null 2>&1; then
-      echo "frontend/node_modules is missing and npm was not found. Install Node.js/npm, then rerun this script." >&2
-      exit 1
+      return 1
     fi
     log "Installing frontend dependencies..."
     (cd "$APP_DIR/frontend" && npm install)
   fi
+  if [[ ! -f "$APP_DIR/frontend/node_modules/esbuild/lib/main.js" ]]; then
+    return 1
+  fi
+  if [[ ! -x "$APP_DIR/frontend/node_modules/@esbuild/darwin-x64/bin/esbuild" ]]; then
+    return 1
+  fi
+  if [[ ! -f "$APP_DIR/frontend/node_modules/vite/bin/vite.js" ]]; then
+    return 1
+  fi
+  return 0
 }
 
 run_detached() {
@@ -86,15 +95,23 @@ start_backend() {
 }
 
 start_frontend() {
-  ensure_frontend_deps
   if [[ -n "$(port_pid "$FRONTEND_PORT")" ]]; then
     log "Frontend already listening on port $FRONTEND_PORT."
     return
   fi
   : > "$APP_DIR/frontend_startup.log"
   : > "$APP_DIR/frontend_startup.err.log"
-  run_detached "$FRONTEND_SESSION" "cd '$APP_DIR/frontend'; exec '$NODE_BIN' ./node_modules/vite/bin/vite.js --host 0.0.0.0 --port '$FRONTEND_PORT' >> '$APP_DIR/frontend_startup.log' 2>> '$APP_DIR/frontend_startup.err.log'"
-  log "Frontend starting on port $FRONTEND_PORT..."
+  if ensure_frontend_deps; then
+    run_detached "$FRONTEND_SESSION" "cd '$APP_DIR/frontend'; exec '$NODE_BIN' ./node_modules/vite/bin/vite.js --host 0.0.0.0 --port '$FRONTEND_PORT' >> '$APP_DIR/frontend_startup.log' 2>> '$APP_DIR/frontend_startup.err.log'"
+    log "Frontend starting in Vite dev mode on port $FRONTEND_PORT..."
+  else
+    if [[ ! -d "$APP_DIR/frontend/dist" || ! -f "$APP_DIR/frontend/dist/index.html" ]]; then
+      echo "Frontend dependencies are incomplete and frontend/dist is missing. Run a frontend build or reinstall node_modules." >&2
+      exit 1
+    fi
+    run_detached "$FRONTEND_SESSION" "cd '$APP_DIR'; exec '$PYTHON' '$APP_DIR/scripts/serve_frontend_dist.py' '$FRONTEND_PORT' >> '$APP_DIR/frontend_startup.log' 2>> '$APP_DIR/frontend_startup.err.log'"
+    log "Frontend starting from dist on port $FRONTEND_PORT..."
+  fi
 }
 
 stop_port() {
