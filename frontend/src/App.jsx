@@ -413,9 +413,15 @@ function KlinePage() {
   const [error, setError] = useState("");
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [globalColumns, setGlobalColumns] = useState(globalKlineColumns);
+  const loadRequestRef = useRef(0);
+  const requestSignature = `${mode}|${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
+  const requestSignatureRef = useRef(requestSignature);
+  requestSignatureRef.current = requestSignature;
 
   async function load(options = {}) {
     const silent = Boolean(options.silent);
+    const requestId = ++loadRequestRef.current;
+    const signature = requestSignature;
     if (!silent) setLoading(true);
     setError("");
     try {
@@ -434,8 +440,11 @@ function KlinePage() {
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
+      if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
+      if (silent && scope === "global" && payload?.figure && (!payload.figure.data || payload.figure.data.length === 0)) return;
       if (scope === "single" && mode === "futu" && (!payload.bars || payload.bars.length === 0)) {
         const fallbackResponse = await fetch(`${API_BASE}/api/chart-board?${qs.toString()}`);
+        if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
         if (fallbackResponse.ok) {
           const fallbackPayload = await fallbackResponse.json();
           setData({ ...payload, fallback_template: fallbackPayload });
@@ -446,9 +455,10 @@ function KlinePage() {
         setData(payload);
       }
     } catch (err) {
+      if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && requestId === loadRequestRef.current && signature === requestSignatureRef.current) setLoading(false);
     }
   }
 

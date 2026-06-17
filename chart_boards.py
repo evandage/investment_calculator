@@ -46,6 +46,7 @@ _SUPABASE_CONF: dict[str, str] | None = None
 _SUPABASE_SESSION: requests.Session | None = None
 _SUPABASE_READ_ONLY = bool(int(os.environ.get("SUPABASE_READ_ONLY", "0")))
 _LAST_SYNC_AT: dict[tuple[str, str], float] = {}
+_OHLCV_MEMORY_CACHE: dict[tuple[str, str], pd.DataFrame] = {}
 _SYNC_MIN_SECONDS = max(60, int(os.environ.get("MARKET_SYNC_MIN_SECONDS", "180")))
 _MARKET_DATA_PROVIDER = "tencent"
 _EARNINGS_DATE_CACHE: dict[str, tuple[pd.Timestamp | None, float]] = {}
@@ -1287,7 +1288,12 @@ def slice_regular_intraday_with_context(
     regular_mask = _regular_us_session_mask(idx)
     regular = df.loc[regular_mask].copy()
     if regular.empty:
-        return regular, "no regular-session bars"
+        bar_dates = pd.Series(idx_local.date, index=df.index)
+        latest = bar_dates.max()
+        mask = bar_dates == latest
+        out = df.loc[mask].copy()
+        out.index = idx_local[mask]
+        return out, f"{latest} latest session fallback"
 
     regular_idx_local = pd.DatetimeIndex(idx_local[regular_mask])
     bar_dates = pd.Series(regular_idx_local.date, index=regular.index)
@@ -1382,6 +1388,21 @@ def _intraday_open_base_price(df: pd.DataFrame, symbol: str, show_extended: bool
     return value if np.isfinite(value) and value > 0 else None
 
 
+def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    if df.empty:
+        return df
+    out = pd.DataFrame(
+        {
+            "Open": df["Open"].resample(rule, label="right", closed="right").first(),
+            "High": df["High"].resample(rule, label="right", closed="right").max(),
+            "Low": df["Low"].resample(rule, label="right", closed="right").min(),
+            "Close": df["Close"].resample(rule, label="right", closed="right").last(),
+            "Volume": df["Volume"].resample(rule, label="right", closed="right").sum(),
+        }
+    )
+    return out.dropna(subset=["Open", "High", "Low", "Close"])
+
+
 def fetch_ohlcv(
     symbol: str,
     interval: Literal["1d", "15m", "5m"],
@@ -1389,6 +1410,15 @@ def fetch_ohlcv(
     *,
     cache_only: bool = False,
 ) -> pd.DataFrame:
+    def _remember(df: pd.DataFrame) -> pd.DataFrame:
+        if not df.empty:
+            _OHLCV_MEMORY_CACHE[(symbol, interval)] = df.copy()
+        return df
+
+    def _last_good() -> pd.DataFrame:
+        cached = _OHLCV_MEMORY_CACHE.get((symbol, interval))
+        return cached.copy() if cached is not None and not cached.empty else pd.DataFrame()
+
     def _since_utc_for_period(p: str) -> pd.Timestamp | None:
         # 根据保留期减少从 Supabase 拉取的无用历史，提升切换标的速度
         try:
@@ -1411,14 +1441,15 @@ def fetch_ohlcv(
     if cache_only and _SUPABASE_CONF:
         since_utc = _since_utc_for_period(period)
         lim = _SUPABASE_READ_LIMIT.get(interval, 2500)
-        return _load_bars_from_supabase(symbol, interval, since_utc=since_utc, limit=lim)
+        cached = _load_bars_from_supabase(symbol, interval, since_utc=since_utc, limit=lim)
+        return _remember(cached) if not cached.empty else _last_good()
 
     if _SUPABASE_CONF:
         since_utc = _since_utc_for_period(period)
         lim = _SUPABASE_READ_LIMIT.get(interval, 2500)
         cached = _load_bars_from_supabase(symbol, interval, since_utc=since_utc, limit=lim)
         if _SUPABASE_READ_ONLY:
-            return cached
+            return _remember(cached) if not cached.empty else _last_good()
         now_s = time.time()
         key = (symbol, interval)
         should_sync = now_s - _LAST_SYNC_AT.get(key, 0.0) >= _SYNC_MIN_SECONDS
@@ -1453,10 +1484,10 @@ def fetch_ohlcv(
                     cached = _merge_ohlcv_cached_delta(cached, to_store)
             _LAST_SYNC_AT[key] = now_s
         if not cached.empty:
-            return cached
+            return _remember(cached)
 
     direct, _ = _fetch_from_source(symbol, interval, period)
-    return direct
+    return _remember(direct) if not direct.empty else _last_good()
 
 
 def ema(series: pd.Series, span: int) -> pd.Series:
@@ -2816,8 +2847,11 @@ def fig_global_kline_board(
         col = idx % cols + 1
         axis_index = idx + 1
         axis_suffix = "" if axis_index == 1 else str(axis_index)
-        period = "5y" if interval == "1d" else "2d"
+        period = "5y" if interval == "1d" else "5d"
         df = fetch_ohlcv(symbol, interval, period, cache_only=cache_only)
+        if interval == "15m" and df.empty:
+            df5 = fetch_ohlcv(symbol, "5m", "5d", cache_only=cache_only)
+            df = _resample_ohlcv(df5, "15min")
         daily_ema: dict[str, pd.Series] = {}
         if interval != "1d":
             if show_extended:
