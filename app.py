@@ -3917,11 +3917,11 @@ with st.expander("再平衡模块", expanded=False):
                     "阶段": rebalance_phase,
                     "策略": strategy,
                     "动作": action,
-                    "当前占美元资产%": round(
+                    "目前占比%": round(
                         (current_usd / planned_usd_total_usd * 100.0) if planned_usd_total_usd > 0 else 0.0,
                         2,
                     ),
-                    "目标占美元资产%": round(target_pct * 100.0, 2),
+                    "目标占比%": round(target_pct * 100.0, 2),
                     "月初口径到目标缺口(USD)": round(gap_usd, 2),
                     "本月计划应买(USD)": round(planned_tier_buy_usd, 2),
                     "实际买入(USD)": round(amount_already_bought_usd, 2),
@@ -3985,13 +3985,12 @@ with st.expander("再平衡模块", expanded=False):
             "本月计划应买(USD)",
             "建议买入(USD)",
             "实际买入(USD)",
-            "当前占美元资产%",
-            "目标占美元资产%",
-            "月初口径到目标缺口(USD)",
+            "目前占比%",
+            "目标占比%",
+            "60日回撤%",
             "本月差额(应买-已买 USD)",
             "估值判断",
             "回撤档位",
-            "建议买入(股)",
             "说明",
         ]
         strategy_df = strategy_df[[col for col in strategy_columns if col in strategy_df.columns]]
@@ -4031,14 +4030,13 @@ with st.expander("再平衡模块", expanded=False):
         _render_themed_table(
             strategy_df,
             formatters={
-                "当前占美元资产%": "{:.2f}%",
-                "目标占美元资产%": "{:.2f}%",
-                "月初口径到目标缺口(USD)": "{:.2f}",
+                "目前占比%": "{:.2f}%",
+                "目标占比%": "{:.2f}%",
+                "60日回撤%": "{:.2f}%",
                 "本月计划应买(USD)": "{:.2f}",
                 "实际买入(USD)": "{:.2f}",
                 "本月差额(应买-已买 USD)": "{:.2f}",
                 "建议买入(USD)": "{:.2f}",
-                "建议买入(股)": "{:.4f}",
             },
         )
         if wizard_step == "4 买入确认":

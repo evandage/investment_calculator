@@ -772,7 +772,7 @@ def build_rebalance_v2(
                 "actual_sold_usd": already_sold,
                 "net_bought_usd": net_bought,
                 "planned_after_valuation_usd": suggested_cap if is_satellite else raw_planned * split,
-                "buy_difference_usd": suggested_cap if is_satellite else raw_planned * split - net_bought,
+                "buy_difference_usd": (suggested_cap if is_satellite else raw_planned * split) - net_bought,
                 "month_start_value_usd": planning_current,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,

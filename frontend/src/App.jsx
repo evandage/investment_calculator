@@ -921,15 +921,16 @@ function Rebalance({ data, onSaved }) {
         <table>
           <thead>
             <tr>
-              <th>标的</th><th>月初口径</th><th>目标缺口</th><th>计划应买</th><th>建议买入</th><th>净买入</th><th>差值</th><th>档位</th><th>估值/追高系数</th><th>建议股数</th><th>说明</th>
+              <th>标的</th><th>目前占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>建议买入</th><th>净买入</th><th>差值</th><th>档位</th><th>估值/追高系数</th><th>说明</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.symbol}>
                 <th>{row.symbol}</th>
-                <td>{fmtMoney(row.month_start_value_usd, "USD")}</td>
-                <td>{fmtMoney(row.gap_usd, "USD")}</td>
+                <td>{Number(row.current_pct || 0).toFixed(2)}%</td>
+                <td>{Number(row.target_pct || 0).toFixed(2)}%</td>
+                <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
                 <td className="planCell">
                   <div>{fmtMoney(row.planned_buy_usd, "USD")}</div>
                   {row.planned_buy_formula ? <div className="cellSubtext">{row.planned_buy_formula}</div> : null}
@@ -939,7 +940,6 @@ function Rebalance({ data, onSaved }) {
                 <td className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, "USD")}</td>
                 <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
                 <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
-                <td>{Number(row.suggested_buy_shares || 0).toFixed(4)}</td>
                 <td className="note">{row.note}</td>
               </tr>
             ))}
