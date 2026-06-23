@@ -66,7 +66,7 @@ def rebalance_rules_payload(
             {
                 "heading": "长期目标",
                 "items": [
-                    "美元资产目标：VOO 40% / QQQ 20% / 卫星仓位 20% / 短债(SGOV) 20%。",
+                    "美元资产目标：VOO 40% / QQQ 30% / AI卫星仓位 10% / 短债(SGOV) 20%。",
                     "卫星仓位内部目标：ISRG / GOOGL / MSFT / AVGO / NVDA = 5 / 3 / 2 / 3 / 2。",
                     "A股基金按 Dashboard 目标占比展示，但当前买入建议只处理美元标的。",
                 ],
