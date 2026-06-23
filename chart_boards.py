@@ -2828,6 +2828,7 @@ def fig_global_kline_board(
     show_extended: bool = True,
     columns: int = 1,
     latest_quotes: dict[str, dict[str, float]] | None = None,
+    user_avg_costs: dict[str, float] | None = None,
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
@@ -3057,10 +3058,40 @@ def fig_global_kline_board(
             row=row,
             col=col,
         )
-        pad = max(float(df["High"].max()) - float(df["Low"].min()), abs(price) * 0.003, 1e-9)
+        cost = float((user_avg_costs or {}).get(symbol, 0.0) or 0.0)
+        if interval == "1d" and np.isfinite(cost) and cost > 0:
+            cost_pct = (price / cost - 1.0) * 100.0
+            fig.add_hline(
+                y=cost,
+                line_dash="dashdot",
+                line_width=1.8,
+                line_color=theme["rsi_orange"],
+                row=row,
+                col=col,
+            )
+            fig.add_annotation(
+                x=0.72,
+                y=0.985,
+                xref="x domain",
+                yref="y domain",
+                text=f"成本 {cost:.2f}（{cost_pct:+.2f}%）",
+                showarrow=False,
+                xanchor="right",
+                yanchor="top",
+                font=dict(color=theme["rsi_orange"], size=10),
+                bgcolor=theme["paper"],
+                bordercolor=theme["rsi_orange"],
+                borderwidth=1,
+                borderpad=2,
+                row=row,
+                col=col,
+            )
+        price_low = min(float(df["Low"].min()), cost) if interval == "1d" and cost > 0 else float(df["Low"].min())
+        price_high = max(float(df["High"].max()), cost) if interval == "1d" and cost > 0 else float(df["High"].max())
+        pad = max(price_high - price_low, abs(price) * 0.003, 1e-9)
         fig.update_yaxes(
             title_text="",
-            range=[float(df["Low"].min()) - pad * 0.12, float(df["High"].max()) + pad * 0.12],
+            range=[price_low - pad * 0.12, price_high + pad * 0.12],
             row=row,
             col=col,
             secondary_y=False,

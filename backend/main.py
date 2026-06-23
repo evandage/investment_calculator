@@ -194,6 +194,14 @@ def _build_global_chart_board(
     symbols = list(CHART_LABELS.keys())
     try:
         quotes = get_futu_subscription_quotes()
+        holdings = load_holdings()
+        user_avg_costs = {
+            symbol: float(holding.get("avg_cost", 0.0) or 0.0)
+            for symbol, holding in holdings.items()
+            if symbol in symbols
+            and float(holding.get("shares", 0.0) or 0.0) > 0
+            and float(holding.get("avg_cost", 0.0) or 0.0) > 0
+        }
         fig = chart_api.fig_global_kline_board(
             symbols,
             interval=key,
@@ -201,6 +209,7 @@ def _build_global_chart_board(
             show_extended=show_extended,
             columns=cols,
             latest_quotes=quotes,
+            user_avg_costs=user_avg_costs if key == "1d" else None,
             cache_only=False,
         )
         return {
@@ -211,6 +220,7 @@ def _build_global_chart_board(
             "market_provider": chart_api.get_market_provider(),
             "show_extended": show_extended if key != "1d" else None,
             "columns": cols,
+            "user_avg_costs": user_avg_costs if key == "1d" else {},
             "figure": json.loads(fig.to_json()),
             "error": "",
         }
@@ -387,4 +397,3 @@ async def chart_board_ws(websocket: WebSocket) -> None:
             await asyncio.sleep(0.25)
     except WebSocketDisconnect:
         return
-
