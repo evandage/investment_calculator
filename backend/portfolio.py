@@ -83,9 +83,10 @@ def rebalance_rules_payload(
                 "heading": "建议金额",
                 "items": [
                     "先用月初口径持仓计算缺口：月初口径 = 当前持仓金额 - 本月已买金额。",
-                    "再按档位倍率计算本月计划应买，VOO 建仓期至少按 1 股规划。",
+                    "VOO/QQQ 再按剩余月份和档位倍率计算本月计划应买；VOO 建仓期至少按 1 股规划。",
+                    "五个卫星股以10月底目标金额为 1x：正常 0.1x、小加 0.2x、中加 0.3x、大加 0.5x；建议不超过实时目标缺口和可动用资金。",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股看 Forward PE，VOO/QQQ 看近 5 个交易日涨幅。",
-                    "可动用资金不足时按比例缩放计划应买；建议买入 = max(0, 计划应买 - 本月已买)。",
+                    "可动用资金不足时按比例缩放计划应买；卫星股按当前持仓计算实时缺口，不再使用本月累计买入作为月度封顶。",
                 ],
             },
             {
@@ -93,11 +94,11 @@ def rebalance_rules_payload(
                 "items": [
                     "VOO：小加 -3% / 1.5x，中加 -7% / 2x，大加 -10% / 3x。",
                     "QQQ：小加 -5% / 1.5x，中加 -10% / 2.5x，大加 -13% / 4x。",
-                    "ISRG：小加 -15% / 1.5x，中加 -20% / 2x，大加 -23% / 3.5x。",
-                    "GOOGL：小加 -11% / 1.5x，中加 -19% / 2.5x，大加 -24% / 4x。",
-                    "MSFT：小加 -12% / 1.5x，中加 -18% / 2.5x，大加 -22% / 4x。",
-                    "AVGO：小加 -15% / 1.5x，中加 -22% / 2.5x，大加 -25% / 4x。",
-                    "NVDA：小加 -12% / 1.5x，中加 -21% / 3x，大加 -25% / 5x。",
+                    "ISRG：正常 0.1x，小加 -15% / 0.2x，中加 -20% / 0.3x，大加 -23% / 0.5x。",
+                    "GOOGL：正常 0.1x，小加 -11% / 0.2x，中加 -19% / 0.3x，大加 -24% / 0.5x。",
+                    "MSFT：正常 0.1x，小加 -12% / 0.2x，中加 -18% / 0.3x，大加 -22% / 0.5x。",
+                    "AVGO：正常 0.1x，小加 -15% / 0.2x，中加 -22% / 0.3x，大加 -25% / 0.5x。",
+                    "NVDA：正常 0.1x，小加 -12% / 0.2x，中加 -21% / 0.3x，大加 -25% / 0.5x。",
                 ],
             },
         ],
@@ -363,7 +364,7 @@ def build_visualizations(
                     "currency": row["currency"],
                 }
             )
-        elif sym in ("VOO", "QQQ", "SGOV", "001015", "006382"):
+        elif sym in ("VOO", "QQQ", "SGOV", "001015"):
             pnl_cny = float(row["pnl_cny"])
             if sym == "SGOV":
                 pnl_cny += float(balances.get("sgov_dividend_usd", 0.0)) * fx
@@ -499,7 +500,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
 
     daily_cards = []
     card_by_symbol: dict[str, dict[str, Any]] = {}
-    for sym in ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV", "001015", "006382"):
+    for sym in ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV", "001015"):
         quote = quotes[sym]
         holding = holdings[sym]
         shares = float(holding["shares"])
@@ -567,7 +568,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "change_cny": satellite_change_cny,
         "extended_change_usd": satellite_extended_change_cny / fx if satellite_extended_change_cny is not None and fx > 0 else None,
         "extended_change_cny": satellite_extended_change_cny,
-        "wide": True,
+        "wide": False,
     }
     daily_cards.insert(2, satellite_card)
 
@@ -654,7 +655,8 @@ def build_rebalance_v2(
         current_usd = item["value_cny"] / fx if fx > 0 else 0.0
         already = float(bought_amounts.get(sym, 0.0))
         already_sold = float(sold_amounts.get(sym, 0.0))
-        planning_current = max(0.0, current_usd - already + already_sold)
+        is_satellite = sym in SATELLITE_SYMBOLS
+        planning_current = current_usd if is_satellite else max(0.0, current_usd - already + already_sold)
         target_pct = TARGET_WEIGHTS[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
         gap = target_usd - planning_current
@@ -665,33 +667,48 @@ def build_rebalance_v2(
             if month_end_multiplier > multiplier:
                 multiplier, action, signal, intensity = month_end_multiplier, month_end_action, month_end_signal, month_end_intensity
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
-        if intensity_rank(previous) > intensity_rank(intensity):
+        if not is_satellite and intensity_rank(previous) > intensity_rank(intensity):
             multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
             action = f"保持本月已确认{INTENSITY_LABELS.get(previous, '已买')}档"
 
         if normalize_intensity(intensity) == "large":
             has_large_trigger = True
 
-        base_budget = max(0.0, gap) / max(1, build_month_count)
-        planned = min(max(0.0, gap), base_budget * multiplier)
-        planned_formula_parts = [
-            f"目标 {_fmt_usd_compact(target_usd)} - 月初 {_fmt_usd_compact(planning_current)} = 缺口 {_fmt_usd_compact(gap)}",
-            f"缺口 / {build_month_count}月 = {_fmt_usd_compact(base_budget)}",
-            f"x {float(multiplier):.2f}档 = {_fmt_usd_compact(base_budget * multiplier)}",
-            f"取不超过缺口 => {_fmt_usd_compact(min(max(0.0, gap), base_budget * multiplier))}",
-        ]
+        if is_satellite:
+            base_budget = max(0.0, target_usd)
+            planned = min(max(0.0, gap), base_budget * float(multiplier))
+            planned_formula_parts = [
+                f"10月底目标金额 {_fmt_usd_compact(target_usd)} = 1.00x",
+                f"目标 {_fmt_usd_compact(target_usd)} - 当前 {_fmt_usd_compact(current_usd)} = 实时缺口 {_fmt_usd_compact(gap)}",
+                f"1.00x × {float(multiplier):.2f} = {_fmt_usd_compact(base_budget * float(multiplier))}",
+                f"取不超过实时缺口 => {_fmt_usd_compact(planned)}",
+            ]
+        else:
+            base_budget = max(0.0, gap) / max(1, build_month_count)
+            planned = min(max(0.0, gap), base_budget * multiplier)
+            planned_formula_parts = [
+                f"目标 {_fmt_usd_compact(target_usd)} - 月初 {_fmt_usd_compact(planning_current)} = 缺口 {_fmt_usd_compact(gap)}",
+                f"缺口 / {build_month_count}月 = {_fmt_usd_compact(base_budget)}",
+                f"x {float(multiplier):.2f}档 = {_fmt_usd_compact(base_budget * multiplier)}",
+                f"取不超过缺口 => {_fmt_usd_compact(min(max(0.0, gap), base_budget * multiplier))}",
+            ]
         if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
             planned_formula_parts.append(f"VOO 至少 1 股 => {_fmt_usd_compact(planned)}")
         planned_formula = "；".join(planned_formula_parts)
 
-        previous_multiplier = intensity_multiplier(sym, phase, previous)
+        previous_multiplier = 0.0 if is_satellite else intensity_multiplier(sym, phase, previous)
         additional_multiplier = max(0.0, float(multiplier) - previous_multiplier)
-        already_bought_this_month = previous != "none"
+        already_bought_this_month = not is_satellite and previous != "none"
         fpe = item.get("forward_pe")
         split, split_note = valuation_split_for_row(sym, item)
         net_bought = already - already_sold
         raw_planned = planned
-        raw_suggested = min(max(0.0, gap), base_budget * additional_multiplier) * split
+        raw_suggested = (
+            planned * split
+            if is_satellite
+            else min(max(0.0, gap), base_budget * additional_multiplier) * split
+        )
+        suggested_cap = planned * split if is_satellite else raw_suggested
         if already_bought_this_month:
             raw_suggested = max(0.0, raw_planned * split - already)
             additional_multiplier = raw_suggested / base_budget if base_budget > 0 else 0.0
@@ -704,7 +721,11 @@ def build_rebalance_v2(
 
         note_parts: list[str] = []
         if raw_suggested > 0:
-            note_parts.append("按目标缺口和当前阶段的月度推进节奏执行。")
+            note_parts.append(
+                f"卫星股以10月底目标金额为 1x，当前按 {float(multiplier):.1f}x 计算，并取不超过实时缺口。"
+                if is_satellite
+                else "按目标缺口和当前阶段的月度推进节奏执行。"
+            )
         elif already > 0:
             note_parts.append(f"本月已买 USD {already:,.2f}，当前无需系统补买；仍可手动确认。")
         elif gap <= 0:
@@ -712,7 +733,11 @@ def build_rebalance_v2(
         else:
             note_parts.append("当前可动用资金不足或档位额度已用完，先保留观察。")
         if split_note:
-            note_parts.append(f"{split_note} 计划金额仍按建仓节奏买够。")
+            note_parts.append(
+                f"{split_note} 估值约束仍保留，但不恢复月度固定额度。"
+                if is_satellite
+                else f"{split_note} 计划金额仍按建仓节奏买够。"
+            )
         if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
             note_parts.append("建仓期 VOO 至少按 1 股规划。")
         if already_bought_this_month:
@@ -742,11 +767,12 @@ def build_rebalance_v2(
                 "signal_multiplier": float(multiplier),
                 "suggested_buy_usd": raw_suggested,
                 "raw_suggested_buy_usd": raw_suggested,
+                "suggested_cap_usd": suggested_cap,
                 "actual_bought_usd": already,
                 "actual_sold_usd": already_sold,
                 "net_bought_usd": net_bought,
-                "planned_after_valuation_usd": raw_planned * split,
-                "buy_difference_usd": raw_planned * split - net_bought,
+                "planned_after_valuation_usd": suggested_cap if is_satellite else raw_planned * split,
+                "buy_difference_usd": suggested_cap if is_satellite else raw_planned * split - net_bought,
                 "month_start_value_usd": planning_current,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
@@ -771,9 +797,13 @@ def build_rebalance_v2(
     scale = strategy_budget_usd / raw_total if raw_total > 0 else 0.0
     for row in rows:
         row["planned_buy_usd"] = row["raw_planned_buy_usd"]
-        row["suggested_buy_usd"] = float(row["raw_suggested_buy_usd"]) * scale
+        scaled_suggestion = float(row["raw_suggested_buy_usd"]) * scale
+        if row["symbol"] in SATELLITE_SYMBOLS:
+            scaled_suggestion = min(float(row.get("suggested_cap_usd", 0.0)), scaled_suggestion)
+        row["suggested_buy_usd"] = scaled_suggestion
         price = float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0)
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
+    strategy_budget_usd = sum(float(row["suggested_buy_usd"]) for row in rows)
 
     return {
         "month_key": month_key,
@@ -827,22 +857,23 @@ def build_rebalance(
             continue
         current_usd = item["value_cny"] / fx if fx > 0 else 0.0
         already = float(bought_amounts.get(sym, 0.0))
-        planning_current = max(0.0, current_usd - already)
+        is_satellite = sym in SATELLITE_SYMBOLS
+        planning_current = current_usd if is_satellite else max(0.0, current_usd - already)
         target_pct = TARGET_WEIGHTS[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
         gap = target_usd - planning_current
         drawdown = None
         multiplier, action, signal, intensity = signal_for_drawdown(sym, drawdown, phase)
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
-        if intensity_rank(previous) > intensity_rank(intensity):
+        if not is_satellite and intensity_rank(previous) > intensity_rank(intensity):
             multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
             action = f"维持本月已确认{INTENSITY_LABELS.get(previous, '已买')}档"
-        base_budget = max(0.0, gap) / max(1, build_months)
+        base_budget = max(0.0, target_usd) if is_satellite else max(0.0, gap) / max(1, build_months)
         planned = min(max(0.0, gap), base_budget * multiplier)
         fpe = item.get("forward_pe")
         band = PE_BANDS.get(sym)
         split = 0.5 if sym in SATELLITE_SYMBOLS and isinstance(fpe, (int, float)) and band and fpe > band[1] else 1.0
-        suggested = max(0.0, planned * split - already)
+        suggested = planned * split if is_satellite else max(0.0, planned * split - already)
         rows.append(
             {
                 "symbol": sym,

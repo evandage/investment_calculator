@@ -95,6 +95,17 @@ function tone(value) {
   return "flat";
 }
 
+function tierClass(intensity) {
+  return {
+    normal: "tierNormal",
+    small: "tierSmall",
+    medium: "tierMedium",
+    large: "tierLarge",
+    probe: "tierSmall",
+    month_end: "tierMedium",
+  }[String(intensity || "").toLowerCase()] || "tierNone";
+}
+
 function globalKlineColumns(width = window.innerWidth) {
   if (width >= 1280) return 3;
   if (width >= 820) return 2;
@@ -926,7 +937,7 @@ function Rebalance({ data, onSaved }) {
                 <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, "USD")}</td>
                 <td>{fmtMoney(row.net_bought_usd, "USD")}</td>
                 <td className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, "USD")}</td>
-                <td>{row.signal || row.intensity}</td>
+                <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
                 <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
                 <td>{Number(row.suggested_buy_shares || 0).toFixed(4)}</td>
                 <td className="note">{row.note}</td>
@@ -956,7 +967,7 @@ function Rebalance({ data, onSaved }) {
                       </select>
                     </td>
                     <td>
-                      <select value={inputs[row.symbol]?.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
+                      <select className={tierClass(inputs[row.symbol]?.intensity || row.intensity)} value={inputs[row.symbol]?.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
                         <option value="normal">普通</option>
                         <option value="probe">QQQ -2%分批</option>
                         <option value="month_end">QQQ月底补齐</option>

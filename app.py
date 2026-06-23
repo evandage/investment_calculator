@@ -1,4 +1,4 @@
-import re
+﻿import re
 import json
 import base64
 import importlib
@@ -42,7 +42,6 @@ _FALLBACK = {
     "ISRG": 450.0,
     "SGOV": 100.0,
     "001015": 1.0,
-    "006382": 1.0,
 }
 
 _TICKERS = {
@@ -55,7 +54,6 @@ _TICKERS = {
     "isrg": "ISRG",
     "sgov": "SGOV",
     "hs300": "001015",  # 华夏沪深300指数增强A
-    "zz500": "006382",  # 华夏中证500ETF联接C
 }
 
 _REQUEST_HEADERS = {
@@ -108,7 +106,7 @@ _FUTU_US = {
     "ISRG": "US.ISRG",
     "SGOV": "US.SGOV",
 }
-_FUND_CODES = {"001015": "001015", "006382": "006382"}
+_FUND_CODES = {"001015": "001015"}
 _EASTMONEY_KLINE_URLS = (
     "http://push2his.eastmoney.com/api/qt/stock/kline/get",
     "https://push2his.eastmoney.com/api/qt/stock/kline/get",
@@ -181,12 +179,11 @@ _ASSET_META = {
     "NVDA": {"label": "NVDA", "currency": "USD"},
     "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
     "001015": {"label": "沪深300", "currency": "CNY"},
-    "006382": {"label": "中证500", "currency": "CNY"},
 }
 _TARGET_WEIGHTS = {
     # 目标比例：
     # 美元资产: VOO/QQQ/AI卫星仓位/短债(SGOV) = 4:3:1:2
-    # 人民币资产: 沪深300(001015) 20%, 中证500(006382) 20%
+    # 人民币资产: 沪深300(001015) 20%
     "VOO": 0.24,
     "QQQ": 0.18,
     "AVGO": 0.012,
@@ -196,7 +193,6 @@ _TARGET_WEIGHTS = {
     "ISRG": 0.02,
     "SGOV": 0.12,
     "001015": 0.20,
-    "006382": 0.20,
 }
 
 _SATELLITE_SYMBOLS = ("ISRG", "GOOGL", "MSFT", "AVGO", "NVDA")
@@ -242,20 +238,20 @@ _REBALANCE_RULES: dict[str, dict[str, dict[str, Any]]] = {
     _REBALANCE_PHASE_BUILD: {
         "VOO": {"normal": (1.0, "正常建仓", "每月机械定投", "normal"), "bands": [(-10.0, 3.0, "大加", "3x 月预算 + 少量 SGOV", "large"), (-7.0, 2.0, "中加", "2x 月预算", "medium"), (-3.0, 1.5, "小加", "1.5x 月预算", "small")]},
         "QQQ": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-13.0, 4.0, "大加", "4x + 动用 SGOV", "large"), (-10.0, 2.5, "中加", "2.5x", "medium"), (-5.0, 1.5, "小加", "1.5x", "small")]},
-        "MSFT": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-22.0, 4.0, "大加", "4x", "large"), (-18.0, 2.5, "中加", "2.5x", "medium"), (-12.0, 1.5, "试探", "1.5x 月预算", "small")]},
-        "GOOGL": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-24.0, 4.0, "大加", "4x", "large"), (-19.0, 2.5, "中加", "2.5x", "medium"), (-11.0, 1.5, "试探", "1.5x 月预算", "small")]},
-        "NVDA": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-25.0, 5.0, "大加", "5x + 明显动用 SGOV", "large"), (-21.0, 3.0, "中加", "3x", "medium"), (-12.0, 1.5, "试探", "1.5x 月预算", "small")]},
-        "AVGO": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-25.0, 4.0, "大加", "4x", "large"), (-22.0, 2.5, "中加", "2.5x", "medium"), (-15.0, 1.5, "试探", "1.5x 月预算", "small")]},
-        "ISRG": {"normal": (1.0, "正常建仓", "每月按目标推进", "normal"), "bands": [(-23.0, 3.5, "大加", "3.5x", "large"), (-20.0, 2.0, "中加", "2x", "medium"), (-15.0, 1.5, "试探", "1.5x 月预算", "small")]},
+        "MSFT": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-22.0, 0.5, "大加", "大加", "large"), (-18.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
+        "GOOGL": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-24.0, 0.5, "大加", "大加", "large"), (-19.0, 0.3, "中加", "中加", "medium"), (-11.0, 0.2, "小加", "小加", "small")]},
+        "NVDA": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-21.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
+        "AVGO": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-22.0, 0.3, "中加", "中加", "medium"), (-15.0, 0.2, "小加", "小加", "small")]},
+        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-23.0, 0.5, "大加", "大加", "large"), (-20.0, 0.3, "中加", "中加", "medium"), (-15.0, 0.2, "小加", "小加", "small")]},
     },
     _REBALANCE_PHASE_DCA: {
         "VOO": {"normal": (1.0, "正常定投", "正常：工资定投", "normal"), "bands": [(-10.0, 2.5, "大加", "中等动用 SGOV", "large"), (-7.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-3.0, 1.25, "多买一点", "当月 SGOV 流入", "small")]},
         "QQQ": {"normal": (0.5, "小额定投", "正常：小额定投", "normal"), "bands": [(-13.0, 2.5, "大加", "中等 SGOV", "large"), (-10.0, 1.75, "明显加仓", "少量 SGOV", "medium"), (-5.0, 1.25, "增加投入", "当月 SGOV 流入", "small")]},
-        "MSFT": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-22.0, 2.0, "大加", "大加", "large"), (-18.0, 1.5, "明显加", "明显加", "medium"), (-12.0, 0.75, "试探", "试探", "small")]},
-        "GOOGL": {"normal": (0.25, "持续小买", "正常：持续小买", "normal"), "bands": [(-24.0, 2.0, "大加", "大加", "large"), (-19.0, 1.5, "明显加", "明显加", "medium"), (-11.0, 0.75, "试探", "试探", "small")]},
-        "NVDA": {"normal": (0.0, "少量/观察", "正常：少量/观察", "normal"), "bands": [(-25.0, 2.5, "大加", "大加（AI 恐慌级）", "large"), (-21.0, 1.75, "明显加", "明显加", "medium"), (-12.0, 0.75, "试探", "试探", "small")]},
-        "AVGO": {"normal": (0.1, "观察/小买", "正常：观察/小买", "normal"), "bands": [(-25.0, 2.5, "大加", "大加", "large"), (-22.0, 1.75, "明显加", "明显加", "medium"), (-15.0, 0.75, "试探", "试探", "small")]},
-        "ISRG": {"normal": (0.5, "正常定投", "正常：持续定投", "normal"), "bands": [(-23.0, 2.0, "大加", "大加", "large"), (-20.0, 1.5, "明显加", "明显加", "medium"), (-15.0, 0.75, "试探", "试探", "small")]},
+        "MSFT": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-22.0, 0.5, "大加", "大加", "large"), (-18.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
+        "GOOGL": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-24.0, 0.5, "大加", "大加", "large"), (-19.0, 0.3, "中加", "中加", "medium"), (-11.0, 0.2, "小加", "小加", "small")]},
+        "NVDA": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-21.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
+        "AVGO": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-22.0, 0.3, "中加", "中加", "medium"), (-15.0, 0.2, "小加", "小加", "small")]},
+        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-23.0, 0.5, "大加", "大加", "large"), (-20.0, 0.3, "中加", "中加", "medium"), (-15.0, 0.2, "小加", "小加", "small")]},
     },
 }
 
@@ -1000,6 +996,15 @@ def _render_themed_table(
                     styles.at[idx, "Forward PE"] = f"color: {red}; font-weight: 800;"
                 elif pe < low:
                     styles.at[idx, "Forward PE"] = f"color: {green}; font-weight: 800;"
+        if "回撤档位" in frame.columns:
+            tier_styles = {
+                "正常": "color:#16a34a; background-color:rgba(34,197,94,0.16); font-weight:900;",
+                "小加": "color:#ca8a04; background-color:rgba(250,204,21,0.18); font-weight:900;",
+                "中加": "color:#ea580c; background-color:rgba(249,115,22,0.18); font-weight:900;",
+                "大加": "color:#dc2626; background-color:rgba(239,68,68,0.18); font-weight:900;",
+            }
+            for idx, value in frame["回撤档位"].items():
+                styles.at[idx, "回撤档位"] = tier_styles.get(str(value), "color:#64748b; font-weight:800;")
         return styles
 
     styler = (
@@ -1665,7 +1670,7 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
 
     # 基金：用东方财富基金估值接口
     symbols = list(_TICKERS.values())
-    for sym in ("001015", "006382"):
+    for sym in ("001015",):
         try:
             res = _fetch_fund_price_change(_FUND_CODES[sym])
             if res is not None:
@@ -2028,7 +2033,7 @@ def _load_balances() -> dict[str, float]:
         out["sgov_dividend_usd"] = 0.0
     # 兼容旧版按标的保存的“结转余额”
     try:
-        legacy_cny = max(0.0, float(data.get("001015", 0.0))) + max(0.0, float(data.get("006382", 0.0)))
+        legacy_cny = max(0.0, float(data.get("001015", 0.0)))
     except (TypeError, ValueError):
         legacy_cny = 0.0
     if out["cash_cny"] <= 0 and legacy_cny > 0:
@@ -2263,7 +2268,7 @@ def _normalize_balances(raw: Any) -> dict[str, float]:
         balances["sgov_dividend_usd"] = 0.0
     # 兼容旧版字段
     try:
-        legacy_cny = max(0.0, float(raw.get("001015", 0.0))) + max(0.0, float(raw.get("006382", 0.0)))
+        legacy_cny = max(0.0, float(raw.get("001015", 0.0)))
     except (TypeError, ValueError):
         legacy_cny = 0.0
     if balances["cash_cny"] <= 0 and legacy_cny > 0:
@@ -2355,7 +2360,6 @@ def _defaults_from_fetch() -> dict[str, float]:
         "isrg": raw["ISRG"],
         "sgov": raw["SGOV"],
         "hs300": raw["001015"],
-        "zz500": raw["006382"],
     }
 
 
@@ -2370,7 +2374,6 @@ def _ensure_price_session_defaults() -> None:
     st.session_state.setdefault("def_isrg", d["isrg"])
     st.session_state.setdefault("def_sgov", d["sgov"])
     st.session_state.setdefault("def_hs300", d["hs300"])
-    st.session_state.setdefault("def_zz500", d["zz500"])
     st.session_state.setdefault("_prices_initialized", True)
 
 
@@ -2587,7 +2590,6 @@ elif previous_market_provider != effective_market_provider:
         "def_isrg",
         "def_sgov",
         "def_hs300",
-        "def_zz500",
         "inp_voo",
         "inp_qqq",
         "inp_avgo",
@@ -2597,7 +2599,6 @@ elif previous_market_provider != effective_market_provider:
         "inp_isrg",
         "inp_sgov",
         "inp_hs300",
-        "inp_zz500",
         "_prices_initialized",
     ):
         st.session_state.pop(k, None)
@@ -2645,7 +2646,6 @@ if refresh_prices_clicked:
     st.session_state.def_isrg = d["isrg"]
     st.session_state.def_sgov = d["sgov"]
     st.session_state.def_hs300 = d["hs300"]
-    st.session_state.def_zz500 = d["zz500"]
 
     # 删除输入框缓存值，让下方 number_input 用新的 def_* 作为默认值。
     for k in (
@@ -2659,7 +2659,6 @@ if refresh_prices_clicked:
         "inp_isrg",
         "inp_sgov",
         "inp_hs300",
-        "inp_zz500",
     ):
         if k in st.session_state:
             del st.session_state[k]
@@ -2683,7 +2682,6 @@ prices_now = {
     "ISRG": float(spot_prices.get("ISRG", st.session_state.def_isrg)),
     "SGOV": float(spot_prices.get("SGOV", st.session_state.def_sgov)),
     "001015": float(spot_prices.get("001015", st.session_state.def_hs300)),
-    "006382": float(spot_prices.get("006382", st.session_state.def_zz500)),
 }
 
 # 前端不负责同步外部行情，避免阻塞与不确定性；由独立 sync worker 负责写 Supabase
@@ -3112,7 +3110,7 @@ satellite_daily_color = _change_color_by_pct(satellite_daily_pct, theme=theme)
 satellite_daily_change_usd = (satellite_daily_change_cny / fx) if fx > 0 else 0.0
 satellite_extended_change_usd = (satellite_extended_change_cny / fx) if fx > 0 else None
 satellite_card_html = (
-    f"<div class='daily-card daily-card-wide' style='--daily-color:{satellite_daily_color};'>"
+    f"<div class='daily-card' style='--daily-color:{satellite_daily_color};'>"
     "<div class='daily-card-title'>卫星仓位</div>"
     "<div class='daily-card-amount'>"
     f"<div class='daily-card-line'>{_daily_value_with_extension(f'{satellite_daily_pct:+.2f}%', f'{satellite_extended_pct:+.2f}%' if isinstance(satellite_extended_pct, (int, float)) else None, satellite_extended_pct)}</div>"
@@ -3131,7 +3129,6 @@ daily_card_symbols = (
     "NVDA",
     "SGOV",
     "001015",
-    "006382",
 )
 for sym in daily_card_symbols:
     meta = _ASSET_META[sym]
@@ -3578,7 +3575,8 @@ with rebalance_rule_col:
 #### SGOV 规则
 - 本表只使用当前已经在账户里的美元现金和 SGOV，不预估未来新增工资。
 - 每月新增 5000 RMB 由前面的持仓/现金编辑录入后，再参与下一次规划。
-- 建仓期先按当前持仓计算每个标的到目标的缺口，再按剩余月数拆成月度推进量。
+- VOO/QQQ 建仓期按目标缺口和剩余月数拆成月度推进量。
+- 五个卫星股以10月底预计总资产对应的目标金额为 1x：正常 0.1x、小加 0.2x、中加 0.3x、大加 0.5x，并取不超过实时缺口和可动用资金。
 - SGOV 超过 20% 目标的部分，可以随时挪用。
 - 目标内 20% SGOV 默认保留，只有触发大加档才动用。
 - 一旦触发大加/恐慌级档位，SGOV 可以全部动用，之后用后续新增资金再补回。
@@ -3590,11 +3588,11 @@ with rebalance_rule_col:
                 [
                     {"标的": "VOO", "小加": "-3% / 1.5x", "中加": "-7% / 2x", "大加": "-10% / 3x + 少量SGOV"},
                     {"标的": "QQQ", "小加": "-5% / 1.5x", "中加": "-10% / 2.5x", "大加": "-13% / 4x + 动用SGOV"},
-                    {"标的": "ISRG", "小加": "-15% / 1.5x", "中加": "-20% / 2x", "大加": "-23% / 3.5x"},
-                    {"标的": "GOOGL", "小加": "-11% / 1.5x", "中加": "-19% / 2.5x", "大加": "-24% / 4x"},
-                    {"标的": "MSFT", "小加": "-12% / 1.5x", "中加": "-18% / 2.5x", "大加": "-22% / 4x"},
-                    {"标的": "AVGO", "小加": "-15% / 1.5x", "中加": "-22% / 2.5x", "大加": "-25% / 4x"},
-                    {"标的": "NVDA", "小加": "-12% / 1.5x", "中加": "-21% / 3x", "大加": "-25% / 5x + 明显动用SGOV"},
+                    {"标的": "ISRG", "正常": "0.1x", "小加": "-15% / 0.2x", "中加": "-20% / 0.3x", "大加": "-23% / 0.5x"},
+                    {"标的": "GOOGL", "正常": "0.1x", "小加": "-11% / 0.2x", "中加": "-19% / 0.3x", "大加": "-24% / 0.5x"},
+                    {"标的": "MSFT", "正常": "0.1x", "小加": "-12% / 0.2x", "中加": "-18% / 0.3x", "大加": "-22% / 0.5x"},
+                    {"标的": "AVGO", "正常": "0.1x", "小加": "-15% / 0.2x", "中加": "-22% / 0.3x", "大加": "-25% / 0.5x"},
+                    {"标的": "NVDA", "正常": "0.1x", "小加": "-12% / 0.2x", "中加": "-21% / 0.3x", "大加": "-25% / 0.5x"},
                 ]
             ),
             width="stretch",
@@ -3781,11 +3779,11 @@ with st.expander("再平衡模块", expanded=False):
             current_cny = value_cny_by_symbol.get(sym, 0.0)
             current_usd = (current_cny / fx) if fx > 0 else 0.0
             amount_already_bought_usd = bought_amount_by_symbol.get(sym, 0.0)
-            planning_current_usd = (
-                max(0.0, current_usd - amount_already_bought_usd)
-                if sym != "SGOV"
-                else current_usd
-            )
+            is_satellite = sym in _SATELLITE_SYMBOLS
+            if sym == "SGOV" or is_satellite:
+                planning_current_usd = current_usd
+            else:
+                planning_current_usd = max(0.0, current_usd - amount_already_bought_usd)
             target_pct = (_TARGET_WEIGHTS.get(sym, 0.0) / usd_target_weight_total) if usd_target_weight_total > 0 else 0.0
             target_usd = target_pct * planned_usd_total_usd
             gap_usd = target_usd - planning_current_usd
@@ -3795,6 +3793,7 @@ with st.expander("再平衡模块", expanded=False):
             current_intensity = _normalize_rebalance_intensity(intensity)
             if (
                 sym != "SGOV"
+                and not is_satellite
                 and _REBALANCE_INTENSITY_ORDER.get(previous_intensity, 0)
                 > _REBALANCE_INTENSITY_ORDER.get(current_intensity, 0)
             ):
@@ -3804,9 +3803,13 @@ with st.expander("再平衡模块", expanded=False):
                     previous_intensity,
                 )
                 action = f"维持本月已确认{_REBALANCE_INTENSITY_LABELS.get(previous_intensity, '已买')}档"
-            previous_multiplier = _rebalance_intensity_multiplier(sym, rebalance_phase, previous_intensity)
+            previous_multiplier = (
+                0.0
+                if is_satellite
+                else _rebalance_intensity_multiplier(sym, rebalance_phase, previous_intensity)
+            )
             additional_multiplier = max(0.0, float(multiplier) - previous_multiplier)
-            already_bought_this_month = sym != "SGOV" and previous_intensity != "none"
+            already_bought_this_month = sym != "SGOV" and not is_satellite and previous_intensity != "none"
             forward_pe = forward_pe_by_symbol.get(sym)
             pe_band = _USD_ASSET_PE_BANDS.get(sym)
             valuation_split_factor = 1.0
@@ -3817,14 +3820,31 @@ with st.expander("再平衡模块", expanded=False):
                 and float(forward_pe) > float(pe_band[1])
             ):
                 valuation_split_factor = 0.5
-            base_budget_usd = max(0.0, gap_usd) / build_month_count
-            planned_tier_buy_usd = min(max(0.0, gap_usd), base_budget_usd * float(multiplier))
+            base_budget_usd = (
+                max(0.0, target_usd)
+                if is_satellite
+                else max(0.0, gap_usd) / build_month_count
+            )
+            planned_tier_buy_usd = (
+                min(max(0.0, gap_usd), base_budget_usd * float(multiplier))
+                if is_satellite
+                else min(max(0.0, gap_usd), base_budget_usd * float(multiplier))
+            )
             if sym == "VOO" and rebalance_phase == _REBALANCE_PHASE_BUILD:
                 planned_tier_buy_usd = max(planned_tier_buy_usd, float(prices_now.get("VOO", 0.0)))
             valuation_adjusted_planned_tier_buy_usd = planned_tier_buy_usd * valuation_split_factor
-            raw_buy_usd = min(
-                max(0.0, gap_usd),
-                base_budget_usd * additional_multiplier * valuation_split_factor,
+            raw_buy_usd = (
+                planned_tier_buy_usd * valuation_split_factor
+                if is_satellite
+                else min(
+                    max(0.0, gap_usd),
+                    base_budget_usd * additional_multiplier * valuation_split_factor,
+                )
+            )
+            suggested_cap_usd = (
+                planned_tier_buy_usd * valuation_split_factor
+                if is_satellite
+                else raw_buy_usd
             )
             if already_bought_this_month:
                 raw_buy_usd = max(0.0, valuation_adjusted_planned_tier_buy_usd - amount_already_bought_usd)
@@ -3852,7 +3872,13 @@ with st.expander("再平衡模块", expanded=False):
             elif intensity == "small":
                 note = "小加档：主要使用当月现金流，尽量不动 SGOV。"
             else:
-                note = "按当前阶段的常规月度节奏执行。"
+                note = (
+                    f"卫星股以10月底目标金额为 1x，当前按 {float(multiplier):.1f}x 计算，并取不超过实时缺口。"
+                    if is_satellite
+                    else "按当前阶段的常规月度节奏执行。"
+                )
+            if is_satellite and "10月底目标金额为 1x" not in note:
+                note = f"{note} 卫星股以10月底目标金额为 1x，当前按 {float(multiplier):.1f}x 计算，并取不超过实时缺口。"
             if valuation_split_factor < 1.0:
                 note = (
                     f"{note} Forward PE 高于合理区间上沿，本月按 50% 分批买入；"
@@ -3909,6 +3935,7 @@ with st.expander("再平衡模块", expanded=False):
                     "说明": note,
                     "_raw_buy_usd": raw_buy_usd,
                     "_signal_remaining_usd": signal_remaining_usd,
+                    "_suggested_cap_usd": suggested_cap_usd,
                     "_intensity": intensity,
                 }
             )
@@ -3929,6 +3956,8 @@ with st.expander("再平衡模块", expanded=False):
         for row in strategy_rows:
             buy_usd = row["_signal_remaining_usd"] * cash_scale
             sym = str(row.get("_symbol", ""))
+            if sym in _SATELLITE_SYMBOLS:
+                buy_usd = min(float(row.get("_suggested_cap_usd", 0.0)), buy_usd)
             current_price_usd = float(prices_now.get(sym, 0.0))
             if (
                 sym == "VOO"
@@ -3947,7 +3976,7 @@ with st.expander("再平衡模块", expanded=False):
             by=["_signal_remaining_usd", "月初口径到目标缺口(USD)"],
             ascending=[False, False],
         )
-        strategy_df = strategy_df.drop(columns=["_symbol", "_raw_buy_usd", "_signal_remaining_usd", "_intensity"])
+        strategy_df = strategy_df.drop(columns=["_symbol", "_raw_buy_usd", "_signal_remaining_usd", "_suggested_cap_usd", "_intensity"])
         strategy_columns = [
             "标的",
             "阶段",
@@ -4145,4 +4174,4 @@ with st.expander("再平衡模块", expanded=False):
                         if total_execution_usd > float(balances_for_view.get("cash_usd", 0.0)):
                             st.warning("本次买入金额超过当前现金，已将现金扣到 0；如果动用了 SGOV，请手动更新 SGOV/现金。")
                         st.rerun()
-    
+
