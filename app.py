@@ -3925,7 +3925,10 @@ with st.expander("再平衡模块", expanded=False):
                     "月初口径到目标缺口(USD)": round(gap_usd, 2),
                     "本月计划应买(USD)": round(planned_tier_buy_usd, 2),
                     "实际买入(USD)": round(amount_already_bought_usd, 2),
-                    "本月差额(应买-已买 USD)": round(planned_tier_buy_usd - amount_already_bought_usd, 2),
+                    "本月差额(应买-已买 USD)": round(
+                        gap_usd if is_satellite else planned_tier_buy_usd - amount_already_bought_usd,
+                        2,
+                    ),
                     "60日回撤%": round(float(drawdown_pct), 2) if isinstance(drawdown_pct, (int, float)) else None,
                     "Forward PE": round(float(forward_pe), 2) if isinstance(forward_pe, (int, float)) else None,
                     "PE合理区间": _pe_band_text(sym) if sym in _SATELLITE_SYMBOLS else "-",

@@ -676,12 +676,13 @@ def build_rebalance_v2(
 
         if is_satellite:
             base_budget = max(0.0, target_usd)
-            planned = min(max(0.0, gap), base_budget * float(multiplier))
+            planned = base_budget * float(multiplier)
+            gap_capped_plan = min(max(0.0, gap), planned)
             planned_formula_parts = [
                 f"10月底目标金额 {_fmt_usd_compact(target_usd)} = 1.00x",
                 f"目标 {_fmt_usd_compact(target_usd)} - 当前 {_fmt_usd_compact(current_usd)} = 实时缺口 {_fmt_usd_compact(gap)}",
                 f"1.00x × {float(multiplier):.2f} = {_fmt_usd_compact(base_budget * float(multiplier))}",
-                f"取不超过实时缺口 => {_fmt_usd_compact(planned)}",
+                f"本轮建议不超过实时缺口 => {_fmt_usd_compact(gap_capped_plan)}",
             ]
         else:
             base_budget = max(0.0, gap) / max(1, build_month_count)
@@ -704,11 +705,11 @@ def build_rebalance_v2(
         net_bought = already - already_sold
         raw_planned = planned
         raw_suggested = (
-            planned * split
+            gap_capped_plan * split
             if is_satellite
             else min(max(0.0, gap), base_budget * additional_multiplier) * split
         )
-        suggested_cap = planned * split if is_satellite else raw_suggested
+        suggested_cap = gap_capped_plan * split if is_satellite else raw_suggested
         if already_bought_this_month:
             raw_suggested = max(0.0, raw_planned * split - already)
             additional_multiplier = raw_suggested / base_budget if base_budget > 0 else 0.0
@@ -772,7 +773,7 @@ def build_rebalance_v2(
                 "actual_sold_usd": already_sold,
                 "net_bought_usd": net_bought,
                 "planned_after_valuation_usd": suggested_cap if is_satellite else raw_planned * split,
-                "buy_difference_usd": (suggested_cap if is_satellite else raw_planned * split) - net_bought,
+                "buy_difference_usd": gap if is_satellite else raw_planned * split - net_bought,
                 "month_start_value_usd": planning_current,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
@@ -869,11 +870,11 @@ def build_rebalance(
             multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
             action = f"维持本月已确认{INTENSITY_LABELS.get(previous, '已买')}档"
         base_budget = max(0.0, target_usd) if is_satellite else max(0.0, gap) / max(1, build_months)
-        planned = min(max(0.0, gap), base_budget * multiplier)
+        planned = base_budget * multiplier if is_satellite else min(max(0.0, gap), base_budget * multiplier)
         fpe = item.get("forward_pe")
         band = PE_BANDS.get(sym)
         split = 0.5 if sym in SATELLITE_SYMBOLS and isinstance(fpe, (int, float)) and band and fpe > band[1] else 1.0
-        suggested = planned * split if is_satellite else max(0.0, planned * split - already)
+        suggested = min(max(0.0, gap), planned) * split if is_satellite else max(0.0, planned * split - already)
         rows.append(
             {
                 "symbol": sym,
