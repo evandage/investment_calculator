@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import threading
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -22,7 +23,7 @@ from .market_data import (
 )
 from .ohlcv import fetch_ohlcv
 from .portfolio import build_dashboard, confirm_trades, save_rebalance_budget
-from .storage import load_balances, load_holdings, save_balances, save_holdings
+from .storage import load_balances, load_holdings, load_satellite_targets, save_balances, save_holdings, save_satellite_targets
 
 
 class HoldingPayload(BaseModel):
@@ -31,6 +32,10 @@ class HoldingPayload(BaseModel):
 
 class BalancesPayload(BaseModel):
     balances: dict[str, float]
+
+
+class SatelliteTargetsPayload(BaseModel):
+    targets: dict[str, float]
 
 
 class ExecutionItem(BaseModel):
@@ -59,6 +64,7 @@ CHART_LABELS = {
     "MSFT": "MSFT",
     "AVGO": "AVGO",
     "NVDA": "NVDA",
+    "TEM": "TEM",
 }
 
 
@@ -85,7 +91,7 @@ def root() -> dict[str, str]:
 
 @app.on_event("startup")
 def startup() -> None:
-    start_futu_quote_subscription()
+    threading.Thread(target=start_futu_quote_subscription, daemon=True).start()
 
 
 @app.on_event("shutdown")
@@ -309,6 +315,17 @@ def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
 def update_balances(payload: BalancesPayload) -> dict[str, Any]:
     save_balances(payload.balances)
     return {"saved": True, "balances": load_balances()}
+
+
+@app.get("/api/satellite-targets")
+def satellite_targets() -> dict[str, Any]:
+    return {"targets": load_satellite_targets()}
+
+
+@app.put("/api/satellite-targets")
+def update_satellite_targets(payload: SatelliteTargetsPayload) -> dict[str, Any]:
+    save_satellite_targets(payload.targets)
+    return {"saved": True, "targets": load_satellite_targets()}
 
 
 @app.post("/api/rebalance/confirm")

@@ -11,6 +11,8 @@ from .config import (
     INTENSITY_LABELS,
     INTENSITY_ORDER,
     PE_BANDS,
+    PEG_BANDS,
+    PS_BANDS,
     REBALANCE_PHASE_BUILD,
     REBALANCE_RULES,
     SATELLITE_SYMBOLS,
@@ -19,7 +21,7 @@ from .config import (
     USD_SYMBOLS,
 )
 from .market_data import fetch_quotes
-from .storage import load_monthly_usage, load_user_state, save_monthly_usage, save_user_state
+from .storage import load_monthly_usage, load_satellite_targets, load_user_state, save_monthly_usage, save_user_state
 
 
 BUILD_TARGET_YEAR = 2026
@@ -27,6 +29,15 @@ BUILD_TARGET_MONTH = 10
 _DRAWDOWN_CACHE: dict[str, tuple[dict[str, float | None], float]] = {}
 _DRAWDOWN_CACHE_TTL_SECONDS = 21600
 QQQ_MONTH_END_WINDOW_DAYS = 5
+
+
+def effective_target_weights() -> dict[str, float]:
+    weights = dict(TARGET_WEIGHTS)
+    satellite_total = sum(TARGET_WEIGHTS.get(sym, 0.0) for sym in SATELLITE_SYMBOLS)
+    satellite_targets = load_satellite_targets()
+    for sym in SATELLITE_SYMBOLS:
+        weights[sym] = satellite_total * float(satellite_targets.get(sym, 0.0)) / 100.0
+    return weights
 
 
 def default_build_months(now: datetime | None = None) -> int:
@@ -232,6 +243,16 @@ def pe_band_text(symbol: str) -> str:
     return "-" if not band else f"{band[0]:.0f}-{band[1]:.0f}"
 
 
+def peg_band_text(symbol: str) -> str:
+    band = PEG_BANDS.get(symbol)
+    return "-" if not band else f"{band[0]:.1f}-{band[1]:.1f}"
+
+
+def ps_band_text(symbol: str) -> str:
+    band = PS_BANDS.get(symbol)
+    return "-" if not band else f"{band[0]:.1f}-{band[1]:.1f}"
+
+
 def pe_judgment(symbol: str, forward_pe: float | None) -> str:
     band = PE_BANDS.get(symbol)
     if symbol not in SATELLITE_SYMBOLS or not band:
@@ -342,6 +363,7 @@ def build_visualizations(
     value_cny_by_symbol: dict[str, float],
     fx: float,
 ) -> dict[str, Any]:
+    target_weights = effective_target_weights()
     row_by_symbol = {row["symbol"]: row for row in rows}
     usd_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS)
     usd_cash_cny = float(balances.get("cash_usd", 0.0)) * fx
@@ -388,10 +410,10 @@ def build_visualizations(
         ("CASH", "现金", []),
     ]
     target_map = {
-        "VOO": TARGET_WEIGHTS["VOO"],
-        "QQQ": TARGET_WEIGHTS["QQQ"],
-        "SATELLITE": sum(TARGET_WEIGHTS[sym] for sym in SATELLITE_SYMBOLS),
-        "SGOV": TARGET_WEIGHTS["SGOV"],
+        "VOO": target_weights["VOO"],
+        "QQQ": target_weights["QQQ"],
+        "SATELLITE": sum(target_weights[sym] for sym in SATELLITE_SYMBOLS),
+        "SGOV": target_weights["SGOV"],
         "CASH": 0.0,
     }
     allocation_target_total = sum(target_map.values())
@@ -411,12 +433,12 @@ def build_visualizations(
             }
         )
 
-    satellite_weight_total = sum(TARGET_WEIGHTS[sym] for sym in SATELLITE_SYMBOLS)
+    satellite_weight_total = sum(target_weights[sym] for sym in SATELLITE_SYMBOLS)
     satellite_split = []
     for sym in SATELLITE_SYMBOLS:
         amount_cny = value_cny_by_symbol.get(sym, 0.0)
         row = row_by_symbol.get(sym, {})
-        target_pct = TARGET_WEIGHTS[sym] / satellite_weight_total * 100.0 if satellite_weight_total > 0 else 0.0
+        target_pct = target_weights[sym] / satellite_weight_total * 100.0 if satellite_weight_total > 0 else 0.0
         satellite_split.append(
             {
                 "symbol": sym,
@@ -438,10 +460,12 @@ def build_visualizations(
 
 def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     market = fetch_quotes()
+    target_weights = effective_target_weights()
     quotes = market["quotes"]
     fx = float(market["fx"]["rate"])
     holdings, balances, storage_mode = load_user_state(user_id)
     forward_pe = market.get("forward_pe", {})
+    valuation_metrics = market.get("valuation_metrics", {})
 
     rows: list[dict[str, Any]] = []
     value_cny_by_symbol: dict[str, float] = {}
@@ -463,7 +487,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         total_value_cny += value_cny
         total_cost_cny += cost_cny
         value_cny_by_symbol[sym] = value_cny
-        fpe = forward_pe.get(sym)
+        metrics = valuation_metrics.get(sym, {}) if isinstance(valuation_metrics, dict) else {}
+        fpe = metrics.get("forward_pe", forward_pe.get(sym)) if isinstance(metrics, dict) else forward_pe.get(sym)
+        peg = metrics.get("peg") if isinstance(metrics, dict) else None
+        forward_ps = metrics.get("forward_ps") if isinstance(metrics, dict) else None
+        ps = metrics.get("ps") if isinstance(metrics, dict) else None
         sixty_day = fetch_60d_metrics(sym, price) if meta["currency"] == "USD" else {}
         rows.append(
             {
@@ -489,6 +517,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "recent_5d_pct": sixty_day.get("recent_5d_pct"),
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym) if sym in SATELLITE_SYMBOLS else "-",
+                "peg": peg,
+                "peg_band": peg_band_text(sym) if sym in SATELLITE_SYMBOLS else "-",
+                "forward_ps": forward_ps,
+                "ps": ps,
+                "ps_band": ps_band_text(sym) if sym in PS_BANDS else None,
                 "pe_judgment": pe_judgment(sym, fpe),
             }
         )
@@ -602,7 +635,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         },
         "daily_cards": daily_cards,
         "visualizations": build_visualizations(rows, balances, value_cny_by_symbol, fx),
-        "targets": TARGET_WEIGHTS,
+        "targets": target_weights,
+        "satellite_targets": load_satellite_targets(),
         "rebalance": build_rebalance_v2(user_id, rows, balances, market, value_cny_by_symbol, fx),
     }
 
@@ -633,12 +667,13 @@ def build_rebalance_v2(
     bought_amounts = dict(usage.get("bought_amount_by_symbol", {}))
     sold_amounts = dict(usage.get("sold_amount_by_symbol", {}))
     bought_intensities = {sym: normalize_intensity(v) for sym, v in usage.get("bought_intensity_by_symbol", {}).items()}
+    target_weights = effective_target_weights()
 
-    usd_weight_total = sum(TARGET_WEIGHTS[s] for s in USD_SYMBOLS)
+    usd_weight_total = sum(target_weights[s] for s in USD_SYMBOLS)
     cash_usd = float(balances.get("cash_usd", 0.0))
     usd_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS) + cash_usd * fx
     usd_total_usd = usd_total_cny / fx if fx > 0 else 0.0
-    sgov_target_pct = TARGET_WEIGHTS["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
+    sgov_target_pct = target_weights["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
     sgov_current_usd = value_cny_by_symbol.get("SGOV", 0.0) / fx if fx > 0 else 0.0
     planned_total_usd = usd_total_usd + future_cash_total_usd
     planned_sgov_target_usd = sgov_target_pct * planned_total_usd
@@ -657,7 +692,7 @@ def build_rebalance_v2(
         already_sold = float(sold_amounts.get(sym, 0.0))
         is_satellite = sym in SATELLITE_SYMBOLS
         planning_current = current_usd if is_satellite else max(0.0, current_usd - already + already_sold)
-        target_pct = TARGET_WEIGHTS[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
+        target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
         gap = target_usd - planning_current
         drawdown_pct = item.get("drawdown_pct")
@@ -847,10 +882,11 @@ def build_rebalance(
     planned_new_cash_usd = float(usage["planned_new_cash_usd"])
     bought_amounts = dict(usage.get("bought_amount_by_symbol", {}))
     bought_intensities = {sym: normalize_intensity(v) for sym, v in usage.get("bought_intensity_by_symbol", {}).items()}
+    target_weights = effective_target_weights()
     usd_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS)
     usd_total_usd = usd_total_cny / fx if fx > 0 else 0.0
     planned_total_usd = usd_total_usd + planned_new_cash_usd * max(0, build_months - 1)
-    usd_weight_total = sum(TARGET_WEIGHTS[s] for s in USD_SYMBOLS)
+    usd_weight_total = sum(target_weights[s] for s in USD_SYMBOLS)
     rows = []
     for item in holding_rows:
         sym = item["symbol"]
@@ -860,7 +896,7 @@ def build_rebalance(
         already = float(bought_amounts.get(sym, 0.0))
         is_satellite = sym in SATELLITE_SYMBOLS
         planning_current = current_usd if is_satellite else max(0.0, current_usd - already)
-        target_pct = TARGET_WEIGHTS[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
+        target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
         gap = target_usd - planning_current
         drawdown = None

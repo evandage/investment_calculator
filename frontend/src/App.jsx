@@ -114,6 +114,14 @@ function globalKlineColumns(width = window.innerWidth) {
 
 function peTone(row) {
   if ((row.symbol === "VOO" || row.symbol === "QQQ") && Number(row.recent_5d_pct || 0) >= (row.symbol === "QQQ" ? 3 : 2)) return "down";
+  const ps = Number(row.forward_ps ?? row.ps);
+  const psMatch = String(row.ps_band || "").match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$/);
+  if (Number.isFinite(ps) && psMatch) {
+    const low = Number(psMatch[1]);
+    const high = Number(psMatch[2]);
+    if (ps > high) return "down";
+    if (ps < low) return "up";
+  }
   if (row.pe_judgment === "偏贵") return "down";
   if (row.pe_judgment === "偏低") return "up";
   return "";
@@ -123,7 +131,24 @@ function valuationLabel(row) {
   if (row.symbol === "VOO" || row.symbol === "QQQ") {
     return row.recent_5d_pct == null ? "-" : `5日 ${fmtPct(row.recent_5d_pct)}`;
   }
+  if (row.forward_ps || row.ps) return `PS ${(row.forward_ps ?? row.ps).toFixed(2)}`;
   return row.forward_pe ? row.forward_pe.toFixed(2) : "-";
+}
+
+function pegLabel(row) {
+  const peg = Number(row.peg);
+  return Number.isFinite(peg) && peg > 0 ? peg.toFixed(2) : "-";
+}
+
+function pegTone(row) {
+  const peg = Number(row.peg);
+  const match = String(row.peg_band || "").match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$/);
+  if (!Number.isFinite(peg) || !match) return "";
+  const low = Number(match[1]);
+  const high = Number(match[2]);
+  if (peg > high) return "down";
+  if (peg < low) return "up";
+  return "";
 }
 
 function useDashboard() {
@@ -560,7 +585,7 @@ function KlinePage() {
           <button className={scope === "global" ? "active" : ""} onClick={() => { setScope("global"); setMode("template"); }}>全局看板</button>
         </div>
         {scope === "single" ? <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
-          {["VOO", "QQQ", "ISRG", "GOOGL", "MSFT", "AVGO", "NVDA"].map((item) => <option key={item} value={item}>{item}</option>)}
+          {["VOO", "QQQ", "ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "TEM"].map((item) => <option key={item} value={item}>{item}</option>)}
         </select> : null}
         {[["1d", "日线"], ["15m", "15m"], ["5m", "5m"]].map(([value, label]) => (
           <label className="checkItem" key={value}>
@@ -704,6 +729,8 @@ function EditableHoldingsPage({ data, onSaved }) {
   const [balances, setBalances] = useState({});
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingTargets, setSavingTargets] = useState(false);
+  const [targetInputs, setTargetInputs] = useState({});
   const [message, setMessage] = useState("");
 
   function resetDraft() {
@@ -715,6 +742,7 @@ function EditableHoldingsPage({ data, onSaved }) {
       realized_cny: String(data.balances?.realized_cny ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
+    setTargetInputs(Object.fromEntries(Object.entries(data.satellite_targets || {}).map(([symbol, value]) => [symbol, Number(value || 0).toFixed(2)])));
   }
 
   useEffect(() => {
@@ -728,6 +756,10 @@ function EditableHoldingsPage({ data, onSaved }) {
 
   function updateBalance(key, value) {
     setBalances((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateTarget(symbol, value) {
+    setTargetInputs((prev) => ({ ...prev, [symbol]: value }));
   }
 
   async function save() {
@@ -749,6 +781,28 @@ function EditableHoldingsPage({ data, onSaved }) {
       setSaving(false);
     }
   }
+
+  async function saveTargets() {
+    setSavingTargets(true);
+    setMessage("");
+    try {
+      const targets = Object.fromEntries(Object.entries(targetInputs).map(([symbol, value]) => [symbol, Number(value || 0)]));
+      const response = await fetch(`${API_BASE}/api/satellite-targets`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targets }),
+      });
+      if (!response.ok) throw new Error(`satellite targets HTTP ${response.status}`);
+      await onSaved();
+      setMessage("卫星目标比例已保存");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingTargets(false);
+    }
+  }
+
+  const targetTotal = Object.values(targetInputs).reduce((sum, value) => sum + Number(value || 0), 0);
 
   return (
     <section>
@@ -774,11 +828,25 @@ function EditableHoldingsPage({ data, onSaved }) {
           <label>SGOV股息<input value={balances.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
         </div>
       ) : null}
+      <div className="targetEditor">
+        <div className="sectionHeader compactHeader">
+          <h3>卫星仓位目标比例</h3>
+          <div className="actions inlineActions">
+            <span className="muted">合计 {targetTotal.toFixed(2)}%</span>
+            <button className="primary" onClick={saveTargets} disabled={savingTargets}><Save size={16} /> 保存目标</button>
+          </div>
+        </div>
+        <div className="targetEditGrid">
+          {Object.entries(targetInputs).map(([symbol, value]) => (
+            <label key={symbol}>{symbol}<input value={value} onChange={(event) => updateTarget(symbol, event.target.value)} inputMode="decimal" /></label>
+          ))}
+        </div>
+      </div>
       <div className="tableWrap">
         <table className="editableHoldingsTable">
           <thead>
             <tr>
-              <th>标的</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>数量</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE/近5日</th><th>PE区间</th>
+              <th>标的</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>数量</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE/近5日</th><th>PE区间</th><th>PEG</th><th>PEG区间</th>
             </tr>
           </thead>
           <tbody>
@@ -794,7 +862,9 @@ function EditableHoldingsPage({ data, onSaved }) {
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
                 <td className={peTone(row)}>{valuationLabel(row)}</td>
-                <td>{row.pe_band || "-"}</td>
+                <td>{row.ps_band && row.ps_band !== "-" ? row.ps_band : (row.pe_band || "-")}</td>
+                <td className={pegTone(row)}>{pegLabel(row)}</td>
+                <td>{row.peg_band || "-"}</td>
               </tr>
             ))}
           </tbody>

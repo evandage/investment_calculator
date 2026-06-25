@@ -19,6 +19,7 @@ from .config import (
     FUTU_US,
     HTTP_TIMEOUT,
     PE_BANDS,
+    PS_BANDS,
     QQ_US,
     REQUEST_HEADERS,
     ROOT_DIR,
@@ -39,7 +40,7 @@ _FX_CACHE: dict[str, Any] | None = None
 _FX_CACHE_AT = 0.0
 _FX_CACHE_FILE = ROOT_DIR / ".fx_rate_cache.json"
 _FX_CACHE_TTL_SECONDS = 60
-_FORWARD_PE_CACHE: dict[str, float] | None = None
+_VALUATION_METRICS_CACHE: dict[str, dict[str, float]] | None = None
 _FORWARD_PE_CACHE_AT = 0.0
 _FUTU_SUB_LOCK = threading.RLock()
 _FUTU_SUB_CTX: Any | None = None
@@ -336,8 +337,9 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         ctx.set_handler(QuoteHandler())
         ctx.set_handler(KlineHandler())
         ctx.set_handler(TickerHandler())
+        subscribe_symbols = list(USD_SYMBOLS)
         ret, msg = ctx.subscribe(
-            [FUTU_US[sym] for sym in USD_SYMBOLS],
+            [FUTU_US[sym] for sym in subscribe_symbols],
             [SubType.QUOTE],
             is_first_push=True,
             subscribe_push=True,
@@ -351,7 +353,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
                 _FUTU_SUB_LAST_ERROR = str(msg)
             return futu_subscription_status()
         ticker_ret, ticker_msg = ctx.subscribe(
-            [FUTU_US[sym] for sym in USD_SYMBOLS],
+            [FUTU_US[sym] for sym in subscribe_symbols],
             [SubType.TICKER],
             is_first_push=True,
             subscribe_push=True,
@@ -360,7 +362,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         if ticker_ret != RET_OK:
             _FUTU_SUB_TICKER_ERROR = str(ticker_msg)
         kline_ret, kline_msg = ctx.subscribe(
-            [FUTU_US[sym] for sym in USD_SYMBOLS],
+            [FUTU_US[sym] for sym in subscribe_symbols],
             [SubType.K_DAY, SubType.K_15M, SubType.K_5M],
             is_first_push=True,
             subscribe_push=True,
@@ -794,11 +796,33 @@ def fetch_fx_usdcny() -> dict[str, Any]:
     return {"rate": 7.2, "source": "Fallback"}
 
 
-def fetch_forward_pe(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, float]:
-    global _FORWARD_PE_CACHE, _FORWARD_PE_CACHE_AT
+def _extract_peg(forward_pe: float | None, data: dict[str, Any]) -> float | None:
+    if not forward_pe or forward_pe <= 0:
+        return None
+    growth = data.get("profit_growth_rate") or data.get("profitGrowthRate") or {}
+    multiple = _coerce_float(growth.get("financial_ttm_multiple") or growth.get("financialTtmMultiple"))
+    year_count = _coerce_float(growth.get("year_count") or growth.get("yearCount"))
+    if (not multiple or not year_count) and isinstance(growth.get("profit_data"), list):
+        profit_data = growth.get("profit_data") or []
+        if len(profit_data) >= 2:
+            first = _coerce_float(profit_data[0].get("finance_data_multiple"))
+            last = _coerce_float(profit_data[-1].get("finance_data_multiple"))
+            if first and last and first > 0 and last > 0:
+                multiple = last / first
+                year_count = max(1.0, len(profit_data) / 4.0)
+    if not multiple or not year_count or multiple <= 0 or year_count <= 0:
+        return None
+    annual_growth_pct = ((multiple ** (1.0 / year_count)) - 1.0) * 100.0
+    if annual_growth_pct <= 0:
+        return None
+    return forward_pe / annual_growth_pct
+
+
+def fetch_valuation_metrics(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, dict[str, float]]:
+    global _VALUATION_METRICS_CACHE, _FORWARD_PE_CACHE_AT
     now = time.time()
-    if _FORWARD_PE_CACHE is not None and now - _FORWARD_PE_CACHE_AT < 1800:
-        return dict(_FORWARD_PE_CACHE)
+    if _VALUATION_METRICS_CACHE is not None and now - _FORWARD_PE_CACHE_AT < 1800:
+        return {sym: dict(metrics) for sym, metrics in _VALUATION_METRICS_CACHE.items()}
     if not is_futu_opend_available():
         return {}
     try:
@@ -807,7 +831,7 @@ def fetch_forward_pe(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, 
         return {}
     host, port = futu_opend_config()
     ctx = None
-    out: dict[str, float] = {}
+    out: dict[str, dict[str, float]] = {}
     try:
         ctx = OpenQuoteContext(host=host, port=port)
         for sym in symbols:
@@ -822,7 +846,25 @@ def fetch_forward_pe(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, 
                 continue
             value = _coerce_float((data.get("trend") or {}).get("forward_value"))
             if value and value > 0:
-                out[sym] = value
+                metrics = {"forward_pe": value}
+                peg = _extract_peg(value, data)
+                if peg is not None and peg > 0:
+                    metrics["peg"] = peg
+                out[sym] = metrics
+            if sym in PS_BANDS:
+                try:
+                    ps_ret, ps_data = ctx.get_valuation_detail(code, valuation_type=3, interval_type=8)
+                except Exception:
+                    ps_ret, ps_data = None, None
+                if ps_ret == RET_OK and ps_data:
+                    trend = ps_data.get("trend") or {}
+                    forward_ps = _coerce_float(trend.get("forward_value"))
+                    current_ps = _coerce_float(trend.get("current_value"))
+                    metrics = out.setdefault(sym, {})
+                    if forward_ps is not None and forward_ps > 0:
+                        metrics["forward_ps"] = forward_ps
+                    if current_ps is not None and current_ps > 0:
+                        metrics["ps"] = current_ps
     except Exception:
         return {}
     finally:
@@ -831,9 +873,17 @@ def fetch_forward_pe(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, 
                 ctx.close()
         except Exception:
             pass
-    _FORWARD_PE_CACHE = dict(out)
+    _VALUATION_METRICS_CACHE = {sym: dict(metrics) for sym, metrics in out.items()}
     _FORWARD_PE_CACHE_AT = now
     return out
+
+
+def fetch_forward_pe(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, float]:
+    return {
+        sym: metrics["forward_pe"]
+        for sym, metrics in fetch_valuation_metrics(symbols).items()
+        if "forward_pe" in metrics
+    }
 
 
 def fetch_quotes() -> dict[str, Any]:
@@ -842,15 +892,9 @@ def fetch_quotes() -> dict[str, Any]:
     if _QUOTES_CACHE is not None and now - _QUOTES_CACHE_AT < _QUOTES_CACHE_TTL_SECONDS:
         return dict(_QUOTES_CACHE)
     futu_available = is_futu_opend_available()
-    if futu_available:
-        start_futu_quote_subscription()
     subscription_quotes = get_futu_subscription_quotes() if futu_available else {}
     provider = "futu-subscribe" if subscription_quotes else ("futu" if futu_available else "tencent")
     quotes = dict(subscription_quotes)
-    if futu_available and len(quotes) < len(USD_SYMBOLS):
-        snapshot_quotes = fetch_futu_us_quotes()
-        for sym, quote in snapshot_quotes.items():
-            quotes.setdefault(sym, quote)
     if not quotes:
         provider = "tencent"
         quotes = fetch_tencent_us_quotes()
@@ -880,6 +924,13 @@ def fetch_quotes() -> dict[str, Any]:
                 "session": "regular",
                 "source": "Fallback",
             }
+    valuation_metrics = fetch_valuation_metrics() if futu_available else {}
+    valuation_metrics = {sym: dict(metrics) for sym, metrics in valuation_metrics.items()}
+    forward_pe = {
+        sym: metrics["forward_pe"]
+        for sym, metrics in valuation_metrics.items()
+        if "forward_pe" in metrics
+    }
     payload = {
         "provider": provider,
         "futu_available": futu_available,
@@ -887,7 +938,8 @@ def fetch_quotes() -> dict[str, Any]:
         "fetched_at": datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds"),
         "quotes": quotes,
         "fx": fetch_fx_usdcny(),
-        "forward_pe": fetch_forward_pe() if futu_available else {},
+        "valuation_metrics": valuation_metrics,
+        "forward_pe": forward_pe,
         "pe_bands": PE_BANDS,
     }
     _QUOTES_CACHE = payload

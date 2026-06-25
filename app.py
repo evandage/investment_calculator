@@ -37,6 +37,7 @@ _FALLBACK = {
     "QQQ": 400.0,
     "AVGO": 1700.0,
     "NVDA": 1200.0,
+    "TEM": 60.0,
     "GOOGL": 180.0,
     "MSFT": 420.0,
     "ISRG": 450.0,
@@ -49,6 +50,7 @@ _TICKERS = {
     "qqq": "QQQ",
     "avgo": "AVGO",
     "nvda": "NVDA",
+    "tem": "TEM",
     "googl": "GOOGL",
     "msft": "MSFT",
     "isrg": "ISRG",
@@ -71,6 +73,7 @@ _QQ_US = {
     "QQQ": "usQQQ",
     "AVGO": "usAVGO",
     "NVDA": "usNVDA",
+    "TEM": "usTEM",
     "GOOGL": "usGOOGL",
     "MSFT": "usMSFT",
     "ISRG": "usISRG",
@@ -81,6 +84,7 @@ _QQ_US_KLINE = {
     "QQQ": "usQQQ.OQ",
     "AVGO": "usAVGO.OQ",
     "NVDA": "usNVDA.OQ",
+    "TEM": "usTEM.N",
     "GOOGL": "usGOOGL.OQ",
     "MSFT": "usMSFT.OQ",
     "ISRG": "usISRG.OQ",
@@ -91,6 +95,7 @@ _SINA_GB = {
     "QQQ": "gb_qqq",
     "AVGO": "gb_avgo",
     "NVDA": "gb_nvda",
+    "TEM": "gb_tem",
     "GOOGL": "gb_googl",
     "MSFT": "gb_msft",
     "ISRG": "gb_isrg",
@@ -101,6 +106,7 @@ _FUTU_US = {
     "QQQ": "US.QQQ",
     "AVGO": "US.AVGO",
     "NVDA": "US.NVDA",
+    "TEM": "US.TEM",
     "GOOGL": "US.GOOGL",
     "MSFT": "US.MSFT",
     "ISRG": "US.ISRG",
@@ -121,12 +127,13 @@ _EASTMONEY_US_SECID = {
     "QQQ": "105.QQQ",
     "AVGO": "105.AVGO",
     "NVDA": "105.NVDA",
+    "TEM": "106.TEM",
     "GOOGL": "105.GOOGL",
     "MSFT": "105.MSFT",
     "ISRG": "105.ISRG",
     "SGOV": "106.SGOV",
 }
-_US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "GOOGL", "MSFT", "ISRG", "SGOV")
+_US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "TEM", "GOOGL", "MSFT", "ISRG", "SGOV")
 
 
 def _normalize_market_provider(value: str | None) -> str:
@@ -169,6 +176,7 @@ def _market_data_provider() -> str:
 _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
 _MONTHLY_BUDGET_USAGE_FILE = Path(__file__).with_name("monthly_budget_usage.json")
+_SATELLITE_TARGETS_FILE = Path(__file__).with_name("satellite_targets.json")
 _ASSET_META = {
     "VOO": {"label": "VOO", "currency": "USD"},
     "QQQ": {"label": "QQQ", "currency": "USD"},
@@ -177,6 +185,7 @@ _ASSET_META = {
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
     "NVDA": {"label": "NVDA", "currency": "USD"},
+    "TEM": {"label": "TEM", "currency": "USD"},
     "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
     "001015": {"label": "沪深300", "currency": "CNY"},
 }
@@ -186,23 +195,65 @@ _TARGET_WEIGHTS = {
     # 人民币资产: 沪深300(001015) 20%
     "VOO": 0.24,
     "QQQ": 0.18,
-    "AVGO": 0.012,
-    "NVDA": 0.008,
-    "GOOGL": 0.012,
-    "MSFT": 0.008,
-    "ISRG": 0.02,
+    "AVGO": 0.0114,
+    "NVDA": 0.0076,
+    "GOOGL": 0.0114,
+    "MSFT": 0.0076,
+    "ISRG": 0.019,
+    "TEM": 0.003,
     "SGOV": 0.12,
     "001015": 0.20,
 }
 
-_SATELLITE_SYMBOLS = ("ISRG", "GOOGL", "MSFT", "AVGO", "NVDA")
-_SATELLITE_TARGET_PARTS = {
-    "AVGO": 3,
-    "NVDA": 2,
-    "GOOGL": 3,
-    "MSFT": 2,
-    "ISRG": 5,
+_SATELLITE_SYMBOLS = ("ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "TEM")
+_DEFAULT_SATELLITE_TARGET_PCTS = {
+    "AVGO": 19.0,
+    "NVDA": 12.6667,
+    "GOOGL": 19.0,
+    "MSFT": 12.6667,
+    "ISRG": 31.6666,
+    "TEM": 5.0,
 }
+
+
+def _normalize_satellite_targets(raw: Any) -> dict[str, float]:
+    targets = dict(_DEFAULT_SATELLITE_TARGET_PCTS)
+    if isinstance(raw, dict):
+        for sym in _SATELLITE_SYMBOLS:
+            try:
+                targets[sym] = max(0.0, float(raw.get(sym, targets.get(sym, 0.0))))
+            except (TypeError, ValueError):
+                continue
+    total = sum(targets.values())
+    if total <= 0:
+        return dict(_DEFAULT_SATELLITE_TARGET_PCTS)
+    return {sym: value / total * 100.0 for sym, value in targets.items() if sym in _SATELLITE_SYMBOLS}
+
+
+def _load_satellite_targets() -> dict[str, float]:
+    if not _SATELLITE_TARGETS_FILE.exists():
+        return _normalize_satellite_targets({})
+    try:
+        raw = json.loads(_SATELLITE_TARGETS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _normalize_satellite_targets({})
+    return _normalize_satellite_targets(raw)
+
+
+def _save_satellite_targets(targets: dict[str, float]) -> None:
+    _SATELLITE_TARGETS_FILE.write_text(
+        json.dumps(_normalize_satellite_targets(targets), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _effective_target_weights() -> dict[str, float]:
+    weights = dict(_TARGET_WEIGHTS)
+    satellite_total = sum(_TARGET_WEIGHTS.get(sym, 0.0) for sym in _SATELLITE_SYMBOLS)
+    satellite_targets = _load_satellite_targets()
+    for sym in _SATELLITE_SYMBOLS:
+        weights[sym] = satellite_total * satellite_targets.get(sym, 0.0) / 100.0
+    return weights
 
 # 美元资产 PE 参考区间（经验口径，仅作辅助，不构成投资建议）
 _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
@@ -214,6 +265,18 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "GOOGL": (18.0, 28.0),
     "MSFT": (24.0, 36.0),
     "SGOV": (0.0, 10.0),
+}
+
+_USD_ASSET_PEG_BANDS: dict[str, tuple[float, float]] = {
+    "ISRG": (4.1, 7.3),
+    "GOOGL": (1.3, 1.9),
+    "MSFT": (1.5, 2.6),
+    "AVGO": (0.9, 3.0),
+    "NVDA": (0.3, 0.4),
+}
+
+_USD_ASSET_PS_BANDS: dict[str, tuple[float, float]] = {
+    "TEM": (5.0, 9.0),
 }
 
 _REBALANCE_PHASE_BUILD = "建仓期"
@@ -996,6 +1059,32 @@ def _render_themed_table(
                     styles.at[idx, "Forward PE"] = f"color: {red}; font-weight: 800;"
                 elif pe < low:
                     styles.at[idx, "Forward PE"] = f"color: {green}; font-weight: 800;"
+        if "PEG" in frame.columns and "PEG区间" in frame.columns:
+            for idx, value in frame["PEG"].items():
+                peg = _coerce_float(value)
+                band_text = str(frame.at[idx, "PEG区间"] or "")
+                match = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$", band_text)
+                if peg is None or not match:
+                    continue
+                low = float(match.group(1))
+                high = float(match.group(2))
+                if peg > high:
+                    styles.at[idx, "PEG"] = f"color: {red}; font-weight: 800;"
+                elif peg < low:
+                    styles.at[idx, "PEG"] = f"color: {green}; font-weight: 800;"
+        if "Forward PS" in frame.columns and "PS合理区间" in frame.columns:
+            for idx, value in frame["Forward PS"].items():
+                ps = _coerce_float(value)
+                band_text = str(frame.at[idx, "PS合理区间"] or "")
+                match = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$", band_text)
+                if ps is None or not match:
+                    continue
+                low = float(match.group(1))
+                high = float(match.group(2))
+                if ps > high:
+                    styles.at[idx, "Forward PS"] = f"color: {red}; font-weight: 800;"
+                elif ps < low:
+                    styles.at[idx, "Forward PS"] = f"color: {green}; font-weight: 800;"
         if "回撤档位" in frame.columns:
             tier_styles = {
                 "正常": "color:#16a34a; background-color:rgba(34,197,94,0.16); font-weight:900;",
@@ -1429,7 +1518,7 @@ def _futu_market_session(market_state: str) -> str:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _fetch_futu_forward_pe_meta(symbols: tuple[str, ...]) -> dict[str, float]:
+def _fetch_futu_valuation_meta(symbols: tuple[str, ...]) -> dict[str, dict[str, float]]:
     if not _is_futu_opend_available():
         return {}
     try:
@@ -1439,7 +1528,7 @@ def _fetch_futu_forward_pe_meta(symbols: tuple[str, ...]) -> dict[str, float]:
 
     host, port = _futu_opend_config()
     ctx = None
-    out: dict[str, float] = {}
+    out: dict[str, dict[str, float]] = {}
     try:
         ctx = OpenQuoteContext(host=host, port=port)
         for sym in symbols:
@@ -1455,7 +1544,25 @@ def _fetch_futu_forward_pe_meta(symbols: tuple[str, ...]) -> dict[str, float]:
             trend = data.get("trend") or {}
             forward_pe = _coerce_float(trend.get("forward_value"))
             if forward_pe is not None and forward_pe > 0:
-                out[sym] = forward_pe
+                metrics = {"forward_pe": forward_pe}
+                peg = _peg_from_futu_valuation(forward_pe, data)
+                if peg is not None and peg > 0:
+                    metrics["PEG"] = peg
+                out[sym] = metrics
+            if sym in _USD_ASSET_PS_BANDS:
+                try:
+                    ps_ret, ps_data = ctx.get_valuation_detail(code, valuation_type=3, interval_type=8)
+                except Exception:
+                    ps_ret, ps_data = None, None
+                if ps_ret == RET_OK and ps_data:
+                    ps_trend = ps_data.get("trend") or {}
+                    forward_ps = _coerce_float(ps_trend.get("forward_value"))
+                    current_ps = _coerce_float(ps_trend.get("current_value"))
+                    metrics = out.setdefault(sym, {})
+                    if forward_ps is not None and forward_ps > 0:
+                        metrics["forward_ps"] = forward_ps
+                    if current_ps is not None and current_ps > 0:
+                        metrics["ps"] = current_ps
     except Exception:
         return {}
     finally:
@@ -1467,11 +1574,53 @@ def _fetch_futu_forward_pe_meta(symbols: tuple[str, ...]) -> dict[str, float]:
     return out
 
 
+def _peg_from_futu_valuation(forward_pe: float, data: dict[str, Any]) -> float | None:
+    growth = data.get("profit_growth_rate") or data.get("profitGrowthRate") or {}
+    growth_multiple = _coerce_float(growth.get("financial_ttm_multiple") or growth.get("financialTtmMultiple"))
+    year_count = _coerce_float(growth.get("year_count") or growth.get("yearCount"))
+    if (growth_multiple is None or year_count is None) and isinstance(growth.get("profit_data"), list):
+        profit_data = growth.get("profit_data") or []
+        if len(profit_data) >= 2:
+            first = _coerce_float(profit_data[0].get("finance_data_multiple"))
+            last = _coerce_float(profit_data[-1].get("finance_data_multiple"))
+            if first is not None and last is not None and first > 0 and last > 0:
+                growth_multiple = last / first
+                year_count = max(1.0, len(profit_data) / 4.0)
+    if growth_multiple is None or year_count is None or growth_multiple <= 0 or year_count <= 0:
+        return None
+    annual_growth_pct = ((growth_multiple ** (1.0 / year_count)) - 1.0) * 100.0
+    if annual_growth_pct <= 0:
+        return None
+    return forward_pe / annual_growth_pct
+
+
+def _fetch_futu_forward_pe_meta(symbols: tuple[str, ...]) -> dict[str, float]:
+    return {
+        sym: metrics["forward_pe"]
+        for sym, metrics in _fetch_futu_valuation_meta(symbols).items()
+        if "forward_pe" in metrics
+    }
+
+
 def _pe_band_text(symbol: str) -> str:
     band = _USD_ASSET_PE_BANDS.get(symbol)
     if not band:
         return "-"
     return f"{band[0]:.0f}-{band[1]:.0f}"
+
+
+def _peg_band_text(symbol: str) -> str:
+    band = _USD_ASSET_PEG_BANDS.get(symbol)
+    if not band:
+        return "-"
+    return f"{band[0]:.1f}-{band[1]:.1f}"
+
+
+def _ps_band_text(symbol: str) -> str:
+    band = _USD_ASSET_PS_BANDS.get(symbol)
+    if not band:
+        return "-"
+    return f"{band[0]:.1f}-{band[1]:.1f}"
 
 
 def _forward_pe_judgment(symbol: str, forward_pe: float | None) -> str:
@@ -2578,7 +2727,7 @@ elif previous_market_provider != effective_market_provider:
     _fetch_spot_prices_meta.clear()
     _fetch_vix_meta.clear()
     _fetch_us_etf_pe_drawdown.clear()
-    _fetch_futu_forward_pe_meta.clear()
+    _fetch_futu_valuation_meta.clear()
     _is_futu_opend_available.clear()
     for k in (
         "def_voo",
@@ -2628,12 +2777,14 @@ if _db:
 else:
     st.sidebar.caption("存储后端：本地文件（未配置 Supabase Secrets）")
 holdings, balances_for_view, storage_mode = _load_user_state(cloud_user_id)
+target_weights = _effective_target_weights()
+satellite_target_pcts = _load_satellite_targets()
 if refresh_prices_clicked:
     _fetch_spot_prices_meta.clear()
     _fetch_usdcny_rate_meta.clear()
     _fetch_vix_meta.clear()
     _fetch_us_etf_pe_drawdown.clear()
-    _fetch_futu_forward_pe_meta.clear()
+    _fetch_futu_valuation_meta.clear()
     _fetch_fund_60d_metrics.clear()
     d = _defaults_from_fetch()
     st.session_state.def_fx = _fetch_usdcny_rate()
@@ -2952,11 +3103,18 @@ market_session_by_symbol: dict[str, str] = spot_meta.get("market_session_by_symb
 extended_change_pct_by_symbol: dict[str, float] = spot_meta.get("extended_change_pct_by_symbol", {})  # type: ignore[assignment]
 regular_price_by_symbol: dict[str, float] = spot_meta.get("regular_price_by_symbol", {})  # type: ignore[assignment]
 regular_change_pct_by_symbol: dict[str, float] = spot_meta.get("regular_change_pct_by_symbol", {})  # type: ignore[assignment]
-forward_pe_by_symbol = (
-    _fetch_futu_forward_pe_meta(tuple(_SATELLITE_SYMBOLS))
+valuation_metrics_by_symbol = (
+    _fetch_futu_valuation_meta(
+        tuple(sym for sym in _SATELLITE_SYMBOLS if sym in _USD_ASSET_PE_BANDS or sym in _USD_ASSET_PS_BANDS)
+    )
     if _market_data_provider() == "futu"
     else {}
 )
+forward_pe_by_symbol = {
+    sym: metrics["forward_pe"]
+    for sym, metrics in valuation_metrics_by_symbol.items()
+    if "forward_pe" in metrics
+}
 drawdown_pct_by_symbol: dict[str, float | None] = {}
 rebound_pct_by_symbol: dict[str, float | None] = {}
 sgov_dividend_usd = float(balances_for_view.get("sgov_dividend_usd", 0.0))
@@ -2998,6 +3156,22 @@ for sym, meta in _ASSET_META.items():
                 else None
             ),
             "PE合理区间": _pe_band_text(sym) if sym in _SATELLITE_SYMBOLS else "-",
+            "PEG": (
+                round(float(valuation_metrics_by_symbol[sym]["PEG"]), 2)
+                if sym in _SATELLITE_SYMBOLS
+                and isinstance(valuation_metrics_by_symbol.get(sym), dict)
+                and isinstance(valuation_metrics_by_symbol[sym].get("PEG"), (int, float))
+                else None
+            ),
+            "PEG区间": _peg_band_text(sym) if sym in _SATELLITE_SYMBOLS else "-",
+            "Forward PS": (
+                round(float(valuation_metrics_by_symbol[sym]["forward_ps"]), 2)
+                if sym in _SATELLITE_SYMBOLS
+                and isinstance(valuation_metrics_by_symbol.get(sym), dict)
+                and isinstance(valuation_metrics_by_symbol[sym].get("forward_ps"), (int, float))
+                else None
+            ),
+            "PS合理区间": _ps_band_text(sym) if sym in _USD_ASSET_PS_BANDS else "-",
             "浮动盈亏": round(pnl, 2),
             "涨跌幅%": round(pnl_pct, 2),
             "持有数量": round(shares, 3),
@@ -3349,7 +3523,7 @@ satellite_pnl_chart = (
 )
 st.altair_chart(_theme_altair_chart(satellite_pnl_chart, theme), width="stretch")
 
-usd_target_weight_total = sum(_TARGET_WEIGHTS[sym] for sym in usd_symbols)
+usd_target_weight_total = sum(target_weights[sym] for sym in usd_symbols)
 usd_position_value_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in usd_symbols)
 usd_extra_value_cny = cash_usd * fx
 usd_total_cny = usd_position_value_cny + usd_extra_value_cny
@@ -3357,7 +3531,7 @@ usd_total_usd = (usd_total_cny / fx) if fx > 0 else 0.0
 
 
 def _usd_target_pct(sym: str) -> float:
-    return (_TARGET_WEIGHTS[sym] / usd_target_weight_total * 100.0) if usd_target_weight_total > 0 else 0.0
+    return (target_weights[sym] / usd_target_weight_total * 100.0) if usd_target_weight_total > 0 else 0.0
 
 
 def _usd_amount_label(value_cny: float | None) -> str:
@@ -3390,7 +3564,7 @@ cash_usd_ratio = (usd_extra_value_cny / ratio_denominator * 100.0) if ratio_deno
 voo_target = _usd_target_pct("VOO")
 qqq_target = _usd_target_pct("QQQ")
 new4_target = (
-    sum(_TARGET_WEIGHTS[sym] for sym in _SATELLITE_SYMBOLS) / usd_target_weight_total * 100.0
+    sum(target_weights[sym] for sym in _SATELLITE_SYMBOLS) / usd_target_weight_total * 100.0
 ) if usd_target_weight_total > 0 else 0.0
 sgov_target = _usd_target_pct("SGOV")
 
@@ -3430,7 +3604,6 @@ group1_chart = (
     .properties(title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比")
 )
 tech_denominator = sum(satellite_ratio_by_symbol.values())
-satellite_target_parts_total = sum(_SATELLITE_TARGET_PARTS.values())
 tech_split_df = pd.DataFrame(
     [
         row
@@ -3450,11 +3623,9 @@ tech_split_df = pd.DataFrame(
             {
                 "标的": sym,
                 "类型": "目标占卫星仓位%",
-                "比例%": round(_SATELLITE_TARGET_PARTS[sym] / satellite_target_parts_total * 100.0, 2),
+                "比例%": round(satellite_target_pcts.get(sym, 0.0), 2),
                 "金额": _usd_amount_label(
-                    satellite_current * _SATELLITE_TARGET_PARTS[sym] / satellite_target_parts_total
-                    if satellite_target_parts_total > 0
-                    else 0.0
+                    satellite_current * satellite_target_pcts.get(sym, 0.0) / 100.0
                 ),
                 "浮盈亏(CNY)": None,
                 "浮盈亏标签": "",
@@ -3485,10 +3656,33 @@ tech_split_bars = (
 )
 tech_split_chart = (
     tech_split_bars
-    .properties(title="卫星仓位内部占比（目标：ISRG/GOOGL/MSFT/AVGO/NVDA = 5:3:2:3:2）")
+    .properties(title="卫星仓位内部占比（目标可在下方配置）")
 )
 st.altair_chart(_theme_altair_chart(tech_split_chart, theme), width="stretch")
 st.altair_chart(_theme_altair_chart(group1_chart, theme), width="stretch")
+
+with st.expander("配置卫星仓位目标比例", expanded=False):
+    st.caption("这里填写的是卫星仓位内部目标百分比；保存后会自动归一化为合计 100%。")
+    with st.form("satellite_targets_form"):
+        target_cols = st.columns(3)
+        target_inputs: dict[str, float] = {}
+        for idx, sym in enumerate(_SATELLITE_SYMBOLS):
+            with target_cols[idx % 3]:
+                target_inputs[sym] = st.number_input(
+                    sym,
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=float(satellite_target_pcts.get(sym, 0.0)),
+                    step=0.5,
+                    format="%.2f",
+                    key=f"satellite_target_{sym}",
+                )
+        target_sum = sum(target_inputs.values())
+        st.caption(f"当前输入合计：{target_sum:.2f}%")
+        if st.form_submit_button("保存卫星目标比例"):
+            _save_satellite_targets(target_inputs)
+            st.success("卫星目标比例已保存。")
+            st.rerun()
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📦 我的持仓")
@@ -3499,6 +3693,8 @@ _render_themed_table(
     formatters={
         "当日涨跌%": "{:.2f}%",
         "Forward PE": "{:.2f}",
+        "PEG": "{:.2f}",
+        "Forward PS": "{:.2f}",
         "近60日高点回撤%": "{:.2f}%",
         "近60日低点涨幅%": "{:.2f}%",
         "浮动盈亏": "{:.2f}",
@@ -3621,7 +3817,7 @@ with st.expander("再平衡模块", expanded=False):
     else:
         sgov_current_usd = (value_cny_by_symbol.get("SGOV", 0.0) / fx) if fx > 0 else 0.0
         sgov_target_pct = (
-            _TARGET_WEIGHTS.get("SGOV", 0.0) / usd_target_weight_total
+            target_weights.get("SGOV", 0.0) / usd_target_weight_total
             if usd_target_weight_total > 0
             else 0.0
         )
@@ -3784,7 +3980,7 @@ with st.expander("再平衡模块", expanded=False):
                 planning_current_usd = current_usd
             else:
                 planning_current_usd = max(0.0, current_usd - amount_already_bought_usd)
-            target_pct = (_TARGET_WEIGHTS.get(sym, 0.0) / usd_target_weight_total) if usd_target_weight_total > 0 else 0.0
+            target_pct = (target_weights.get(sym, 0.0) / usd_target_weight_total) if usd_target_weight_total > 0 else 0.0
             target_usd = target_pct * planned_usd_total_usd
             gap_usd = target_usd - planning_current_usd
             drawdown_pct = drawdown_pct_by_symbol.get(sym)

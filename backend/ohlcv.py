@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+import concurrent.futures
+import os
 from datetime import datetime, timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -13,6 +15,7 @@ Interval = Literal["1d", "15m", "5m"]
 _OHLCV_CACHE: dict[tuple[str, str, bool], tuple[dict[str, Any], float]] = {}
 _OHLCV_TTL_SECONDS = {"1d": 300, "15m": 45, "5m": 30}
 _TZ_NEW_YORK = ZoneInfo("America/New_York")
+_FUTU_HISTORY_TIMEOUT_SECONDS = float(os.environ.get("FUTU_HISTORY_TIMEOUT_SECONDS", "8"))
 
 
 def _period_for_interval(interval: Interval) -> str:
@@ -131,7 +134,7 @@ def _latest_us_regular_session_bars(
     return [bar for bar, day in regular if day in selected]
 
 
-def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
+def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
     if symbol not in FUTU_US or not is_futu_opend_available():
         return [], "futu_unavailable"
     try:
@@ -189,6 +192,18 @@ def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, A
         except Exception:
             pass
     return _merge_realtime_bar(bars, symbol, interval), "futu-subscribe"
+
+
+def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(_fetch_futu_ohlcv_sync, symbol, interval)
+    try:
+        return future.result(timeout=_FUTU_HISTORY_TIMEOUT_SECONDS)
+    except concurrent.futures.TimeoutError:
+        future.cancel()
+        return [], "futu_timeout"
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _fetch_tencent_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:

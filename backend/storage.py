@@ -8,9 +8,12 @@ from .config import (
     ALL_SYMBOLS,
     ASSET_META,
     BALANCES_FILE,
+    DEFAULT_SATELLITE_TARGET_PCTS,
     FALLBACK_PRICES,
     HOLDINGS_FILE,
     MONTHLY_USAGE_FILE,
+    SATELLITE_SYMBOLS,
+    SATELLITE_TARGETS_FILE,
     TZ_SHANGHAI,
 )
 
@@ -87,6 +90,29 @@ def load_balances() -> dict[str, float]:
 
 def save_balances(balances: dict[str, float]) -> None:
     _write_json(BALANCES_FILE, normalize_balances(balances))
+
+
+def normalize_satellite_targets(raw: Any) -> dict[str, float]:
+    out = dict(DEFAULT_SATELLITE_TARGET_PCTS)
+    if isinstance(raw, dict):
+        for sym in SATELLITE_SYMBOLS:
+            try:
+                value = float(raw.get(sym, out.get(sym, 0.0)))
+            except (TypeError, ValueError):
+                continue
+            out[sym] = max(0.0, value)
+    total = sum(out.values())
+    if total <= 0:
+        return dict(DEFAULT_SATELLITE_TARGET_PCTS)
+    return {sym: value / total * 100.0 for sym, value in out.items() if sym in SATELLITE_SYMBOLS}
+
+
+def load_satellite_targets() -> dict[str, float]:
+    return normalize_satellite_targets(_read_json(SATELLITE_TARGETS_FILE, {}))
+
+
+def save_satellite_targets(targets: dict[str, float]) -> None:
+    _write_json(SATELLITE_TARGETS_FILE, normalize_satellite_targets(targets))
 
 
 def load_user_state(_: str = "evan") -> tuple[dict[str, dict[str, float]], dict[str, float], str]:

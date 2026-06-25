@@ -7,6 +7,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 HOLDINGS_FILE = ROOT_DIR / "holdings.json"
 BALANCES_FILE = ROOT_DIR / "balances.json"
 MONTHLY_USAGE_FILE = ROOT_DIR / "monthly_budget_usage.json"
+SATELLITE_TARGETS_FILE = ROOT_DIR / "satellite_targets.json"
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 
@@ -26,6 +27,7 @@ FALLBACK_PRICES = {
     "MSFT": 420.0,
     "AVGO": 170.0,
     "NVDA": 120.0,
+    "TEM": 60.0,
     "SGOV": 100.0,
     "001015": 1.0,
 }
@@ -38,6 +40,7 @@ ASSET_META = {
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
     "NVDA": {"label": "NVDA", "currency": "USD"},
+    "TEM": {"label": "TEM", "currency": "USD"},
     "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
     "001015": {"label": "沪深300", "currency": "CNY"},
 }
@@ -45,18 +48,27 @@ ASSET_META = {
 TARGET_WEIGHTS = {
     "VOO": 0.24,
     "QQQ": 0.18,
-    "ISRG": 0.02,
-    "GOOGL": 0.012,
-    "MSFT": 0.008,
-    "AVGO": 0.012,
-    "NVDA": 0.008,
+    "ISRG": 0.019,
+    "GOOGL": 0.0114,
+    "MSFT": 0.0076,
+    "AVGO": 0.0114,
+    "NVDA": 0.0076,
+    "TEM": 0.003,
     "SGOV": 0.12,
     "001015": 0.20,
 }
 
-SATELLITE_SYMBOLS = ("ISRG", "GOOGL", "MSFT", "AVGO", "NVDA")
+SATELLITE_SYMBOLS = ("ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "TEM")
 USD_SYMBOLS = ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV")
 ALL_SYMBOLS = tuple(ASSET_META.keys())
+DEFAULT_SATELLITE_TARGET_PCTS = {
+    "ISRG": 31.6666,
+    "GOOGL": 19.0,
+    "MSFT": 12.6667,
+    "AVGO": 19.0,
+    "NVDA": 12.6667,
+    "TEM": 5.0,
+}
 
 PE_BANDS = {
     "VOO": (18.0, 24.0),
@@ -69,6 +81,18 @@ PE_BANDS = {
     "SGOV": (0.0, 10.0),
 }
 
+PEG_BANDS = {
+    "ISRG": (4.1, 7.3),
+    "GOOGL": (1.3, 1.9),
+    "MSFT": (1.5, 2.6),
+    "AVGO": (0.9, 3.0),
+    "NVDA": (0.3, 0.4),
+}
+
+PS_BANDS = {
+    "TEM": (5.0, 9.0),
+}
+
 QQ_US = {
     "VOO": "usVOO",
     "QQQ": "usQQQ",
@@ -77,6 +101,7 @@ QQ_US = {
     "MSFT": "usMSFT",
     "AVGO": "usAVGO",
     "NVDA": "usNVDA",
+    "TEM": "usTEM",
     "SGOV": "usSGOV",
 }
 
@@ -88,6 +113,7 @@ SINA_GB = {
     "MSFT": "gb_msft",
     "AVGO": "gb_avgo",
     "NVDA": "gb_nvda",
+    "TEM": "gb_tem",
     "SGOV": "gb_sgov",
 }
 
@@ -99,6 +125,7 @@ FUTU_US = {
     "MSFT": "US.MSFT",
     "AVGO": "US.AVGO",
     "NVDA": "US.NVDA",
+    "TEM": "US.TEM",
     "SGOV": "US.SGOV",
 }
 

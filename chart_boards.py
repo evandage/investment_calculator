@@ -12,6 +12,7 @@ import logging
 import os
 import threading
 import time
+import concurrent.futures
 from datetime import timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -36,6 +37,9 @@ _TENCENT_HEADERS = {
     "Referer": "https://finance.qq.com/",
 }
 _HTTP_TIMEOUT = (3, 12)
+_FUTU_HISTORY_TIMEOUT_SECONDS = float(os.environ.get("FUTU_HISTORY_TIMEOUT_SECONDS", "8"))
+_SOURCE_CACHE_TTL_SECONDS = {"1d": 300.0, "15m": 45.0, "5m": 30.0}
+_SOURCE_CACHE: dict[tuple[str, str, str], tuple[pd.DataFrame, str, float]] = {}
 
 _YF_TIMEOUT = float(os.environ.get("YFINANCE_CHART_TIMEOUT", "90"))
 _YF_RETRIES = max(1, int(os.environ.get("YFINANCE_CHART_RETRIES", "4")))
@@ -106,6 +110,7 @@ _EASTMONEY_US_SECID = {
     "QQQ": "105.QQQ",
     "AVGO": "105.AVGO",
     "NVDA": "105.NVDA",
+    "TEM": "106.TEM",
     "GOOGL": "105.GOOGL",
     "MSFT": "105.MSFT",
     "ISRG": "105.ISRG",
@@ -116,6 +121,7 @@ _TENCENT_US_KLINE = {
     "QQQ": "usQQQ.OQ",
     "AVGO": "usAVGO.OQ",
     "NVDA": "usNVDA.OQ",
+    "TEM": "usTEM.N",
     "GOOGL": "usGOOGL.OQ",
     "MSFT": "usMSFT.OQ",
     "ISRG": "usISRG.OQ",
@@ -825,11 +831,49 @@ def _fetch_from_source(
     yfinance_start_naive_local: pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, str]:
     provider = get_market_provider()
+    cache_key = (provider, symbol, interval)
+    cached = _SOURCE_CACHE.get(cache_key)
+    if cached and time.time() - cached[2] < _SOURCE_CACHE_TTL_SECONDS.get(interval, 30.0):
+        return cached[0].copy(), cached[1]
+
+    def _store_source(df: pd.DataFrame, source: str) -> tuple[pd.DataFrame, str]:
+        if not df.empty:
+            _SOURCE_CACHE[cache_key] = (df.copy(), source, time.time())
+        return df, source
+
+    def _fetch_tencent_or_eastmoney(fallback_provider: str) -> tuple[pd.DataFrame, str]:
+        d = _fetch_tencent_ohlcv(symbol, interval, lmt=eastmoney_lmt)
+        if not d.empty:
+            if interval != "1d":
+                d = _fix_intraday_last_bar_volume(d)
+            return _store_source(_normalize_plot_time_index(d, symbol), "tencent")
+        secid_inner = _eastmoney_secid(symbol)
+        if secid_inner is not None:
+            d = _fetch_eastmoney_ohlcv(secid_inner, interval, lmt=eastmoney_lmt)
+            if d.empty:
+                time.sleep(1.2)
+                d = _fetch_eastmoney_ohlcv(secid_inner, interval, lmt=eastmoney_lmt)
+            if not d.empty:
+                if not _eastmoney_secid_is_cn(secid_inner):
+                    d = _adjust_eastmoney_us_index(d, interval)
+                if interval != "1d":
+                    d = _fix_intraday_last_bar_volume(d)
+                return _store_source(_normalize_plot_time_index(d, symbol), "eastmoney")
+        return pd.DataFrame(), fallback_provider
+
     if provider == "futu":
         try:
             from backend.ohlcv import _fetch_futu_ohlcv
 
-            bars, _ = _fetch_futu_ohlcv(symbol, interval)
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(_fetch_futu_ohlcv, symbol, interval)
+            try:
+                bars, futu_reason = future.result(timeout=_FUTU_HISTORY_TIMEOUT_SECONDS + 1.0)
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                bars, futu_reason = [], "futu_timeout"
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
             if bars:
                 d = pd.DataFrame(bars).rename(
                     columns={
@@ -848,17 +892,14 @@ def _fetch_from_source(
                 if not d.empty:
                     if interval != "1d":
                         d = _fix_intraday_last_bar_volume(d)
-                    return _normalize_plot_time_index(d, symbol), "futu"
+                    return _store_source(_normalize_plot_time_index(d, symbol), "futu")
         except Exception:
-            pass
-        return pd.DataFrame(), "futu"
+            futu_reason = "futu_failed"
+        fallback_df, fallback_source = _fetch_tencent_or_eastmoney(futu_reason)
+        return fallback_df, fallback_source
 
     if provider == "tencent":
-        d = _fetch_tencent_ohlcv(symbol, interval, lmt=eastmoney_lmt)
-        if not d.empty:
-            if interval != "1d":
-                d = _fix_intraday_last_bar_volume(d)
-            return _normalize_plot_time_index(d, symbol), "tencent"
+        return _fetch_tencent_or_eastmoney("tencent")
 
     secid = _eastmoney_secid(symbol) if provider in {"tencent", "eastmoney"} else None
     if secid is not None:
@@ -1980,7 +2021,7 @@ def fig_daily(
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "1d", "5y", cache_only=cache_only)
-    if df.empty or len(df) < 60:
+    if df.empty:
         fig = go.Figure()
         fig.add_annotation(
             text="暂无足够日线数据（至少需要 60 根 K 线，可检查网络或标的代码）",
@@ -2843,16 +2884,34 @@ def fig_global_kline_board(
         horizontal_spacing=0.055 if cols > 1 else 0.02,
     )
     x_ranges: list[list[pd.Timestamp]] = []
+    period = "5y" if interval == "1d" else "5d"
+
+    def _load_global_symbol(symbol: str) -> tuple[str, pd.DataFrame]:
+        df = fetch_ohlcv(symbol, interval, period, cache_only=cache_only)
+        if interval == "15m" and df.empty:
+            df5 = fetch_ohlcv(symbol, "5m", "5d", cache_only=cache_only)
+            df = _resample_ohlcv(df5, "15min")
+        return symbol, df
+
+    loaded: dict[str, pd.DataFrame] = {}
+    if symbols:
+        max_workers = min(8, len(symbols))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {executor.submit(_load_global_symbol, symbol): symbol for symbol in symbols}
+            for future in concurrent.futures.as_completed(future_map):
+                symbol = future_map[future]
+                try:
+                    _, df = future.result()
+                except Exception:
+                    df = pd.DataFrame()
+                loaded[symbol] = df
+
     for idx, symbol in enumerate(symbols):
         row = idx // cols + 1
         col = idx % cols + 1
         axis_index = idx + 1
         axis_suffix = "" if axis_index == 1 else str(axis_index)
-        period = "5y" if interval == "1d" else "5d"
-        df = fetch_ohlcv(symbol, interval, period, cache_only=cache_only)
-        if interval == "15m" and df.empty:
-            df5 = fetch_ohlcv(symbol, "5m", "5d", cache_only=cache_only)
-            df = _resample_ohlcv(df5, "15min")
+        df = loaded.get(symbol, pd.DataFrame())
         daily_ema: dict[str, pd.Series] = {}
         if interval != "1d":
             if show_extended:
