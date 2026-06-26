@@ -8,6 +8,11 @@ const API_BASE =
   import.meta.env.VITE_API_BASE ||
   `${window.location.protocol}//${window.location.hostname}:8010`;
 
+function plotWrapStyle(figure) {
+  const height = Number(figure?.layout?.height || 980);
+  return { height: `${height}px` };
+}
+
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
 const shanghaiDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: SHANGHAI_TIME_ZONE,
@@ -449,6 +454,8 @@ function KlinePage() {
   const [error, setError] = useState("");
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [globalColumns, setGlobalColumns] = useState(globalKlineColumns);
+  const [userXAxisRanges, setUserXAxisRanges] = useState({});
+  const userXAxisRangesRef = useRef({});
   const loadRequestRef = useRef(0);
   const requestSignature = `${mode}|${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
@@ -478,17 +485,18 @@ function KlinePage() {
       const payload = await response.json();
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
       if (silent && scope === "global" && payload?.figure && (!payload.figure.data || payload.figure.data.length === 0)) return;
+      const payloadWithRanges = applySavedXAxisRangesToPayload(payload);
       if (scope === "single" && mode === "futu" && (!payload.bars || payload.bars.length === 0)) {
         const fallbackResponse = await fetch(`${API_BASE}/api/chart-board?${qs.toString()}`);
         if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
         if (fallbackResponse.ok) {
           const fallbackPayload = await fallbackResponse.json();
-          setData({ ...payload, fallback_template: fallbackPayload });
+          setData(applySavedXAxisRangesToPayload({ ...payloadWithRanges, fallback_template: fallbackPayload }));
         } else {
-          setData(payload);
+          setData(payloadWithRanges);
         }
       } else {
-        setData(payload);
+        setData(payloadWithRanges);
       }
     } catch (err) {
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
@@ -499,8 +507,75 @@ function KlinePage() {
   }
 
   useEffect(() => {
+    userXAxisRangesRef.current = {};
+    setUserXAxisRanges({});
     load();
   }, [mode, scope, symbol, interval, avwapMode, showExtended, globalColumns]);
+
+  function handlePlotRelayout(event) {
+    if (!event) return;
+    setUserXAxisRanges((current) => {
+      const next = { ...userXAxisRangesRef.current, ...current };
+      let changed = false;
+      for (const [key, value] of Object.entries(event)) {
+        const rangePart = key.match(/^(xaxis\d*)\.range\[(0|1)\]$/);
+        if (rangePart) {
+          const axis = rangePart[1];
+          const index = Number(rangePart[2]);
+          const range = Array.isArray(next[axis]) ? [...next[axis]] : [undefined, undefined];
+          range[index] = value;
+          if (range[0] !== undefined && range[1] !== undefined) {
+            next[axis] = range;
+            changed = true;
+          }
+          continue;
+        }
+        const range = key.match(/^(xaxis\d*)\.range$/);
+        if (range && Array.isArray(value) && value.length >= 2) {
+          next[range[1]] = [value[0], value[1]];
+          changed = true;
+          continue;
+        }
+        const autorange = key.match(/^(xaxis\d*)\.autorange$/);
+        if (autorange && value) {
+          delete next[autorange[1]];
+          changed = true;
+        }
+      }
+      if (changed) {
+        userXAxisRangesRef.current = next;
+        return next;
+      }
+      return current;
+    });
+  }
+
+  function layoutWithUserXAxisRanges(layout) {
+    const next = { ...(layout || {}) };
+    const ranges = { ...userXAxisRanges, ...userXAxisRangesRef.current };
+    for (const [axis, range] of Object.entries(ranges)) {
+      if (Array.isArray(range) && range.length >= 2) {
+        next[axis] = { ...(next[axis] || {}), range };
+      }
+    }
+    return next;
+  }
+
+  function applySavedXAxisRangesToPayload(payload) {
+    const ranges = userXAxisRangesRef.current;
+    if (!payload || !ranges || Object.keys(ranges).length === 0) return payload;
+    const applyToFigure = (figure) => {
+      if (!figure?.layout) return figure;
+      return { ...figure, layout: layoutWithUserXAxisRanges(figure.layout) };
+    };
+    return {
+      ...payload,
+      figure: applyToFigure(payload.figure),
+      fallback_template: payload.fallback_template
+        ? { ...payload.fallback_template, figure: applyToFigure(payload.fallback_template.figure) }
+        : payload.fallback_template,
+    };
+  }
 
   useEffect(() => {
     if (scope !== "global") return undefined;
@@ -525,6 +600,10 @@ function KlinePage() {
       setRealtimeConnected(false);
       return undefined;
     }
+    if (interval === "1d") {
+      setRealtimeConnected(false);
+      return undefined;
+    }
     const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
     let effectiveAvwapMode = avwapMode;
     if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
@@ -543,7 +622,7 @@ function KlinePage() {
       socket.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          setData(payload);
+          setData(applySavedXAxisRangesToPayload(payload));
           setRealtimeConnected(Boolean(payload.kline_subscription));
           setError("");
         } catch {
@@ -615,16 +694,20 @@ function KlinePage() {
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {scope === "single" && mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} showExtended={showExtended} /> : null}
       {scope === "single" && mode === "futu" && !data?.bars?.length && fallbackFigure ? (
-        <div className="plotWrap" style={fallbackFigure.layout?.height ? { height: `${fallbackFigure.layout.height}px` } : undefined}>
+        <div className="plotWrap" style={plotWrapStyle(fallbackFigure)}>
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
             <Plot
               data={fallbackFigure.data}
+              revision={0}
               layout={{
-                ...fallbackFigure.layout,
+                ...layoutWithUserXAxisRanges(fallbackFigure.layout),
                 autosize: true,
                 dragmode: "zoom",
                 uirevision: `fallback-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+                editrevision: `fallback-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+                selectionrevision: `fallback-${symbol}-${interval}-${avwapMode}-${showExtended}`,
               }}
+              onRelayout={handlePlotRelayout}
               config={{
                 responsive: true,
                 displaylogo: false,
@@ -640,16 +723,20 @@ function KlinePage() {
         </div>
       ) : null}
       {(scope === "global" || mode === "template") && figure ? (
-        <div className="plotWrap" style={figure.layout?.height ? { height: `${figure.layout.height}px` } : undefined}>
+        <div className="plotWrap" style={plotWrapStyle(figure)}>
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
             <Plot
               data={figure.data}
+              revision={0}
               layout={{
-                ...figure.layout,
+                ...layoutWithUserXAxisRanges(figure.layout),
                 autosize: true,
                 dragmode: "zoom",
                 uirevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+                editrevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+                selectionrevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
               }}
+              onRelayout={handlePlotRelayout}
               config={{
                 responsive: true,
                 displaylogo: false,

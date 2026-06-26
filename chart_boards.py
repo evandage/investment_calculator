@@ -2063,6 +2063,8 @@ def fig_daily(
     vis_m_hist = m_hist.reindex(vis_df.index)
     vis_vol = vis_df["Volume"].fillna(0.0).astype(float)
     vis_vcols = _volume_bar_colors(vis_df, theme)
+    full_vol = df["Volume"].fillna(0.0).astype(float)
+    full_vcols = _volume_bar_colors(df, theme)
     _x_start = vis_df.index.min()
     _x_end = vis_df.index.max()
     _x_pad = pd.Timedelta(days=0.45)
@@ -2081,11 +2083,11 @@ def fig_daily(
     )
     fig.add_trace(
         go.Candlestick(
-            x=vis_df.index,
-            open=vis_df["Open"],
-            high=vis_df["High"],
-            low=vis_df["Low"],
-            close=vis_df["Close"],
+            x=df.index,
+            open=df["Open"],
+            high=df["High"],
+            low=df["Low"],
+            close=df["Close"],
             name="K线",
             **_candlestick_kwargs(theme),
         ),
@@ -2119,12 +2121,12 @@ def fig_daily(
         )
     for name, s, color in zip(
         ("EMA20", "EMA50", "EMA100", "EMA200"),
-        (vis_e20, vis_e50, vis_e100, vis_e200),
+        (e20, e50, e100, e200),
         theme["ema"],
     ):
         fig.add_trace(
             go.Scatter(
-                x=vis_df.index,
+                x=df.index,
                 y=s,
                 name=name,
                 line=dict(width=1.15, color=color),
@@ -2136,8 +2138,8 @@ def fig_daily(
         )
     fig.add_trace(
         go.Scatter(
-            x=vis_df.index,
-            y=vis_daily_avwap,
+            x=df.index,
+            y=daily_avwap,
             name=f"AVWAP · {avwap_label}",
             line=dict(color=theme["vwap"], width=1.6),
             connectgaps=False,
@@ -2148,10 +2150,10 @@ def fig_daily(
     )
     fig.add_trace(
         go.Bar(
-            x=vis_df.index,
-            y=vis_vol,
+            x=df.index,
+            y=full_vol,
             name="成交量",
-            marker_color=vis_vcols,
+            marker_color=full_vcols,
             marker_line_width=0,
             showlegend=False,
             hovertemplate="成交量: %{y:,.0f}<extra></extra>",
@@ -2163,8 +2165,8 @@ def fig_daily(
 
     fig.add_trace(
         go.Scatter(
-            x=vis_df.index,
-            y=vis_r14,
+            x=df.index,
+            y=r14,
             name="RSI(14)",
             line=dict(color=theme["rsi"], width=1.2),
         ),
@@ -2182,11 +2184,11 @@ def fig_daily(
         col=1,
     )
 
-    hist_colors = [theme["macd_pos"] if float(v) >= 0 else theme["macd_neg"] for v in vis_m_hist.fillna(0.0)]
+    hist_colors = [theme["macd_pos"] if float(v) >= 0 else theme["macd_neg"] for v in m_hist.fillna(0.0)]
     fig.add_trace(
         go.Bar(
-            x=vis_df.index,
-            y=vis_m_hist,
+            x=df.index,
+            y=m_hist,
             name="MACD柱",
             marker_color=hist_colors,
             marker_line_width=0,
@@ -2197,8 +2199,8 @@ def fig_daily(
     )
     fig.add_trace(
         go.Scatter(
-            x=vis_df.index,
-            y=vis_m_line,
+            x=df.index,
+            y=m_line,
             name="MACD",
             line=dict(color=theme["macd_line"], width=1.1),
         ),
@@ -2207,8 +2209,8 @@ def fig_daily(
     )
     fig.add_trace(
         go.Scatter(
-            x=vis_df.index,
-            y=vis_m_sig,
+            x=df.index,
+            y=m_sig,
             name="Signal",
             line=dict(color=theme["macd_sig"], width=1.0),
         ),
