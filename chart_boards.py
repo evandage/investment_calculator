@@ -1312,11 +1312,14 @@ def slice_regular_intraday_with_context(
     symbol: str,
     *,
     min_current_bars: int = 6,
+    include_previous_context: bool = False,
 ) -> tuple[pd.DataFrame, str]:
     """Regular-session intraday view.
 
-    If the newest regular session has only a few opening bars, include the
-    previous regular session as context so the chart is not visually empty.
+    Pick the latest market date from all intraday bars first, then show only
+    that date's regular-session bars. This prevents premarket-only current-day
+    data from falling back to the previous regular trading day when extended
+    hours are hidden.
     """
     if df.empty:
         return df, ""
@@ -1326,18 +1329,42 @@ def slice_regular_intraday_with_context(
         idx_local = idx.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
     else:
         idx_local = idx.tz_convert(tz)
+    all_bar_dates = pd.Series(idx_local.date, index=df.index)
+    latest_data_date = all_bar_dates.max()
+
     regular_mask = _regular_us_session_mask(idx)
     regular = df.loc[regular_mask].copy()
     if regular.empty:
-        bar_dates = pd.Series(idx_local.date, index=df.index)
-        latest = bar_dates.max()
-        mask = bar_dates == latest
-        out = df.loc[mask].copy()
-        out.index = idx_local[mask]
-        return out, f"{latest} latest session fallback"
+        out = df.iloc[0:0].copy()
+        out.index = pd.DatetimeIndex([], name=df.index.name, tz=tz)
+        return out, f"{latest_data_date} regular session not open"
 
     regular_idx_local = pd.DatetimeIndex(idx_local[regular_mask])
     bar_dates = pd.Series(regular_idx_local.date, index=regular.index)
+    latest_mask = bar_dates == latest_data_date
+    if latest_mask.any():
+        out = regular.loc[latest_mask].copy()
+        out.index = regular_idx_local[latest_mask.to_numpy()]
+        latest_count = int(latest_mask.sum())
+        selected_dates = [latest_data_date]
+        if include_previous_context and latest_count < max(1, min_current_bars):
+            dates = sorted(pd.unique(bar_dates))
+            latest_pos = dates.index(latest_data_date)
+            if latest_pos > 0:
+                selected_dates = [dates[latest_pos - 1], latest_data_date]
+                context_mask = bar_dates.isin(selected_dates)
+                out = regular.loc[context_mask].copy()
+                out.index = regular_idx_local[context_mask.to_numpy()]
+        note = f"{latest_data_date} regular session"
+        if len(selected_dates) > 1:
+            note += f" + {selected_dates[0]} open context"
+        return out, note
+
+    if not include_previous_context:
+        out = regular.iloc[0:0].copy()
+        out.index = pd.DatetimeIndex([], name=regular.index.name, tz=tz)
+        return out, f"{latest_data_date} regular session not open"
+
     dates = sorted(pd.unique(bar_dates))
     latest = dates[-1]
     selected_dates = [latest]
