@@ -628,7 +628,10 @@ def ensure_completed_performance_history(
     fx: float,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    rows = load_portfolio_history(user_id)
+    loaded_rows = load_portfolio_history(user_id)
+    rows = [row for row in loaded_rows if row.get("finalized")]
+    if len(rows) != len(loaded_rows):
+        save_portfolio_history(user_id, rows)
     completed_day = completed_performance_day(now)
     finalized_dates = {row["date"] for row in rows if row.get("finalized")}
     latest_finalized_date = max(finalized_dates, default="")
@@ -736,7 +739,11 @@ def build_performance_history(
         except (TypeError, ValueError):
             pass
 
-    rows = [row for row in ensure_completed_performance_history(user_id, holdings, fx, now) if is_weekday(row["date"])]
+    rows = [
+        row
+        for row in ensure_completed_performance_history(user_id, holdings, fx, now)
+        if is_weekday(row["date"]) and row.get("finalized")
+    ]
     current = {
         "date": today,
         "portfolio_daily_pct": portfolio_daily_pct,
@@ -751,29 +758,9 @@ def build_performance_history(
         "updated_at": now.isoformat(timespec="seconds"),
     }
     rows_by_date = {row["date"]: row for row in rows}
-    previous_today = rows_by_date.get(today)
-    should_save = True
-    if not is_weekday(today):
-        should_save = False
-    elif previous_today:
-        missing_daily_schema = "portfolio_daily_pct" not in previous_today or "benchmark_daily_pct" not in previous_today
-        try:
-            previous_updated_at = datetime.fromisoformat(str(previous_today.get("updated_at") or ""))
-            should_save = missing_daily_schema or (now - previous_updated_at).total_seconds() >= 60
-        except ValueError:
-            should_save = True
-        if history_quotes_usable:
-            rows_by_date[today] = {**previous_today, **current}
-        else:
-            should_save = False
-    else:
-        if history_quotes_usable:
-            rows_by_date[today] = current
-        else:
-            should_save = False
+    if is_weekday(today) and history_quotes_usable:
+        rows_by_date[today] = current
     rows = sorted(rows_by_date.values(), key=lambda row: row["date"])
-    if should_save:
-        save_portfolio_history(user_id, rows)
 
     points: list[dict[str, Any]] = []
     cumulative = {
@@ -886,6 +873,10 @@ def coerce_optional_float(value: Any) -> float | None:
 def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_day: str, now: datetime) -> float:
     if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() == "closed":
         return 0.0
+    if symbol in {"VOO", "QQQ"} and str(quote.get("session") or "").lower() not in {"regular", "closed"}:
+        extended_pct = coerce_optional_float(quote.get("extended_change_pct"))
+        if extended_pct is not None:
+            return extended_pct
     try:
         return float(quote.get("change_pct", 0.0))
     except (TypeError, ValueError):
