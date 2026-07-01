@@ -150,39 +150,44 @@ def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[s
     bars: list[dict[str, Any]] = []
     try:
         ctx = OpenQuoteContext(host=host, port=port)
-        ret, data, _ = ctx.request_history_kline(
-            code,
-            start=start.strftime("%Y-%m-%d"),
-            end=end.strftime("%Y-%m-%d"),
-            ktype=_futu_ktype(interval),
-            autype=AuType.QFQ,
-            fields=[KL_FIELD.ALL],
-            max_count=1000,
-            extended_time=True,
-        )
-        if ret != RET_OK or data is None:
-            return [], "futu_empty"
-        for i in range(len(data)):
-            item = data.iloc[i] if hasattr(data, "iloc") else data[i]
-            ts = _ts_to_lightweight(
-                _row_value(item, "time_key"),
-                interval,
-                source_tz=_TZ_NEW_YORK,
+        page_req_key = None
+        while True:
+            ret, data, page_req_key = ctx.request_history_kline(
+                code,
+                start=start.strftime("%Y-%m-%d"),
+                end=end.strftime("%Y-%m-%d"),
+                ktype=_futu_ktype(interval),
+                autype=AuType.QFQ,
+                fields=[KL_FIELD.ALL],
+                max_count=1000,
+                page_req_key=page_req_key,
+                extended_time=True,
             )
-            if ts is None:
-                continue
-            bar = _clean_bar(
-                {
-                    "time": ts,
-                    "open": _row_value(item, "open"),
-                    "high": _row_value(item, "high"),
-                    "low": _row_value(item, "low"),
-                    "close": _row_value(item, "close"),
-                    "volume": _row_value(item, "volume"),
-                }
-            )
-            if bar:
-                bars.append(bar)
+            if ret != RET_OK or data is None:
+                return [], "futu_empty"
+            for i in range(len(data)):
+                item = data.iloc[i] if hasattr(data, "iloc") else data[i]
+                ts = _ts_to_lightweight(
+                    _row_value(item, "time_key"),
+                    interval,
+                    source_tz=_TZ_NEW_YORK,
+                )
+                if ts is None:
+                    continue
+                bar = _clean_bar(
+                    {
+                        "time": ts,
+                        "open": _row_value(item, "open"),
+                        "high": _row_value(item, "high"),
+                        "low": _row_value(item, "low"),
+                        "close": _row_value(item, "close"),
+                        "volume": _row_value(item, "volume"),
+                    }
+                )
+                if bar:
+                    bars.append(bar)
+            if page_req_key is None:
+                break
     except Exception as exc:
         return [], f"futu_failed: {exc}"
     finally:

@@ -40,6 +40,7 @@ _HTTP_TIMEOUT = (3, 12)
 _FUTU_HISTORY_TIMEOUT_SECONDS = float(os.environ.get("FUTU_HISTORY_TIMEOUT_SECONDS", "8"))
 _SOURCE_CACHE_TTL_SECONDS = {"1d": 300.0, "15m": 45.0, "5m": 30.0}
 _SOURCE_CACHE: dict[tuple[str, str, str], tuple[pd.DataFrame, str, float]] = {}
+_MIN_FUTU_INTRADAY_HISTORY_BARS = {"15m": 3, "5m": 4}
 
 _YF_TIMEOUT = float(os.environ.get("YFINANCE_CHART_TIMEOUT", "90"))
 _YF_RETRIES = max(1, int(os.environ.get("YFINANCE_CHART_RETRIES", "4")))
@@ -900,6 +901,8 @@ def _fetch_from_source(
         return pd.DataFrame(), fallback_provider
 
     if provider == "futu":
+        futu_df = pd.DataFrame()
+        futu_reason = "futu_empty"
         try:
             from backend.ohlcv import _fetch_futu_ohlcv
 
@@ -913,7 +916,7 @@ def _fetch_from_source(
             finally:
                 executor.shutdown(wait=False, cancel_futures=True)
             if bars:
-                d = pd.DataFrame(bars).rename(
+                futu_df = pd.DataFrame(bars).rename(
                     columns={
                         "open": "Open",
                         "high": "High",
@@ -923,17 +926,24 @@ def _fetch_from_source(
                     }
                 )
                 if interval == "1d":
-                    d.index = pd.to_datetime(d.pop("time"), errors="coerce")
+                    futu_df.index = pd.to_datetime(futu_df.pop("time"), errors="coerce")
                 else:
-                    d.index = pd.to_datetime(d.pop("time"), unit="s", utc=True, errors="coerce")
-                d = d.loc[~d.index.isna(), ["Open", "High", "Low", "Close", "Volume"]]
-                if not d.empty:
+                    futu_df.index = pd.to_datetime(futu_df.pop("time"), unit="s", utc=True, errors="coerce")
+                futu_df = futu_df.loc[~futu_df.index.isna(), ["Open", "High", "Low", "Close", "Volume"]]
+                if not futu_df.empty:
                     if interval != "1d":
-                        d = _fix_intraday_last_bar_volume(d)
-                    return _store_source(_normalize_plot_time_index(d, symbol), "futu")
+                        futu_df = _fix_intraday_last_bar_volume(futu_df)
+                    min_bars = _MIN_FUTU_INTRADAY_HISTORY_BARS.get(interval, 1)
+                    if interval == "1d" or len(futu_df) >= min_bars:
+                        return _store_source(_normalize_plot_time_index(futu_df, symbol), "futu")
+                    futu_reason = f"futu_history_short_{len(futu_df)}"
         except Exception:
             futu_reason = "futu_failed"
         fallback_df, fallback_source = _fetch_tencent_or_eastmoney(futu_reason)
+        if not fallback_df.empty:
+            return fallback_df, fallback_source
+        if not futu_df.empty:
+            return _store_source(_normalize_plot_time_index(futu_df, symbol), futu_reason)
         return fallback_df, fallback_source
 
     if provider == "tencent":
@@ -1465,6 +1475,19 @@ def _intraday_fixed_x_range(index: pd.Index, symbol: str, show_extended: bool) -
         start.tz_convert(ZoneInfo("Asia/Shanghai")).tz_localize(None),
         end.tz_convert(ZoneInfo("Asia/Shanghai")).tz_localize(None),
     ]
+
+
+def _intraday_xaxis_tick_options(
+    fixed_x_range: list[pd.Timestamp] | None,
+    show_extended: bool,
+) -> dict[str, Any]:
+    if not fixed_x_range:
+        return {}
+    return {
+        "tick0": fixed_x_range[0],
+        "dtick": 60 * 60 * 1000 if show_extended else 30 * 60 * 1000,
+        "tickformat": "%H:%M",
+    }
 
 
 def _intraday_open_base_price(df: pd.DataFrame, symbol: str, show_extended: bool) -> float | None:
@@ -2639,8 +2662,9 @@ def fig_15m_vwap_rsi(
     macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     if fixed_x_range is not None:
+        tick_options = _intraday_xaxis_tick_options(fixed_x_range, show_extended)
         for _row in (1, 2, 3):
-            fig.update_xaxes(range=fixed_x_range, row=_row, col=1)
+            fig.update_xaxes(range=fixed_x_range, **tick_options, row=_row, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, showgrid=False, range=price_y_range, row=1, col=2)
     return fig
@@ -2923,8 +2947,9 @@ def fig_5m_vwap_rsi7(
     macd_range = _macd_yaxis_range(m_line, m_sig, m_hist)
     fig.update_yaxes(title_text="MACD", row=3, col=1, title_standoff=8, range=macd_range)
     if fixed_x_range is not None:
+        tick_options = _intraday_xaxis_tick_options(fixed_x_range, show_extended)
         for _row in (1, 2, 3):
-            fig.update_xaxes(range=fixed_x_range, row=_row, col=1)
+            fig.update_xaxes(range=fixed_x_range, **tick_options, row=_row, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
     fig.update_yaxes(showticklabels=False, showgrid=False, range=price_y_range, row=1, col=2)
     return fig
@@ -3248,6 +3273,7 @@ def fig_global_kline_board(
         min(rng[0] for rng in x_ranges),
         max(rng[1] for rng in x_ranges),
     ] if x_ranges else None
+    intraday_tick_options = _intraday_xaxis_tick_options(board_x_range, show_extended) if interval != "1d" else {}
     daily_rangebreaks = [dict(bounds=["sat", "mon"])] if interval == "1d" else None
     for row in range(1, rows + 1):
         for col in range(1, cols + 1):
@@ -3258,6 +3284,7 @@ def fig_global_kline_board(
                 rangeslider_visible=False,
                 range=board_x_range,
                 rangebreaks=daily_rangebreaks,
+                **intraday_tick_options,
                 row=row,
                 col=col,
             )
