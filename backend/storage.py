@@ -12,6 +12,7 @@ from .config import (
     FALLBACK_PRICES,
     HOLDINGS_FILE,
     MONTHLY_USAGE_FILE,
+    PORTFOLIO_HISTORY_FILE,
     SATELLITE_SYMBOLS,
     SATELLITE_TARGETS_FILE,
     TZ_SHANGHAI,
@@ -247,3 +248,85 @@ def save_monthly_usage(
     }
     store[user_key] = user_store
     _write_json(MONTHLY_USAGE_FILE, store)
+
+
+def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
+    raw = _read_json(PORTFOLIO_HISTORY_FILE, {})
+    user_key = str(user_id or "local").strip() or "local"
+    rows = raw.get(user_key, []) if isinstance(raw, dict) else []
+    if not isinstance(rows, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        date = str(item.get("date", "")).strip()
+        if not date:
+            continue
+        clean: dict[str, Any] = {"date": date}
+        for key in ("portfolio_return_pct", "portfolio_daily_pct", "total_assets_cny", "total_cost_cny"):
+            try:
+                clean[key] = float(item.get(key, 0.0))
+            except (TypeError, ValueError):
+                clean[key] = 0.0
+        benchmarks: dict[str, float] = {}
+        raw_benchmarks = item.get("benchmark_prices", {})
+        if isinstance(raw_benchmarks, dict):
+            for sym, value in raw_benchmarks.items():
+                try:
+                    price = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if price > 0:
+                    benchmarks[str(sym).upper()] = price
+        clean["benchmark_prices"] = benchmarks
+        benchmark_daily_pct: dict[str, float] = {}
+        raw_daily_pct = item.get("benchmark_daily_pct", {})
+        if isinstance(raw_daily_pct, dict):
+            for sym, value in raw_daily_pct.items():
+                try:
+                    benchmark_daily_pct[str(sym).upper()] = float(value)
+                except (TypeError, ValueError):
+                    continue
+        clean["benchmark_daily_pct"] = benchmark_daily_pct
+        symbol_daily_pct: dict[str, float] = {}
+        raw_symbol_daily_pct = item.get("symbol_daily_pct", {})
+        if isinstance(raw_symbol_daily_pct, dict):
+            for sym, value in raw_symbol_daily_pct.items():
+                try:
+                    symbol_daily_pct[str(sym).upper()] = float(value)
+                except (TypeError, ValueError):
+                    continue
+        clean["symbol_daily_pct"] = symbol_daily_pct
+        holdings_snapshot: dict[str, dict[str, float]] = {}
+        raw_holdings_snapshot = item.get("holdings_snapshot", {})
+        if isinstance(raw_holdings_snapshot, dict):
+            for sym, value in raw_holdings_snapshot.items():
+                if not isinstance(value, dict):
+                    continue
+                try:
+                    shares = max(0.0, float(value.get("shares", 0.0)))
+                    avg_cost = max(0.0, float(value.get("avg_cost", 0.0)))
+                except (TypeError, ValueError):
+                    continue
+                if shares > 0:
+                    holdings_snapshot[str(sym).upper()] = {"shares": shares, "avg_cost": avg_cost}
+        clean["holdings_snapshot"] = holdings_snapshot
+        clean["finalized"] = bool(item.get("finalized", False))
+        estimated_symbols = item.get("estimated_symbols", [])
+        clean["estimated_symbols"] = [
+            str(sym).upper()
+            for sym in estimated_symbols
+            if isinstance(estimated_symbols, list) and str(sym).strip()
+        ]
+        clean["updated_at"] = str(item.get("updated_at", ""))
+        out.append(clean)
+    return sorted(out, key=lambda row: row["date"])
+
+
+def save_portfolio_history(user_id: str, rows: list[dict[str, Any]]) -> None:
+    raw = _read_json(PORTFOLIO_HISTORY_FILE, {})
+    store = raw if isinstance(raw, dict) else {}
+    user_key = str(user_id or "local").strip() or "local"
+    store[user_key] = rows
+    _write_json(PORTFOLIO_HISTORY_FILE, store)

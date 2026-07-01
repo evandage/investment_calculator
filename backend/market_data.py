@@ -893,13 +893,20 @@ def fetch_quotes() -> dict[str, Any]:
         return dict(_QUOTES_CACHE)
     futu_available = is_futu_opend_available()
     subscription_quotes = get_futu_subscription_quotes() if futu_available else {}
+    if futu_available and not subscription_quotes and not futu_subscription_status().get("started"):
+        start_futu_quote_subscription(force=True)
+        subscription_quotes = get_futu_subscription_quotes()
     provider = "futu-subscribe" if subscription_quotes else ("futu" if futu_available else "tencent")
     quotes = dict(subscription_quotes)
+    if futu_available and len(quotes) < len(USD_SYMBOLS):
+        snapshot_quotes = fetch_futu_us_quotes()
+        for sym, quote in snapshot_quotes.items():
+            quotes.setdefault(sym, quote)
+        if quotes:
+            provider = "futu-subscribe+snapshot" if subscription_quotes else "futu-snapshot"
     if not quotes:
         provider = "tencent"
         quotes = fetch_tencent_us_quotes()
-    elif subscription_quotes and len(subscription_quotes) < len(USD_SYMBOLS):
-        provider = "futu-subscribe+snapshot"
     for sym in USD_SYMBOLS:
         if sym not in quotes:
             fallback = fetch_sina_us_quote(sym)

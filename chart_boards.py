@@ -320,6 +320,35 @@ def _regular_us_session_mask(index: pd.Index) -> np.ndarray:
     return np.asarray((minutes >= 9 * 60 + 30) & (minutes < 16 * 60))
 
 
+def _candlestick_customdata(df: pd.DataFrame) -> np.ndarray:
+    open_values = pd.to_numeric(df["Open"], errors="coerce")
+    high_values = pd.to_numeric(df["High"], errors="coerce")
+    low_values = pd.to_numeric(df["Low"], errors="coerce")
+    close_values = pd.to_numeric(df["Close"], errors="coerce")
+    change = close_values - open_values
+    change_pct = (close_values / open_values.replace(0, np.nan) - 1.0) * 100.0
+    amplitude_pct = (high_values / low_values.replace(0, np.nan) - 1.0) * 100.0
+    return np.column_stack([
+        change.to_numpy(dtype=float),
+        change_pct.to_numpy(dtype=float),
+        amplitude_pct.to_numpy(dtype=float),
+    ])
+
+
+def _candlestick_hovertemplate(label: str = "K") -> str:
+    return (
+        f"{label}<br>"
+        "%{x}<br>"
+        "Open: %{open:.2f}<br>"
+        "High: %{high:.2f}<br>"
+        "Low: %{low:.2f}<br>"
+        "Close: %{close:.2f}<br>"
+        "Change: %{customdata[0]:+.2f} (%{customdata[1]:+.2f}%)<br>"
+        "Range: %{customdata[2]:.2f}%"
+        "<extra></extra>"
+    )
+
+
 def _add_intraday_candlesticks(
     fig: go.Figure,
     df: pd.DataFrame,
@@ -328,9 +357,14 @@ def _add_intraday_candlesticks(
     show_extended: bool = True,
     row: int = 1,
     col: int = 1,
+    show_hover: bool = True,
 ) -> None:
     regular = df.loc[regular_mask]
     extended = df.loc[~regular_mask]
+    regular_customdata = _candlestick_customdata(regular) if show_hover else None
+    regular_hovertemplate = _candlestick_hovertemplate("Regular") if show_hover else None
+    extended_customdata = _candlestick_customdata(extended) if show_hover else None
+    extended_hovertemplate = _candlestick_hovertemplate("Extended") if show_hover else None
     if not regular.empty:
         fig.add_trace(
             go.Candlestick(
@@ -339,6 +373,8 @@ def _add_intraday_candlesticks(
                 high=regular["High"],
                 low=regular["Low"],
                 close=regular["Close"],
+                customdata=regular_customdata,
+                hovertemplate=regular_hovertemplate,
                 name="K线",
                 **_candlestick_kwargs(theme),
             ),
@@ -353,6 +389,8 @@ def _add_intraday_candlesticks(
                 high=extended["High"],
                 low=extended["Low"],
                 close=extended["Close"],
+                customdata=extended_customdata,
+                hovertemplate=extended_hovertemplate,
                 name="扩展盘",
                 **_extended_candlestick_kwargs(theme),
             ),
@@ -2115,6 +2153,8 @@ def fig_daily(
             high=df["High"],
             low=df["Low"],
             close=df["Close"],
+            customdata=_candlestick_customdata(df),
+            hovertemplate=_candlestick_hovertemplate(symbol),
             name="K线",
             **_candlestick_kwargs(theme),
         ),
@@ -2980,7 +3020,7 @@ def fig_global_kline_board(
             vw.index = df_plot.index
             v_hi.index = df_plot.index
             v_lo.index = df_plot.index
-            _add_intraday_candlesticks(fig, df_plot, theme, regular_mask, show_extended, row=row, col=col)
+            _add_intraday_candlesticks(fig, df_plot, theme, regular_mask, show_extended, row=row, col=col, show_hover=False)
         else:
             df_plot = df.copy()
             vw = pd.Series(dtype=float)

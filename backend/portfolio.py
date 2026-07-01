@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import time
+import re
 from calendar import monthrange
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
+
+import requests
 
 from .config import (
     ALL_SYMBOLS,
     ASSET_META,
+    FUND_CODES,
     INTENSITY_LABELS,
     INTENSITY_ORDER,
     PE_BANDS,
@@ -21,7 +26,15 @@ from .config import (
     USD_SYMBOLS,
 )
 from .market_data import fetch_quotes
-from .storage import load_monthly_usage, load_satellite_targets, load_user_state, save_monthly_usage, save_user_state
+from .storage import (
+    load_monthly_usage,
+    load_portfolio_history,
+    load_satellite_targets,
+    load_user_state,
+    save_monthly_usage,
+    save_portfolio_history,
+    save_user_state,
+)
 
 
 BUILD_TARGET_YEAR = 2026
@@ -29,6 +42,16 @@ BUILD_TARGET_MONTH = 10
 _DRAWDOWN_CACHE: dict[str, tuple[dict[str, float | None], float]] = {}
 _DRAWDOWN_CACHE_TTL_SECONDS = 21600
 QQQ_MONTH_END_WINDOW_DAYS = 5
+NY_TZ = ZoneInfo("America/New_York")
+PERFORMANCE_WRITE_HOUR = 8
+PERFORMANCE_HISTORY_START_DATE = "2026-06-29"
+FUND_HISTORY_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://fundf10.eastmoney.com/",
+}
 
 
 def effective_target_weights() -> dict[str, float]:
@@ -458,6 +481,423 @@ def build_visualizations(
     }
 
 
+def date_range(start: str, end: str) -> list[str]:
+    start_date = date.fromisoformat(start)
+    end_date = date.fromisoformat(end)
+    days: list[str] = []
+    current = start_date
+    while current <= end_date:
+        days.append(current.isoformat())
+        current += timedelta(days=1)
+    return days
+
+
+def previous_day(day: str) -> str:
+    return (date.fromisoformat(day) - timedelta(days=1)).isoformat()
+
+
+def is_weekday(day: str) -> bool:
+    return date.fromisoformat(day).weekday() < 5
+
+
+def completed_performance_day(now: datetime | None = None) -> str:
+    current = now or datetime.now(TZ_SHANGHAI)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=TZ_SHANGHAI)
+    offset = 1 if current.hour >= PERFORMANCE_WRITE_HOUR else 2
+    return (current.date() - timedelta(days=offset)).isoformat()
+
+
+def close_on_or_before(prices: dict[str, float], day: str) -> float | None:
+    candidates = [key for key in prices if key <= day]
+    if not candidates:
+        return None
+    return prices[max(candidates)]
+
+
+def close_on(prices: dict[str, float], day: str) -> float | None:
+    return prices.get(day)
+
+
+def is_completed_trading_day(day: str, histories: dict[str, dict[str, float]], symbols: set[str]) -> bool:
+    return any(close_on(histories.get(sym, {}), day) is not None for sym in symbols)
+
+
+def fetch_us_close_history(symbol: str) -> dict[str, float]:
+    try:
+        from .ohlcv import fetch_ohlcv
+
+        payload = fetch_ohlcv(symbol, "1d")
+    except Exception:
+        return {}
+    out: dict[str, float] = {}
+    for bar in payload.get("bars") or []:
+        day = str(bar.get("time") or "")
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
+            continue
+        try:
+            close = float(bar.get("close") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if close > 0:
+            out[day] = close
+    return out
+
+
+def fetch_fund_close_history(symbol: str) -> dict[str, float]:
+    code = FUND_CODES.get(symbol, symbol)
+    prices: dict[str, float] = {}
+    for page in range(1, 5):
+        url = f"http://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page={page}&per=100"
+        try:
+            response = requests.get(url, headers=FUND_HISTORY_HEADERS, timeout=(5, 20))
+            response.encoding = "utf-8"
+        except requests.RequestException:
+            break
+        rows = re.findall(
+            r"<tr>\s*<td>(\d{4}-\d{2}-\d{2})</td>\s*<td[^>]*>([0-9.]+)</td>",
+            response.text,
+            flags=re.I,
+        )
+        if not rows:
+            break
+        for day, nav in rows:
+            try:
+                price = float(nav)
+            except (TypeError, ValueError):
+                continue
+            if price > 0:
+                prices[day] = price
+    return prices
+
+
+def fetch_close_histories(symbols: set[str]) -> dict[str, dict[str, float]]:
+    histories: dict[str, dict[str, float]] = {}
+    for sym in sorted(symbols):
+        histories[sym] = fetch_us_close_history(sym) if sym in USD_SYMBOLS else fetch_fund_close_history(sym)
+    return histories
+
+
+def completed_daily_pct_for_symbol(symbol: str, day: str, histories: dict[str, dict[str, float]]) -> float | None:
+    prices = histories.get(symbol) or {}
+    today_price = close_on(prices, day)
+    prev_price = close_on_or_before(prices, previous_day(day))
+    if not today_price or not prev_price or prev_price <= 0:
+        return None
+    return (today_price / prev_price - 1.0) * 100.0
+
+
+def completed_portfolio_daily_pct(
+    holdings_snapshot: dict[str, dict[str, float]],
+    day: str,
+    histories: dict[str, dict[str, float]],
+    fx: float,
+) -> tuple[float, dict[str, float]]:
+    symbol_daily_pct: dict[str, float] = {}
+    weights: dict[str, float] = {}
+    total_prev_value = 0.0
+    prev_day = previous_day(day)
+    for sym, holding in holdings_snapshot.items():
+        shares = float(holding.get("shares", 0.0) or 0.0)
+        if shares <= 0:
+            continue
+        prev_price = close_on_or_before(histories.get(sym, {}), prev_day)
+        if prev_price is None:
+            prev_price = float(holding.get("avg_cost", 0.0) or 0.0)
+        if prev_price <= 0:
+            continue
+        multiplier = fx if sym in USD_SYMBOLS else 1.0
+        value = shares * prev_price * multiplier
+        weights[sym] = value
+        total_prev_value += value
+    if total_prev_value <= 0:
+        return 0.0, symbol_daily_pct
+    total = 0.0
+    for sym, value in weights.items():
+        daily_pct = completed_daily_pct_for_symbol(sym, day, histories)
+        if daily_pct is None:
+            daily_pct = 0.0
+        symbol_daily_pct[sym] = daily_pct
+        total += value / total_prev_value * daily_pct
+    return total, symbol_daily_pct
+
+
+def ensure_completed_performance_history(
+    user_id: str,
+    holdings: dict[str, dict[str, float]],
+    fx: float,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    rows = load_portfolio_history(user_id)
+    completed_day = completed_performance_day(now)
+    finalized_dates = {row["date"] for row in rows if row.get("finalized")}
+    latest_finalized_date = max(finalized_dates, default="")
+    start_day = PERFORMANCE_HISTORY_START_DATE if not latest_finalized_date else (date.fromisoformat(latest_finalized_date) + timedelta(days=1)).isoformat()
+
+    rows_by_date = {row["date"]: row for row in rows}
+    latest_snapshot = next(
+        (
+            row.get("holdings_snapshot")
+            for row in sorted(rows, key=lambda item: item["date"], reverse=True)
+            if row.get("holdings_snapshot")
+        ),
+        None,
+    )
+    holdings_snapshot = latest_snapshot if isinstance(latest_snapshot, dict) and latest_snapshot else holdings
+    symbols = set(holdings_snapshot) | {"001015", "VOO", "QQQ"}
+    histories = fetch_close_histories(symbols)
+    missing_days = [
+        day
+        for day in date_range(start_day, completed_day)
+        if day not in finalized_dates and is_completed_trading_day(day, histories, symbols)
+    ]
+    if not missing_days:
+        return rows
+    for day in missing_days:
+        portfolio_daily_pct, symbol_daily_pct = completed_portfolio_daily_pct(holdings_snapshot, day, histories, fx)
+        benchmark_daily_pct = {
+            sym: (daily_pct if daily_pct is not None else 0.0)
+            for sym in ("001015", "VOO", "QQQ")
+            for daily_pct in [completed_daily_pct_for_symbol(sym, day, histories)]
+        }
+        benchmark_prices = {
+            sym: price
+            for sym in ("001015", "VOO", "QQQ")
+            if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
+        }
+        rows_by_date[day] = {
+            "date": day,
+            "portfolio_daily_pct": portfolio_daily_pct,
+            "portfolio_return_pct": 0.0,
+            "total_assets_cny": 0.0,
+            "total_cost_cny": 0.0,
+            "benchmark_prices": benchmark_prices,
+            "benchmark_daily_pct": benchmark_daily_pct,
+            "symbol_daily_pct": symbol_daily_pct,
+            "holdings_snapshot": holdings_snapshot,
+            "estimated_symbols": [],
+            "finalized": True,
+            "updated_at": datetime.combine(date.fromisoformat(day), datetime.min.time(), TZ_SHANGHAI).replace(hour=PERFORMANCE_WRITE_HOUR).isoformat(timespec="seconds"),
+        }
+    rows = sorted(rows_by_date.values(), key=lambda row: row["date"])
+    save_portfolio_history(user_id, rows)
+    return rows
+
+
+def start_performance_history_scheduler(user_id: str = "evan") -> None:
+    last_checked_day = ""
+    while True:
+        now = datetime.now(TZ_SHANGHAI)
+        check_key = now.date().isoformat()
+        if now.hour >= PERFORMANCE_WRITE_HOUR and check_key != last_checked_day:
+            try:
+                holdings, _, _ = load_user_state(user_id)
+                market = fetch_quotes()
+                fx = float((market.get("fx") or {}).get("rate") or 7.2)
+                ensure_completed_performance_history(user_id, holdings, fx, now)
+                last_checked_day = check_key
+            except Exception:
+                pass
+        time.sleep(60)
+
+
+def build_performance_history(
+    user_id: str,
+    quotes: dict[str, Any],
+    holdings: dict[str, dict[str, float]],
+    fx: float,
+    total_assets_cny: float,
+    total_cost_cny: float,
+    portfolio_return_pct: float,
+    portfolio_daily_pct: float,
+) -> dict[str, Any]:
+    now = datetime.now(TZ_SHANGHAI)
+    today = performance_history_date(now)
+    benchmark_symbols = ("001015", "VOO", "QQQ")
+    required_history_symbols = list(ALL_SYMBOLS)
+    history_quotes_usable = all(is_history_quote_usable(quotes.get(sym)) for sym in required_history_symbols)
+    benchmark_prices = {}
+    benchmark_daily_pct: dict[str, float] = {}
+    estimated_symbols: list[str] = []
+    for sym in benchmark_symbols:
+        if not is_history_quote_usable(quotes.get(sym)):
+            continue
+        if is_symbol_daily_history_estimated(sym, today, now, quotes.get(sym)):
+            estimated_symbols.append(sym)
+        try:
+            quote = quotes.get(sym) or {}
+            price = float(quote.get("price") or 0.0)
+        except (TypeError, ValueError):
+            price = 0.0
+        if price > 0:
+            benchmark_prices[sym] = price
+        try:
+            benchmark_daily_pct[sym] = daily_pct_for_current_history_quote(sym, today, now, quote)
+        except (TypeError, ValueError):
+            pass
+
+    rows = [row for row in ensure_completed_performance_history(user_id, holdings, fx, now) if is_weekday(row["date"])]
+    current = {
+        "date": today,
+        "portfolio_daily_pct": portfolio_daily_pct,
+        "portfolio_return_pct": portfolio_return_pct,
+        "total_assets_cny": total_assets_cny,
+        "total_cost_cny": total_cost_cny,
+        "benchmark_prices": benchmark_prices,
+        "benchmark_daily_pct": benchmark_daily_pct,
+        "estimated_symbols": estimated_symbols,
+        "holdings_snapshot": holdings,
+        "finalized": False,
+        "updated_at": now.isoformat(timespec="seconds"),
+    }
+    rows_by_date = {row["date"]: row for row in rows}
+    previous_today = rows_by_date.get(today)
+    should_save = True
+    if not is_weekday(today):
+        should_save = False
+    elif previous_today:
+        missing_daily_schema = "portfolio_daily_pct" not in previous_today or "benchmark_daily_pct" not in previous_today
+        try:
+            previous_updated_at = datetime.fromisoformat(str(previous_today.get("updated_at") or ""))
+            should_save = missing_daily_schema or (now - previous_updated_at).total_seconds() >= 60
+        except ValueError:
+            should_save = True
+        if history_quotes_usable:
+            rows_by_date[today] = {**previous_today, **current}
+        else:
+            should_save = False
+    else:
+        if history_quotes_usable:
+            rows_by_date[today] = current
+        else:
+            should_save = False
+    rows = sorted(rows_by_date.values(), key=lambda row: row["date"])
+    if should_save:
+        save_portfolio_history(user_id, rows)
+
+    points: list[dict[str, Any]] = []
+    cumulative = {
+        "portfolio": 1.0,
+        "001015": 1.0,
+        "VOO": 1.0,
+        "QQQ": 1.0,
+    }
+    for row_index, row in enumerate(rows):
+        portfolio_daily = coerce_optional_float(row.get("portfolio_daily_pct"))
+        if portfolio_daily is None:
+            portfolio_daily = 0.0
+        cumulative["portfolio"] *= 1.0 + portfolio_daily / 100.0
+        point = {
+            "date": row["date"],
+            "portfolio_return_pct": (cumulative["portfolio"] - 1.0) * 100.0,
+            "portfolio_daily_pct": portfolio_daily,
+        }
+        daily_pcts = row.get("benchmark_daily_pct") or {}
+        if isinstance(daily_pcts, dict):
+            for sym in benchmark_symbols:
+                daily_pct = coerce_optional_float(daily_pcts.get(sym))
+                if daily_pct is None:
+                    if row_index == 0:
+                        daily_pct = 0.0
+                        point[f"{sym}_return_pct"] = 0.0
+                        point[f"{sym}_daily_pct"] = 0.0
+                        continue
+                    point[f"{sym}_return_pct"] = None
+                    point[f"{sym}_daily_pct"] = None
+                    continue
+                cumulative[sym] *= 1.0 + daily_pct / 100.0
+                point[f"{sym}_return_pct"] = (cumulative[sym] - 1.0) * 100.0
+                point[f"{sym}_daily_pct"] = daily_pct
+        points.append(point)
+
+    return {
+        "points": points,
+        "started_on": rows[0]["date"] if rows else today,
+        "updated_at": rows[-1].get("updated_at", "") if rows else "",
+        "date_rule": "北京时间 06:00 切换投资日；凌晨美股交易归入前一投资日",
+        "return_rule": "曲线按每日涨跌幅复利累计；当日未完整交易部分使用估值、盘前或夜盘作预计",
+        "estimated_symbols": rows[-1].get("estimated_symbols", []) if rows else [],
+        "benchmark_labels": {"001015": "沪深300", "VOO": "VOO", "QQQ": "QQQ"},
+    }
+
+
+def performance_history_date(now: datetime | None = None) -> str:
+    current = now or datetime.now(TZ_SHANGHAI)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=TZ_SHANGHAI)
+    if current.hour < 6:
+        current = current - timedelta(days=1)
+    return current.date().isoformat()
+
+
+def is_symbol_daily_history_ready(symbol: str, investment_day: str, now: datetime | None = None) -> bool:
+    if symbol in USD_SYMBOLS:
+        return is_us_daily_history_ready(symbol, investment_day, now)
+    return True
+
+
+def is_symbol_daily_history_estimated(
+    symbol: str,
+    investment_day: str,
+    now: datetime | None = None,
+    quote: Any = None,
+) -> bool:
+    if symbol in USD_SYMBOLS:
+        return not is_us_daily_history_ready(symbol, investment_day, now)
+    if symbol == "001015":
+        source = str((quote or {}).get("source") or "")
+        return "估算" in source or "估值" in source
+    return False
+
+
+def is_us_daily_history_ready(_: str, investment_day: str, now: datetime | None = None) -> bool:
+    current = now or datetime.now(TZ_SHANGHAI)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=TZ_SHANGHAI)
+    ny_now = current.astimezone(NY_TZ)
+    if ny_now.date().isoformat() != investment_day:
+        return False
+    if ny_now.weekday() >= 5:
+        return False
+    return ny_now.hour * 60 + ny_now.minute >= 9 * 60 + 30
+
+
+def is_history_quote_usable(quote: Any) -> bool:
+    if not isinstance(quote, dict):
+        return False
+    try:
+        price = float(quote.get("price") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if price <= 0:
+        return False
+    source = str(quote.get("source") or "").lower()
+    return "fallback" not in source
+
+
+def coerce_optional_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out
+
+
+def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_day: str, now: datetime) -> float:
+    if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() == "closed":
+        return 0.0
+    try:
+        return float(quote.get("change_pct", 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def daily_pct_for_current_history_quote(symbol: str, investment_day: str, now: datetime, quote: dict[str, Any]) -> float:
+    if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() == "closed":
+        return 0.0
+    return history_daily_pct_for_symbol(symbol, quote, investment_day, now)
+
+
 def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     market = fetch_quotes()
     target_weights = effective_target_weights()
@@ -610,9 +1050,32 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         if total_value_cny > 0
         else 0.0
     )
+    history_day = performance_history_date()
+    history_now = datetime.now(TZ_SHANGHAI)
+    history_weighted_daily_pct = (
+        sum(
+            (value_cny_by_symbol[s] / total_value_cny)
+            * history_daily_pct_for_symbol(s, quotes[s], history_day, history_now)
+            for s in ALL_SYMBOLS
+        )
+        if total_value_cny > 0
+        else 0.0
+    )
     weighted_daily_change_cny = sum(
         _daily_amount(value_cny_by_symbol.get(s, 0.0), float(quotes[s].get("change_pct", 0.0)))
         for s in ALL_SYMBOLS
+    )
+    total_pnl_cny = total_value_cny - total_cost_cny
+    total_pnl_pct = total_pnl_cny / total_cost_cny * 100.0 if total_cost_cny > 0 else 0.0
+    performance_history = build_performance_history(
+        user_id,
+        quotes,
+        holdings,
+        fx,
+        total_assets_cny,
+        total_cost_cny,
+        total_pnl_pct,
+        history_weighted_daily_pct,
     )
 
     return {
@@ -627,8 +1090,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "total_cost_cny": total_cost_cny,
             "cash_total_cny": cash_total_cny,
             "total_assets_cny": total_assets_cny,
-            "total_pnl_cny": total_value_cny - total_cost_cny,
-            "total_pnl_pct": (total_value_cny - total_cost_cny) / total_cost_cny * 100.0 if total_cost_cny > 0 else 0.0,
+            "total_pnl_cny": total_pnl_cny,
+            "total_pnl_pct": total_pnl_pct,
             "weighted_daily_pct": weighted_daily_pct,
             "weighted_daily_change_cny": weighted_daily_change_cny,
             "weighted_daily_change_usd": weighted_daily_change_cny / fx if fx > 0 else 0.0,
@@ -637,6 +1100,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "visualizations": build_visualizations(rows, balances, value_cny_by_symbol, fx),
         "targets": target_weights,
         "satellite_targets": load_satellite_targets(),
+        "performance_history": performance_history,
         "rebalance": build_rebalance_v2(user_id, rows, balances, market, value_cny_by_symbol, fx),
     }
 

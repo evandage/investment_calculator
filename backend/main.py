@@ -22,7 +22,7 @@ from .market_data import (
     stop_futu_quote_subscription,
 )
 from .ohlcv import fetch_ohlcv
-from .portfolio import build_dashboard, confirm_trades, save_rebalance_budget
+from .portfolio import build_dashboard, confirm_trades, save_rebalance_budget, start_performance_history_scheduler
 from .storage import load_balances, load_holdings, load_satellite_targets, save_balances, save_holdings, save_satellite_targets
 
 
@@ -92,6 +92,7 @@ def root() -> dict[str, str]:
 @app.on_event("startup")
 def startup() -> None:
     threading.Thread(target=start_futu_quote_subscription, daemon=True).start()
+    threading.Thread(target=start_performance_history_scheduler, daemon=True).start()
 
 
 @app.on_event("shutdown")

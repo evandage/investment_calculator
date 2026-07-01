@@ -377,6 +377,123 @@ function Visualizations({ data }) {
   );
 }
 
+function PerformanceChart({ history }) {
+  const points = history?.points || [];
+  const latest = points[points.length - 1];
+  const series = [
+    ["portfolio_return_pct", "我的组合", "#1d4ed8", "rgba(37, 99, 235, 0.20)", "solid", 4.5],
+    ["001015_return_pct", "沪深300", "#a16207", "rgba(0,0,0,0)", "solid", 2.3],
+    ["VOO_return_pct", "VOO", "#8b5cf6", "rgba(0,0,0,0)", "solid", 2.5],
+    ["QQQ_return_pct", "QQQ", "#7dd3fc", "rgba(0,0,0,0)", "solid", 2.8],
+  ];
+  const figure = useMemo(() => {
+    const dates = points.map((point) => point.date);
+    return {
+      data: series.map(([key, name, color, fillcolor, dash, width]) => {
+        const isPortfolio = key === "portfolio_return_pct";
+        return {
+          type: "scatter",
+          mode: points.length > 1 ? "lines+markers" : "markers",
+          name,
+          x: dates,
+          y: points.map((point) => point[key]),
+          customdata: points.map((point) => point[key.replace("_return_pct", "_daily_pct")]),
+          connectgaps: false,
+          fill: isPortfolio ? "tozeroy" : "none",
+          fillcolor,
+          line: {
+            color,
+            width,
+            shape: "spline",
+            smoothing: 0.65,
+            dash,
+          },
+          marker: {
+            color,
+            size: isPortfolio ? 9 : 6,
+            line: { color: "#0f172a", width: 1.2 },
+          },
+          hovertemplate: "%{x}<br>%{fullData.name}<br>累计: %{y:.2f}%<br>当日: %{customdata:.2f}%<extra></extra>",
+        };
+      }),
+      layout: {
+        autosize: true,
+        height: 430,
+        margin: { l: 58, r: 24, t: 18, b: 44 },
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(2,6,23,0.18)",
+        font: { color: "#cbd5e1", family: "Inter, Microsoft YaHei, system-ui, sans-serif" },
+        xaxis: {
+          type: "date",
+          showgrid: false,
+          linecolor: "rgba(148, 163, 184, 0.24)",
+          tickfont: { color: "#94a3b8" },
+        },
+        yaxis: {
+          title: { text: "收益率", font: { color: "#94a3b8" } },
+          ticksuffix: "%",
+          zeroline: true,
+          zerolinecolor: "rgba(226, 232, 240, 0.42)",
+          gridcolor: "rgba(148, 163, 184, 0.12)",
+          linecolor: "rgba(148, 163, 184, 0.24)",
+          tickfont: { color: "#94a3b8" },
+        },
+        legend: {
+          orientation: "h",
+          x: 0,
+          xanchor: "left",
+          y: 1.12,
+          yanchor: "bottom",
+          font: { color: "#cbd5e1" },
+        },
+        hovermode: "x unified",
+        shapes: [
+          {
+            type: "rect",
+            xref: "paper",
+            yref: "paper",
+            x0: 0,
+            y0: 0,
+            x1: 1,
+            y1: 1,
+            fillcolor: "rgba(15, 23, 42, 0.26)",
+            line: { width: 0 },
+            layer: "below",
+          },
+        ],
+      },
+      config: {
+        displayModeBar: false,
+        responsive: true,
+      },
+    };
+  }, [points]);
+
+  return (
+    <section className="chartPanel performancePanel">
+      <div className="sectionHeader compactHeader">
+        <h2>累计日收益走势</h2>
+        <span className="muted">
+          单日收益复利累计 · 当日可含估值/夜盘预计 · 投资日 {history?.started_on || "-"} 至 {latest?.date || "-"}
+        </span>
+      </div>
+      <div className="performanceStats">
+        {series.map(([key, name, color]) => (
+          <div className="performanceStat" key={key} style={{ "--series-color": color }}>
+            <span>{name}</span>
+            <strong className={tone(latest?.[key])}>{latest?.[key] == null ? "-" : fmtPct(latest[key])}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="performancePlot">
+        <Suspense fallback={<div className="plotLoading">加载图表中...</div>}>
+          <Plot data={figure.data} layout={figure.layout} config={figure.config} useResizeHandler style={{ width: "100%", height: "100%" }} />
+        </Suspense>
+      </div>
+    </section>
+  );
+}
+
 function LightweightChart({ bars, showExtended }) {
   const hostRef = useRef(null);
 
@@ -1155,6 +1272,7 @@ function DashboardPage({ data }) {
   return (
     <>
       <Summary data={data} />
+      <PerformanceChart history={data.performance_history} />
       <DailyCards cards={data.daily_cards} />
       <Visualizations data={data} />
     </>
