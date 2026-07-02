@@ -594,34 +594,81 @@ def completed_portfolio_daily_pct(
     day: str,
     histories: dict[str, dict[str, float]],
     fx: float,
+    day_trades: list[dict[str, Any]] | None = None,
 ) -> tuple[float, dict[str, float]]:
     symbol_daily_pct: dict[str, float] = {}
-    weights: dict[str, float] = {}
-    total_prev_value = 0.0
+    symbol_basis: dict[str, float] = {}
+    symbol_pnl: dict[str, float] = {}
     prev_day = previous_day(day)
-    for sym, holding in holdings_snapshot.items():
-        shares = float(holding.get("shares", 0.0) or 0.0)
-        if shares <= 0:
+
+    trades_by_symbol: dict[str, list[dict[str, Any]]] = {}
+    for trade in day_trades or []:
+        if str(trade.get("trade_date") or "")[:10] != day:
             continue
+        sym = str(trade.get("symbol", "")).upper()
+        if not sym:
+            continue
+        trades_by_symbol.setdefault(sym, []).append(trade)
+
+    for sym, holding in holdings_snapshot.items():
+        close_price = close_on(histories.get(sym, {}), day)
         prev_price = close_on_or_before(histories.get(sym, {}), prev_day)
         if prev_price is None:
             prev_price = float(holding.get("avg_cost", 0.0) or 0.0)
-        if prev_price <= 0:
+        if not close_price or prev_price <= 0:
             continue
+
+        close_shares = max(0.0, float(holding.get("shares", 0.0) or 0.0))
+        old_shares = close_shares
+        buy_lots: list[tuple[float, float]] = []
+        sell_lots: list[tuple[float, float]] = []
+        for trade in trades_by_symbol.get(sym, []):
+            shares = max(0.0, float(trade.get("shares", 0.0) or 0.0))
+            amount = max(0.0, float(trade.get("amount_usd", 0.0) or 0.0))
+            if shares <= 0 or amount <= 0:
+                continue
+            price = amount / shares
+            if str(trade.get("action", "buy")).lower() == "sell":
+                sell_lots.append((shares, price))
+                old_shares += shares
+            else:
+                buy_lots.append((shares, price))
+                old_shares -= shares
+        old_shares = max(0.0, old_shares)
+
         multiplier = fx if sym in USD_SYMBOLS else 1.0
-        value = shares * prev_price * multiplier
-        weights[sym] = value
-        total_prev_value += value
-    if total_prev_value <= 0:
+        remaining_old_shares = old_shares
+        basis = 0.0
+        pnl = 0.0
+
+        for shares, price in sell_lots:
+            sold_old_shares = min(remaining_old_shares, shares)
+            basis += sold_old_shares * prev_price * multiplier
+            pnl += sold_old_shares * (price - prev_price) * multiplier
+            remaining_old_shares -= sold_old_shares
+
+        basis += remaining_old_shares * prev_price * multiplier
+        pnl += remaining_old_shares * (close_price - prev_price) * multiplier
+
+        for shares, price in buy_lots:
+            basis += shares * price * multiplier
+            pnl += shares * (close_price - price) * multiplier
+
+        if basis <= 0:
+            continue
+        symbol_basis[sym] = basis
+        symbol_pnl[sym] = pnl
+
+    total_basis = sum(symbol_basis.values())
+    if total_basis <= 0:
         return 0.0, symbol_daily_pct
-    total = 0.0
-    for sym, value in weights.items():
-        daily_pct = completed_daily_pct_for_symbol(sym, day, histories)
-        if daily_pct is None:
-            daily_pct = 0.0
+    total_pnl = 0.0
+    for sym, basis in symbol_basis.items():
+        pnl = symbol_pnl.get(sym, 0.0)
+        daily_pct = pnl / basis * 100.0
         symbol_daily_pct[sym] = daily_pct
-        total += value / total_prev_value * daily_pct
-    return total, symbol_daily_pct
+        total_pnl += pnl
+    return total_pnl / total_basis * 100.0, symbol_daily_pct
 
 
 def apply_trade_to_holdings(
@@ -710,7 +757,7 @@ def ensure_completed_performance_history(
         return rows
     for day in missing_days:
         holdings_snapshot = holdings_snapshot_for_day(day, holdings, sorted(rows_by_date.values(), key=lambda item: item["date"]), trades)
-        portfolio_daily_pct, symbol_daily_pct = completed_portfolio_daily_pct(holdings_snapshot, day, histories, fx)
+        portfolio_daily_pct, symbol_daily_pct = completed_portfolio_daily_pct(holdings_snapshot, day, histories, fx, trades)
         benchmark_daily_pct = {
             sym: (daily_pct if daily_pct is not None else 0.0)
             for sym in ("001015", "VOO", "QQQ")
@@ -1346,6 +1393,51 @@ def build_rebalance_v2(
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
     strategy_budget_usd = sum(float(row["suggested_buy_usd"]) for row in rows)
 
+    cny_total = sum(value_cny_by_symbol.values()) + float(balances.get("cash_usd", 0.0)) * fx + float(balances.get("cash_cny", 0.0))
+    for item in holding_rows:
+        if item["symbol"] != "001015":
+            continue
+        current_cny = float(item.get("value_cny", item.get("value", 0.0)) or 0.0)
+        target_pct = target_weights.get("001015", 0.0)
+        target_cny = target_pct * cny_total
+        gap_cny = target_cny - current_cny
+        rows.append(
+            {
+                "symbol": "001015",
+                "label": item["label"],
+                "currency": "CNY",
+                "phase": phase,
+                "action": "手动买入",
+                "signal": "手动",
+                "intensity": "normal",
+                "planned_buy_usd": 0.0,
+                "raw_planned_buy_usd": 0.0,
+                "planned_buy_formula": "沪深300为人民币标的，平仓页仅提供手动记录买入/卖出。",
+                "target_usd": target_cny,
+                "base_budget_usd": 0.0,
+                "signal_multiplier": 0.0,
+                "suggested_buy_usd": 0.0,
+                "raw_suggested_buy_usd": 0.0,
+                "suggested_cap_usd": 0.0,
+                "actual_bought_usd": 0.0,
+                "actual_sold_usd": 0.0,
+                "net_bought_usd": 0.0,
+                "planned_after_valuation_usd": 0.0,
+                "buy_difference_usd": gap_cny,
+                "month_start_value_usd": current_cny,
+                "gap_usd": gap_cny,
+                "drawdown_pct": item.get("drawdown_pct"),
+                "recent_5d_pct": item.get("recent_5d_pct"),
+                "target_pct": target_pct * 100.0,
+                "current_pct": current_cny / cny_total * 100.0 if cny_total > 0 else 0.0,
+                "forward_pe": item.get("forward_pe"),
+                "pe_band": pe_band_text("001015"),
+                "valuation_split_factor": 1.0,
+                "note": "人民币现金买入；成交金额填写 CNY，成交份额填写基金份额。",
+            }
+        )
+        break
+
     return {
         "month_key": month_key,
         "planned_new_cash_usd": planned_new_cash_usd,
@@ -1550,8 +1642,11 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
     touched_months: set[str] = set()
     for item in executions:
         sym = str(item.get("symbol", "")).upper()
-        if sym not in USD_SYMBOLS or sym == "SGOV":
+        if sym not in USD_SYMBOLS and sym != "001015":
             continue
+        if sym == "SGOV":
+            continue
+        is_cny_trade = sym == "001015"
         action = str(item.get("action", "buy")).lower()
         if action not in {"buy", "sell"}:
             raise ValueError(f"{sym} 的交易方向无效")
@@ -1577,17 +1672,24 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             if shares > old_shares + 1e-9:
                 raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
             holdings, sale_pnl = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
-            realized_pnl += sale_pnl
-            sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
-            total_sold += amount
+            if is_cny_trade:
+                balances["cash_cny"] = float(balances.get("cash_cny", 0.0)) + amount
+                balances["realized_cny"] = float(balances.get("realized_cny", 0.0)) + sale_pnl
+            else:
+                realized_pnl += sale_pnl
+                sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
+                total_sold += amount
         else:
             holdings, _ = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
-            amounts[sym] = float(amounts.get(sym, 0.0)) + amount
-            new_intensity = normalize_intensity(item.get("intensity", "normal"))
-            old_intensity = normalize_intensity(intensities.get(sym, "none"))
-            if INTENSITY_ORDER.get(new_intensity, 0) > INTENSITY_ORDER.get(old_intensity, 0):
-                intensities[sym] = new_intensity
-            total_bought += amount
+            if is_cny_trade:
+                balances["cash_cny"] = max(0.0, float(balances.get("cash_cny", 0.0)) - amount)
+            else:
+                amounts[sym] = float(amounts.get(sym, 0.0)) + amount
+                new_intensity = normalize_intensity(item.get("intensity", "normal"))
+                old_intensity = normalize_intensity(intensities.get(sym, "none"))
+                if INTENSITY_ORDER.get(new_intensity, 0) > INTENSITY_ORDER.get(old_intensity, 0):
+                    intensities[sym] = new_intensity
+                total_bought += amount
         usage["bought_amount_by_symbol"] = amounts
         usage["sold_amount_by_symbol"] = sold_amounts
         usage["bought_intensity_by_symbol"] = intensities

@@ -1098,6 +1098,10 @@ function EditableHoldingsPage({ data, onSaved }) {
 
 function Rebalance({ data, onSaved }) {
   const rows = data.rebalance.rows;
+  const currencyBySymbol = useMemo(
+    () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row.currency || "USD"])),
+    [data.holdings],
+  );
   const defaultTradeDate = formatShanghaiInputDate();
   const [editing, setEditing] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -1122,14 +1126,16 @@ function Rebalance({ data, onSaved }) {
     setInputs(next);
   }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month, defaultTradeDate]);
 
-  const tradeTotals = useMemo(() => Object.values(inputs).reduce(
+  const tradeTotals = useMemo(() => Object.entries(inputs).reduce(
     (totals, item) => {
-      const key = item.action === "sell" ? "sell" : "buy";
-      totals[key] += Number(item.amount_usd || 0);
+      const [symbol, value] = item;
+      const side = value.action === "sell" ? "sell" : "buy";
+      const currency = currencyBySymbol[symbol] === "CNY" ? "CNY" : "USD";
+      totals[`${side}_${currency}`] += Number(value.amount_usd || 0);
       return totals;
     },
-    { buy: 0, sell: 0 },
-  ), [inputs]);
+    { buy_USD: 0, sell_USD: 0, buy_CNY: 0, sell_CNY: 0 },
+  ), [inputs, currencyBySymbol]);
   const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
 
   function update(symbol, key, value) {
@@ -1205,7 +1211,11 @@ function Rebalance({ data, onSaved }) {
       </div>
       <div className="sectionHeader">
         <h2>平仓</h2>
-        <span className="muted">{data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} · 待买 {fmtMoney(tradeTotals.buy, "USD")} · 待卖 {fmtMoney(tradeTotals.sell, "USD")}</span>
+        <span className="muted">
+          {data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} ·
+          待买 {fmtMoney(tradeTotals.buy_USD, "USD")}{tradeTotals.buy_CNY ? ` / ${fmtMoney(tradeTotals.buy_CNY, "CNY")}` : ""} ·
+          待卖 {fmtMoney(tradeTotals.sell_USD, "USD")}{tradeTotals.sell_CNY ? ` / ${fmtMoney(tradeTotals.sell_CNY, "CNY")}` : ""}
+        </span>
       </div>
       <div className="rulesToolbar">
         <span className="muted">
@@ -1241,12 +1251,12 @@ function Rebalance({ data, onSaved }) {
                 <td>{Number(row.target_pct || 0).toFixed(2)}%</td>
                 <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
                 <td className="planCell">
-                  <div>{fmtMoney(row.planned_buy_usd, "USD")}</div>
+                  <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
                   {row.planned_buy_formula ? <div className="cellSubtext">{row.planned_buy_formula}</div> : null}
                 </td>
-                <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, "USD")}</td>
-                <td>{fmtMoney(row.net_bought_usd, "USD")}</td>
-                <td className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, "USD")}</td>
+                <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</td>
+                <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
+                <td className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</td>
                 <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
                 <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
                 <td className="note">{row.note}</td>
@@ -1288,7 +1298,7 @@ function Rebalance({ data, onSaved }) {
                     </td>
                     <td><input value={inputs[row.symbol]?.amount_usd ?? ""} onChange={(event) => update(row.symbol, "amount_usd", event.target.value)} inputMode="decimal" /></td>
                     <td><input value={inputs[row.symbol]?.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" /></td>
-                    <td>{fmtMoney(row.suggested_buy_usd, "USD")}</td>
+                    <td>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1313,7 +1323,7 @@ function Rebalance({ data, onSaved }) {
                 <td>{trade.trade_date || trade.date || "-"}</td>
                 <td>{trade.symbol}</td>
                 <td>{trade.action === "sell" ? "卖出" : "买入"}</td>
-                <td>{fmtMoney(trade.amount_usd, "USD")}</td>
+                <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
                 <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                 <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.intensity || "-"}</span></td>
               </tr>

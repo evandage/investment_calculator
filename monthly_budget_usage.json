@@ -45,6 +45,20 @@
         "TEM": "normal"
       },
       "updated_at": "2026-06-29T15:40:16+08:00"
+    },
+    "2026-07": {
+      "used_budget_usd": 169.97,
+      "planned_new_cash_usd": 700.0,
+      "planned_cash_by_month": {},
+      "bought_symbols": [
+        "QQQ"
+      ],
+      "bought_amount_by_symbol": {
+        "QQQ": 169.97
+      },
+      "sold_amount_by_symbol": {},
+      "bought_intensity_by_symbol": {},
+      "updated_at": "2026-07-02T13:09:34+08:00"
     }
   }
 }
