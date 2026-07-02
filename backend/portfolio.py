@@ -29,10 +29,12 @@ from .market_data import fetch_quotes
 from .storage import (
     load_monthly_usage,
     load_portfolio_history,
+    load_trade_records,
     load_satellite_targets,
     load_user_state,
     save_monthly_usage,
     save_portfolio_history,
+    save_trade_records,
     save_user_state,
 )
 
@@ -622,6 +624,64 @@ def completed_portfolio_daily_pct(
     return total, symbol_daily_pct
 
 
+def apply_trade_to_holdings(
+    holdings: dict[str, dict[str, float]],
+    trade: dict[str, Any],
+    *,
+    allow_oversell: bool = False,
+) -> tuple[dict[str, dict[str, float]], float]:
+    sym = str(trade.get("symbol", "")).upper()
+    if sym not in holdings:
+        return holdings, 0.0
+    action = str(trade.get("action", "buy")).lower()
+    shares = max(0.0, float(trade.get("shares", 0.0) or 0.0))
+    amount = max(0.0, float(trade.get("amount_usd", 0.0) or 0.0))
+    if shares <= 0 or amount <= 0:
+        return holdings, 0.0
+    old = holdings[sym]
+    old_shares = float(old.get("shares", 0.0) or 0.0)
+    old_cost = float(old.get("avg_cost", 0.0) or 0.0)
+    if action == "sell":
+        if shares > old_shares + 1e-9 and not allow_oversell:
+            raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
+        sell_shares = min(shares, old_shares)
+        new_shares = max(0.0, old_shares - sell_shares)
+        realized = amount - sell_shares * old_cost
+        holdings[sym] = {"shares": new_shares, "avg_cost": old_cost if new_shares > 1e-9 else 0.0}
+        return holdings, realized
+    price = amount / shares
+    new_shares = old_shares + shares
+    holdings[sym] = {"shares": new_shares, "avg_cost": (old_shares * old_cost + shares * price) / new_shares}
+    return holdings, 0.0
+
+
+def holdings_snapshot_for_day(
+    day: str,
+    current_holdings: dict[str, dict[str, float]],
+    finalized_rows: list[dict[str, Any]],
+    trades: list[dict[str, Any]],
+) -> dict[str, dict[str, float]]:
+    previous_rows = [row for row in finalized_rows if row.get("finalized") and str(row.get("date", "")) < day and row.get("holdings_snapshot")]
+    if previous_rows:
+        base = previous_rows[-1]["holdings_snapshot"]
+    else:
+        base = current_holdings
+    snapshot = {sym: {"shares": float(item.get("shares", 0.0) or 0.0), "avg_cost": float(item.get("avg_cost", 0.0) or 0.0)} for sym, item in base.items()}
+    start_date = previous_rows[-1]["date"] if previous_rows else ""
+    for trade in trades:
+        trade_date = str(trade.get("trade_date") or "")[:10]
+        if (not start_date or trade_date > start_date) and trade_date <= day:
+            snapshot, _ = apply_trade_to_holdings(snapshot, trade, allow_oversell=True)
+    return snapshot
+
+
+def invalidate_performance_history_from(user_id: str, start_day: str) -> None:
+    if not start_day:
+        return
+    rows = [row for row in load_portfolio_history(user_id) if str(row.get("date", "")) < start_day]
+    save_portfolio_history(user_id, rows)
+
+
 def ensure_completed_performance_history(
     user_id: str,
     holdings: dict[str, dict[str, float]],
@@ -638,16 +698,8 @@ def ensure_completed_performance_history(
     start_day = PERFORMANCE_HISTORY_START_DATE if not latest_finalized_date else (date.fromisoformat(latest_finalized_date) + timedelta(days=1)).isoformat()
 
     rows_by_date = {row["date"]: row for row in rows}
-    latest_snapshot = next(
-        (
-            row.get("holdings_snapshot")
-            for row in sorted(rows, key=lambda item: item["date"], reverse=True)
-            if row.get("holdings_snapshot")
-        ),
-        None,
-    )
-    holdings_snapshot = latest_snapshot if isinstance(latest_snapshot, dict) and latest_snapshot else holdings
-    symbols = set(holdings_snapshot) | {"001015", "VOO", "QQQ"}
+    trades = load_trade_records(user_id)
+    symbols = set(holdings) | {str(trade.get("symbol", "")).upper() for trade in trades} | {"001015", "VOO", "QQQ"}
     histories = fetch_close_histories(symbols)
     missing_days = [
         day
@@ -657,6 +709,7 @@ def ensure_completed_performance_history(
     if not missing_days:
         return rows
     for day in missing_days:
+        holdings_snapshot = holdings_snapshot_for_day(day, holdings, sorted(rows_by_date.values(), key=lambda item: item["date"]), trades)
         portfolio_daily_pct, symbol_daily_pct = completed_portfolio_daily_pct(holdings_snapshot, day, histories, fx)
         benchmark_daily_pct = {
             sym: (daily_pct if daily_pct is not None else 0.0)
@@ -1036,11 +1089,6 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     }
     daily_cards.insert(2, satellite_card)
 
-    weighted_daily_pct = (
-        sum((value_cny_by_symbol[s] / total_value_cny) * float(quotes[s].get("change_pct", 0.0)) for s in ALL_SYMBOLS)
-        if total_value_cny > 0
-        else 0.0
-    )
     history_day = performance_history_date()
     history_now = datetime.now(TZ_SHANGHAI)
     history_weighted_daily_pct = (
@@ -1052,8 +1100,9 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         if total_value_cny > 0
         else 0.0
     )
+    weighted_daily_pct = history_weighted_daily_pct
     weighted_daily_change_cny = sum(
-        _daily_amount(value_cny_by_symbol.get(s, 0.0), float(quotes[s].get("change_pct", 0.0)))
+        _daily_amount(value_cny_by_symbol.get(s, 0.0), history_daily_pct_for_symbol(s, quotes[s], history_day, history_now))
         for s in ALL_SYMBOLS
     )
     total_pnl_cny = total_value_cny - total_cost_cny
@@ -1093,6 +1142,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "satellite_targets": load_satellite_targets(),
         "performance_history": performance_history,
         "rebalance": build_rebalance_v2(user_id, rows, balances, market, value_cny_by_symbol, fx),
+        "trades": load_trade_records(user_id),
     }
 
 
@@ -1485,4 +1535,99 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
         "total_sold_usd": total_sold,
         "realized_pnl_usd": realized_pnl,
         "month_key": month_key,
+    }
+
+
+def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, Any]:
+    holdings, balances, _ = load_user_state(user_id)
+    now = datetime.now(TZ_SHANGHAI)
+    records = load_trade_records(user_id)
+    usage_by_month: dict[str, dict[str, Any]] = {}
+    total_bought = 0.0
+    total_sold = 0.0
+    realized_pnl = 0.0
+    earliest_trade_date = ""
+    touched_months: set[str] = set()
+    for item in executions:
+        sym = str(item.get("symbol", "")).upper()
+        if sym not in USD_SYMBOLS or sym == "SGOV":
+            continue
+        action = str(item.get("action", "buy")).lower()
+        if action not in {"buy", "sell"}:
+            raise ValueError(f"{sym} 的交易方向无效")
+        amount = max(0.0, float(item.get("amount_usd", 0.0) or 0.0))
+        shares = max(0.0, float(item.get("shares", 0.0) or 0.0))
+        if amount <= 0 or shares <= 0:
+            continue
+        trade_date = str(item.get("trade_date") or item.get("date") or now.date().isoformat()).strip()[:10]
+        try:
+            date.fromisoformat(trade_date)
+        except ValueError as exc:
+            raise ValueError(f"{sym} 交易日期无效") from exc
+        month_key = trade_date[:7]
+        usage = usage_by_month.get(month_key)
+        if usage is None:
+            usage = load_monthly_usage(user_id, month_key)
+            usage_by_month[month_key] = usage
+        amounts = dict(usage.get("bought_amount_by_symbol", {}))
+        sold_amounts = dict(usage.get("sold_amount_by_symbol", {}))
+        intensities = dict(usage.get("bought_intensity_by_symbol", {}))
+        if action == "sell":
+            old_shares = float(holdings.get(sym, {}).get("shares", 0.0) or 0.0)
+            if shares > old_shares + 1e-9:
+                raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
+            holdings, sale_pnl = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
+            realized_pnl += sale_pnl
+            sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
+            total_sold += amount
+        else:
+            holdings, _ = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
+            amounts[sym] = float(amounts.get(sym, 0.0)) + amount
+            new_intensity = normalize_intensity(item.get("intensity", "normal"))
+            old_intensity = normalize_intensity(intensities.get(sym, "none"))
+            if INTENSITY_ORDER.get(new_intensity, 0) > INTENSITY_ORDER.get(old_intensity, 0):
+                intensities[sym] = new_intensity
+            total_bought += amount
+        usage["bought_amount_by_symbol"] = amounts
+        usage["sold_amount_by_symbol"] = sold_amounts
+        usage["bought_intensity_by_symbol"] = intensities
+        touched_months.add(month_key)
+        records.append(
+            {
+                "id": f"{now.strftime('%Y%m%d%H%M%S')}-{len(records)}-{sym}",
+                "trade_date": trade_date,
+                "symbol": sym,
+                "action": action,
+                "amount_usd": amount,
+                "shares": shares,
+                "price": amount / shares,
+                "intensity": normalize_intensity(item.get("intensity", "normal")),
+                "created_at": now.isoformat(timespec="seconds"),
+            }
+        )
+        earliest_trade_date = trade_date if not earliest_trade_date else min(earliest_trade_date, trade_date)
+    balances["cash_usd"] = max(0.0, float(balances.get("cash_usd", 0.0)) - total_bought + total_sold)
+    balances["realized_usd"] = float(balances.get("realized_usd", 0.0)) + realized_pnl
+    save_user_state(user_id, holdings, balances)
+    save_trade_records(user_id, records)
+    for month_key in sorted(touched_months):
+        usage = usage_by_month[month_key]
+        save_monthly_usage(
+            user_id,
+            month_key,
+            planned_new_cash_usd=float(usage["planned_new_cash_usd"]),
+            planned_cash_by_month=dict(usage.get("planned_cash_by_month", {})),
+            bought_amount_by_symbol=dict(usage.get("bought_amount_by_symbol", {})),
+            bought_intensity_by_symbol=dict(usage.get("bought_intensity_by_symbol", {})),
+            sold_amount_by_symbol=dict(usage.get("sold_amount_by_symbol", {})),
+        )
+    if earliest_trade_date:
+        invalidate_performance_history_from(user_id, earliest_trade_date)
+    return {
+        "saved": True,
+        "total_bought_usd": total_bought,
+        "total_sold_usd": total_sold,
+        "realized_pnl_usd": realized_pnl,
+        "month_key": now.strftime("%Y-%m"),
+        "trades": load_trade_records(user_id),
     }

@@ -59,6 +59,14 @@ function formatShanghaiTick(time, tickMarkType) {
   return shanghaiDateFormatter.format(date).replace(/\//g, "-");
 }
 
+function formatShanghaiInputDate(date = new Date()) {
+  const parts = shanghaiDateFormatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value || "1970";
+  const month = parts.find((part) => part.type === "month")?.value || "01";
+  const day = parts.find((part) => part.type === "day")?.value || "01";
+  return `${year}-${month}-${day}`;
+}
+
 function isRegularUsSession(time) {
   if (typeof time !== "number") return true;
   const parts = newYorkSessionFormatter.formatToParts(new Date(time * 1000));
@@ -232,13 +240,14 @@ function Header({ data, onRefresh }) {
 
 function PageNav({ page, setPage }) {
   const items = [
-    ["dashboard", "Dashboard"],
-    ["holdings", "我的持仓"],
-    ["rebalance", "再平衡建议"],
-    ["kline", "K线"],
+    ["dashboard", "主页"],
+    ["holdings", "持仓"],
+    ["rebalance", "平仓"],
+    ["kline", "看板"],
   ];
+  const activeIndex = Math.max(0, items.findIndex(([key]) => key === page));
   return (
-    <nav className="pageNav">
+    <nav className="pageNav" style={{ "--active-index": activeIndex }}>
       {items.map(([key, label]) => (
         <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
           {label}
@@ -768,8 +777,8 @@ function KlinePage() {
   return (
     <section className="chartPanel technicalPanel">
       <div className="sectionHeader">
-        <h2>K线</h2>
-        <button onClick={load} disabled={loading}>刷新K线</button>
+        <h2>看板</h2>
+        <button onClick={load} disabled={loading}>刷新看板</button>
       </div>
       <div className="toolbarRow">
         <div className="segmented">
@@ -935,6 +944,7 @@ function EditableHoldingsPage({ data, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [savingTargets, setSavingTargets] = useState(false);
   const [targetInputs, setTargetInputs] = useState({});
+  const [editingTargets, setEditingTargets] = useState(false);
   const [message, setMessage] = useState("");
 
   function resetDraft() {
@@ -999,6 +1009,7 @@ function EditableHoldingsPage({ data, onSaved }) {
       if (!response.ok) throw new Error(`satellite targets HTTP ${response.status}`);
       await onSaved();
       setMessage("卫星目标比例已保存");
+      setEditingTargets(false);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1011,8 +1022,8 @@ function EditableHoldingsPage({ data, onSaved }) {
   return (
     <section>
       <div className="sectionHeader">
-        <h2>我的持仓</h2>
-        <div className="actions inlineActions">
+        <h2>持仓</h2>
+        <div className="actions inlineActions" style={{ display: "none" }}>
           {editing ? <button onClick={() => { resetDraft(); setEditing(false); }} disabled={saving}>取消编辑</button> : null}
           {editing ? (
             <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 保存持仓</button>
@@ -1037,14 +1048,21 @@ function EditableHoldingsPage({ data, onSaved }) {
           <h3>卫星仓位目标比例</h3>
           <div className="actions inlineActions">
             <span className="muted">合计 {targetTotal.toFixed(2)}%</span>
-            <button className="primary" onClick={saveTargets} disabled={savingTargets}><Save size={16} /> 保存目标</button>
+            {editingTargets ? <button onClick={() => { resetDraft(); setEditingTargets(false); }} disabled={savingTargets}>取消</button> : null}
+            {editingTargets ? (
+              <button className="primary" onClick={saveTargets} disabled={savingTargets}><Save size={16} /> 保存目标</button>
+            ) : (
+              <button className="primary" onClick={() => setEditingTargets(true)}>编辑</button>
+            )}
           </div>
         </div>
-        <div className="targetEditGrid">
-          {Object.entries(targetInputs).map(([symbol, value]) => (
-            <label key={symbol}>{symbol}<input value={value} onChange={(event) => updateTarget(symbol, event.target.value)} inputMode="decimal" /></label>
-          ))}
-        </div>
+        {editingTargets ? (
+          <div className="targetEditGrid">
+            {Object.entries(targetInputs).map(([symbol, value]) => (
+              <label key={symbol}>{symbol}<input value={value} onChange={(event) => updateTarget(symbol, event.target.value)} inputMode="decimal" /></label>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="tableWrap">
         <table className="editableHoldingsTable">
@@ -1080,6 +1098,7 @@ function EditableHoldingsPage({ data, onSaved }) {
 
 function Rebalance({ data, onSaved }) {
   const rows = data.rebalance.rows;
+  const defaultTradeDate = formatShanghaiInputDate();
   const [editing, setEditing] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [inputs, setInputs] = useState({});
@@ -1092,10 +1111,16 @@ function Rebalance({ data, onSaved }) {
     if (editing) return;
     const next = {};
     rows.forEach((row) => {
-      next[row.symbol] = { action: "buy", amount_usd: Number(row.suggested_buy_usd || 0).toFixed(2), shares: "", intensity: row.intensity || "normal" };
+      next[row.symbol] = {
+        action: "buy",
+        trade_date: defaultTradeDate,
+        amount_usd: Number(row.suggested_buy_usd || 0).toFixed(2),
+        shares: "",
+        intensity: row.intensity || "normal",
+      };
     });
     setInputs(next);
-  }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month]);
+  }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month, defaultTradeDate]);
 
   const tradeTotals = useMemo(() => Object.values(inputs).reduce(
     (totals, item) => {
@@ -1116,14 +1141,24 @@ function Rebalance({ data, onSaved }) {
   }
 
   function clearPending() {
-    setInputs((prev) => Object.fromEntries(Object.keys(prev).map((symbol) => [symbol, { ...prev[symbol], amount_usd: "0.00", shares: "0" }])));
+    setInputs((prev) => Object.fromEntries(Object.keys(prev).map((symbol) => [
+      symbol,
+      { ...prev[symbol], trade_date: prev[symbol]?.trade_date || defaultTradeDate, amount_usd: "0.00", shares: "0" },
+    ])));
   }
 
   async function save() {
     setSaving(true);
     try {
       const executions = Object.entries(inputs)
-        .map(([symbol, item]) => ({ symbol, action: item.action || "buy", amount_usd: Number(item.amount_usd || 0), shares: Number(item.shares || 0), intensity: item.intensity }))
+        .map(([symbol, item]) => ({
+          symbol,
+          action: item.action || "buy",
+          trade_date: item.trade_date || defaultTradeDate,
+          amount_usd: Number(item.amount_usd || 0),
+          shares: Number(item.shares || 0),
+          intensity: item.intensity,
+        }))
         .filter((item) => item.amount_usd > 0 && item.shares > 0);
       const response = await fetch(`${API_BASE}/api/rebalance/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, executions }) });
       if (!response.ok) {
@@ -1169,7 +1204,7 @@ function Rebalance({ data, onSaved }) {
         </div>
       </div>
       <div className="sectionHeader">
-        <h2>再平衡建议</h2>
+        <h2>平仓</h2>
         <span className="muted">{data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} · 待买 {fmtMoney(tradeTotals.buy, "USD")} · 待卖 {fmtMoney(tradeTotals.sell, "USD")}</span>
       </div>
       <div className="rulesToolbar">
@@ -1229,7 +1264,7 @@ function Rebalance({ data, onSaved }) {
         <>
           <div className="tableWrap">
             <table>
-              <thead><tr><th>标的</th><th>方向</th><th>当前档位</th><th>成交金额</th><th>成交股数</th><th>建议买入</th></tr></thead>
+              <thead><tr><th>标的</th><th>方向</th><th>日期</th><th>当前档位</th><th>成交金额</th><th>成交股数</th><th>建议买入</th></tr></thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.symbol}>
@@ -1240,6 +1275,7 @@ function Rebalance({ data, onSaved }) {
                         <option value="sell">卖出</option>
                       </select>
                     </td>
+                    <td><input type="date" value={inputs[row.symbol]?.trade_date || defaultTradeDate} onChange={(event) => update(row.symbol, "trade_date", event.target.value)} /></td>
                     <td>
                       <select className={tierClass(inputs[row.symbol]?.intensity || row.intensity)} value={inputs[row.symbol]?.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
                         <option value="normal">普通</option>
@@ -1264,6 +1300,30 @@ function Rebalance({ data, onSaved }) {
           </div>
         </>
       ) : null}
+      <div className="sectionHeader subHeader">
+        <h2>交易记录</h2>
+        <span className="muted">买入或卖出后会按交易日期重算该日之后的收益曲线</span>
+      </div>
+      <div className="tableWrap">
+        <table>
+          <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>金额</th><th>股数</th><th>档位</th></tr></thead>
+          <tbody>
+            {(data.trades || []).slice().reverse().slice(0, 20).map((trade, index) => (
+              <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
+                <td>{trade.trade_date || trade.date || "-"}</td>
+                <td>{trade.symbol}</td>
+                <td>{trade.action === "sell" ? "卖出" : "买入"}</td>
+                <td>{fmtMoney(trade.amount_usd, "USD")}</td>
+                <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.intensity || "-"}</span></td>
+              </tr>
+            ))}
+            {!(data.trades || []).length ? (
+              <tr><td colSpan={6} className="muted">暂无交易记录</td></tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

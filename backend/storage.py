@@ -16,6 +16,7 @@ from .config import (
     SATELLITE_SYMBOLS,
     SATELLITE_TARGETS_FILE,
     TZ_SHANGHAI,
+    TRADE_RECORDS_FILE,
 )
 
 
@@ -330,3 +331,86 @@ def save_portfolio_history(user_id: str, rows: list[dict[str, Any]]) -> None:
     user_key = str(user_id or "local").strip() or "local"
     store[user_key] = rows
     _write_json(PORTFOLIO_HISTORY_FILE, store)
+
+
+def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
+    raw = _read_json(TRADE_RECORDS_FILE, {})
+    user_key = str(user_id or "local").strip() or "local"
+    rows = raw.get(user_key, []) if isinstance(raw, dict) else []
+    if not isinstance(rows, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        symbol = str(item.get("symbol", "")).upper()
+        if symbol not in ASSET_META:
+            continue
+        action = str(item.get("action", "buy")).lower()
+        if action not in {"buy", "sell"}:
+            continue
+        try:
+            shares = max(0.0, float(item.get("shares", 0.0)))
+            amount = max(0.0, float(item.get("amount_usd", item.get("amount", 0.0))))
+        except (TypeError, ValueError):
+            continue
+        if shares <= 0 or amount <= 0:
+            continue
+        trade_date = str(item.get("trade_date") or item.get("date") or "").strip()
+        if not trade_date:
+            continue
+        out.append(
+            {
+                "id": str(item.get("id") or f"{trade_date}-{symbol}-{action}-{len(out)}"),
+                "trade_date": trade_date[:10],
+                "symbol": symbol,
+                "action": action,
+                "amount_usd": amount,
+                "shares": shares,
+                "price": amount / shares if shares > 0 else 0.0,
+                "intensity": str(item.get("intensity") or "normal"),
+                "created_at": str(item.get("created_at") or ""),
+            }
+        )
+    return sorted(out, key=lambda row: (row["trade_date"], row["created_at"], row["id"]))
+
+
+def save_trade_records(user_id: str, rows: list[dict[str, Any]]) -> None:
+    raw = _read_json(TRADE_RECORDS_FILE, {})
+    store = raw if isinstance(raw, dict) else {}
+    user_key = str(user_id or "local").strip() or "local"
+    store[user_key] = load_trade_records_from_rows(rows)
+    _write_json(TRADE_RECORDS_FILE, store)
+
+
+def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        symbol = str(item.get("symbol", "")).upper()
+        action = str(item.get("action", "buy")).lower()
+        if symbol not in ASSET_META or action not in {"buy", "sell"}:
+            continue
+        try:
+            shares = max(0.0, float(item.get("shares", 0.0)))
+            amount = max(0.0, float(item.get("amount_usd", item.get("amount", 0.0))))
+        except (TypeError, ValueError):
+            continue
+        trade_date = str(item.get("trade_date") or item.get("date") or "").strip()[:10]
+        if shares <= 0 or amount <= 0 or not trade_date:
+            continue
+        normalized.append(
+            {
+                "id": str(item.get("id") or f"{trade_date}-{symbol}-{action}-{len(normalized)}"),
+                "trade_date": trade_date,
+                "symbol": symbol,
+                "action": action,
+                "amount_usd": amount,
+                "shares": shares,
+                "price": amount / shares if shares > 0 else 0.0,
+                "intensity": str(item.get("intensity") or "normal"),
+                "created_at": str(item.get("created_at") or ""),
+            }
+        )
+    return normalized

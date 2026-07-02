@@ -41,6 +41,7 @@ class SatelliteTargetsPayload(BaseModel):
 class ExecutionItem(BaseModel):
     symbol: str
     action: str = "buy"
+    trade_date: str | None = None
     amount_usd: float
     shares: float
     intensity: str = "normal"

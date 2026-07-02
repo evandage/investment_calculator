@@ -9,6 +9,7 @@ BALANCES_FILE = ROOT_DIR / "balances.json"
 MONTHLY_USAGE_FILE = ROOT_DIR / "monthly_budget_usage.json"
 SATELLITE_TARGETS_FILE = ROOT_DIR / "satellite_targets.json"
 PORTFOLIO_HISTORY_FILE = ROOT_DIR / "portfolio_history.json"
+TRADE_RECORDS_FILE = ROOT_DIR / "trades.json"
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 
