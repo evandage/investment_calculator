@@ -352,6 +352,8 @@ def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
         try:
             shares = max(0.0, float(item.get("shares", 0.0)))
             amount = max(0.0, float(item.get("amount_usd", item.get("amount", 0.0))))
+            cost_basis = float(item.get("cost_basis", 0.0) or 0.0)
+            realized_pnl = float(item.get("realized_pnl", 0.0) or 0.0)
         except (TypeError, ValueError):
             continue
         if shares <= 0 or amount <= 0:
@@ -368,6 +370,8 @@ def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
                 "amount_usd": amount,
                 "shares": shares,
                 "price": amount / shares if shares > 0 else 0.0,
+                "cost_basis": cost_basis,
+                "realized_pnl": realized_pnl,
                 "intensity": str(item.get("intensity") or "normal"),
                 "created_at": str(item.get("created_at") or ""),
             }
@@ -395,6 +399,8 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
         try:
             shares = max(0.0, float(item.get("shares", 0.0)))
             amount = max(0.0, float(item.get("amount_usd", item.get("amount", 0.0))))
+            cost_basis = float(item.get("cost_basis", 0.0) or 0.0)
+            realized_pnl = float(item.get("realized_pnl", 0.0) or 0.0)
         except (TypeError, ValueError):
             continue
         trade_date = str(item.get("trade_date") or item.get("date") or "").strip()[:10]
@@ -409,6 +415,8 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
                 "amount_usd": amount,
                 "shares": shares,
                 "price": amount / shares if shares > 0 else 0.0,
+                "cost_basis": cost_basis,
+                "realized_pnl": realized_pnl,
                 "intensity": str(item.get("intensity") or "normal"),
                 "created_at": str(item.get("created_at") or ""),
             }

@@ -1104,11 +1104,18 @@ function Rebalance({ data, onSaved }) {
   );
   const defaultTradeDate = formatShanghaiInputDate();
   const [editing, setEditing] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [inputs, setInputs] = useState({});
   const [budgetInputs, setBudgetInputs] = useState({});
+  const [balanceInputs, setBalanceInputs] = useState({});
+  const [editingBalances, setEditingBalances] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingBudget, setSavingBudget] = useState(false);
+  const [savingBalances, setSavingBalances] = useState(false);
+  const [deletingTradeId, setDeletingTradeId] = useState("");
+  const [balanceMessage, setBalanceMessage] = useState("");
+  const [tradeMessage, setTradeMessage] = useState("");
 
   useEffect(() => {
     setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
@@ -1125,6 +1132,21 @@ function Rebalance({ data, onSaved }) {
     });
     setInputs(next);
   }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month, defaultTradeDate]);
+
+  function resetBalanceDraft() {
+    setBalanceInputs({
+      cash_usd: String(data.balances?.cash_usd ?? 0),
+      cash_cny: String(data.balances?.cash_cny ?? 0),
+      realized_usd: String(data.balances?.realized_usd ?? 0),
+      realized_cny: String(data.balances?.realized_cny ?? 0),
+      sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
+    });
+  }
+
+  useEffect(() => {
+    if (editingBalances) return;
+    resetBalanceDraft();
+  }, [data.balances, editingBalances]);
 
   const tradeTotals = useMemo(() => Object.entries(inputs).reduce(
     (totals, item) => {
@@ -1146,6 +1168,10 @@ function Rebalance({ data, onSaved }) {
     setBudgetInputs((prev) => ({ ...prev, [month]: value }));
   }
 
+  function updateBalance(key, value) {
+    setBalanceInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
   function clearPending() {
     setInputs((prev) => Object.fromEntries(Object.keys(prev).map((symbol) => [
       symbol,
@@ -1155,6 +1181,7 @@ function Rebalance({ data, onSaved }) {
 
   async function save() {
     setSaving(true);
+    setTradeMessage("");
     try {
       const executions = Object.entries(inputs)
         .map(([symbol, item]) => ({
@@ -1173,8 +1200,37 @@ function Rebalance({ data, onSaved }) {
       }
       setEditing(false);
       await onSaved();
+      setTradeMessage("交易已保存");
+    } catch (err) {
+      setTradeMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deleteTrade(trade) {
+    const tradeId = String(trade.id || "");
+    if (!tradeId) return;
+    const confirmed = window.confirm(`确认撤销 ${trade.trade_date || trade.date || ""} ${trade.symbol} ${trade.action === "sell" ? "卖出" : "买入"} 记录？`);
+    if (!confirmed) return;
+    setDeletingTradeId(tradeId);
+    setTradeMessage("");
+    try {
+      const response = await fetch(`${API_BASE}/api/trades/${encodeURIComponent(tradeId)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: data.user_id }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${response.status}`);
+      }
+      await onSaved();
+      setTradeMessage("交易已撤销");
+    } catch (err) {
+      setTradeMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingTradeId("");
     }
   }
 
@@ -1185,32 +1241,72 @@ function Rebalance({ data, onSaved }) {
       const response = await fetch(`${API_BASE}/api/rebalance/budget`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, planned_cash_by_month }) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       await onSaved();
+      setBudgetOpen(false);
     } finally {
       setSavingBudget(false);
     }
   }
 
+  async function saveBalances() {
+    setSavingBalances(true);
+    setBalanceMessage("");
+    try {
+      const balances = Object.fromEntries(Object.entries(balanceInputs).map(([key, value]) => [key, Number(value || 0)]));
+      const response = await fetch(`${API_BASE}/api/balances`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balances }),
+      });
+      if (!response.ok) throw new Error(`balances HTTP ${response.status}`);
+      setBalanceMessage("现金与已变现已保存");
+      setEditingBalances(false);
+      onSaved().catch(() => {});
+    } catch (err) {
+      setBalanceMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingBalances(false);
+    }
+  }
+
   return (
     <section>
-      <div className="budgetPanel">
-        <div className="sectionHeader compactHeader">
-          <h2>预算设置</h2>
-          <span className="muted">
-            未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · 月初口径已扣除本月确认买入 · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
-            {data.rebalance.sgov_large_trigger_enabled ? " · 大档位已启用SGOV资金" : " · 普通情况SGOV保留20%"}
-          </span>
-        </div>
-        <div className="budgetEditGrid">
-          {Object.entries(budgetInputs).map(([month, value]) => (
-            <label key={month}>{month} 可投入(USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
-          ))}
-        </div>
-        <div className="actions">
-          <button className="primary" onClick={saveBudget} disabled={savingBudget}><Save size={16} /> 保存预算并刷新建议</button>
-        </div>
+      <div className="rebalanceActionRow">
+        <button className="primary" onClick={() => setBudgetOpen(true)}>预算设置</button>
+        <button className="primary" onClick={() => setEditingBalances(true)}>编辑现金</button>
+        <button className="primary" onClick={() => setEditing(true)}>记录买卖</button>
+      </div>
+      <div className="sectionHeader subHeader">
+        <h2>交易记录</h2>
+        <span className="muted">买入或卖出后会按交易日期重算该日之后的收益曲线</span>
+      </div>
+      {tradeMessage ? <div className={["交易已保存", "交易已撤销"].includes(tradeMessage) ? "saveMessage up" : "saveMessage down"}>{tradeMessage}</div> : null}
+      <div className="tableWrap">
+        <table>
+          <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>金额</th><th>股数</th><th>档位</th><th>操作</th></tr></thead>
+          <tbody>
+            {(data.trades || []).slice().reverse().slice(0, 20).map((trade, index) => (
+              <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
+                <td>{trade.trade_date || trade.date || "-"}</td>
+                <td>{trade.symbol}</td>
+                <td>{trade.action === "sell" ? "卖出" : "买入"}</td>
+                <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
+                <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.intensity || "-"}</span></td>
+                <td>
+                  <button onClick={() => deleteTrade(trade)} disabled={deletingTradeId === trade.id}>
+                    {deletingTradeId === trade.id ? "撤销中" : "撤销"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!(data.trades || []).length ? (
+              <tr><td colSpan={7} className="muted">暂无交易记录</td></tr>
+            ) : null}
+          </tbody>
+        </table>
       </div>
       <div className="sectionHeader">
-        <h2>平仓</h2>
+        <h2>再平衡建议</h2>
         <span className="muted">
           {data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} ·
           待买 {fmtMoney(tradeTotals.buy_USD, "USD")}{tradeTotals.buy_CNY ? ` / ${fmtMoney(tradeTotals.buy_CNY, "CNY")}` : ""} ·
@@ -1223,6 +1319,29 @@ function Rebalance({ data, onSaved }) {
         </span>
         <button onClick={() => setRulesOpen(true)}>算法规则</button>
       </div>
+      {budgetOpen ? (
+        <div className="modalBackdrop" role="presentation" onClick={() => setBudgetOpen(false)}>
+          <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <h2>预算设置</h2>
+              <button onClick={() => setBudgetOpen(false)} disabled={savingBudget}>关闭</button>
+            </div>
+            <div className="muted">
+              未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · 月初口径已扣除本月确认买入 · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
+              {data.rebalance.sgov_large_trigger_enabled ? " · 大档位已启用SGOV资金" : " · 普通情况SGOV保留20%"}
+            </div>
+            <div className="budgetEditGrid">
+              {Object.entries(budgetInputs).map(([month, value]) => (
+                <label key={month}>{month} 可投入(USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
+              ))}
+            </div>
+            <div className="actions">
+              <button onClick={() => setBudgetOpen(false)} disabled={savingBudget}>取消</button>
+              <button className="primary" onClick={saveBudget} disabled={savingBudget}><Save size={16} /> 保存预算并刷新建议</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {rulesOpen ? (
         <div className="modalBackdrop" role="presentation" onClick={() => setRulesOpen(false)}>
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -1265,75 +1384,74 @@ function Rebalance({ data, onSaved }) {
           </tbody>
         </table>
       </div>
-      <div className="sectionHeader subHeader">
-        <h2>买卖确认</h2>
-        <button onClick={() => setEditing((value) => !value)}>{editing ? "收起编辑" : "编辑买卖"}</button>
-      </div>
-      {!editing ? <div className="muted">点击“编辑买卖”后选择方向并填写实际成交金额和股数；卖出会同步现金、持仓和已实现盈亏。</div> : null}
       {editing ? (
-        <>
-          <div className="tableWrap">
-            <table>
-              <thead><tr><th>标的</th><th>方向</th><th>日期</th><th>当前档位</th><th>成交金额</th><th>成交股数</th><th>建议买入</th></tr></thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.symbol}>
-                    <th>{row.symbol}</th>
-                    <td>
-                      <select value={inputs[row.symbol]?.action || "buy"} onChange={(event) => update(row.symbol, "action", event.target.value)}>
-                        <option value="buy">买入</option>
-                        <option value="sell">卖出</option>
-                      </select>
-                    </td>
-                    <td><input type="date" value={inputs[row.symbol]?.trade_date || defaultTradeDate} onChange={(event) => update(row.symbol, "trade_date", event.target.value)} /></td>
-                    <td>
-                      <select className={tierClass(inputs[row.symbol]?.intensity || row.intensity)} value={inputs[row.symbol]?.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
-                        <option value="normal">普通</option>
-                        <option value="probe">QQQ -2%分批</option>
-                        <option value="month_end">QQQ月底补齐</option>
-                        <option value="small">小加</option>
-                        <option value="medium">中加</option>
-                        <option value="large">大加</option>
-                      </select>
-                    </td>
-                    <td><input value={inputs[row.symbol]?.amount_usd ?? ""} onChange={(event) => update(row.symbol, "amount_usd", event.target.value)} inputMode="decimal" /></td>
-                    <td><input value={inputs[row.symbol]?.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" /></td>
-                    <td>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="modalBackdrop" role="presentation" onClick={() => setEditing(false)}>
+          <div className="modalPanel tradeModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <h2>买卖确认</h2>
+              <button onClick={() => setEditing(false)} disabled={saving}>关闭</button>
+            </div>
+            <div className="tableWrap">
+              <table>
+                <thead><tr><th>标的</th><th>方向</th><th>日期</th><th>当前档位</th><th>成交金额</th><th>成交股数</th><th>建议买入</th></tr></thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.symbol}>
+                      <th>{row.symbol}</th>
+                      <td>
+                        <select value={inputs[row.symbol]?.action || "buy"} onChange={(event) => update(row.symbol, "action", event.target.value)}>
+                          <option value="buy">买入</option>
+                          <option value="sell">卖出</option>
+                        </select>
+                      </td>
+                      <td><input type="date" value={inputs[row.symbol]?.trade_date || defaultTradeDate} onChange={(event) => update(row.symbol, "trade_date", event.target.value)} /></td>
+                      <td>
+                        <select className={tierClass(inputs[row.symbol]?.intensity || row.intensity)} value={inputs[row.symbol]?.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
+                          <option value="normal">普通</option>
+                          <option value="probe">QQQ -2%分批</option>
+                          <option value="month_end">QQQ月底补齐</option>
+                          <option value="small">小加</option>
+                          <option value="medium">中加</option>
+                          <option value="large">大加</option>
+                        </select>
+                      </td>
+                      <td><input value={inputs[row.symbol]?.amount_usd ?? ""} onChange={(event) => update(row.symbol, "amount_usd", event.target.value)} inputMode="decimal" /></td>
+                      <td><input value={inputs[row.symbol]?.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" /></td>
+                      <td>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="actions">
+              <button onClick={clearPending}>清零待确认交易</button>
+              <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 确认买卖并同步持仓</button>
+            </div>
           </div>
-          <div className="actions">
-            <button onClick={clearPending}>清零待确认交易</button>
-            <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 确认买卖并同步持仓</button>
-          </div>
-        </>
+        </div>
       ) : null}
-      <div className="sectionHeader subHeader">
-        <h2>交易记录</h2>
-        <span className="muted">买入或卖出后会按交易日期重算该日之后的收益曲线</span>
-      </div>
-      <div className="tableWrap">
-        <table>
-          <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>金额</th><th>股数</th><th>档位</th></tr></thead>
-          <tbody>
-            {(data.trades || []).slice().reverse().slice(0, 20).map((trade, index) => (
-              <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
-                <td>{trade.trade_date || trade.date || "-"}</td>
-                <td>{trade.symbol}</td>
-                <td>{trade.action === "sell" ? "卖出" : "买入"}</td>
-                <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
-                <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.intensity || "-"}</span></td>
-              </tr>
-            ))}
-            {!(data.trades || []).length ? (
-              <tr><td colSpan={6} className="muted">暂无交易记录</td></tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      {balanceMessage ? <div className={balanceMessage === "现金与已变现已保存" ? "saveMessage up" : "saveMessage down"}>{balanceMessage}</div> : null}
+      {editingBalances ? (
+        <div className="modalBackdrop" role="presentation" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }}>
+          <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <h2>现金与已变现</h2>
+              <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>关闭</button>
+            </div>
+            <div className="balanceEditGrid">
+              <label>USD现金<input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
+              <label>CNY现金<input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
+              <label>USD已变现<input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
+              <label>CNY已变现<input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
+              <label>SGOV股息<input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
+            </div>
+            <div className="actions">
+              <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>
+              <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存现金</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

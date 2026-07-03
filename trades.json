@@ -8,8 +8,36 @@
       "amount_usd": 169.97,
       "shares": 0.2366,
       "price": 718.3854606931529,
+      "cost_basis": 0.0,
+      "realized_pnl": 0.0,
       "intensity": "probe",
       "created_at": "2026-07-02T13:09:34+08:00"
+    },
+    {
+      "id": "20260703100603-1-VOO",
+      "trade_date": "2026-07-02",
+      "symbol": "VOO",
+      "action": "buy",
+      "amount_usd": 474.94,
+      "shares": 0.6953,
+      "price": 683.0720552279591,
+      "cost_basis": 474.94,
+      "realized_pnl": 0.0,
+      "intensity": "normal",
+      "created_at": "2026-07-03T10:06:03+08:00"
+    },
+    {
+      "id": "20260703100603-2-QQQ",
+      "trade_date": "2026-07-02",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 199.93,
+      "shares": 0.2748,
+      "price": 727.54730713246,
+      "cost_basis": 199.93,
+      "realized_pnl": 0.0,
+      "intensity": "probe",
+      "created_at": "2026-07-03T10:06:03+08:00"
     }
   ]
 }

@@ -1640,6 +1640,8 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
     realized_pnl = 0.0
     earliest_trade_date = ""
     touched_months: set[str] = set()
+    available_usd = float(balances.get("cash_usd", 0.0) or 0.0)
+    available_cny = float(balances.get("cash_cny", 0.0) or 0.0)
     for item in executions:
         sym = str(item.get("symbol", "")).upper()
         if sym not in USD_SYMBOLS and sym != "001015":
@@ -1671,23 +1673,34 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             old_shares = float(holdings.get(sym, {}).get("shares", 0.0) or 0.0)
             if shares > old_shares + 1e-9:
                 raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
+            old_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
+            cost_basis = shares * old_cost
             holdings, sale_pnl = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
             if is_cny_trade:
-                balances["cash_cny"] = float(balances.get("cash_cny", 0.0)) + amount
+                available_cny += amount
                 balances["realized_cny"] = float(balances.get("realized_cny", 0.0)) + sale_pnl
             else:
+                available_usd += amount
                 realized_pnl += sale_pnl
                 sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
                 total_sold += amount
         else:
-            holdings, _ = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
             if is_cny_trade:
-                balances["cash_cny"] = max(0.0, float(balances.get("cash_cny", 0.0)) - amount)
+                if amount > available_cny + 1e-9:
+                    raise ValueError(f"{sym} 买入金额 {amount:,.2f} CNY 超过当前人民币现金 {available_cny:,.2f} CNY")
+            elif amount > available_usd + 1e-9:
+                raise ValueError(f"{sym} 买入金额 {amount:,.2f} USD 超过当前美元现金 {available_usd:,.2f} USD")
+            holdings, _ = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
+            cost_basis = amount
+            sale_pnl = 0.0
+            if is_cny_trade:
+                available_cny -= amount
             else:
+                available_usd -= amount
                 amounts[sym] = float(amounts.get(sym, 0.0)) + amount
                 new_intensity = normalize_intensity(item.get("intensity", "normal"))
                 old_intensity = normalize_intensity(intensities.get(sym, "none"))
-                if INTENSITY_ORDER.get(new_intensity, 0) > INTENSITY_ORDER.get(old_intensity, 0):
+                if intensity_rank(new_intensity) > intensity_rank(old_intensity):
                     intensities[sym] = new_intensity
                 total_bought += amount
         usage["bought_amount_by_symbol"] = amounts
@@ -1703,12 +1716,15 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
                 "amount_usd": amount,
                 "shares": shares,
                 "price": amount / shares,
+                "cost_basis": cost_basis,
+                "realized_pnl": sale_pnl,
                 "intensity": normalize_intensity(item.get("intensity", "normal")),
                 "created_at": now.isoformat(timespec="seconds"),
             }
         )
         earliest_trade_date = trade_date if not earliest_trade_date else min(earliest_trade_date, trade_date)
-    balances["cash_usd"] = max(0.0, float(balances.get("cash_usd", 0.0)) - total_bought + total_sold)
+    balances["cash_usd"] = max(0.0, available_usd)
+    balances["cash_cny"] = max(0.0, available_cny)
     balances["realized_usd"] = float(balances.get("realized_usd", 0.0)) + realized_pnl
     save_user_state(user_id, holdings, balances)
     save_trade_records(user_id, records)
@@ -1733,3 +1749,100 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
         "month_key": now.strftime("%Y-%m"),
         "trades": load_trade_records(user_id),
     }
+
+
+def _rebuild_month_usage_from_records(user_id: str, month_key: str, records: list[dict[str, Any]]) -> None:
+    usage = load_monthly_usage(user_id, month_key)
+    bought_amounts: dict[str, float] = {}
+    sold_amounts: dict[str, float] = {}
+    intensities: dict[str, str] = {}
+    for record in records:
+        if str(record.get("trade_date") or "")[:7] != month_key:
+            continue
+        sym = str(record.get("symbol", "")).upper()
+        if sym not in USD_SYMBOLS or sym == "SGOV":
+            continue
+        amount = max(0.0, float(record.get("amount_usd", 0.0) or 0.0))
+        if str(record.get("action", "buy")).lower() == "sell":
+            sold_amounts[sym] = sold_amounts.get(sym, 0.0) + amount
+            continue
+        bought_amounts[sym] = bought_amounts.get(sym, 0.0) + amount
+        new_intensity = normalize_intensity(record.get("intensity", "normal"))
+        old_intensity = normalize_intensity(intensities.get(sym, "none"))
+        if intensity_rank(new_intensity) > intensity_rank(old_intensity):
+            intensities[sym] = new_intensity
+    save_monthly_usage(
+        user_id,
+        month_key,
+        planned_new_cash_usd=float(usage["planned_new_cash_usd"]),
+        planned_cash_by_month=dict(usage.get("planned_cash_by_month", {})),
+        bought_amount_by_symbol=bought_amounts,
+        bought_intensity_by_symbol=intensities,
+        sold_amount_by_symbol=sold_amounts,
+    )
+
+
+def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
+    records = load_trade_records(user_id)
+    target = next((record for record in records if str(record.get("id")) == str(trade_id)), None)
+    if target is None:
+        raise ValueError("交易记录不存在")
+
+    holdings, balances, _ = load_user_state(user_id)
+    sym = str(target.get("symbol", "")).upper()
+    action = str(target.get("action", "buy")).lower()
+    amount = max(0.0, float(target.get("amount_usd", 0.0) or 0.0))
+    shares = max(0.0, float(target.get("shares", 0.0) or 0.0))
+    is_cny_trade = sym == "001015"
+    if sym not in holdings or amount <= 0 or shares <= 0:
+        raise ValueError("交易记录无法撤销")
+
+    current = holdings[sym]
+    current_shares = float(current.get("shares", 0.0) or 0.0)
+    current_cost = float(current.get("avg_cost", 0.0) or 0.0)
+    if action == "buy":
+        if current_shares + 1e-9 < shares:
+            raise ValueError(f"{sym} 当前持仓不足，无法撤销该次买入")
+        new_shares = max(0.0, current_shares - shares)
+        remaining_cost = max(0.0, current_shares * current_cost - amount)
+        holdings[sym] = {
+            "shares": new_shares,
+            "avg_cost": remaining_cost / new_shares if new_shares > 1e-9 else 0.0,
+        }
+        if is_cny_trade:
+            balances["cash_cny"] = float(balances.get("cash_cny", 0.0) or 0.0) + amount
+        else:
+            balances["cash_usd"] = float(balances.get("cash_usd", 0.0) or 0.0) + amount
+    elif action == "sell":
+        cost_basis = float(target.get("cost_basis", 0.0) or 0.0)
+        avg_restore_cost = cost_basis / shares if cost_basis > 0 else current_cost
+        new_shares = current_shares + shares
+        holdings[sym] = {
+            "shares": new_shares,
+            "avg_cost": (current_shares * current_cost + shares * avg_restore_cost) / new_shares if new_shares > 1e-9 else 0.0,
+        }
+        if is_cny_trade:
+            current_cash = float(balances.get("cash_cny", 0.0) or 0.0)
+            if amount > current_cash + 1e-9:
+                raise ValueError(f"人民币现金不足，无法撤销该次卖出")
+            balances["cash_cny"] = current_cash - amount
+            balances["realized_cny"] = float(balances.get("realized_cny", 0.0) or 0.0) - float(target.get("realized_pnl", 0.0) or 0.0)
+        else:
+            current_cash = float(balances.get("cash_usd", 0.0) or 0.0)
+            if amount > current_cash + 1e-9:
+                raise ValueError(f"美元现金不足，无法撤销该次卖出")
+            balances["cash_usd"] = current_cash - amount
+            balances["realized_usd"] = float(balances.get("realized_usd", 0.0) or 0.0) - float(target.get("realized_pnl", 0.0) or 0.0)
+    else:
+        raise ValueError("交易方向无效")
+
+    remaining_records = [record for record in records if str(record.get("id")) != str(trade_id)]
+    save_user_state(user_id, holdings, balances)
+    save_trade_records(user_id, remaining_records)
+    month_key = str(target.get("trade_date") or "")[:7]
+    if month_key:
+        _rebuild_month_usage_from_records(user_id, month_key, remaining_records)
+    trade_date = str(target.get("trade_date") or "")[:10]
+    if trade_date:
+        invalidate_performance_history_from(user_id, trade_date)
+    return {"deleted": True, "trade_id": trade_id, "trades": load_trade_records(user_id)}

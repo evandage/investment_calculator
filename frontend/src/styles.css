@@ -1009,6 +1009,19 @@ tbody th {
   margin: 8px 0 12px;
 }
 
+.rebalanceActionRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 8px;
+  width: 100%;
+}
+
+.rebalanceActionRow button {
+  width: 100%;
+  justify-content: center;
+}
+
 .modalBackdrop {
   position: fixed;
   inset: 0;
@@ -1030,6 +1043,10 @@ tbody th {
     #0f172a;
   padding: 16px;
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+}
+
+.tradeModal {
+  width: min(1180px, 96vw);
 }
 
 .ruleSection {
@@ -1139,6 +1156,10 @@ tbody th {
   .toolbarRow label,
   .toolbarRow select {
     font-size: 0.82rem;
+  }
+
+  .rebalanceActionRow {
+    grid-template-columns: 1fr;
   }
 
   .plotWrap {
