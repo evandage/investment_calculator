@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "lightweight-charts": "^5.2.0",
     "lucide-react": "^0.468.0",
     "plotly.js-dist-min": "^3.6.0",
     "react": "^19.0.0",

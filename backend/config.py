@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -8,6 +10,7 @@ HOLDINGS_FILE = ROOT_DIR / "holdings.json"
 BALANCES_FILE = ROOT_DIR / "balances.json"
 MONTHLY_USAGE_FILE = ROOT_DIR / "monthly_budget_usage.json"
 SATELLITE_TARGETS_FILE = ROOT_DIR / "satellite_targets.json"
+SATELLITE_UNIVERSE_FILE = ROOT_DIR / "satellite_universe.json"
 PORTFOLIO_HISTORY_FILE = ROOT_DIR / "portfolio_history.json"
 TRADE_RECORDS_FILE = ROOT_DIR / "trades.json"
 
@@ -25,11 +28,13 @@ FALLBACK_PRICES = {
     "VOO": 400.0,
     "QQQ": 400.0,
     "ISRG": 450.0,
+    "TEM": 60.0,
+    "PLTR": 100.0,
+    "CRWV": 100.0,
     "GOOGL": 180.0,
     "MSFT": 420.0,
     "AVGO": 170.0,
     "NVDA": 120.0,
-    "TEM": 60.0,
     "SGOV": 100.0,
     "001015": 1.0,
 }
@@ -38,11 +43,13 @@ ASSET_META = {
     "VOO": {"label": "VOO", "currency": "USD"},
     "QQQ": {"label": "QQQ", "currency": "USD"},
     "ISRG": {"label": "ISRG", "currency": "USD"},
+    "TEM": {"label": "TEM", "currency": "USD"},
+    "PLTR": {"label": "PLTR", "currency": "USD"},
+    "CRWV": {"label": "CRWV", "currency": "USD"},
     "GOOGL": {"label": "GOOGL", "currency": "USD"},
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
     "NVDA": {"label": "NVDA", "currency": "USD"},
-    "TEM": {"label": "TEM", "currency": "USD"},
     "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
     "001015": {"label": "沪深300", "currency": "CNY"},
 }
@@ -56,20 +63,24 @@ TARGET_WEIGHTS = {
     "AVGO": 0.0114,
     "NVDA": 0.0076,
     "TEM": 0.003,
+    "PLTR": 0.0,
+    "CRWV": 0.0,
     "SGOV": 0.12,
     "001015": 0.20,
 }
 
-SATELLITE_SYMBOLS = ("ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "TEM")
+SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "CRWV", "GOOGL", "MSFT", "AVGO", "NVDA")
 USD_SYMBOLS = ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV")
 ALL_SYMBOLS = tuple(ASSET_META.keys())
 DEFAULT_SATELLITE_TARGET_PCTS = {
     "ISRG": 31.6666,
+    "TEM": 5.0,
+    "PLTR": 0.0,
+    "CRWV": 0.0,
     "GOOGL": 19.0,
     "MSFT": 12.6667,
     "AVGO": 19.0,
     "NVDA": 12.6667,
-    "TEM": 5.0,
 }
 
 PE_BANDS = {
@@ -99,11 +110,13 @@ QQ_US = {
     "VOO": "usVOO",
     "QQQ": "usQQQ",
     "ISRG": "usISRG",
+    "TEM": "usTEM",
+    "PLTR": "usPLTR",
+    "CRWV": "usCRWV",
     "GOOGL": "usGOOGL",
     "MSFT": "usMSFT",
     "AVGO": "usAVGO",
     "NVDA": "usNVDA",
-    "TEM": "usTEM",
     "SGOV": "usSGOV",
 }
 
@@ -111,11 +124,13 @@ SINA_GB = {
     "VOO": "gb_voo",
     "QQQ": "gb_qqq",
     "ISRG": "gb_isrg",
+    "TEM": "gb_tem",
+    "PLTR": "gb_pltr",
+    "CRWV": "gb_crwv",
     "GOOGL": "gb_googl",
     "MSFT": "gb_msft",
     "AVGO": "gb_avgo",
     "NVDA": "gb_nvda",
-    "TEM": "gb_tem",
     "SGOV": "gb_sgov",
 }
 
@@ -123,13 +138,121 @@ FUTU_US = {
     "VOO": "US.VOO",
     "QQQ": "US.QQQ",
     "ISRG": "US.ISRG",
+    "TEM": "US.TEM",
+    "PLTR": "US.PLTR",
+    "CRWV": "US.CRWV",
     "GOOGL": "US.GOOGL",
     "MSFT": "US.MSFT",
     "AVGO": "US.AVGO",
     "NVDA": "US.NVDA",
-    "TEM": "US.TEM",
     "SGOV": "US.SGOV",
 }
+
+
+_STATIC_SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "CRWV", "GOOGL", "MSFT", "AVGO", "NVDA")
+_SATELLITE_TOTAL_WEIGHT = sum(TARGET_WEIGHTS.get(sym, 0.0) for sym in _STATIC_SATELLITE_SYMBOLS)
+
+
+def _default_satellite_universe() -> list[dict[str, Any]]:
+    return [
+        {
+            "symbol": sym,
+            "label": ASSET_META.get(sym, {}).get("label", sym),
+            "target_pct": DEFAULT_SATELLITE_TARGET_PCTS.get(sym, 0.0),
+            "futu_code": FUTU_US.get(sym, f"US.{sym}"),
+        }
+        for sym in _STATIC_SATELLITE_SYMBOLS
+    ]
+
+
+def _normalize_satellite_universe(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        raw = _default_satellite_universe()
+
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        sym = str(item.get("symbol", "")).strip().upper()
+        if not sym or not sym.replace(".", "").replace("-", "").isalnum() or sym in seen:
+            continue
+        try:
+            target_pct = max(0.0, float(item.get("target_pct", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            target_pct = 0.0
+        seen.add(sym)
+        out.append(
+            {
+                "symbol": sym,
+                "label": str(item.get("label") or sym),
+                "target_pct": target_pct,
+                "futu_code": str(item.get("futu_code") or f"US.{sym}").strip().upper(),
+            }
+        )
+    return out or _default_satellite_universe()
+
+
+def _load_satellite_universe() -> list[dict[str, Any]]:
+    raw: Any = None
+    if SATELLITE_UNIVERSE_FILE.exists():
+        try:
+            raw = json.loads(SATELLITE_UNIVERSE_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = None
+    return _normalize_satellite_universe(raw)
+
+
+def load_satellite_universe_config() -> list[dict[str, Any]]:
+    return [dict(item) for item in _load_satellite_universe()]
+
+
+def save_satellite_universe_config(items: Any) -> list[dict[str, Any]]:
+    normalized = _normalize_satellite_universe(items)
+    SATELLITE_UNIVERSE_FILE.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    _apply_satellite_universe()
+    return load_satellite_universe_config()
+
+
+def _apply_satellite_universe() -> None:
+    global SATELLITE_SYMBOLS, USD_SYMBOLS, ALL_SYMBOLS, DEFAULT_SATELLITE_TARGET_PCTS
+
+    universe = _load_satellite_universe()
+    configured = tuple(item["symbol"] for item in universe)
+    configured_set = set(configured)
+    for sym in _STATIC_SATELLITE_SYMBOLS:
+        if sym not in configured_set:
+            FALLBACK_PRICES.pop(sym, None)
+            ASSET_META.pop(sym, None)
+            TARGET_WEIGHTS.pop(sym, None)
+            QQ_US.pop(sym, None)
+            SINA_GB.pop(sym, None)
+            FUTU_US.pop(sym, None)
+
+    DEFAULT_SATELLITE_TARGET_PCTS = {}
+    for item in universe:
+        sym = item["symbol"]
+        FALLBACK_PRICES[sym] = 0.0
+        ASSET_META[sym] = {"label": item["label"], "currency": "USD"}
+        DEFAULT_SATELLITE_TARGET_PCTS[sym] = float(item["target_pct"])
+        TARGET_WEIGHTS[sym] = _SATELLITE_TOTAL_WEIGHT * float(item["target_pct"]) / 100.0
+        QQ_US.pop(sym, None)
+        SINA_GB.pop(sym, None)
+        FUTU_US[sym] = item["futu_code"]
+
+    ordered_meta: dict[str, dict[str, str]] = {}
+    for sym in ("VOO", "QQQ", *configured, "SGOV", "001015"):
+        if sym in ASSET_META:
+            ordered_meta[sym] = ASSET_META[sym]
+    ASSET_META.clear()
+    ASSET_META.update(ordered_meta)
+
+    SATELLITE_SYMBOLS = configured
+    USD_SYMBOLS = ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV")
+    ALL_SYMBOLS = tuple(ASSET_META.keys())
+
+
+_apply_satellite_universe()
 
 FUND_CODES = {"001015": "001015"}
 

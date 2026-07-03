@@ -38,6 +38,8 @@ _FALLBACK = {
     "AVGO": 1700.0,
     "NVDA": 1200.0,
     "TEM": 60.0,
+    "PLTR": 100.0,
+    "CRWV": 100.0,
     "GOOGL": 180.0,
     "MSFT": 420.0,
     "ISRG": 450.0,
@@ -51,6 +53,8 @@ _TICKERS = {
     "avgo": "AVGO",
     "nvda": "NVDA",
     "tem": "TEM",
+    "pltr": "PLTR",
+    "crwv": "CRWV",
     "googl": "GOOGL",
     "msft": "MSFT",
     "isrg": "ISRG",
@@ -74,6 +78,8 @@ _QQ_US = {
     "AVGO": "usAVGO",
     "NVDA": "usNVDA",
     "TEM": "usTEM",
+    "PLTR": "usPLTR",
+    "CRWV": "usCRWV",
     "GOOGL": "usGOOGL",
     "MSFT": "usMSFT",
     "ISRG": "usISRG",
@@ -85,6 +91,8 @@ _QQ_US_KLINE = {
     "AVGO": "usAVGO.OQ",
     "NVDA": "usNVDA.OQ",
     "TEM": "usTEM.N",
+    "PLTR": "usPLTR.N",
+    "CRWV": "usCRWV.OQ",
     "GOOGL": "usGOOGL.OQ",
     "MSFT": "usMSFT.OQ",
     "ISRG": "usISRG.OQ",
@@ -96,6 +104,8 @@ _SINA_GB = {
     "AVGO": "gb_avgo",
     "NVDA": "gb_nvda",
     "TEM": "gb_tem",
+    "PLTR": "gb_pltr",
+    "CRWV": "gb_crwv",
     "GOOGL": "gb_googl",
     "MSFT": "gb_msft",
     "ISRG": "gb_isrg",
@@ -107,6 +117,8 @@ _FUTU_US = {
     "AVGO": "US.AVGO",
     "NVDA": "US.NVDA",
     "TEM": "US.TEM",
+    "PLTR": "US.PLTR",
+    "CRWV": "US.CRWV",
     "GOOGL": "US.GOOGL",
     "MSFT": "US.MSFT",
     "ISRG": "US.ISRG",
@@ -128,12 +140,14 @@ _EASTMONEY_US_SECID = {
     "AVGO": "105.AVGO",
     "NVDA": "105.NVDA",
     "TEM": "106.TEM",
+    "PLTR": "106.PLTR",
+    "CRWV": "105.CRWV",
     "GOOGL": "105.GOOGL",
     "MSFT": "105.MSFT",
     "ISRG": "105.ISRG",
     "SGOV": "106.SGOV",
 }
-_US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "TEM", "GOOGL", "MSFT", "ISRG", "SGOV")
+_US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "TEM", "PLTR", "CRWV", "GOOGL", "MSFT", "ISRG", "SGOV")
 
 
 def _normalize_market_provider(value: str | None) -> str:
@@ -177,15 +191,18 @@ _HOLDINGS_FILE = Path(__file__).with_name("holdings.json")
 _BALANCE_FILE = Path(__file__).with_name("balances.json")
 _MONTHLY_BUDGET_USAGE_FILE = Path(__file__).with_name("monthly_budget_usage.json")
 _SATELLITE_TARGETS_FILE = Path(__file__).with_name("satellite_targets.json")
+_SATELLITE_UNIVERSE_FILE = Path(__file__).with_name("satellite_universe.json")
 _ASSET_META = {
     "VOO": {"label": "VOO", "currency": "USD"},
     "QQQ": {"label": "QQQ", "currency": "USD"},
     "ISRG": {"label": "ISRG", "currency": "USD"},
+    "TEM": {"label": "TEM", "currency": "USD"},
+    "PLTR": {"label": "PLTR", "currency": "USD"},
+    "CRWV": {"label": "CRWV", "currency": "USD"},
     "GOOGL": {"label": "GOOGL", "currency": "USD"},
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
     "NVDA": {"label": "NVDA", "currency": "USD"},
-    "TEM": {"label": "TEM", "currency": "USD"},
     "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
     "001015": {"label": "沪深300", "currency": "CNY"},
 }
@@ -201,19 +218,119 @@ _TARGET_WEIGHTS = {
     "MSFT": 0.0076,
     "ISRG": 0.019,
     "TEM": 0.003,
+    "PLTR": 0.0,
+    "CRWV": 0.0,
     "SGOV": 0.12,
     "001015": 0.20,
 }
 
-_SATELLITE_SYMBOLS = ("ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "TEM")
+_SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "CRWV", "GOOGL", "MSFT", "AVGO", "NVDA")
 _DEFAULT_SATELLITE_TARGET_PCTS = {
+    "ISRG": 31.6666,
+    "TEM": 5.0,
+    "PLTR": 0.0,
+    "CRWV": 0.0,
     "AVGO": 19.0,
     "NVDA": 12.6667,
     "GOOGL": 19.0,
     "MSFT": 12.6667,
-    "ISRG": 31.6666,
-    "TEM": 5.0,
 }
+
+
+_STATIC_SATELLITE_SYMBOLS = _SATELLITE_SYMBOLS
+_SATELLITE_TOTAL_WEIGHT = sum(_TARGET_WEIGHTS.get(sym, 0.0) for sym in _STATIC_SATELLITE_SYMBOLS)
+
+
+def _default_satellite_universe() -> list[dict[str, Any]]:
+    return [
+        {
+            "symbol": sym,
+            "label": _ASSET_META.get(sym, {}).get("label", sym),
+            "target_pct": _DEFAULT_SATELLITE_TARGET_PCTS.get(sym, 0.0),
+            "futu_code": _FUTU_US.get(sym, f"US.{sym}"),
+        }
+        for sym in _STATIC_SATELLITE_SYMBOLS
+    ]
+
+
+def _load_satellite_universe() -> list[dict[str, Any]]:
+    raw: Any = None
+    if _SATELLITE_UNIVERSE_FILE.exists():
+        try:
+            raw = json.loads(_SATELLITE_UNIVERSE_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = None
+    if not isinstance(raw, list):
+        raw = _default_satellite_universe()
+
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        sym = str(item.get("symbol", "")).strip().upper()
+        if not sym or not sym.replace(".", "").replace("-", "").isalnum() or sym in seen:
+            continue
+        try:
+            target_pct = max(0.0, float(item.get("target_pct", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            target_pct = 0.0
+        seen.add(sym)
+        out.append(
+            {
+                "symbol": sym,
+                "label": str(item.get("label") or sym),
+                "target_pct": target_pct,
+                "futu_code": str(item.get("futu_code") or f"US.{sym}").strip().upper(),
+            }
+        )
+    return out or _default_satellite_universe()
+
+
+def _apply_satellite_universe() -> None:
+    global _SATELLITE_SYMBOLS, _US_MARKET_SYMBOLS, _DEFAULT_SATELLITE_TARGET_PCTS
+
+    universe = _load_satellite_universe()
+    configured = tuple(item["symbol"] for item in universe)
+    configured_set = set(configured)
+    for sym in _STATIC_SATELLITE_SYMBOLS:
+        if sym not in configured_set:
+            _FALLBACK.pop(sym, None)
+            _TICKERS.pop(sym.lower(), None)
+            _QQ_US.pop(sym, None)
+            _QQ_US_KLINE.pop(sym, None)
+            _SINA_GB.pop(sym, None)
+            _FUTU_US.pop(sym, None)
+            _EASTMONEY_US_SECID.pop(sym, None)
+            _ASSET_META.pop(sym, None)
+            _TARGET_WEIGHTS.pop(sym, None)
+
+    _DEFAULT_SATELLITE_TARGET_PCTS = {}
+    for item in universe:
+        sym = item["symbol"]
+        _FALLBACK[sym] = 0.0
+        _TICKERS[sym.lower()] = sym
+        _QQ_US.pop(sym, None)
+        _QQ_US_KLINE.pop(sym, None)
+        _SINA_GB.pop(sym, None)
+        _FUTU_US[sym] = item["futu_code"]
+        _EASTMONEY_US_SECID.pop(sym, None)
+        _ASSET_META[sym] = {"label": item["label"], "currency": "USD"}
+        _DEFAULT_SATELLITE_TARGET_PCTS[sym] = float(item["target_pct"])
+        _TARGET_WEIGHTS[sym] = _SATELLITE_TOTAL_WEIGHT * float(item["target_pct"]) / 100.0
+
+    ordered_meta: dict[str, dict[str, str]] = {}
+    for sym in ("VOO", "QQQ", *configured, "SGOV", "001015"):
+        if sym in _ASSET_META:
+            ordered_meta[sym] = _ASSET_META[sym]
+    _ASSET_META.clear()
+    _ASSET_META.update(ordered_meta)
+
+    _SATELLITE_SYMBOLS = configured
+    _US_MARKET_SYMBOLS = ("VOO", "QQQ", *_SATELLITE_SYMBOLS, "SGOV")
+
+
+_apply_satellite_universe()
 
 
 def _normalize_satellite_targets(raw: Any) -> dict[str, float]:
@@ -284,7 +401,7 @@ _REBALANCE_PHASE_DCA = "长期定投期"
 _REBALANCE_ALLOCATION_ROWS = [
     {"资产": "VOO", "目标占比": "40%", "策略定位": "核心长期仓"},
     {"资产": "QQQ", "目标占比": "30%", "策略定位": "科技增强仓"},
-    {"资产": "AI卫星（MSFT/GOOGL/NVDA/AVGO/ISRG）", "目标占比": "10%", "策略定位": "主动超额收益"},
+    {"资产": "AI卫星（ISRG/TEM/PLTR/CRWV/GOOGL/MSFT/AVGO/NVDA）", "目标占比": "10%", "策略定位": "主动超额收益"},
     {"资产": "SGOV", "目标占比": "20%", "策略定位": "弹药库/现金管理"},
 ]
 _REBALANCE_STRATEGY_LABELS = {
@@ -293,6 +410,9 @@ _REBALANCE_STRATEGY_LABELS = {
     "GOOGL": "半定投化",
     "MSFT": "半定投化",
     "ISRG": "半定投化",
+    "TEM": "观察仓",
+    "PLTR": "观察仓",
+    "CRWV": "观察仓",
     "NVDA": "波动驱动加仓",
     "AVGO": "波动驱动加仓",
     "SGOV": "机会弹药库",
@@ -1787,7 +1907,8 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
             for sym in _US_MARKET_SYMBOLS:
                 if sym not in out:
                     try:
-                        res = _fetch_sina_gb_price_change(_SINA_GB[sym])
+                        sina_code = _SINA_GB.get(sym)
+                        res = _fetch_sina_gb_price_change(sina_code) if sina_code else None
                         if res is not None:
                             p, change_pct = res
                             out[sym] = p
@@ -1808,7 +1929,8 @@ def _fetch_spot_prices_meta() -> dict[str, object]:
         for sym in _US_MARKET_SYMBOLS:
             if sym not in out:
                 try:
-                    res = _fetch_sina_gb_price_change(_SINA_GB[sym])
+                    sina_code = _SINA_GB.get(sym)
+                    res = _fetch_sina_gb_price_change(sina_code) if sina_code else None
                     if res is not None:
                         p, change_pct = res
                         out[sym] = p
@@ -2499,30 +2621,13 @@ def _save_user_state(
 
 def _defaults_from_fetch() -> dict[str, float]:
     raw = _fetch_spot_prices()
-    return {
-        "voo": raw["VOO"],
-        "qqq": raw["QQQ"],
-        "avgo": raw["AVGO"],
-        "nvda": raw["NVDA"],
-        "googl": raw["GOOGL"],
-        "msft": raw["MSFT"],
-        "isrg": raw["ISRG"],
-        "sgov": raw["SGOV"],
-        "hs300": raw["001015"],
-    }
+    return {sym: float(raw.get(sym, _FALLBACK.get(sym, 0.0))) for sym in _ASSET_META}
 
 
 def _ensure_price_session_defaults() -> None:
     d = _defaults_from_fetch()
-    st.session_state.setdefault("def_voo", d["voo"])
-    st.session_state.setdefault("def_qqq", d["qqq"])
-    st.session_state.setdefault("def_avgo", d["avgo"])
-    st.session_state.setdefault("def_nvda", d["nvda"])
-    st.session_state.setdefault("def_googl", d["googl"])
-    st.session_state.setdefault("def_msft", d["msft"])
-    st.session_state.setdefault("def_isrg", d["isrg"])
-    st.session_state.setdefault("def_sgov", d["sgov"])
-    st.session_state.setdefault("def_hs300", d["hs300"])
+    for sym, value in d.items():
+        st.session_state.setdefault(f"def_{sym.lower()}", value)
     st.session_state.setdefault("_prices_initialized", True)
 
 
@@ -2788,29 +2893,11 @@ if refresh_prices_clicked:
     _fetch_fund_60d_metrics.clear()
     d = _defaults_from_fetch()
     st.session_state.def_fx = _fetch_usdcny_rate()
-    st.session_state.def_voo = d["voo"]
-    st.session_state.def_qqq = d["qqq"]
-    st.session_state.def_avgo = d["avgo"]
-    st.session_state.def_nvda = d["nvda"]
-    st.session_state.def_googl = d["googl"]
-    st.session_state.def_msft = d["msft"]
-    st.session_state.def_isrg = d["isrg"]
-    st.session_state.def_sgov = d["sgov"]
-    st.session_state.def_hs300 = d["hs300"]
+    for sym, value in d.items():
+        st.session_state[f"def_{sym.lower()}"] = value
 
     # 删除输入框缓存值，让下方 number_input 用新的 def_* 作为默认值。
-    for k in (
-        "inp_fx",
-        "inp_voo",
-        "inp_qqq",
-        "inp_avgo",
-        "inp_nvda",
-        "inp_googl",
-        "inp_msft",
-        "inp_isrg",
-        "inp_sgov",
-        "inp_hs300",
-    ):
+    for k in ("inp_fx", *(f"inp_{sym.lower()}" for sym in _ASSET_META)):
         if k in st.session_state:
             del st.session_state[k]
 
@@ -2824,15 +2911,8 @@ fx_meta = _fetch_usdcny_rate_meta()
 fx = float(st.session_state.get("inp_fx", st.session_state.def_fx))
 spot_prices = spot_meta.get("prices", {})
 prices_now = {
-    "VOO": float(spot_prices.get("VOO", st.session_state.def_voo)),
-    "QQQ": float(spot_prices.get("QQQ", st.session_state.def_qqq)),
-    "AVGO": float(spot_prices.get("AVGO", st.session_state.def_avgo)),
-    "NVDA": float(spot_prices.get("NVDA", st.session_state.def_nvda)),
-    "GOOGL": float(spot_prices.get("GOOGL", st.session_state.def_googl)),
-    "MSFT": float(spot_prices.get("MSFT", st.session_state.def_msft)),
-    "ISRG": float(spot_prices.get("ISRG", st.session_state.def_isrg)),
-    "SGOV": float(spot_prices.get("SGOV", st.session_state.def_sgov)),
-    "001015": float(spot_prices.get("001015", st.session_state.def_hs300)),
+    sym: float(spot_prices.get(sym, st.session_state.get(f"def_{sym.lower()}", _FALLBACK.get(sym, 0.0))))
+    for sym in _ASSET_META
 }
 
 # 前端不负责同步外部行情，避免阻塞与不确定性；由独立 sync worker 负责写 Supabase
@@ -2915,16 +2995,8 @@ def _render_holdings_editor() -> None:
 
 
 def _render_chart_board() -> None:
-    _chart_symbol_labels = {
-        "VOO": "VOO",
-        "QQQ": "QQQ",
-        "AVGO": "AVGO",
-        "NVDA": "NVDA",
-        "GOOGL": "GOOGL",
-        "MSFT": "MSFT",
-        "ISRG": "ISRG",
-        "SGOV": "SGOV",
-    }
+    _chart_symbols = ("VOO", "QQQ", *_SATELLITE_SYMBOLS, "SGOV")
+    _chart_symbol_labels = {sym: sym for sym in _chart_symbols}
     _chart_label_options = list(_chart_symbol_labels.keys())
     _chart_pick_default_label = "VOO"
     _chart_pick_default_index = (
@@ -3296,11 +3368,7 @@ satellite_card_html = (
 daily_card_symbols = (
     "VOO",
     "QQQ",
-    "ISRG",
-    "GOOGL",
-    "MSFT",
-    "AVGO",
-    "NVDA",
+    *_SATELLITE_SYMBOLS,
     "SGOV",
     "001015",
 )
@@ -3772,7 +3840,7 @@ with rebalance_rule_col:
 - 本表只使用当前已经在账户里的美元现金和 SGOV，不预估未来新增工资。
 - 每月新增 5000 RMB 由前面的持仓/现金编辑录入后，再参与下一次规划。
 - VOO/QQQ 建仓期按目标缺口和剩余月数拆成月度推进量。
-- 五个卫星股以10月底预计总资产对应的目标金额为 1x：正常 0.1x、小加 0.2x、中加 0.3x、大加 0.5x，并取不超过实时缺口和可动用资金。
+- 卫星股以10月底预计总资产对应的目标金额为 1x；PLTR/CRWV 为 0% 观察成员，不产生系统买入建议。
 - SGOV 超过 20% 目标的部分，可以随时挪用。
 - 目标内 20% SGOV 默认保留，只有触发大加档才动用。
 - 一旦触发大加/恐慌级档位，SGOV 可以全部动用，之后用后续新增资金再补回。

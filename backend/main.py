@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import sys
 import threading
 from typing import Any
 
@@ -10,6 +11,10 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from . import config as config_module
+from . import market_data as market_data_module
+from . import portfolio as portfolio_module
+from . import storage as storage_module
 from .market_data import (
     fetch_quotes,
     futu_opend_config,
@@ -38,6 +43,22 @@ class SatelliteTargetsPayload(BaseModel):
     targets: dict[str, float]
 
 
+class SatelliteUniverseItem(BaseModel):
+    symbol: str
+    label: str | None = None
+    target_pct: float = 0.0
+    fallback_price: float = 100.0
+    futu_code: str | None = None
+    qq_quote: str | None = None
+    qq_kline: str | None = None
+    sina_gb: str | None = None
+    eastmoney_secid: str | None = None
+
+
+class SatelliteUniversePayload(BaseModel):
+    items: list[SatelliteUniverseItem]
+
+
 class ExecutionItem(BaseModel):
     symbol: str
     action: str = "buy"
@@ -61,16 +82,18 @@ class DeleteTradePayload(BaseModel):
     user_id: str = "evan"
 
 
-CHART_LABELS = {
-    "VOO": "VOO",
-    "QQQ": "QQQ",
-    "ISRG": "ISRG",
-    "GOOGL": "GOOGL",
-    "MSFT": "MSFT",
-    "AVGO": "AVGO",
-    "NVDA": "NVDA",
-    "TEM": "TEM",
-}
+def _chart_symbols() -> set[str]:
+    return {"VOO", "QQQ", "SGOV", *config_module.SATELLITE_SYMBOLS}
+
+
+def _refresh_satellite_runtime_config() -> None:
+    for module in (storage_module, market_data_module, portfolio_module):
+        if hasattr(module, "ALL_SYMBOLS"):
+            module.ALL_SYMBOLS = config_module.ALL_SYMBOLS
+        if hasattr(module, "SATELLITE_SYMBOLS"):
+            module.SATELLITE_SYMBOLS = config_module.SATELLITE_SYMBOLS
+        if hasattr(module, "USD_SYMBOLS"):
+            module.USD_SYMBOLS = config_module.USD_SYMBOLS
 
 
 app = FastAPI(title="Investment Dashboard API")
@@ -138,7 +161,7 @@ def _build_chart_board(
     show_extended: bool = True,
 ) -> dict[str, Any]:
     sym = str(symbol or "VOO").upper()
-    if sym not in CHART_LABELS:
+    if sym not in _chart_symbols():
         sym = "VOO"
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
@@ -332,6 +355,28 @@ def satellite_targets() -> dict[str, Any]:
 def update_satellite_targets(payload: SatelliteTargetsPayload) -> dict[str, Any]:
     save_satellite_targets(payload.targets)
     return {"saved": True, "targets": load_satellite_targets()}
+
+
+@app.get("/api/satellite-universe")
+def satellite_universe() -> dict[str, Any]:
+    return {"items": config_module.load_satellite_universe_config()}
+
+
+@app.put("/api/satellite-universe")
+def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, Any]:
+    items = config_module.save_satellite_universe_config([item.model_dump() for item in payload.items])
+    _refresh_satellite_runtime_config()
+    save_holdings(load_holdings())
+    save_satellite_targets(load_satellite_targets())
+    if "chart_boards" in sys.modules:
+        importlib.reload(sys.modules["chart_boards"])
+    stop_futu_quote_subscription()
+    return {
+        "saved": True,
+        "items": items,
+        "holdings": load_holdings(),
+        "targets": load_satellite_targets(),
+    }
 
 
 @app.post("/api/rebalance/confirm")

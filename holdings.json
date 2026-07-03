@@ -11,6 +11,18 @@
     "shares": 0.7807000000000001,
     "avg_cost": 414.1
   },
+  "TEM": {
+    "shares": 0.1835,
+    "avg_cost": 54.49591280653951
+  },
+  "PLTR": {
+    "shares": 0.0,
+    "avg_cost": 100.0
+  },
+  "CRWV": {
+    "shares": 0.0,
+    "avg_cost": 100.0
+  },
   "GOOGL": {
     "shares": 0.5794,
     "avg_cost": 364.1269623748706
@@ -26,10 +38,6 @@
   "NVDA": {
     "shares": 0.6187,
     "avg_cost": 210.08566348795858
-  },
-  "TEM": {
-    "shares": 0.1835,
-    "avg_cost": 54.49591280653951
   },
   "SGOV": {
     "shares": 30.0,

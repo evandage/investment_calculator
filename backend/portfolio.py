@@ -24,6 +24,7 @@ from .config import (
     TARGET_WEIGHTS,
     TZ_SHANGHAI,
     USD_SYMBOLS,
+    load_satellite_universe_config,
 )
 from .market_data import fetch_quotes
 from .storage import (
@@ -103,7 +104,7 @@ def rebalance_rules_payload(
                 "heading": "长期目标",
                 "items": [
                     "美元资产目标：VOO 40% / QQQ 30% / AI卫星仓位 10% / 短债(SGOV) 20%。",
-                    "卫星仓位内部目标：ISRG / GOOGL / MSFT / AVGO / NVDA = 5 / 3 / 2 / 3 / 2。",
+                    "卫星仓位内部目标：ISRG / TEM / PLTR / CRWV / GOOGL / MSFT / AVGO / NVDA；PLTR/CRWV 当前为 0% 观察成员。",
                     "A股基金按 Dashboard 目标占比展示，但当前买入建议只处理美元标的。",
                 ],
             },
@@ -120,7 +121,7 @@ def rebalance_rules_payload(
                 "items": [
                     "先用月初口径持仓计算缺口：月初口径 = 当前持仓金额 - 本月已买金额。",
                     "VOO/QQQ 再按剩余月份和档位倍率计算本月计划应买；VOO 建仓期至少按 1 股规划。",
-                    "五个卫星股以10月底目标金额为 1x：正常 0.1x、小加 0.2x、中加 0.3x、大加 0.5x；建议不超过实时目标缺口和可动用资金。",
+                    "卫星股以10月底目标金额为 1x；PLTR/CRWV 当前目标为 0%，不产生系统买入建议。",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股看 Forward PE，VOO/QQQ 看近 5 个交易日涨幅。",
                     "可动用资金不足时按比例缩放计划应买；卫星股按当前持仓计算实时缺口，不再使用本月累计买入作为月度封顶。",
                 ],
@@ -1187,6 +1188,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "visualizations": build_visualizations(rows, balances, value_cny_by_symbol, fx),
         "targets": target_weights,
         "satellite_targets": load_satellite_targets(),
+        "satellite_universe": load_satellite_universe_config(),
         "performance_history": performance_history,
         "rebalance": build_rebalance_v2(user_id, rows, balances, market, value_cny_by_symbol, fx),
         "trades": load_trade_records(user_id),

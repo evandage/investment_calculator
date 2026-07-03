@@ -1,6 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, RefreshCcw, Save } from "lucide-react";
-import { CandlestickSeries, createChart, HistogramSeries, TickMarkType } from "lightweight-charts";
+import { Activity, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
 
 const Plot = lazy(() => import("react-plotly.js"));
 
@@ -14,50 +13,12 @@ function plotWrapStyle(figure) {
 }
 
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
-const shanghaiDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
-  timeZone: SHANGHAI_TIME_ZONE,
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
 const shanghaiDateFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: SHANGHAI_TIME_ZONE,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
 });
-const shanghaiTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
-  timeZone: SHANGHAI_TIME_ZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-const newYorkSessionFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "America/New_York",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-
-function timeToDate(time) {
-  if (typeof time === "number") return new Date(time * 1000);
-  if (typeof time === "string") return new Date(`${time}T00:00:00+08:00`);
-  return new Date(Date.UTC(time.year, time.month - 1, time.day));
-}
-
-function formatShanghaiChartTime(time) {
-  return shanghaiDateTimeFormatter.format(timeToDate(time)).replace(/\//g, "-");
-}
-
-function formatShanghaiTick(time, tickMarkType) {
-  const date = timeToDate(time);
-  if (tickMarkType === TickMarkType.Time || tickMarkType === TickMarkType.TimeWithSeconds) {
-    return shanghaiTimeFormatter.format(date);
-  }
-  return shanghaiDateFormatter.format(date).replace(/\//g, "-");
-}
 
 function formatShanghaiInputDate(date = new Date()) {
   const parts = shanghaiDateFormatter.formatToParts(date);
@@ -65,15 +26,6 @@ function formatShanghaiInputDate(date = new Date()) {
   const month = parts.find((part) => part.type === "month")?.value || "01";
   const day = parts.find((part) => part.type === "day")?.value || "01";
   return `${year}-${month}-${day}`;
-}
-
-function isRegularUsSession(time) {
-  if (typeof time !== "number") return true;
-  const parts = newYorkSessionFormatter.formatToParts(new Date(time * 1000));
-  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
-  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
-  const totalMinutes = hour * 60 + minute;
-  return totalMinutes >= 9 * 60 + 30 && totalMinutes < 16 * 60;
 }
 
 function fmtMoney(value, currency = "USD", digits = 2) {
@@ -511,73 +463,7 @@ function PerformanceChart({ history }) {
   );
 }
 
-function LightweightChart({ bars, showExtended }) {
-  const hostRef = useRef(null);
-
-  useEffect(() => {
-    if (!hostRef.current || !bars?.length) return undefined;
-    const chart = createChart(hostRef.current, {
-      layout: { background: { color: "#0b0f14" }, textColor: "#cbd5e1", fontFamily: "Inter, Microsoft YaHei, system-ui, sans-serif" },
-      grid: { vertLines: { color: "rgba(148, 163, 184, 0.08)" }, horzLines: { color: "rgba(148, 163, 184, 0.08)" } },
-      rightPriceScale: { borderColor: "rgba(148, 163, 184, 0.18)" },
-      timeScale: {
-        borderColor: "rgba(148, 163, 184, 0.18)",
-        timeVisible: true,
-        tickMarkFormatter: formatShanghaiTick,
-      },
-      localization: {
-        locale: "zh-CN",
-        timeFormatter: formatShanghaiChartTime,
-      },
-      crosshair: { mode: 1 },
-      autoSize: true,
-    });
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#22c55e",
-      downColor: "#ef4444",
-      borderUpColor: "#22c55e",
-      borderDownColor: "#ef4444",
-      wickUpColor: "#22c55e",
-      wickDownColor: "#ef4444",
-    });
-    const visibleBars = showExtended ? bars : bars.filter((bar) => isRegularUsSession(bar.time));
-    candleSeries.setData(visibleBars.map((bar) => {
-      const extended = !isRegularUsSession(bar.time);
-      const rising = Number(bar.close) >= Number(bar.open);
-      const color = rising ? "#22c55e" : "#ef4444";
-      return {
-        time: bar.time,
-        open: Number(bar.open),
-        high: Number(bar.high),
-        low: Number(bar.low),
-        close: Number(bar.close),
-        color: extended ? "rgba(0, 0, 0, 0)" : color,
-        borderColor: color,
-        wickColor: color,
-      };
-    }));
-    const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "" });
-    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    volumeSeries.setData(visibleBars.filter((bar) => Number.isFinite(Number(bar.volume)) && Number(bar.volume) > 0).map((bar) => {
-      const extended = !isRegularUsSession(bar.time);
-      const rising = Number(bar.close) >= Number(bar.open);
-      return {
-        time: bar.time,
-        value: Number(bar.volume),
-        color: rising
-          ? `rgba(34, 197, 94, ${extended ? 0.2 : 0.38})`
-          : `rgba(239, 68, 68, ${extended ? 0.2 : 0.38})`,
-      };
-    }));
-    chart.timeScale().fitContent();
-    return () => chart.remove();
-  }, [bars, showExtended]);
-
-  return <div className="lwChart" ref={hostRef} />;
-}
-
-function KlinePage() {
-  const [mode, setMode] = useState("template");
+function KlinePage({ dashboardData }) {
   const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState("VOO");
   const [interval, setInterval] = useState("1d");
@@ -591,7 +477,7 @@ function KlinePage() {
   const [userXAxisRanges, setUserXAxisRanges] = useState({});
   const userXAxisRangesRef = useRef({});
   const loadRequestRef = useRef(0);
-  const requestSignature = `${mode}|${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
+  const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
 
@@ -613,25 +499,13 @@ function KlinePage() {
           ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
           : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
       );
-      const endpoint = scope === "global" ? "chart-board-global" : (mode === "template" ? "chart-board" : "ohlcv");
+      const endpoint = scope === "global" ? "chart-board-global" : "chart-board";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
       if (silent && scope === "global" && payload?.figure && (!payload.figure.data || payload.figure.data.length === 0)) return;
-      const payloadWithRanges = applySavedXAxisRangesToPayload(payload);
-      if (scope === "single" && mode === "futu" && (!payload.bars || payload.bars.length === 0)) {
-        const fallbackResponse = await fetch(`${API_BASE}/api/chart-board?${qs.toString()}`);
-        if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
-        if (fallbackResponse.ok) {
-          const fallbackPayload = await fallbackResponse.json();
-          setData(applySavedXAxisRangesToPayload({ ...payloadWithRanges, fallback_template: fallbackPayload }));
-        } else {
-          setData(payloadWithRanges);
-        }
-      } else {
-        setData(payloadWithRanges);
-      }
+      setData(applySavedXAxisRangesToPayload(payload));
     } catch (err) {
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
@@ -644,7 +518,7 @@ function KlinePage() {
     userXAxisRangesRef.current = {};
     setUserXAxisRanges({});
     load();
-  }, [mode, scope, symbol, interval, avwapMode, showExtended, globalColumns]);
+  }, [scope, symbol, interval, avwapMode, showExtended, globalColumns]);
 
   function handlePlotRelayout(event) {
     if (!event) return;
@@ -702,13 +576,7 @@ function KlinePage() {
       if (!figure?.layout) return figure;
       return { ...figure, layout: layoutWithUserXAxisRanges(figure.layout) };
     };
-    return {
-      ...payload,
-      figure: applyToFigure(payload.figure),
-      fallback_template: payload.fallback_template
-        ? { ...payload.fallback_template, figure: applyToFigure(payload.fallback_template.figure) }
-        : payload.fallback_template,
-    };
+    return { ...payload, figure: applyToFigure(payload.figure) };
   }
 
   useEffect(() => {
@@ -730,7 +598,7 @@ function KlinePage() {
   }, []);
 
   useEffect(() => {
-    if (mode !== "template" || scope !== "single") {
+    if (scope !== "single") {
       setRealtimeConnected(false);
       return undefined;
     }
@@ -776,37 +644,32 @@ function KlinePage() {
       window.clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [mode, scope, symbol, interval, avwapMode, showExtended]);
+  }, [scope, symbol, interval, avwapMode, showExtended]);
 
   const figure = data?.figure;
-  const fallbackFigure = data?.fallback_template?.figure;
   const isEtf = ["VOO", "QQQ", "SGOV"].includes(symbol);
 
   return (
     <section className="chartPanel technicalPanel">
-      <div className="sectionHeader">
-        <h2>看板</h2>
-        <button onClick={load} disabled={loading}>刷新看板</button>
-      </div>
       <div className="toolbarRow">
-        <div className="segmented">
-          <button className={mode === "template" ? "active" : ""} onClick={() => setMode("template")}>我的模板</button>
-          <button className={mode === "futu" ? "active" : ""} onClick={() => setMode("futu")}>Futu轻量</button>
-        </div>
-        <div className="segmented">
+        <div className="segmented toolbarBlock">
+          <button className={scope === "global" ? "active" : ""} onClick={() => setScope("global")}>全局看板</button>
           <button className={scope === "single" ? "active" : ""} onClick={() => setScope("single")}>单标的</button>
-          <button className={scope === "global" ? "active" : ""} onClick={() => { setScope("global"); setMode("template"); }}>全局看板</button>
+        </div>
+        <div className="segmented toolbarBlock">
+          {[["1d", "日线"], ["15m", "15min"], ["5m", "5min"]].map(([value, label]) => (
+            <button className={interval === value ? "active" : ""} key={value} onClick={() => setInterval(value)}>
+              {label}
+            </button>
+          ))}
         </div>
         {scope === "single" ? <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
-          {["VOO", "QQQ", "ISRG", "GOOGL", "MSFT", "AVGO", "NVDA", "TEM"].map((item) => <option key={item} value={item}>{item}</option>)}
+          {(dashboardData?.holdings || [])
+            .filter((row) => row.currency === "USD" && row.symbol !== "SGOV")
+            .map((row) => row.symbol)
+            .map((item) => <option key={item} value={item}>{item}</option>)}
         </select> : null}
-        {[["1d", "日线"], ["15m", "15m"], ["5m", "5m"]].map(([value, label]) => (
-          <label className="checkItem" key={value}>
-            <input type="radio" name="interval" checked={interval === value} onChange={() => setInterval(value)} />
-            {label}
-          </label>
-        ))}
-        {mode === "template" && scope === "single" ? (
+        {scope === "single" ? (
           <select value={isEtf && avwapMode === "earnings" ? "high_60d" : (interval === "1d" && avwapMode === "today_open" ? (isEtf ? "high_60d" : "earnings") : avwapMode)} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
             {!isEtf ? <option value="earnings">AVWAP：最近财报日</option> : null}
             <option value="high_60d">AVWAP：最近60日历史高点</option>
@@ -821,42 +684,10 @@ function KlinePage() {
         ) : null}
       </div>
       {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
-      {data && scope === "single" && mode === "futu" ? <div className="muted">K线源：{data.source}{data.fallback_reason ? ` · 兜底原因：${data.fallback_reason}` : ""} · {data.bars?.length || 0} 根 · 时间：北京时间</div> : null}
-      {data?.fallback_template ? <div className="muted">轻量K线无数据，已自动切到我的模板 · {data.fallback_template.interval}</div> : null}
-      {data && scope === "single" && mode === "template" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
+      {data && scope === "single" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
-      {scope === "single" && mode === "futu" && data?.bars?.length ? <LightweightChart bars={data.bars} showExtended={showExtended} /> : null}
-      {scope === "single" && mode === "futu" && !data?.bars?.length && fallbackFigure ? (
-        <div className="plotWrap" style={plotWrapStyle(fallbackFigure)}>
-          <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
-            <Plot
-              data={fallbackFigure.data}
-              revision={0}
-              layout={{
-                ...layoutWithUserXAxisRanges(fallbackFigure.layout),
-                autosize: true,
-                dragmode: "zoom",
-                uirevision: `fallback-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-                editrevision: `fallback-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-                selectionrevision: `fallback-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-              }}
-              onRelayout={handlePlotRelayout}
-              config={{
-                responsive: true,
-                displaylogo: false,
-                displayModeBar: true,
-                scrollZoom: true,
-                doubleClick: "reset+autosize",
-                modeBarButtonsToRemove: ["select2d", "lasso2d"],
-              }}
-              useResizeHandler
-              style={{ width: "100%", height: "100%" }}
-            />
-          </Suspense>
-        </div>
-      ) : null}
-      {(scope === "global" || mode === "template") && figure ? (
+      {figure ? (
         <div className="plotWrap" style={plotWrapStyle(figure)}>
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
             <Plot
@@ -945,15 +776,26 @@ function AssetMetricCards({ data, holdings, balances }) {
   );
 }
 
-function EditableHoldingsPage({ data, onSaved }) {
+function buildSatelliteUniverseDraft(data) {
+  const explicit = Array.isArray(data.satellite_universe) ? data.satellite_universe : [];
+  const source = explicit.length
+    ? explicit
+    : Object.entries(data.satellite_targets || {}).map(([symbol, targetPct]) => {
+        const holding = (data.holdings || []).find((row) => row.symbol === symbol) || {};
+        return {
+          symbol,
+          target_pct: targetPct,
+        };
+      });
+  return source.map((item) => ({
+    symbol: item.symbol || "",
+    target_pct: String(item.target_pct ?? 0),
+  }));
+}
+
+function EditableHoldingsPage({ data }) {
   const [holdings, setHoldings] = useState({});
   const [balances, setBalances] = useState({});
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savingTargets, setSavingTargets] = useState(false);
-  const [targetInputs, setTargetInputs] = useState({});
-  const [editingTargets, setEditingTargets] = useState(false);
-  const [message, setMessage] = useState("");
 
   function resetDraft() {
     setHoldings(Object.fromEntries(data.holdings.map((row) => [row.symbol, { shares: String(row.shares ?? 0), avg_cost: String(row.avg_cost ?? 0) }])));
@@ -964,114 +806,15 @@ function EditableHoldingsPage({ data, onSaved }) {
       realized_cny: String(data.balances?.realized_cny ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
-    setTargetInputs(Object.fromEntries(Object.entries(data.satellite_targets || {}).map(([symbol, value]) => [symbol, Number(value || 0).toFixed(2)])));
   }
 
   useEffect(() => {
-    if (editing) return;
     resetDraft();
-  }, [data, editing]);
-
-  function updateHolding(symbol, key, value) {
-    setHoldings((prev) => ({ ...prev, [symbol]: { ...prev[symbol], [key]: value } }));
-  }
-
-  function updateBalance(key, value) {
-    setBalances((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function updateTarget(symbol, value) {
-    setTargetInputs((prev) => ({ ...prev, [symbol]: value }));
-  }
-
-  async function save() {
-    setSaving(true);
-    setMessage("");
-    try {
-      const cleanHoldings = Object.fromEntries(Object.entries(holdings).map(([symbol, item]) => [symbol, { shares: Number(item.shares || 0), avg_cost: Number(item.avg_cost || 0) }]));
-      const cleanBalances = Object.fromEntries(Object.entries(balances).map(([key, value]) => [key, Number(value || 0)]));
-      const holdingsResp = await fetch(`${API_BASE}/api/holdings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holdings: cleanHoldings }) });
-      if (!holdingsResp.ok) throw new Error(`holdings HTTP ${holdingsResp.status}`);
-      const balancesResp = await fetch(`${API_BASE}/api/balances`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ balances: cleanBalances }) });
-      if (!balancesResp.ok) throw new Error(`balances HTTP ${balancesResp.status}`);
-      await onSaved();
-      setMessage("已保存");
-      setEditing(false);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveTargets() {
-    setSavingTargets(true);
-    setMessage("");
-    try {
-      const targets = Object.fromEntries(Object.entries(targetInputs).map(([symbol, value]) => [symbol, Number(value || 0)]));
-      const response = await fetch(`${API_BASE}/api/satellite-targets`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targets }),
-      });
-      if (!response.ok) throw new Error(`satellite targets HTTP ${response.status}`);
-      await onSaved();
-      setMessage("卫星目标比例已保存");
-      setEditingTargets(false);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingTargets(false);
-    }
-  }
-
-  const targetTotal = Object.values(targetInputs).reduce((sum, value) => sum + Number(value || 0), 0);
+  }, [data]);
 
   return (
     <section>
-      <div className="sectionHeader">
-        <h2>持仓</h2>
-        <div className="actions inlineActions" style={{ display: "none" }}>
-          {editing ? <button onClick={() => { resetDraft(); setEditing(false); }} disabled={saving}>取消编辑</button> : null}
-          {editing ? (
-            <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 保存持仓</button>
-          ) : (
-            <button className="primary" onClick={() => setEditing(true)}>编辑持仓</button>
-          )}
-        </div>
-      </div>
-      {message ? <div className={message === "已保存" ? "saveMessage up" : "saveMessage down"}>{message}</div> : null}
       <AssetMetricCards data={data} holdings={holdings} balances={balances} />
-      {editing ? (
-        <div className="balanceEditGrid">
-          <label>USD现金<input value={balances.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
-          <label>CNY现金<input value={balances.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
-          <label>USD已变现<input value={balances.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
-          <label>CNY已变现<input value={balances.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
-          <label>SGOV股息<input value={balances.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
-        </div>
-      ) : null}
-      <div className="targetEditor">
-        <div className="sectionHeader compactHeader">
-          <h3>卫星仓位目标比例</h3>
-          <div className="actions inlineActions">
-            <span className="muted">合计 {targetTotal.toFixed(2)}%</span>
-            {editingTargets ? <button onClick={() => { resetDraft(); setEditingTargets(false); }} disabled={savingTargets}>取消</button> : null}
-            {editingTargets ? (
-              <button className="primary" onClick={saveTargets} disabled={savingTargets}><Save size={16} /> 保存目标</button>
-            ) : (
-              <button className="primary" onClick={() => setEditingTargets(true)}>编辑</button>
-            )}
-          </div>
-        </div>
-        {editingTargets ? (
-          <div className="targetEditGrid">
-            {Object.entries(targetInputs).map(([symbol, value]) => (
-              <label key={symbol}>{symbol}<input value={value} onChange={(event) => updateTarget(symbol, event.target.value)} inputMode="decimal" /></label>
-            ))}
-          </div>
-        ) : null}
-      </div>
       <div className="tableWrap">
         <table className="editableHoldingsTable">
           <thead>
@@ -1087,8 +830,8 @@ function EditableHoldingsPage({ data, onSaved }) {
                 <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
                 <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
                 <td className={tone(row.rebound_pct)}>{row.rebound_pct == null ? "-" : fmtPct(row.rebound_pct)}</td>
-                <td>{editing ? <input className="tableInput" value={holdings[row.symbol]?.shares ?? ""} onChange={(event) => updateHolding(row.symbol, "shares", event.target.value)} inputMode="decimal" /> : Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                <td>{editing ? <input className="tableInput" value={holdings[row.symbol]?.avg_cost ?? ""} onChange={(event) => updateHolding(row.symbol, "avg_cost", event.target.value)} inputMode="decimal" /> : fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
+                <td>{Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                <td>{fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
                 <td className={peTone(row)}>{valuationLabel(row)}</td>
@@ -1114,19 +857,25 @@ function Rebalance({ data, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [universeOpen, setUniverseOpen] = useState(false);
   const [inputs, setInputs] = useState({});
   const [budgetInputs, setBudgetInputs] = useState({});
   const [balanceInputs, setBalanceInputs] = useState({});
+  const [universeInputs, setUniverseInputs] = useState([]);
   const [editingBalances, setEditingBalances] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingBudget, setSavingBudget] = useState(false);
   const [savingBalances, setSavingBalances] = useState(false);
+  const [savingUniverse, setSavingUniverse] = useState(false);
   const [deletingTradeId, setDeletingTradeId] = useState("");
   const [balanceMessage, setBalanceMessage] = useState("");
   const [tradeMessage, setTradeMessage] = useState("");
 
   useEffect(() => {
     setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+    if (!universeOpen) {
+      setUniverseInputs(buildSatelliteUniverseDraft(data));
+    }
     if (editing) return;
     const next = {};
     rows.forEach((row) => {
@@ -1139,7 +888,7 @@ function Rebalance({ data, onSaved }) {
       };
     });
     setInputs(next);
-  }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month, defaultTradeDate]);
+  }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month, defaultTradeDate, data.satellite_universe, data.satellite_targets, data.holdings, universeOpen]);
 
   function resetBalanceDraft() {
     setBalanceInputs({
@@ -1178,6 +927,23 @@ function Rebalance({ data, onSaved }) {
 
   function updateBalance(key, value) {
     setBalanceInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateUniverse(index, key, value) {
+    setUniverseInputs((prev) => prev.map((item, idx) => (idx === index ? { ...item, [key]: value } : item)));
+  }
+
+  function addUniverseRow() {
+    setUniverseInputs((prev) => [...prev, { symbol: "", target_pct: "0" }]);
+  }
+
+  function removeUniverseRow(index) {
+    setUniverseInputs((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  function openUniverseEditor() {
+    setUniverseInputs(buildSatelliteUniverseDraft(data));
+    setUniverseOpen(true);
   }
 
   function clearPending() {
@@ -1276,11 +1042,39 @@ function Rebalance({ data, onSaved }) {
     }
   }
 
+  async function saveUniverse() {
+    setSavingUniverse(true);
+    setTradeMessage("");
+    try {
+      const items = universeInputs
+        .map((item) => ({
+          symbol: String(item.symbol || "").trim().toUpperCase(),
+          label: String(item.symbol || "").trim().toUpperCase(),
+          target_pct: Number(item.target_pct || 0),
+        }))
+        .filter((item) => item.symbol);
+      const response = await fetch(`${API_BASE}/api/satellite-universe`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      if (!response.ok) throw new Error(`satellite universe HTTP ${response.status}`);
+      setUniverseOpen(false);
+      await onSaved();
+      setTradeMessage("卫星标的已保存");
+    } catch (err) {
+      setTradeMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingUniverse(false);
+    }
+  }
+
   return (
     <section>
       <div className="rebalanceActionRow">
         <button className="primary" onClick={() => setBudgetOpen(true)}>预算设置</button>
         <button className="primary" onClick={() => setEditingBalances(true)}>编辑现金</button>
+        <button className="primary" onClick={openUniverseEditor}>编辑卫星标的</button>
         <button className="primary" onClick={() => setEditing(true)}>记录买卖</button>
       </div>
       <div className="sectionHeader subHeader">
@@ -1362,6 +1156,57 @@ function Rebalance({ data, onSaved }) {
                 <ul>{(section.items || []).map((item) => <li key={item}>{item}</li>)}</ul>
               </section>
             ))}
+          </div>
+        </div>
+      ) : null}
+      {universeOpen ? (
+        <div className="modalBackdrop" role="presentation" onClick={(event) => {
+          if (event.target === event.currentTarget) setUniverseOpen(false);
+        }}>
+          <div className="modalPanel satelliteUniverseModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <h2>编辑卫星标的</h2>
+              <button onClick={() => setUniverseOpen(false)} disabled={savingUniverse}>关闭</button>
+            </div>
+            <div className="satelliteUniverseRows">
+              {universeInputs.map((item, index) => {
+                const targetValue = Number(item.target_pct || 0);
+                return (
+                  <div className="satelliteUniverseRow" key={`satellite-universe-${index}`}>
+                    <label>标的<input value={item.symbol} onChange={(event) => updateUniverse(index, "symbol", event.target.value)} /></label>
+                    <div className="universeTargetCell" style={{ "--target-fill": `${Math.min(100, Math.max(0, targetValue))}%` }}>
+                      <div className="targetSliderLabel">
+                        <strong>目标比例</strong>
+                        <span>{targetValue.toFixed(2)}%</span>
+                      </div>
+                      <input
+                        className="targetRange"
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={targetValue}
+                        onChange={(event) => updateUniverse(index, "target_pct", event.target.value)}
+                      />
+                      <div className="targetNumberWrap">
+                        <input
+                          className="targetNumber"
+                          value={item.target_pct}
+                          onChange={(event) => updateUniverse(index, "target_pct", event.target.value)}
+                          inputMode="decimal"
+                        />
+                        <span>%</span>
+                      </div>
+                    </div>
+                    <button className="iconDanger" aria-label={`删除 ${item.symbol || "空行"}`} onClick={() => removeUniverseRow(index)}><Trash2 size={16} /></button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="actions">
+              <button onClick={addUniverseRow}><Plus size={16} /> 新增标的</button>
+              <button className="primary" onClick={saveUniverse} disabled={savingUniverse}><Save size={16} /> 保存卫星标的</button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -1477,17 +1322,12 @@ function DashboardPage({ data }) {
   );
 }
 
-function HoldingsPage({ data, onSaved }) {
-  return <EditableHoldingsPage data={data} onSaved={onSaved} />;
+function HoldingsPage({ data }) {
+  return <EditableHoldingsPage data={data} />;
 }
 
 function RebalancePage({ data, onSaved }) {
-  return (
-    <>
-      <Summary data={data} />
-      <Rebalance data={data} onSaved={onSaved} />
-    </>
-  );
+  return <Rebalance data={data} onSaved={onSaved} />;
 }
 
 export default function App() {
@@ -1511,9 +1351,9 @@ export default function App() {
       <Header data={data} onRefresh={load} />
       <PageNav page={page} setPage={setPage} />
       {page === "dashboard" ? <DashboardPage data={data} /> : null}
-      {page === "holdings" ? <HoldingsPage data={data} onSaved={load} /> : null}
+      {page === "holdings" ? <HoldingsPage data={data} /> : null}
       {page === "rebalance" ? <RebalancePage data={data} onSaved={load} /> : null}
-      {page === "kline" ? <KlinePage /> : null}
+      {page === "kline" ? <KlinePage dashboardData={data} /> : null}
     </main>
   );
 }
