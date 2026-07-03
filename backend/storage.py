@@ -354,6 +354,8 @@ def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
             amount = max(0.0, float(item.get("amount_usd", item.get("amount", 0.0))))
             cost_basis = float(item.get("cost_basis", 0.0) or 0.0)
             realized_pnl = float(item.get("realized_pnl", 0.0) or 0.0)
+            prev_avg_cost = float(item.get("prev_avg_cost", 0.0) or 0.0)
+            new_avg_cost = float(item.get("new_avg_cost", 0.0) or 0.0)
         except (TypeError, ValueError):
             continue
         if shares <= 0 or amount <= 0:
@@ -372,6 +374,8 @@ def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
                 "price": amount / shares if shares > 0 else 0.0,
                 "cost_basis": cost_basis,
                 "realized_pnl": realized_pnl,
+                "prev_avg_cost": prev_avg_cost,
+                "new_avg_cost": new_avg_cost,
                 "intensity": str(item.get("intensity") or "normal"),
                 "created_at": str(item.get("created_at") or ""),
             }
@@ -401,6 +405,8 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
             amount = max(0.0, float(item.get("amount_usd", item.get("amount", 0.0))))
             cost_basis = float(item.get("cost_basis", 0.0) or 0.0)
             realized_pnl = float(item.get("realized_pnl", 0.0) or 0.0)
+            prev_avg_cost = float(item.get("prev_avg_cost", 0.0) or 0.0)
+            new_avg_cost = float(item.get("new_avg_cost", 0.0) or 0.0)
         except (TypeError, ValueError):
             continue
         trade_date = str(item.get("trade_date") or item.get("date") or "").strip()[:10]
@@ -417,6 +423,8 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
                 "price": amount / shares if shares > 0 else 0.0,
                 "cost_basis": cost_basis,
                 "realized_pnl": realized_pnl,
+                "prev_avg_cost": prev_avg_cost,
+                "new_avg_cost": new_avg_cost,
                 "intensity": str(item.get("intensity") or "normal"),
                 "created_at": str(item.get("created_at") or ""),
             }

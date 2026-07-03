@@ -101,6 +101,14 @@ function fmtCardPriceLine(value) {
   return String(value || "");
 }
 
+function fmtCostChange(trade, currency = "USD") {
+  const prev = Number(trade?.prev_avg_cost || 0);
+  const next = Number(trade?.new_avg_cost || 0);
+  if (!Number.isFinite(prev) || !Number.isFinite(next) || (prev === 0 && next === 0)) return "-";
+  const digits = currency === "USD" ? 2 : 4;
+  return `${fmtMoney(prev, currency, digits)} -> ${fmtMoney(next, currency, digits)}`;
+}
+
 function tone(value) {
   const num = Number(value || 0);
   if (num > 0) return "up";
@@ -1282,15 +1290,17 @@ function Rebalance({ data, onSaved }) {
       {tradeMessage ? <div className={["交易已保存", "交易已撤销"].includes(tradeMessage) ? "saveMessage up" : "saveMessage down"}>{tradeMessage}</div> : null}
       <div className="tableWrap">
         <table>
-          <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>金额</th><th>股数</th><th>档位</th><th>操作</th></tr></thead>
+          <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>股数</th><th>成交金额</th><th>成交成本</th><th>持仓成本变化</th><th>档位</th><th>操作</th></tr></thead>
           <tbody>
             {(data.trades || []).slice().reverse().slice(0, 20).map((trade, index) => (
               <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
                 <td>{trade.trade_date || trade.date || "-"}</td>
                 <td>{trade.symbol}</td>
                 <td>{trade.action === "sell" ? "卖出" : "买入"}</td>
-                <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
                 <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
+                <td>{fmtMoney(trade.price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}</td>
+                <td>{fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}</td>
                 <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.intensity || "-"}</span></td>
                 <td>
                   <button onClick={() => deleteTrade(trade)} disabled={deletingTradeId === trade.id}>
@@ -1300,7 +1310,7 @@ function Rebalance({ data, onSaved }) {
               </tr>
             ))}
             {!(data.trades || []).length ? (
-              <tr><td colSpan={7} className="muted">暂无交易记录</td></tr>
+              <tr><td colSpan={9} className="muted">暂无交易记录</td></tr>
             ) : null}
           </tbody>
         </table>

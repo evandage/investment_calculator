@@ -776,7 +776,7 @@ h2 {
 }
 
 .toolbarRow > button.active {
-  background: linear-gradient(135deg, var(--blue), var(--violet));
+  background: linear-gradient(135deg, #2563eb, #14b8a6);
   color: #fff;
 }
 
@@ -799,7 +799,7 @@ h2 {
 }
 
 .segmented button.active {
-  background: linear-gradient(135deg, var(--blue), var(--violet));
+  background: linear-gradient(135deg, #2563eb, #14b8a6);
   color: #fff;
 }
 

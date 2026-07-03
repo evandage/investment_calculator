@@ -1669,13 +1669,15 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
         amounts = dict(usage.get("bought_amount_by_symbol", {}))
         sold_amounts = dict(usage.get("sold_amount_by_symbol", {}))
         intensities = dict(usage.get("bought_intensity_by_symbol", {}))
+        prev_avg_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
         if action == "sell":
             old_shares = float(holdings.get(sym, {}).get("shares", 0.0) or 0.0)
             if shares > old_shares + 1e-9:
                 raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
-            old_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
+            old_cost = prev_avg_cost
             cost_basis = shares * old_cost
             holdings, sale_pnl = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
+            new_avg_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
             if is_cny_trade:
                 available_cny += amount
                 balances["realized_cny"] = float(balances.get("realized_cny", 0.0)) + sale_pnl
@@ -1691,6 +1693,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             elif amount > available_usd + 1e-9:
                 raise ValueError(f"{sym} 买入金额 {amount:,.2f} USD 超过当前美元现金 {available_usd:,.2f} USD")
             holdings, _ = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
+            new_avg_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
             cost_basis = amount
             sale_pnl = 0.0
             if is_cny_trade:
@@ -1718,6 +1721,8 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
                 "price": amount / shares,
                 "cost_basis": cost_basis,
                 "realized_pnl": sale_pnl,
+                "prev_avg_cost": prev_avg_cost,
+                "new_avg_cost": new_avg_cost,
                 "intensity": normalize_intensity(item.get("intensity", "normal")),
                 "created_at": now.isoformat(timespec="seconds"),
             }
