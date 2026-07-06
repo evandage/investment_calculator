@@ -2972,7 +2972,7 @@ def fig_global_kline_board(
     cache_only: bool = False,
 ) -> go.Figure:
     theme = get_chart_theme(chart_theme)
-    cols = min(3, max(1, int(columns or 1)))
+    cols = min(5, max(1, int(columns or 1)))
     rows = max(1, (len(symbols) + cols - 1) // cols)
     fig = make_subplots(
         rows=rows,
@@ -3218,29 +3218,11 @@ def fig_global_kline_board(
         )
         cost = float((user_avg_costs or {}).get(symbol, 0.0) or 0.0)
         if interval == "1d" and np.isfinite(cost) and cost > 0:
-            cost_pct = (price / cost - 1.0) * 100.0
             fig.add_hline(
                 y=cost,
                 line_dash="dashdot",
                 line_width=1.8,
                 line_color=theme["rsi_orange"],
-                row=row,
-                col=col,
-            )
-            fig.add_annotation(
-                x=0.72,
-                y=0.985,
-                xref="x domain",
-                yref="y domain",
-                text=f"成本 {cost:.2f}（{cost_pct:+.2f}%）",
-                showarrow=False,
-                xanchor="right",
-                yanchor="top",
-                font=dict(color=theme["rsi_orange"], size=10),
-                bgcolor=theme["paper"],
-                bordercolor=theme["rsi_orange"],
-                borderwidth=1,
-                borderpad=2,
                 row=row,
                 col=col,
             )
@@ -3270,8 +3252,8 @@ def fig_global_kline_board(
         height=max(760, (310 if cols > 1 else 210) * rows),
         xaxis_rangeslider_visible=False,
         showlegend=False,
-        margin=dict(r=44 if cols > 1 else 86),
-        title=f"全局K线看板 · {interval}",
+        margin=dict(l=32, r=44 if cols > 1 else 86, t=24, b=30),
+        title=None,
     )
     _apply_chart_theme(fig, theme)
     board_x_range = [

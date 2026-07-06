@@ -9,10 +9,62 @@ const API_BASE =
   `${window.location.protocol}//${window.location.hostname}:8010`;
 const HEATMAP_LAYOUT_WIDTH = 100;
 const HEATMAP_LAYOUT_HEIGHT = 78;
+const TERMINAL_CHART = {
+  yellow: "#facc15",
+  cyan: "#22d3ee",
+  violet: "#a78bfa",
+  green: "#34d399",
+  coral: "#fb7185",
+  textSoft: "#dbeafe",
+  textMuted: "#cbd5e1",
+  axis: "rgba(203, 213, 225, 0.34)",
+  grid: "rgba(148, 163, 184, 0.16)",
+  zero: "rgba(226, 232, 240, 0.42)",
+  surface: "#0b1b2e",
+  legend: "#10233a",
+};
+const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
 
 function plotWrapStyle(figure) {
   const height = Number(figure?.layout?.height || 980);
   return { height: `${height}px` };
+}
+
+function terminalAxis(axis = {}) {
+  const next = {
+    ...axis,
+    gridcolor: axis.showgrid === false ? axis.gridcolor : TERMINAL_CHART.grid,
+    linecolor: TERMINAL_CHART.axis,
+    zerolinecolor: TERMINAL_CHART.zero,
+    tickfont: { ...(axis.tickfont || {}), color: TERMINAL_CHART.textMuted },
+  };
+  if (axis.title && typeof axis.title === "object") {
+    next.title = {
+      ...axis.title,
+      font: { ...(axis.title.font || {}), color: TERMINAL_CHART.textMuted },
+    };
+  }
+  return next;
+}
+
+function terminalPlotLayout(layout = {}) {
+  const next = {
+    ...layout,
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: TERMINAL_CHART.surface,
+    font: { ...(layout.font || {}), family: PLOT_FONT, color: TERMINAL_CHART.textSoft },
+    legend: {
+      ...(layout.legend || {}),
+      bgcolor: TERMINAL_CHART.legend,
+      bordercolor: "rgba(148, 163, 184, 0.24)",
+      borderwidth: 1,
+      font: { ...(layout.legend?.font || {}), color: TERMINAL_CHART.textSoft },
+    },
+  };
+  Object.keys(layout).forEach((key) => {
+    if (/^[xy]axis\d*$/.test(key)) next[key] = terminalAxis(layout[key]);
+  });
+  return next;
 }
 
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
@@ -83,8 +135,9 @@ function tierClass(intensity) {
 }
 
 function globalKlineColumns(width = window.innerWidth) {
-  if (width >= 1280) return 3;
-  if (width >= 820) return 2;
+  if (width >= 1500) return 5;
+  if (width >= 1100) return 4;
+  if (width >= 760) return 2;
   return 1;
 }
 
@@ -293,12 +346,11 @@ function DailyHeatmap({ cards, holdings }) {
     const rawDailyPct = Number(card.regular_pct || 0);
     const dailyPct = Number.isFinite(rawDailyPct) ? rawDailyPct : 0;
     const magnitude = Math.min(1, Math.abs(dailyPct) / 5);
-    const alpha = 0.16 + magnitude * 0.64;
     const bg = dailyPct > 0
-      ? `rgba(34, 197, 94, ${alpha})`
+      ? "linear-gradient(145deg, #123a32, #0f2f2e)"
       : dailyPct < 0
-        ? `rgba(239, 68, 68, ${alpha})`
-        : "rgba(148, 163, 184, 0.18)";
+        ? "linear-gradient(145deg, #3a1c28, #2a1825)"
+        : "linear-gradient(145deg, #15263d, #10233a)";
     return { ...card, valueCny, assetPct, dailyPct, bg, magnitude };
   }), [cards, holdingsBySymbol, totalValue]);
   const minLayoutValue = totalValue > 0 ? totalValue * 0.0025 : 1;
@@ -333,7 +385,7 @@ function DailyHeatmap({ cards, holdings }) {
               key={row.symbol}
               style={{
                 "--heat-bg": row.bg,
-                "--heat-border": row.dailyPct > 0 ? "rgba(34, 197, 94, 0.46)" : row.dailyPct < 0 ? "rgba(239, 68, 68, 0.46)" : "rgba(148, 163, 184, 0.28)",
+                "--heat-border": row.dailyPct > 0 ? "rgba(52, 211, 153, 0.32)" : row.dailyPct < 0 ? "rgba(248, 113, 113, 0.34)" : "rgba(148, 163, 184, 0.24)",
                 left: `${row.x / HEATMAP_LAYOUT_WIDTH * 100}%`,
                 top: `${row.y / HEATMAP_LAYOUT_HEIGHT * 100}%`,
                 width: `${row.width / HEATMAP_LAYOUT_WIDTH * 100}%`,
@@ -431,7 +483,17 @@ function PerformanceChart({ history }) {
     ["001015_return_pct", "沪深300", "#a16207", "rgba(0,0,0,0)", "solid", 2.3],
     ["VOO_return_pct", "VOO", "#8b5cf6", "rgba(0,0,0,0)", "solid", 2.5],
     ["QQQ_return_pct", "QQQ", "#7dd3fc", "rgba(0,0,0,0)", "solid", 2.8],
-  ];
+  ].map(([key, name, color, fillcolor, dash, width]) => {
+    const terminalSeries = {
+      portfolio_return_pct: { color: TERMINAL_CHART.yellow, fillcolor: "rgba(250, 204, 21, 0.16)", width: 4.6 },
+      "001015_return_pct": { color: TERMINAL_CHART.coral, fillcolor: "rgba(0,0,0,0)", width: 2.6 },
+      VOO_return_pct: { color: TERMINAL_CHART.violet, fillcolor: "rgba(0,0,0,0)", width: 2.5 },
+      QQQ_return_pct: { color: TERMINAL_CHART.cyan, fillcolor: "rgba(0,0,0,0)", width: 2.8 },
+    }[key];
+    return terminalSeries
+      ? [key, name, terminalSeries.color, terminalSeries.fillcolor, dash, terminalSeries.width]
+      : [key, name, color, fillcolor, dash, width];
+  });
   const figure = useMemo(() => {
     const dates = points.map((point) => point.date);
     const tickText = dates.map((day) => {
@@ -461,12 +523,12 @@ function PerformanceChart({ history }) {
           marker: {
             color,
             size: isPortfolio ? 9 : 6,
-            line: { color: "#0f172a", width: 1.2 },
+            line: { color: "#0b1b2e", width: 1.2 },
           },
           hovertemplate: "%{x}<br>%{fullData.name}<br>累计: %{y:.2f}%<br>当日: %{customdata:.2f}%<extra></extra>",
         };
       }),
-      layout: {
+      layout: terminalPlotLayout({
         autosize: true,
         height: 430,
         margin: { l: 58, r: 24, t: 18, b: 44 },
@@ -511,12 +573,12 @@ function PerformanceChart({ history }) {
             y0: 0,
             x1: 1,
             y1: 1,
-            fillcolor: "rgba(15, 23, 42, 0.26)",
+            fillcolor: "rgba(15, 35, 58, 0.62)",
             line: { width: 0 },
             layer: "below",
           },
         ],
-      },
+      }),
       config: {
         displayModeBar: false,
         responsive: true,
@@ -734,6 +796,16 @@ function KlinePage({ dashboardData }) {
 
   const figure = data?.figure;
   const isEtf = ["VOO", "QQQ", "SGOV"].includes(symbol);
+  const themedFigureLayout = figure
+    ? {
+        ...terminalPlotLayout(layoutWithUserXAxisRanges(figure.layout)),
+        autosize: true,
+        dragmode: "zoom",
+        uirevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+        editrevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+        selectionrevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
+      }
+    : null;
 
   return (
     <section className="chartPanel technicalPanel">
@@ -779,14 +851,7 @@ function KlinePage({ dashboardData }) {
             <Plot
               data={figure.data}
               revision={0}
-              layout={{
-                ...layoutWithUserXAxisRanges(figure.layout),
-                autosize: true,
-                dragmode: "zoom",
-                uirevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-                editrevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-                selectionrevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-              }}
+              layout={themedFigureLayout}
               onRelayout={handlePlotRelayout}
               config={{
                 responsive: true,

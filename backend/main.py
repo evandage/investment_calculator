@@ -229,7 +229,7 @@ def _build_global_chart_board(
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
     key = interval if interval in {"1d", "15m", "5m"} else "5m"
-    cols = min(3, max(1, int(columns or 1)))
+    cols = min(5, max(1, int(columns or 1)))
     labels = _chart_labels()
     symbols = list(labels.keys())
     try:
