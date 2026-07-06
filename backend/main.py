@@ -77,11 +77,11 @@ class DeleteTradePayload(BaseModel):
 
 
 def _chart_symbols() -> set[str]:
-    return {"VOO", "QQQ", "SGOV", *config_module.SATELLITE_SYMBOLS}
+    return {"VOO", "QQQ", *config_module.SATELLITE_SYMBOLS}
 
 
 def _chart_labels() -> dict[str, str]:
-    symbols = ("VOO", "QQQ", *config_module.SATELLITE_SYMBOLS, "SGOV")
+    symbols = ("VOO", "QQQ", *config_module.SATELLITE_SYMBOLS)
     return {
         symbol: config_module.ASSET_META.get(symbol, {}).get("label", symbol)
         for symbol in symbols

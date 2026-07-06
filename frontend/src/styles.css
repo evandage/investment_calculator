@@ -1373,6 +1373,93 @@ tbody th {
   background: rgba(5, 13, 27, 0.58);
 }
 
+.toastNotice {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 70;
+  width: min(360px, calc(100vw - 36px));
+  display: grid;
+  gap: 4px;
+  padding: 13px 15px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: #10233a;
+  color: var(--text-main);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+  animation: toastIn 150ms ease-out;
+}
+
+.toastNotice strong {
+  font-size: 0.9rem;
+}
+
+.toastNotice span {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.toastNotice.up {
+  border-left-color: var(--green);
+}
+
+.toastNotice.down {
+  border-left-color: var(--red);
+}
+
+.savingBackdrop {
+  z-index: 60;
+  background: rgba(3, 7, 18, 0.72);
+}
+
+.savingDialog {
+  width: min(360px, calc(100vw - 36px));
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 10px;
+  background: #10233a;
+  color: var(--text-main);
+  box-shadow: 0 28px 76px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+.savingDialog span {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.savingSpinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(148, 163, 184, 0.26);
+  border-top-color: var(--cyan);
+  border-radius: 999px;
+  animation: spin 780ms linear infinite;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .modalPanel {
   width: min(840px, 100%);
   max-height: min(760px, 88vh);

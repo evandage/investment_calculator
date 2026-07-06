@@ -1000,6 +1000,7 @@ function EditableHoldingsPage({ data }) {
 
 function Rebalance({ data, onSaved }) {
   const rows = data.rebalance.rows;
+  const suggestionRows = useMemo(() => rows.filter((row) => row.symbol !== "001015"), [rows]);
   const currencyBySymbol = useMemo(
     () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row.currency || "USD"])),
     [data.holdings],
@@ -1021,6 +1022,7 @@ function Rebalance({ data, onSaved }) {
   const [deletingTradeId, setDeletingTradeId] = useState("");
   const [balanceMessage, setBalanceMessage] = useState("");
   const [tradeMessage, setTradeMessage] = useState("");
+  const [tradeToast, setTradeToast] = useState(null);
 
   useEffect(() => {
     setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
@@ -1040,6 +1042,16 @@ function Rebalance({ data, onSaved }) {
     });
     setInputs(next);
   }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month, defaultTradeDate, data.satellite_universe, data.satellite_targets, data.holdings, universeOpen]);
+
+  useEffect(() => {
+    if (!tradeToast) return undefined;
+    const id = window.setTimeout(() => setTradeToast(null), 3200);
+    return () => window.clearTimeout(id);
+  }, [tradeToast]);
+
+  function showTradeToast(message, status = "up") {
+    setTradeToast({ id: Date.now(), message, status });
+  }
 
   function resetBalanceDraft() {
     setBalanceInputs({
@@ -1107,6 +1119,7 @@ function Rebalance({ data, onSaved }) {
   async function save() {
     setSaving(true);
     setTradeMessage("");
+    setTradeToast(null);
     try {
       const executions = Object.entries(inputs)
         .map(([symbol, item]) => ({
@@ -1126,8 +1139,11 @@ function Rebalance({ data, onSaved }) {
       setEditing(false);
       await onSaved();
       setTradeMessage("交易已保存");
+      showTradeToast("交易已保存", "up");
     } catch (err) {
-      setTradeMessage(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setTradeMessage(message);
+      showTradeToast(`交易保存失败：${message}`, "down");
     } finally {
       setSaving(false);
     }
@@ -1152,8 +1168,11 @@ function Rebalance({ data, onSaved }) {
       }
       await onSaved();
       setTradeMessage("交易已撤销");
+      showTradeToast("交易已撤销", "up");
     } catch (err) {
-      setTradeMessage(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setTradeMessage(message);
+      showTradeToast(`交易撤销失败：${message}`, "down");
     } finally {
       setDeletingTradeId("");
     }
@@ -1221,6 +1240,21 @@ function Rebalance({ data, onSaved }) {
 
   return (
     <section>
+      {tradeToast ? (
+        <div className={`toastNotice ${tradeToast.status}`} role="status" aria-live="polite" key={tradeToast.id}>
+          <strong>{tradeToast.status === "down" ? "操作失败" : "操作完成"}</strong>
+          <span>{tradeToast.message}</span>
+        </div>
+      ) : null}
+      {saving ? (
+        <div className="modalBackdrop savingBackdrop" role="status" aria-live="assertive">
+          <div className="savingDialog">
+            <div className="savingSpinner" />
+            <strong>正在保存交易</strong>
+            <span>请稍后，系统正在同步持仓并重算收益曲线。</span>
+          </div>
+        </div>
+      ) : null}
       <div className="rebalanceActionRow">
         <button className="primary" onClick={() => setBudgetOpen(true)}>预算设置</button>
         <button className="primary" onClick={() => setEditingBalances(true)}>编辑现金</button>
@@ -1368,7 +1402,7 @@ function Rebalance({ data, onSaved }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {suggestionRows.map((row) => (
               <tr key={row.symbol}>
                 <th>{row.symbol}</th>
                 <td>{Number(row.current_pct || 0).toFixed(2)}%</td>

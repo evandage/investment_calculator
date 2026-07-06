@@ -44,6 +44,21 @@
       "new_avg_cost": 725.7021851078638,
       "intensity": "probe",
       "created_at": "2026-07-03T10:06:03+08:00"
+    },
+    {
+      "id": "20260706164438-3-001015",
+      "trade_date": "2026-07-06",
+      "symbol": "001015",
+      "action": "buy",
+      "amount_usd": 4000.0,
+      "shares": 1680.07,
+      "price": 2.3808531787366003,
+      "cost_basis": 4000.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 2.3623,
+      "new_avg_cost": 2.3648485968287503,
+      "intensity": "normal",
+      "created_at": "2026-07-06T16:44:38+08:00"
     }
   ]
 }

@@ -298,8 +298,8 @@
     },
     {
       "date": "2026-07-03",
-      "portfolio_daily_pct": 0.7989907485281617,
       "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": 0.7989907485281617,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
       "benchmark_prices": {
@@ -357,8 +357,8 @@
           "avg_cost": 2.3623
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
+      "estimated_symbols": [],
       "updated_at": "2026-07-03T08:00:00+08:00"
     }
   ]

@@ -124,17 +124,18 @@ def rebalance_rules_payload(
                 "heading": "建议金额",
                 "items": [
                     "先用月初口径持仓计算缺口：月初口径 = 当前持仓金额 - 本月已买金额。",
-                    "VOO/QQQ 再按剩余月份和档位倍率计算本月计划应买；VOO 建仓期至少按 1 股规划。",
+                    "VOO/QQQ 再按剩余月份和档位倍率计算本月计划应买。",
                     f"卫星股以10月底目标金额为 1x；{zero_target_note}",
-                    "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股看 Forward PE，VOO/QQQ 看近 5 个交易日涨幅。",
+                    "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股主要看 Forward PE，PLTR/TEM 用 60 日历史涨跌位置定档，VOO 仍按回撤触发档位，近 5 日涨幅偏热时只做备注提示。",
                     "可动用资金不足时按比例缩放计划应买；卫星股按当前持仓计算实时缺口，不再使用本月累计买入作为月度封顶。",
                 ],
             },
             {
                 "heading": "档位规则",
                 "items": [
-                    "VOO：小加 -3% / 1.5x，中加 -7% / 2x，大加 -10% / 3x。",
-                    "QQQ：小加 -5% / 1.5x，中加 -10% / 2.5x，大加 -13% / 4x。",
+                    "VOO：小加 -3% / 1.5x，中加 -7% / 2x，大加 -10% / 3x；近 5 日涨幅偏热时只在备注提示，不额外降低额度。",
+                    "QQQ：月初默认 0.6x，-2% 试探 0.8x，月末补齐 1.0x；-5% 小加 1.5x，-10% 中加 2.5x，-13% 大加 4x。",
+                    "PLTR/TEM：按 60 日历史涨跌位置定档，PLTR 回撤约 -15%/-25%/-35% 对应 small/medium/large，TEM 回撤约 -12%/-20%/-28% 对应 small/medium/large。",
                     "ISRG：正常 0.1x，小加 -15% / 0.2x，中加 -20% / 0.3x，大加 -23% / 0.5x。",
                     "GOOGL：正常 0.1x，小加 -11% / 0.2x，中加 -19% / 0.3x，大加 -24% / 0.5x。",
                     "MSFT：正常 0.1x，小加 -12% / 0.2x，中加 -18% / 0.3x，大加 -22% / 0.5x。",
@@ -231,6 +232,18 @@ def intensity_multiplier(symbol: str, phase: str, intensity: str) -> float:
 def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> tuple[float, str, str, str]:
     if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
         return qqq_build_signal(drawdown_pct)
+    if symbol in {"PLTR", "TEM"}:
+        if not isinstance(drawdown_pct, (int, float)):
+            return 0.1, "历史波动观察", "normal", "normal"
+        drawdown = float(drawdown_pct)
+        if symbol == "PLTR":
+            bands = [(-35.0, 0.5, "PLTR 历史低位大加", "large"), (-25.0, 0.3, "PLTR 历史低位中加", "medium"), (-15.0, 0.2, "PLTR 历史低位小加", "small")]
+        else:
+            bands = [(-28.0, 0.5, "TEM 历史低位大加", "large"), (-20.0, 0.3, "TEM 历史低位中加", "medium"), (-12.0, 0.2, "TEM 历史低位小加", "small")]
+        for threshold, multiplier, action, intensity in bands:
+            if drawdown <= threshold:
+                return multiplier, action, intensity, intensity
+        return 0.1, "历史波动观察", "normal", "normal"
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     if not rule:
         return 0.0, "暂无规则", "暂无规则", "normal"
@@ -243,9 +256,30 @@ def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> 
     return float(normal[0]), str(normal[1]), str(normal[2]), str(normal[3])
 
 
+def signal_for_historical_position(symbol: str, item: dict[str, Any], phase: str) -> tuple[float, str, str, str]:
+    if symbol not in {"PLTR", "TEM"}:
+        return signal_for_drawdown(symbol, item.get("drawdown_pct"), phase)
+    recent_5d = item.get("recent_5d_pct")
+    if isinstance(recent_5d, (int, float)):
+        if float(recent_5d) >= 15.0:
+            return 0.1, f"{symbol} 短期大涨观察", "normal", "normal"
+        if float(recent_5d) >= 8.0:
+            multiplier, action, signal, intensity = signal_for_drawdown(symbol, item.get("drawdown_pct"), phase)
+            if intensity_rank(intensity) > intensity_rank("small"):
+                return 0.2, f"{symbol} 涨后仅小加观察", "small", "small"
+            return multiplier, action, signal, intensity
+    return signal_for_drawdown(symbol, item.get("drawdown_pct"), phase)
+
+
 def signal_for_intensity(symbol: str, phase: str, intensity: str) -> tuple[float, str, str, str]:
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     intensity = normalize_intensity(intensity)
+    if symbol in {"PLTR", "TEM"}:
+        return {
+            "small": (0.2, f"{symbol} 历史低位小加", "small", "small"),
+            "medium": (0.3, f"{symbol} 历史低位中加", "medium", "medium"),
+            "large": (0.5, f"{symbol} 历史低位大加", "large", "large"),
+        }.get(intensity, (0.1, "历史波动观察", "normal", "normal"))
     if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
         multiplier = intensity_multiplier(symbol, phase, intensity)
         action, signal = {
@@ -306,15 +340,34 @@ def valuation_split_for_row(symbol: str, item: dict[str, Any]) -> tuple[float, s
     recent_5d = item.get("recent_5d_pct")
     if symbol == "VOO" and isinstance(recent_5d, (int, float)):
         if recent_5d >= 3.0:
-            return 0.5, f"VOO 近 5 个交易日涨幅 {recent_5d:.2f}%，短期偏热，建议分批，估值/追高系数 0.50。"
+            return 1.0, f"VOO 近 5 个交易日涨幅 {recent_5d:.2f}%，短期涨得较多；档位仍按 normal，不做额度限制。"
         if recent_5d >= 2.0:
-            return 0.75, f"VOO 近 5 个交易日涨幅 {recent_5d:.2f}%，本轮稍微分批，估值/追高系数 0.75。"
+            return 1.0, f"VOO 近 5 个交易日涨幅 {recent_5d:.2f}%，短期略热；档位仍按 normal，不做额度限制。"
     if symbol == "QQQ" and isinstance(recent_5d, (int, float)):
         if recent_5d >= 4.0:
             return 0.5, f"QQQ 近 5 个交易日涨幅 {recent_5d:.2f}%，短期偏热，建议分批，估值/追高系数 0.50。"
         if recent_5d >= 3.0:
             return 0.75, f"QQQ 近 5 个交易日涨幅 {recent_5d:.2f}%，本轮稍微分批，估值/追高系数 0.75。"
     return 1.0, ""
+
+
+def historical_probability_note(symbol: str, item: dict[str, Any], intensity: str) -> str:
+    if symbol not in {"PLTR", "TEM"}:
+        return ""
+    drawdown = item.get("drawdown_pct")
+    recent_5d = item.get("recent_5d_pct")
+    rebound = item.get("rebound_pct")
+    parts = []
+    if isinstance(drawdown, (int, float)):
+        parts.append(f"60日高点回撤 {float(drawdown):.2f}%")
+    if isinstance(recent_5d, (int, float)):
+        parts.append(f"近5日涨跌 {float(recent_5d):+.2f}%")
+    if isinstance(rebound, (int, float)):
+        parts.append(f"较60日低点反弹 {float(rebound):+.2f}%")
+    if not parts:
+        return f"{symbol} 暂无足够历史波动数据，按 normal 观察。"
+    label = INTENSITY_LABELS.get(normalize_intensity(intensity), "normal")
+    return f"{symbol} 按历史涨跌位置定档：{label}（{'；'.join(parts)}）。"
 
 
 def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[str, float | None]:
@@ -1261,7 +1314,7 @@ def build_rebalance_v2(
         target_usd = target_pct * planned_total_usd
         gap = target_usd - planning_current
         drawdown_pct = item.get("drawdown_pct")
-        multiplier, action, signal, intensity = signal_for_drawdown(sym, drawdown_pct, phase)
+        multiplier, action, signal, intensity = signal_for_historical_position(sym, item, phase)
         if sym == "QQQ" and phase == REBALANCE_PHASE_BUILD and intensity_rank(intensity) < intensity_rank("small"):
             month_end_multiplier, month_end_action, month_end_signal, month_end_intensity = qqq_build_signal(drawdown_pct, now)
             if month_end_multiplier > multiplier:
@@ -1293,8 +1346,6 @@ def build_rebalance_v2(
                 f"x {float(multiplier):.2f}档 = {_fmt_usd_compact(base_budget * multiplier)}",
                 f"取不超过缺口 => {_fmt_usd_compact(min(max(0.0, gap), base_budget * multiplier))}",
             ]
-        if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
-            planned_formula_parts.append(f"VOO 至少 1 股 => {_fmt_usd_compact(planned)}")
         planned_formula = "；".join(planned_formula_parts)
 
         previous_multiplier = 0.0 if is_satellite else intensity_multiplier(sym, phase, previous)
@@ -1339,8 +1390,9 @@ def build_rebalance_v2(
                 if is_satellite
                 else f"{split_note} 计划金额仍按建仓节奏买够。"
             )
-        if sym == "VOO" and phase == REBALANCE_PHASE_BUILD:
-            note_parts.append("建仓期 VOO 至少按 1 股规划。")
+        history_note = historical_probability_note(sym, item, intensity)
+        if history_note:
+            note_parts.append(history_note)
         if already_bought_this_month:
             previous_label = INTENSITY_LABELS.get(previous, "已买")
             current_label = INTENSITY_LABELS.get(normalize_intensity(intensity), str(action))
@@ -1406,51 +1458,6 @@ def build_rebalance_v2(
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
     strategy_budget_usd = sum(float(row["suggested_buy_usd"]) for row in rows)
 
-    cny_total = sum(value_cny_by_symbol.values()) + float(balances.get("cash_usd", 0.0)) * fx + float(balances.get("cash_cny", 0.0))
-    for item in holding_rows:
-        if item["symbol"] != "001015":
-            continue
-        current_cny = float(item.get("value_cny", item.get("value", 0.0)) or 0.0)
-        target_pct = target_weights.get("001015", 0.0)
-        target_cny = target_pct * cny_total
-        gap_cny = target_cny - current_cny
-        rows.append(
-            {
-                "symbol": "001015",
-                "label": item["label"],
-                "currency": "CNY",
-                "phase": phase,
-                "action": "手动买入",
-                "signal": "手动",
-                "intensity": "normal",
-                "planned_buy_usd": 0.0,
-                "raw_planned_buy_usd": 0.0,
-                "planned_buy_formula": "沪深300为人民币标的，平仓页仅提供手动记录买入/卖出。",
-                "target_usd": target_cny,
-                "base_budget_usd": 0.0,
-                "signal_multiplier": 0.0,
-                "suggested_buy_usd": 0.0,
-                "raw_suggested_buy_usd": 0.0,
-                "suggested_cap_usd": 0.0,
-                "actual_bought_usd": 0.0,
-                "actual_sold_usd": 0.0,
-                "net_bought_usd": 0.0,
-                "planned_after_valuation_usd": 0.0,
-                "buy_difference_usd": gap_cny,
-                "month_start_value_usd": current_cny,
-                "gap_usd": gap_cny,
-                "drawdown_pct": item.get("drawdown_pct"),
-                "recent_5d_pct": item.get("recent_5d_pct"),
-                "target_pct": target_pct * 100.0,
-                "current_pct": current_cny / cny_total * 100.0 if cny_total > 0 else 0.0,
-                "forward_pe": item.get("forward_pe"),
-                "pe_band": pe_band_text("001015"),
-                "valuation_split_factor": 1.0,
-                "note": "人民币现金买入；成交金额填写 CNY，成交份额填写基金份额。",
-            }
-        )
-        break
-
     return {
         "month_key": month_key,
         "planned_new_cash_usd": planned_new_cash_usd,
@@ -1509,8 +1516,7 @@ def build_rebalance(
         target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
         gap = target_usd - planning_current
-        drawdown = None
-        multiplier, action, signal, intensity = signal_for_drawdown(sym, drawdown, phase)
+        multiplier, action, signal, intensity = signal_for_historical_position(sym, item, phase)
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
         if not is_satellite and intensity_rank(previous) > intensity_rank(intensity):
             multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
