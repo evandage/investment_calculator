@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { Activity, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
 
 const Plot = lazy(() => import("react-plotly.js"));
@@ -6,6 +7,8 @@ const Plot = lazy(() => import("react-plotly.js"));
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
   `${window.location.protocol}//${window.location.hostname}:8010`;
+const HEATMAP_LAYOUT_WIDTH = 100;
+const HEATMAP_LAYOUT_HEIGHT = 78;
 
 function plotWrapStyle(figure) {
   const height = Number(figure?.layout?.height || 980);
@@ -272,6 +275,79 @@ function DailyCards({ cards }) {
           </div>
         </article>
       ))}
+    </section>
+  );
+}
+
+function DailyHeatmap({ cards, holdings }) {
+  const holdingsBySymbol = useMemo(
+    () => Object.fromEntries((holdings || []).map((row) => [row.symbol, row])),
+    [holdings],
+  );
+  const totalValue = (holdings || []).reduce((sum, row) => sum + Math.max(0, Number(row.value_cny || 0)), 0);
+  const rows = useMemo(() => (cards || []).filter((card) => card.symbol !== "SATELLITE").map((card) => {
+    const holding = holdingsBySymbol[card.symbol] || {};
+    const rawValueCny = Number(holding.value_cny || 0);
+    const valueCny = Number.isFinite(rawValueCny) ? Math.max(0, rawValueCny) : 0;
+    const assetPct = totalValue > 0 ? (valueCny / totalValue) * 100 : 0;
+    const rawDailyPct = Number(card.regular_pct || 0);
+    const dailyPct = Number.isFinite(rawDailyPct) ? rawDailyPct : 0;
+    const magnitude = Math.min(1, Math.abs(dailyPct) / 5);
+    const alpha = 0.16 + magnitude * 0.64;
+    const bg = dailyPct > 0
+      ? `rgba(34, 197, 94, ${alpha})`
+      : dailyPct < 0
+        ? `rgba(239, 68, 68, ${alpha})`
+        : "rgba(148, 163, 184, 0.18)";
+    return { ...card, valueCny, assetPct, dailyPct, bg, magnitude };
+  }), [cards, holdingsBySymbol, totalValue]);
+  const minLayoutValue = totalValue > 0 ? totalValue * 0.0025 : 1;
+  const rects = useMemo(() => {
+    if (!rows.length) return [];
+    const root = hierarchy({
+      children: rows.map((row) => ({ ...row, layoutValue: Math.max(row.valueCny, minLayoutValue) })),
+    })
+      .sum((item) => item.layoutValue || 0)
+      .sort((a, b) => (b.value || 0) - (a.value || 0));
+    treemap()
+      .tile(treemapSquarify.ratio(1))
+      .size([HEATMAP_LAYOUT_WIDTH, HEATMAP_LAYOUT_HEIGHT])
+      .paddingInner(0.7)
+      .round(false)(root);
+    return root.leaves().map((leaf) => ({
+      ...leaf.data,
+      x: leaf.x0,
+      y: leaf.y0,
+      width: leaf.x1 - leaf.x0,
+      height: leaf.y1 - leaf.y0,
+    }));
+  }, [rows, minLayoutValue]);
+
+  return (
+    <section className="chartPanel heatmapPanel">
+      <div className="heatmapCanvas">
+        {rects.map((row) => {
+          return (
+            <article
+              className={`heatCell ${row.width < 7 || row.height < 7 ? "compact" : ""} ${row.width < 4 || row.height < 4 ? "tiny" : ""}`}
+              key={row.symbol}
+              style={{
+                "--heat-bg": row.bg,
+                "--heat-border": row.dailyPct > 0 ? "rgba(34, 197, 94, 0.46)" : row.dailyPct < 0 ? "rgba(239, 68, 68, 0.46)" : "rgba(148, 163, 184, 0.28)",
+                left: `${row.x / HEATMAP_LAYOUT_WIDTH * 100}%`,
+                top: `${row.y / HEATMAP_LAYOUT_HEIGHT * 100}%`,
+                width: `${row.width / HEATMAP_LAYOUT_WIDTH * 100}%`,
+                height: `${row.height / HEATMAP_LAYOUT_HEIGHT * 100}%`,
+              }}
+              title={`${row.label} · 资产占比 ${row.assetPct.toFixed(2)}% · 当日 ${fmtPct(row.dailyPct)}`}
+            >
+              <div className="heatSymbol">{row.label}</div>
+              <strong className={tone(row.dailyPct)}>{fmtPct(row.dailyPct)}</strong>
+              <span>{row.assetPct.toFixed(1)}%</span>
+            </article>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -1325,6 +1401,7 @@ function DashboardPage({ data }) {
     <>
       <Summary data={data} />
       <PerformanceChart history={data.performance_history} />
+      <DailyHeatmap cards={data.daily_cards} holdings={data.holdings} />
       <DailyCards cards={data.daily_cards} />
       <Visualizations data={data} />
     </>

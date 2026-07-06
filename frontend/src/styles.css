@@ -574,6 +574,99 @@ h2 {
   font-weight: 800;
 }
 
+.heatmapPanel {
+  margin-top: 14px;
+  margin-bottom: 18px;
+}
+
+.heatmapCanvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  min-height: 558px;
+  max-height: 882px;
+  margin: 0 auto;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(2, 6, 23, 0.32);
+}
+
+.heatCell {
+  position: absolute;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: clamp(6px, 1.1vw, 12px);
+  overflow: hidden;
+  border: 1px solid var(--heat-border);
+  border-radius: 6px;
+  background:
+    linear-gradient(160deg, rgba(15, 23, 42, 0.18), rgba(2, 6, 23, 0.34)),
+    var(--heat-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.heatCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 42%);
+}
+
+.heatSymbol {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  color: #f8fafc;
+  font-size: clamp(0.72rem, 1.1vw, 0.96rem);
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.heatCell.compact {
+  justify-items: start;
+  align-content: center;
+  padding: 6px;
+}
+
+.heatCell.compact .heatSymbol {
+  font-size: 0.72rem;
+}
+
+.heatCell.compact strong {
+  font-size: 0.86rem;
+}
+
+.heatCell.compact span {
+  display: none;
+}
+
+.heatCell.tiny {
+  gap: 0;
+  padding: 4px;
+}
+
+.heatCell.tiny strong {
+  display: block;
+  font-size: 0.72rem;
+}
+
+.heatCell strong {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(0.82rem, 1.35vw, 1.28rem);
+  font-weight: 900;
+}
+
+.heatCell span {
+  position: relative;
+  z-index: 1;
+  color: #dbeafe;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .up {
   color: var(--green);
 }
