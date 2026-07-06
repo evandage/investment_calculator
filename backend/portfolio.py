@@ -568,6 +568,22 @@ def completed_performance_day(now: datetime | None = None) -> str:
     return (current.date() - timedelta(days=offset)).isoformat()
 
 
+def previous_market_open_day(day: str, histories: dict[str, dict[str, float]]) -> str:
+    previous = previous_day(day)
+    candidates = [
+        close_day
+        for prices in histories.values()
+        for close_day in prices
+        if close_day <= previous
+    ]
+    if candidates:
+        return max(candidates)
+    current = date.fromisoformat(day) - timedelta(days=1)
+    while current.weekday() >= 5:
+        current -= timedelta(days=1)
+    return current.isoformat()
+
+
 def close_on_or_before(prices: dict[str, float], day: str) -> float | None:
     candidates = [key for key in prices if key <= day]
     if not candidates:
@@ -926,6 +942,13 @@ def build_performance_history(
         rows_by_date[today] = current
     rows = sorted(rows_by_date.values(), key=lambda row: row["date"])
 
+    baseline_date = ""
+    if rows:
+        try:
+            baseline_date = previous_market_open_day(rows[0]["date"], fetch_close_histories(set(benchmark_symbols)))
+        except Exception:
+            baseline_date = previous_market_open_day(rows[0]["date"], {})
+
     points: list[dict[str, Any]] = []
     cumulative = {
         "portfolio": 1.0,
@@ -933,6 +956,18 @@ def build_performance_history(
         "VOO": 1.0,
         "QQQ": 1.0,
     }
+    if baseline_date:
+        baseline_point = {
+            "date": baseline_date,
+            "portfolio_return_pct": 0.0,
+            "portfolio_daily_pct": 0.0,
+            "market_open_symbols": list(benchmark_symbols),
+        }
+        for sym in benchmark_symbols:
+            baseline_point[f"{sym}_return_pct"] = 0.0
+            baseline_point[f"{sym}_daily_pct"] = 0.0
+        points.append(baseline_point)
+
     for row_index, row in enumerate(rows):
         portfolio_daily = coerce_optional_float(row.get("portfolio_daily_pct"))
         if portfolio_daily is None:
@@ -964,7 +999,7 @@ def build_performance_history(
 
     return {
         "points": points,
-        "started_on": rows[0]["date"] if rows else today,
+        "started_on": points[0]["date"] if points else today,
         "updated_at": rows[-1].get("updated_at", "") if rows else "",
         "date_rule": "北京时间 06:00 切换投资日；凌晨美股交易归入前一投资日",
         "return_rule": "曲线按每日涨跌幅复利累计；当日未完整交易部分使用估值、盘前或夜盘作预计",
@@ -1138,6 +1173,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         regular_value = shares * regular_price
         regular_value_cny = regular_value * fx if currency == "USD" else regular_value
         regular_pct = float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
+        effective_pct = float(quote.get("change_pct", regular_pct))
         change_cny = _daily_amount(regular_value_cny, regular_pct)
         extended_pct = quote.get("extended_change_pct") if quote.get("session") != "regular" else None
         extended_change_cny = None
@@ -1149,6 +1185,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "label": ASSET_META[sym]["label"],
                 "price_line": _quote_price_line(sym, quote),
                 "regular_pct": regular_pct,
+                "effective_pct": effective_pct,
                 "extended_pct": extended_pct,
                 "change_usd": change_cny / fx if fx > 0 else 0.0,
                 "change_cny": change_cny,

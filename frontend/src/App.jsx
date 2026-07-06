@@ -343,13 +343,14 @@ function DailyHeatmap({ cards, holdings }) {
     const rawValueCny = Number(holding.value_cny || 0);
     const valueCny = Number.isFinite(rawValueCny) ? Math.max(0, rawValueCny) : 0;
     const assetPct = totalValue > 0 ? (valueCny / totalValue) * 100 : 0;
-    const rawDailyPct = Number(card.regular_pct || 0);
+    const rawDailyPct = Number(card.effective_pct ?? card.extended_pct ?? card.regular_pct ?? 0);
     const dailyPct = Number.isFinite(rawDailyPct) ? rawDailyPct : 0;
-    const magnitude = Math.min(1, Math.abs(dailyPct) / 5);
+    const magnitude = Math.min(1, Math.abs(dailyPct) / 4);
+    const strength = 0.18 + magnitude * 0.72;
     const bg = dailyPct > 0
-      ? "linear-gradient(145deg, #123a32, #0f2f2e)"
+      ? `linear-gradient(145deg, rgba(22, 101, 52, ${strength}), rgba(15, 47, 46, ${0.82 + magnitude * 0.18}))`
       : dailyPct < 0
-        ? "linear-gradient(145deg, #3a1c28, #2a1825)"
+        ? `linear-gradient(145deg, rgba(127, 29, 29, ${strength}), rgba(42, 24, 37, ${0.82 + magnitude * 0.18}))`
         : "linear-gradient(145deg, #15263d, #10233a)";
     return { ...card, valueCny, assetPct, dailyPct, bg, magnitude };
   }), [cards, holdingsBySymbol, totalValue]);
@@ -385,7 +386,7 @@ function DailyHeatmap({ cards, holdings }) {
               key={row.symbol}
               style={{
                 "--heat-bg": row.bg,
-                "--heat-border": row.dailyPct > 0 ? "rgba(52, 211, 153, 0.32)" : row.dailyPct < 0 ? "rgba(248, 113, 113, 0.34)" : "rgba(148, 163, 184, 0.24)",
+                "--heat-border": row.dailyPct > 0 ? `rgba(52, 211, 153, ${0.24 + row.magnitude * 0.42})` : row.dailyPct < 0 ? `rgba(248, 113, 113, ${0.26 + row.magnitude * 0.44})` : "rgba(148, 163, 184, 0.24)",
                 left: `${row.x / HEATMAP_LAYOUT_WIDTH * 100}%`,
                 top: `${row.y / HEATMAP_LAYOUT_HEIGHT * 100}%`,
                 width: `${row.width / HEATMAP_LAYOUT_WIDTH * 100}%`,

@@ -697,6 +697,8 @@ h2 {
   position: absolute;
   display: grid;
   align-content: center;
+  justify-items: center;
+  text-align: center;
   gap: 3px;
   padding: clamp(6px, 1.1vw, 12px);
   overflow: hidden;
@@ -733,8 +735,9 @@ h2 {
 }
 
 .heatCell.compact {
-  justify-items: start;
+  justify-items: center;
   align-content: center;
+  text-align: center;
   padding: 6px;
 }
 
