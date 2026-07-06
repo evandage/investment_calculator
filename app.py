@@ -39,7 +39,6 @@ _FALLBACK = {
     "NVDA": 1200.0,
     "TEM": 60.0,
     "PLTR": 100.0,
-    "CRWV": 100.0,
     "GOOGL": 180.0,
     "MSFT": 420.0,
     "ISRG": 450.0,
@@ -54,7 +53,6 @@ _TICKERS = {
     "nvda": "NVDA",
     "tem": "TEM",
     "pltr": "PLTR",
-    "crwv": "CRWV",
     "googl": "GOOGL",
     "msft": "MSFT",
     "isrg": "ISRG",
@@ -79,7 +77,6 @@ _QQ_US = {
     "NVDA": "usNVDA",
     "TEM": "usTEM",
     "PLTR": "usPLTR",
-    "CRWV": "usCRWV",
     "GOOGL": "usGOOGL",
     "MSFT": "usMSFT",
     "ISRG": "usISRG",
@@ -92,7 +89,6 @@ _QQ_US_KLINE = {
     "NVDA": "usNVDA.OQ",
     "TEM": "usTEM.N",
     "PLTR": "usPLTR.N",
-    "CRWV": "usCRWV.OQ",
     "GOOGL": "usGOOGL.OQ",
     "MSFT": "usMSFT.OQ",
     "ISRG": "usISRG.OQ",
@@ -105,7 +101,6 @@ _SINA_GB = {
     "NVDA": "gb_nvda",
     "TEM": "gb_tem",
     "PLTR": "gb_pltr",
-    "CRWV": "gb_crwv",
     "GOOGL": "gb_googl",
     "MSFT": "gb_msft",
     "ISRG": "gb_isrg",
@@ -118,7 +113,6 @@ _FUTU_US = {
     "NVDA": "US.NVDA",
     "TEM": "US.TEM",
     "PLTR": "US.PLTR",
-    "CRWV": "US.CRWV",
     "GOOGL": "US.GOOGL",
     "MSFT": "US.MSFT",
     "ISRG": "US.ISRG",
@@ -141,13 +135,12 @@ _EASTMONEY_US_SECID = {
     "NVDA": "105.NVDA",
     "TEM": "106.TEM",
     "PLTR": "106.PLTR",
-    "CRWV": "105.CRWV",
     "GOOGL": "105.GOOGL",
     "MSFT": "105.MSFT",
     "ISRG": "105.ISRG",
     "SGOV": "106.SGOV",
 }
-_US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "TEM", "PLTR", "CRWV", "GOOGL", "MSFT", "ISRG", "SGOV")
+_US_MARKET_SYMBOLS = ("VOO", "QQQ", "AVGO", "NVDA", "TEM", "PLTR", "GOOGL", "MSFT", "ISRG", "SGOV")
 
 
 def _normalize_market_provider(value: str | None) -> str:
@@ -198,7 +191,6 @@ _ASSET_META = {
     "ISRG": {"label": "ISRG", "currency": "USD"},
     "TEM": {"label": "TEM", "currency": "USD"},
     "PLTR": {"label": "PLTR", "currency": "USD"},
-    "CRWV": {"label": "CRWV", "currency": "USD"},
     "GOOGL": {"label": "GOOGL", "currency": "USD"},
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
@@ -219,17 +211,15 @@ _TARGET_WEIGHTS = {
     "ISRG": 0.019,
     "TEM": 0.003,
     "PLTR": 0.0,
-    "CRWV": 0.0,
     "SGOV": 0.12,
     "001015": 0.20,
 }
 
-_SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "CRWV", "GOOGL", "MSFT", "AVGO", "NVDA")
+_SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA")
 _DEFAULT_SATELLITE_TARGET_PCTS = {
     "ISRG": 31.6666,
     "TEM": 5.0,
     "PLTR": 0.0,
-    "CRWV": 0.0,
     "AVGO": 19.0,
     "NVDA": 12.6667,
     "GOOGL": 19.0,
@@ -247,7 +237,6 @@ def _default_satellite_universe() -> list[dict[str, Any]]:
             "symbol": sym,
             "label": _ASSET_META.get(sym, {}).get("label", sym),
             "target_pct": _DEFAULT_SATELLITE_TARGET_PCTS.get(sym, 0.0),
-            "futu_code": _FUTU_US.get(sym, f"US.{sym}"),
         }
         for sym in _STATIC_SATELLITE_SYMBOLS
     ]
@@ -281,7 +270,6 @@ def _load_satellite_universe() -> list[dict[str, Any]]:
                 "symbol": sym,
                 "label": str(item.get("label") or sym),
                 "target_pct": target_pct,
-                "futu_code": str(item.get("futu_code") or f"US.{sym}").strip().upper(),
             }
         )
     return out or _default_satellite_universe()
@@ -313,7 +301,7 @@ def _apply_satellite_universe() -> None:
         _QQ_US.pop(sym, None)
         _QQ_US_KLINE.pop(sym, None)
         _SINA_GB.pop(sym, None)
-        _FUTU_US[sym] = item["futu_code"]
+        _FUTU_US[sym] = f"US.{sym}"
         _EASTMONEY_US_SECID.pop(sym, None)
         _ASSET_META[sym] = {"label": item["label"], "currency": "USD"}
         _DEFAULT_SATELLITE_TARGET_PCTS[sym] = float(item["target_pct"])
@@ -377,6 +365,7 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
     "VOO": (18.0, 24.0),
     "QQQ": (24.0, 36.0),
     "ISRG": (40.0, 65.0),
+    "PLTR": (60.0, 100.0),
     "AVGO": (24.0, 34.0),
     "NVDA": (28.0, 45.0),
     "GOOGL": (18.0, 28.0),
@@ -386,6 +375,7 @@ _USD_ASSET_PE_BANDS: dict[str, tuple[float, float]] = {
 
 _USD_ASSET_PEG_BANDS: dict[str, tuple[float, float]] = {
     "ISRG": (4.1, 7.3),
+    "PLTR": (1.5, 3.0),
     "GOOGL": (1.3, 1.9),
     "MSFT": (1.5, 2.6),
     "AVGO": (0.9, 3.0),
@@ -401,7 +391,7 @@ _REBALANCE_PHASE_DCA = "长期定投期"
 _REBALANCE_ALLOCATION_ROWS = [
     {"资产": "VOO", "目标占比": "40%", "策略定位": "核心长期仓"},
     {"资产": "QQQ", "目标占比": "30%", "策略定位": "科技增强仓"},
-    {"资产": "AI卫星（ISRG/TEM/PLTR/CRWV/GOOGL/MSFT/AVGO/NVDA）", "目标占比": "10%", "策略定位": "主动超额收益"},
+    {"资产": "AI卫星（可自定义标的）", "目标占比": "10%", "策略定位": "主动超额收益"},
     {"资产": "SGOV", "目标占比": "20%", "策略定位": "弹药库/现金管理"},
 ]
 _REBALANCE_STRATEGY_LABELS = {
@@ -412,7 +402,6 @@ _REBALANCE_STRATEGY_LABELS = {
     "ISRG": "半定投化",
     "TEM": "观察仓",
     "PLTR": "观察仓",
-    "CRWV": "观察仓",
     "NVDA": "波动驱动加仓",
     "AVGO": "波动驱动加仓",
     "SGOV": "机会弹药库",
@@ -3840,7 +3829,7 @@ with rebalance_rule_col:
 - 本表只使用当前已经在账户里的美元现金和 SGOV，不预估未来新增工资。
 - 每月新增 5000 RMB 由前面的持仓/现金编辑录入后，再参与下一次规划。
 - VOO/QQQ 建仓期按目标缺口和剩余月数拆成月度推进量。
-- 卫星股以10月底预计总资产对应的目标金额为 1x；PLTR/CRWV 为 0% 观察成员，不产生系统买入建议。
+- 卫星股以10月底预计总资产对应的目标金额为 1x；目标为 0% 的观察成员不产生系统买入建议。
 - SGOV 超过 20% 目标的部分，可以随时挪用。
 - 目标内 20% SGOV 默认保留，只有触发大加档才动用。
 - 一旦触发大加/恐慌级档位，SGOV 可以全部动用，之后用后续新增资金再补回。

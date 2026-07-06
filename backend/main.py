@@ -47,12 +47,6 @@ class SatelliteUniverseItem(BaseModel):
     symbol: str
     label: str | None = None
     target_pct: float = 0.0
-    fallback_price: float = 100.0
-    futu_code: str | None = None
-    qq_quote: str | None = None
-    qq_kline: str | None = None
-    sina_gb: str | None = None
-    eastmoney_secid: str | None = None
 
 
 class SatelliteUniversePayload(BaseModel):
@@ -84,6 +78,15 @@ class DeleteTradePayload(BaseModel):
 
 def _chart_symbols() -> set[str]:
     return {"VOO", "QQQ", "SGOV", *config_module.SATELLITE_SYMBOLS}
+
+
+def _chart_labels() -> dict[str, str]:
+    symbols = ("VOO", "QQQ", *config_module.SATELLITE_SYMBOLS, "SGOV")
+    return {
+        symbol: config_module.ASSET_META.get(symbol, {}).get("label", symbol)
+        for symbol in symbols
+        if symbol in config_module.ASSET_META
+    }
 
 
 def _refresh_satellite_runtime_config() -> None:
@@ -194,7 +197,8 @@ def _build_chart_board(
         kwargs["avwap_mode"] = effective_avwap_mode
         if key != "1d":
             kwargs["show_extended"] = show_extended
-        fig = calls[key](sym, CHART_LABELS[sym], **kwargs)
+        labels = _chart_labels()
+        fig = calls[key](sym, labels.get(sym, sym), **kwargs)
         figure = json.loads(fig.to_json())
         avwap_meta = (figure.get("layout") or {}).get("meta") or {}
         return {
@@ -226,7 +230,8 @@ def _build_global_chart_board(
     chart_api.configure_market_provider("futu")
     key = interval if interval in {"1d", "15m", "5m"} else "5m"
     cols = min(3, max(1, int(columns or 1)))
-    symbols = list(CHART_LABELS.keys())
+    labels = _chart_labels()
+    symbols = list(labels.keys())
     try:
         quotes = get_futu_subscription_quotes()
         holdings = load_holdings()
@@ -367,7 +372,7 @@ def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, An
     items = config_module.save_satellite_universe_config([item.model_dump() for item in payload.items])
     _refresh_satellite_runtime_config()
     save_holdings(load_holdings())
-    save_satellite_targets(load_satellite_targets())
+    save_satellite_targets({item["symbol"]: float(item.get("target_pct") or 0.0) for item in items})
     if "chart_boards" in sys.modules:
         importlib.reload(sys.modules["chart_boards"])
     stop_futu_quote_subscription()
@@ -425,7 +430,7 @@ async def chart_board_ws(websocket: WebSocket) -> None:
     theme = str(websocket.query_params.get("theme", "Trading Dark"))
     avwap_mode = str(websocket.query_params.get("avwap_mode", "earnings"))
     show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
-    if symbol not in CHART_LABELS:
+    if symbol not in _chart_labels():
         symbol = "VOO"
     if interval not in {"1d", "15m", "5m"}:
         interval = "1d"

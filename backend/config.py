@@ -30,7 +30,6 @@ FALLBACK_PRICES = {
     "ISRG": 450.0,
     "TEM": 60.0,
     "PLTR": 100.0,
-    "CRWV": 100.0,
     "GOOGL": 180.0,
     "MSFT": 420.0,
     "AVGO": 170.0,
@@ -45,7 +44,6 @@ ASSET_META = {
     "ISRG": {"label": "ISRG", "currency": "USD"},
     "TEM": {"label": "TEM", "currency": "USD"},
     "PLTR": {"label": "PLTR", "currency": "USD"},
-    "CRWV": {"label": "CRWV", "currency": "USD"},
     "GOOGL": {"label": "GOOGL", "currency": "USD"},
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
@@ -64,19 +62,17 @@ TARGET_WEIGHTS = {
     "NVDA": 0.0076,
     "TEM": 0.003,
     "PLTR": 0.0,
-    "CRWV": 0.0,
     "SGOV": 0.12,
     "001015": 0.20,
 }
 
-SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "CRWV", "GOOGL", "MSFT", "AVGO", "NVDA")
+SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA")
 USD_SYMBOLS = ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV")
 ALL_SYMBOLS = tuple(ASSET_META.keys())
 DEFAULT_SATELLITE_TARGET_PCTS = {
     "ISRG": 31.6666,
     "TEM": 5.0,
     "PLTR": 0.0,
-    "CRWV": 0.0,
     "GOOGL": 19.0,
     "MSFT": 12.6667,
     "AVGO": 19.0,
@@ -87,6 +83,7 @@ PE_BANDS = {
     "VOO": (18.0, 24.0),
     "QQQ": (24.0, 36.0),
     "ISRG": (40.0, 65.0),
+    "PLTR": (60.0, 100.0),
     "GOOGL": (18.0, 28.0),
     "MSFT": (24.0, 36.0),
     "AVGO": (24.0, 34.0),
@@ -96,6 +93,7 @@ PE_BANDS = {
 
 PEG_BANDS = {
     "ISRG": (4.1, 7.3),
+    "PLTR": (1.5, 3.0),
     "GOOGL": (1.3, 1.9),
     "MSFT": (1.5, 2.6),
     "AVGO": (0.9, 3.0),
@@ -112,7 +110,6 @@ QQ_US = {
     "ISRG": "usISRG",
     "TEM": "usTEM",
     "PLTR": "usPLTR",
-    "CRWV": "usCRWV",
     "GOOGL": "usGOOGL",
     "MSFT": "usMSFT",
     "AVGO": "usAVGO",
@@ -126,7 +123,6 @@ SINA_GB = {
     "ISRG": "gb_isrg",
     "TEM": "gb_tem",
     "PLTR": "gb_pltr",
-    "CRWV": "gb_crwv",
     "GOOGL": "gb_googl",
     "MSFT": "gb_msft",
     "AVGO": "gb_avgo",
@@ -140,7 +136,6 @@ FUTU_US = {
     "ISRG": "US.ISRG",
     "TEM": "US.TEM",
     "PLTR": "US.PLTR",
-    "CRWV": "US.CRWV",
     "GOOGL": "US.GOOGL",
     "MSFT": "US.MSFT",
     "AVGO": "US.AVGO",
@@ -149,7 +144,7 @@ FUTU_US = {
 }
 
 
-_STATIC_SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "CRWV", "GOOGL", "MSFT", "AVGO", "NVDA")
+_STATIC_SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA")
 _SATELLITE_TOTAL_WEIGHT = sum(TARGET_WEIGHTS.get(sym, 0.0) for sym in _STATIC_SATELLITE_SYMBOLS)
 
 
@@ -159,7 +154,6 @@ def _default_satellite_universe() -> list[dict[str, Any]]:
             "symbol": sym,
             "label": ASSET_META.get(sym, {}).get("label", sym),
             "target_pct": DEFAULT_SATELLITE_TARGET_PCTS.get(sym, 0.0),
-            "futu_code": FUTU_US.get(sym, f"US.{sym}"),
         }
         for sym in _STATIC_SATELLITE_SYMBOLS
     ]
@@ -187,7 +181,6 @@ def _normalize_satellite_universe(raw: Any) -> list[dict[str, Any]]:
                 "symbol": sym,
                 "label": str(item.get("label") or sym),
                 "target_pct": target_pct,
-                "futu_code": str(item.get("futu_code") or f"US.{sym}").strip().upper(),
             }
         )
     return out or _default_satellite_universe()
@@ -238,7 +231,7 @@ def _apply_satellite_universe() -> None:
         TARGET_WEIGHTS[sym] = _SATELLITE_TOTAL_WEIGHT * float(item["target_pct"]) / 100.0
         QQ_US.pop(sym, None)
         SINA_GB.pop(sym, None)
-        FUTU_US[sym] = item["futu_code"]
+        FUTU_US[sym] = f"US.{sym}"
 
     ordered_meta: dict[str, dict[str, str]] = {}
     for sym in ("VOO", "QQQ", *configured, "SGOV", "001015"):

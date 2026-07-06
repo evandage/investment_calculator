@@ -224,8 +224,8 @@
     },
     {
       "date": "2026-07-02",
-      "portfolio_daily_pct": -1.1196124948221557,
       "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": -1.1196124948221557,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
       "benchmark_prices": {
@@ -292,9 +292,74 @@
           "avg_cost": 2.3623
         }
       },
+      "finalized": true,
+      "estimated_symbols": [],
+      "updated_at": "2026-07-02T08:00:00+08:00"
+    },
+    {
+      "date": "2026-07-03",
+      "portfolio_daily_pct": 0.7989907485281617,
+      "portfolio_return_pct": 0.0,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
+      "benchmark_prices": {
+        "001015": 2.397,
+        "VOO": 684.84,
+        "QQQ": 712.6
+      },
+      "benchmark_daily_pct": {
+        "001015": 0.7989907485281611,
+        "VOO": 0.0,
+        "QQQ": 0.0
+      },
+      "symbol_daily_pct": {
+        "001015": 0.7989907485281617
+      },
+      "holdings_snapshot": {
+        "VOO": {
+          "shares": 3.0451,
+          "avg_cost": 654.8684772257069
+        },
+        "QQQ": {
+          "shares": 1.5806999999999998,
+          "avg_cost": 725.7021851078638
+        },
+        "ISRG": {
+          "shares": 0.7807000000000001,
+          "avg_cost": 414.1
+        },
+        "GOOGL": {
+          "shares": 0.5794,
+          "avg_cost": 364.1269623748706
+        },
+        "MSFT": {
+          "shares": 0.3033,
+          "avg_cost": 423.0217804154302
+        },
+        "AVGO": {
+          "shares": 0.5664,
+          "avg_cost": 418.2912358757062
+        },
+        "NVDA": {
+          "shares": 0.6187,
+          "avg_cost": 210.08566348795858
+        },
+        "TEM": {
+          "shares": 0.1835,
+          "avg_cost": 54.49591280653951
+        },
+        "SGOV": {
+          "shares": 30.0,
+          "avg_cost": 100.52
+        },
+        "001015": {
+          "shares": 10550.44,
+          "avg_cost": 2.3623
+        }
+      },
       "estimated_symbols": [],
       "finalized": true,
-      "updated_at": "2026-07-02T08:00:00+08:00"
+      "updated_at": "2026-07-03T08:00:00+08:00"
     }
   ]
 }

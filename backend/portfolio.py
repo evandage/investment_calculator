@@ -92,6 +92,10 @@ def rebalance_rules_payload(
     planned_new_cash_usd: float,
     future_cash_total_usd: float = 0.0,
 ) -> dict[str, Any]:
+    satellite_items = load_satellite_universe_config()
+    satellite_names = " / ".join(item["symbol"] for item in satellite_items) or "-"
+    zero_target_names = " / ".join(item["symbol"] for item in satellite_items if float(item.get("target_pct") or 0.0) == 0.0)
+    zero_target_note = f"{zero_target_names} 当前目标为 0%，不产生系统买入建议。" if zero_target_names else "目标为 0% 的观察成员不产生系统买入建议。"
     return {
         "title": "再平衡算法规则",
         "build_target": f"{BUILD_TARGET_YEAR}-{BUILD_TARGET_MONTH:02d}",
@@ -104,7 +108,7 @@ def rebalance_rules_payload(
                 "heading": "长期目标",
                 "items": [
                     "美元资产目标：VOO 40% / QQQ 30% / AI卫星仓位 10% / 短债(SGOV) 20%。",
-                    "卫星仓位内部目标：ISRG / TEM / PLTR / CRWV / GOOGL / MSFT / AVGO / NVDA；PLTR/CRWV 当前为 0% 观察成员。",
+                    f"卫星仓位内部目标：{satellite_names}；{zero_target_note}",
                     "A股基金按 Dashboard 目标占比展示，但当前买入建议只处理美元标的。",
                 ],
             },
@@ -121,7 +125,7 @@ def rebalance_rules_payload(
                 "items": [
                     "先用月初口径持仓计算缺口：月初口径 = 当前持仓金额 - 本月已买金额。",
                     "VOO/QQQ 再按剩余月份和档位倍率计算本月计划应买；VOO 建仓期至少按 1 股规划。",
-                    "卫星股以10月底目标金额为 1x；PLTR/CRWV 当前目标为 0%，不产生系统买入建议。",
+                    f"卫星股以10月底目标金额为 1x；{zero_target_note}",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股看 Forward PE，VOO/QQQ 看近 5 个交易日涨幅。",
                     "可动用资金不足时按比例缩放计划应买；卫星股按当前持仓计算实时缺口，不再使用本月累计买入作为月度封顶。",
                 ],
@@ -526,6 +530,10 @@ def is_completed_trading_day(day: str, histories: dict[str, dict[str, float]], s
     return any(close_on(histories.get(sym, {}), day) is not None for sym in symbols)
 
 
+def market_union_open_symbols(day: str, histories: dict[str, dict[str, float]]) -> list[str]:
+    return [sym for sym in ("001015", "VOO", "QQQ") if close_on(histories.get(sym, {}), day) is not None]
+
+
 def fetch_us_close_history(symbol: str) -> dict[str, float]:
     try:
         from .ohlcv import fetch_ohlcv
@@ -752,7 +760,7 @@ def ensure_completed_performance_history(
     missing_days = [
         day
         for day in date_range(start_day, completed_day)
-        if day not in finalized_dates and is_completed_trading_day(day, histories, symbols)
+        if day not in finalized_dates and market_union_open_symbols(day, histories)
     ]
     if not missing_days:
         return rows
@@ -777,6 +785,7 @@ def ensure_completed_performance_history(
             "total_cost_cny": 0.0,
             "benchmark_prices": benchmark_prices,
             "benchmark_daily_pct": benchmark_daily_pct,
+            "market_open_symbols": market_union_open_symbols(day, histories),
             "symbol_daily_pct": symbol_daily_pct,
             "holdings_snapshot": holdings_snapshot,
             "estimated_symbols": [],
@@ -843,7 +852,7 @@ def build_performance_history(
     rows = [
         row
         for row in ensure_completed_performance_history(user_id, holdings, fx, now)
-        if is_weekday(row["date"]) and row.get("finalized")
+        if row.get("finalized") and (row.get("market_open_symbols") or is_weekday(row["date"]))
     ]
     current = {
         "date": today,
@@ -853,6 +862,7 @@ def build_performance_history(
         "total_cost_cny": total_cost_cny,
         "benchmark_prices": benchmark_prices,
         "benchmark_daily_pct": benchmark_daily_pct,
+        "market_open_symbols": sorted(benchmark_daily_pct.keys()),
         "estimated_symbols": estimated_symbols,
         "holdings_snapshot": holdings,
         "finalized": False,
@@ -879,6 +889,7 @@ def build_performance_history(
             "date": row["date"],
             "portfolio_return_pct": (cumulative["portfolio"] - 1.0) * 100.0,
             "portfolio_daily_pct": portfolio_daily,
+            "market_open_symbols": row.get("market_open_symbols") or [],
         }
         daily_pcts = row.get("benchmark_daily_pct") or {}
         if isinstance(daily_pcts, dict):

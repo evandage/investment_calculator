@@ -13,7 +13,6 @@ import os
 import threading
 import time
 import concurrent.futures
-import json
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -41,7 +40,6 @@ _TENCENT_HEADERS = {
 _HTTP_TIMEOUT = (3, 12)
 _FUTU_HISTORY_TIMEOUT_SECONDS = float(os.environ.get("FUTU_HISTORY_TIMEOUT_SECONDS", "8"))
 _ROOT_DIR = Path(__file__).resolve().parent
-_SATELLITE_UNIVERSE_FILE = _ROOT_DIR / "satellite_universe.json"
 _SOURCE_CACHE_TTL_SECONDS = {"1d": 300.0, "15m": 45.0, "5m": 30.0}
 _SOURCE_CACHE: dict[tuple[str, str, str], tuple[pd.DataFrame, str, float]] = {}
 _MIN_FUTU_INTRADAY_HISTORY_BARS = {"15m": 3, "5m": 4}
@@ -117,7 +115,6 @@ _EASTMONEY_US_SECID = {
     "NVDA": "105.NVDA",
     "TEM": "106.TEM",
     "PLTR": "106.PLTR",
-    "CRWV": "105.CRWV",
     "GOOGL": "105.GOOGL",
     "MSFT": "105.MSFT",
     "ISRG": "105.ISRG",
@@ -130,38 +127,12 @@ _TENCENT_US_KLINE = {
     "NVDA": "usNVDA.OQ",
     "TEM": "usTEM.N",
     "PLTR": "usPLTR.N",
-    "CRWV": "usCRWV.OQ",
     "GOOGL": "usGOOGL.OQ",
     "MSFT": "usMSFT.OQ",
     "ISRG": "usISRG.OQ",
     "SGOV": "usSGOV.AM",
 }
 
-
-def _apply_satellite_universe_kline_mappings() -> None:
-    if not _SATELLITE_UNIVERSE_FILE.exists():
-        return
-    try:
-        raw = json.loads(_SATELLITE_UNIVERSE_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(raw, list):
-        return
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        sym = str(item.get("symbol", "")).strip().upper()
-        if not sym:
-            continue
-        eastmoney_secid = str(item.get("eastmoney_secid") or "").strip()
-        qq_kline = str(item.get("qq_kline") or "").strip()
-        if eastmoney_secid:
-            _EASTMONEY_US_SECID[sym] = eastmoney_secid
-        if qq_kline:
-            _TENCENT_US_KLINE[sym] = qq_kline
-
-
-_apply_satellite_universe_kline_mappings()
 
 _CH_FONT_FAMILY = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
 

@@ -86,7 +86,7 @@ function globalKlineColumns(width = window.innerWidth) {
 }
 
 function peTone(row) {
-  if ((row.symbol === "VOO" || row.symbol === "QQQ") && Number(row.recent_5d_pct || 0) >= (row.symbol === "QQQ" ? 3 : 2)) return "down";
+  if (row.symbol === "VOO" || row.symbol === "QQQ") return "";
   const ps = Number(row.forward_ps ?? row.ps);
   const psMatch = String(row.ps_band || "").match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$/);
   if (Number.isFinite(ps) && psMatch) {
@@ -349,6 +349,7 @@ function Visualizations({ data }) {
 function PerformanceChart({ history }) {
   const points = history?.points || [];
   const latest = points[points.length - 1];
+  const weekdayFormatter = useMemo(() => new Intl.DateTimeFormat("zh-CN", { weekday: "short" }), []);
   const series = [
     ["portfolio_return_pct", "我的组合", "#1d4ed8", "rgba(37, 99, 235, 0.20)", "solid", 4.5],
     ["001015_return_pct", "沪深300", "#a16207", "rgba(0,0,0,0)", "solid", 2.3],
@@ -357,6 +358,10 @@ function PerformanceChart({ history }) {
   ];
   const figure = useMemo(() => {
     const dates = points.map((point) => point.date);
+    const tickText = dates.map((day) => {
+      const date = new Date(`${day}T00:00:00+08:00`);
+      return `${day}<br>${weekdayFormatter.format(date)}`;
+    });
     return {
       data: series.map(([key, name, color, fillcolor, dash, width]) => {
         const isPortfolio = key === "portfolio_return_pct";
@@ -393,7 +398,12 @@ function PerformanceChart({ history }) {
         plot_bgcolor: "rgba(2,6,23,0.18)",
         font: { color: "#cbd5e1", family: "Inter, Microsoft YaHei, system-ui, sans-serif" },
         xaxis: {
-          type: "date",
+          type: "category",
+          categoryorder: "array",
+          categoryarray: dates,
+          tickmode: "array",
+          tickvals: dates,
+          ticktext: tickText,
           showgrid: false,
           linecolor: "rgba(148, 163, 184, 0.24)",
           tickfont: { color: "#94a3b8" },
@@ -436,7 +446,7 @@ function PerformanceChart({ history }) {
         responsive: true,
       },
     };
-  }, [points]);
+  }, [points, weekdayFormatter]);
 
   return (
     <section className="chartPanel performancePanel">
@@ -1044,7 +1054,6 @@ function Rebalance({ data, onSaved }) {
 
   async function saveUniverse() {
     setSavingUniverse(true);
-    setTradeMessage("");
     try {
       const items = universeInputs
         .map((item) => ({
@@ -1061,9 +1070,9 @@ function Rebalance({ data, onSaved }) {
       if (!response.ok) throw new Error(`satellite universe HTTP ${response.status}`);
       setUniverseOpen(false);
       await onSaved();
-      setTradeMessage("卫星标的已保存");
+      window.alert("卫星标的已保存，相关数据已刷新");
     } catch (err) {
-      setTradeMessage(err instanceof Error ? err.message : String(err));
+      window.alert(`卫星标的保存失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSavingUniverse(false);
     }

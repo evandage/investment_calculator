@@ -2,43 +2,43 @@
   {
     "symbol": "ISRG",
     "label": "ISRG",
-    "target_pct": 31.6666,
+    "target_pct": 27.5,
     "futu_code": "US.ISRG"
   },
   {
     "symbol": "TEM",
     "label": "TEM",
-    "target_pct": 5.0,
+    "target_pct": 25.0,
     "futu_code": "US.TEM"
   },
   {
     "symbol": "PLTR",
     "label": "PLTR",
-    "target_pct": 0.0,
+    "target_pct": 12.5,
     "futu_code": "US.PLTR"
   },
   {
     "symbol": "GOOGL",
     "label": "GOOGL",
-    "target_pct": 19.0,
+    "target_pct": 17.5,
     "futu_code": "US.GOOGL"
   },
   {
     "symbol": "MSFT",
     "label": "MSFT",
-    "target_pct": 12.6667,
+    "target_pct": 0.0,
     "futu_code": "US.MSFT"
   },
   {
     "symbol": "AVGO",
     "label": "AVGO",
-    "target_pct": 19.0,
+    "target_pct": 17.5,
     "futu_code": "US.AVGO"
   },
   {
     "symbol": "NVDA",
     "label": "NVDA",
-    "target_pct": 12.6667,
+    "target_pct": 0.0,
     "futu_code": "US.NVDA"
   }
 ]
