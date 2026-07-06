@@ -543,7 +543,7 @@ h2 {
 
 .cardGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -839,10 +839,32 @@ h2 {
 
 .verticalBars {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
   gap: 14px;
   align-items: end;
   min-height: 280px;
+}
+
+.compactVerticalChart .verticalBars {
+  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  gap: 8px;
+}
+
+.compactVerticalChart .verticalGroup {
+  grid-template-rows: 188px auto auto;
+}
+
+.compactVerticalChart .verticalPlot {
+  height: 188px;
+  gap: 5px;
+}
+
+.compactVerticalChart .verticalBar {
+  width: 24px;
+}
+
+.compactVerticalChart .verticalAmount {
+  font-size: 0.76rem;
 }
 
 .verticalGroup {

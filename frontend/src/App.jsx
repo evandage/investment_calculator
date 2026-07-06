@@ -375,12 +375,12 @@ function BarList({ title, rows, valueKey, formatValue }) {
   );
 }
 
-function CompareBars({ title, rows, amountKey = "current_usd" }) {
+function CompareBars({ title, rows, amountKey = "current_usd", className = "" }) {
   const max = Math.max(1, ...rows.flatMap((row) => [Number(row.current_pct || 0), Number(row.target_pct || 0)]));
   const currentTotal = rows.reduce((sum, row) => sum + Number(row.current_pct || 0), 0);
   const targetTotal = rows.reduce((sum, row) => sum + Number(row.target_pct || 0), 0);
   return (
-    <section className="chartPanel verticalChartPanel">
+    <section className={`chartPanel verticalChartPanel ${className}`}>
       <h2>{title}</h2>
       <div className="verticalBars">
         {rows.map((row) => (
@@ -417,7 +417,7 @@ function Visualizations({ data }) {
       <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_cny" formatValue={(value) => fmtMoney(value, "CNY")} />
       <BarList title="卫星仓位浮盈亏排名" rows={viz.satellite_pnl_rank || []} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} />
       <CompareBars title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比" rows={viz.allocation_compare || []} />
-      <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} />
+      <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" />
     </section>
   );
 }
