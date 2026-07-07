@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import json
 import sys
 import threading
 from datetime import datetime
@@ -94,6 +93,22 @@ def _chart_labels() -> dict[str, str]:
     return labels
 
 
+def _chart_full_labels() -> dict[str, str]:
+    return {
+        "VOO": "Vanguard S&P 500 ETF",
+        "QQQ": "Invesco QQQ Trust",
+        "ISRG": "Intuitive Surgical",
+        "TEM": "Tempus AI",
+        "PLTR": "Palantir Technologies",
+        "GOOGL": "Alphabet",
+        "MSFT": "Microsoft",
+        "AVGO": "Broadcom",
+        "NVDA": "NVIDIA",
+        "SGOV": "iShares 0-3 Month Treasury Bond ETF",
+        "510330.SS": "Huatai-PineBridge CSI 300 ETF",
+    }
+
+
 def _refresh_satellite_runtime_config() -> None:
     for module in (storage_module, market_data_module, portfolio_module):
         if hasattr(module, "ALL_SYMBOLS"):
@@ -161,118 +176,6 @@ def ohlcv(symbol: str = "VOO", interval: str = "1d", show_extended: bool = True)
     return fetch_ohlcv(symbol, interval, show_extended)
 
 
-def _build_chart_board(
-    symbol: str = "VOO",
-    interval: str = "1d",
-    theme: str = "Trading Dark",
-    avwap_mode: str = "earnings",
-    show_extended: bool = True,
-) -> dict[str, Any]:
-    sym = str(symbol or "VOO").upper()
-    if sym not in _chart_symbols():
-        sym = "VOO"
-    chart_api = importlib.import_module("chart_boards")
-    chart_api.configure_market_provider("futu")
-    holding = load_holdings().get(sym, {})
-    shares = float(holding.get("shares", 0.0) or 0.0)
-    avg_cost = float(holding.get("avg_cost", 0.0) or 0.0)
-    user_avg_cost = avg_cost if shares > 0 and avg_cost > 0 else None
-    calls = {
-        "1d": chart_api.fig_daily,
-        "15m": chart_api.fig_15m_vwap_rsi,
-        "5m": chart_api.fig_5m_vwap_rsi7,
-    }
-    key = interval if interval in calls else "1d"
-    try:
-        quote = get_futu_subscription_quotes().get(sym) or {}
-        latest_price = float(quote.get("price") or 0.0)
-        latest_change_pct = float(quote["change_pct"]) if quote.get("change_pct") is not None else None
-        effective_avwap_mode = avwap_mode
-        if sym in {"VOO", "QQQ", "SGOV"} and effective_avwap_mode == "earnings":
-            effective_avwap_mode = "high_60d"
-        if key == "1d" and effective_avwap_mode == "today_open":
-            effective_avwap_mode = "earnings" if sym not in {"VOO", "QQQ", "SGOV"} else "high_60d"
-        kwargs = {
-            "chart_theme": theme,
-            "user_avg_cost": user_avg_cost if key == "1d" else None,
-            "cache_only": False,
-            "latest_price": latest_price if latest_price > 0 else None,
-            "latest_change_pct": latest_change_pct,
-        }
-        kwargs["avwap_mode"] = effective_avwap_mode
-        if key != "1d":
-            kwargs["show_extended"] = show_extended
-        labels = _chart_labels()
-        fig = calls[key](sym, labels.get(sym, sym), **kwargs)
-        figure = json.loads(fig.to_json())
-        avwap_meta = (figure.get("layout") or {}).get("meta") or {}
-        return {
-            "symbol": sym,
-            "interval": key,
-            "source": "my-template",
-            "market_provider": chart_api.get_market_provider(),
-            "user_avg_cost": user_avg_cost if key == "1d" else None,
-            "avwap_mode": avwap_meta.get("avwap_mode"),
-            "avwap_label": avwap_meta.get("avwap_label"),
-            "avwap_anchor": avwap_meta.get("avwap_anchor"),
-            "show_extended": show_extended if key != "1d" else None,
-            "latest_price": latest_price if latest_price > 0 else None,
-            "latest_change_pct": latest_change_pct,
-            "figure": figure,
-            "error": "",
-        }
-    except Exception as exc:
-        return {"symbol": sym, "interval": key, "source": "my-template", "figure": None, "error": str(exc)}
-
-
-def _build_global_chart_board(
-    interval: str = "5m",
-    theme: str = "Trading Dark",
-    show_extended: bool = True,
-    columns: int = 1,
-) -> dict[str, Any]:
-    chart_api = importlib.import_module("chart_boards")
-    chart_api.configure_market_provider("futu")
-    key = interval if interval in {"1d", "15m", "5m"} else "5m"
-    cols = min(5, max(1, int(columns or 1)))
-    labels = _chart_labels()
-    symbols = list(labels.keys())
-    try:
-        quotes = get_futu_subscription_quotes()
-        holdings = load_holdings()
-        user_avg_costs = {
-            symbol: float(holding.get("avg_cost", 0.0) or 0.0)
-            for symbol, holding in holdings.items()
-            if symbol in symbols
-            and float(holding.get("shares", 0.0) or 0.0) > 0
-            and float(holding.get("avg_cost", 0.0) or 0.0) > 0
-        }
-        fig = chart_api.fig_global_kline_board(
-            symbols,
-            interval=key,
-            chart_theme=theme,
-            show_extended=show_extended,
-            columns=cols,
-            latest_quotes=quotes,
-            user_avg_costs=user_avg_costs if key == "1d" else None,
-            cache_only=False,
-        )
-        return {
-            "symbol": "GLOBAL",
-            "symbols": symbols,
-            "interval": key,
-            "source": "my-template-global",
-            "market_provider": chart_api.get_market_provider(),
-            "show_extended": show_extended if key != "1d" else None,
-            "columns": cols,
-            "user_avg_costs": user_avg_costs if key == "1d" else {},
-            "figure": json.loads(fig.to_json()),
-            "error": "",
-        }
-    except Exception as exc:
-        return {"symbol": "GLOBAL", "symbols": symbols, "interval": key, "source": "my-template-global", "figure": None, "error": str(exc)}
-
-
 def _timestamp_for_lightweight(value: Any, interval: str = "5m") -> int | str:
     if hasattr(value, "to_pydatetime"):
         value = value.to_pydatetime()
@@ -304,6 +207,7 @@ def _build_global_chart_board_light(
     key = interval if interval in {"1d", "15m", "5m"} else "5m"
     cols = min(5, max(1, int(columns or 1)))
     labels = _chart_labels()
+    full_labels = _chart_full_labels()
     symbols = list(labels.keys())
     quotes = get_futu_subscription_quotes()
     charts: list[dict[str, Any]] = []
@@ -344,6 +248,7 @@ def _build_global_chart_board_light(
             {
                 "symbol": sym,
                 "label": labels.get(sym, sym),
+                "full_label": full_labels.get(sym, labels.get(sym, sym)),
                 "candles": candles,
                 "volumes": volumes,
                 "latest_price": latest_price,
@@ -391,7 +296,7 @@ def _build_chart_board_light(
     sym = str(symbol or "VOO").upper()
     if sym not in _chart_symbols():
         sym = "VOO"
-    key = interval if interval in {"15m", "5m"} else "5m"
+    key = interval if interval in {"1d", "15m", "5m"} else "5m"
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
     labels = _chart_labels()
@@ -407,21 +312,24 @@ def _build_chart_board_light(
         effective_avwap_mode = "high_60d"
 
     try:
-        df = chart_api.fetch_ohlcv(sym, key, "2d", cache_only=False)
-        if show_extended:
-            df, _ = chart_api.slice_intraday_today_or_yesterday(
-                df,
-                sym,
-                min_current_bars=12 if key == "5m" else 4,
-                include_previous_context=True,
-            )
-        else:
-            df, _ = chart_api.slice_regular_intraday_with_context(
-                df,
-                sym,
-                min_current_bars=12 if key == "5m" else 4,
-                include_previous_context=True,
-            )
+        period = "5y" if key == "1d" else "2d"
+        df = chart_api.fetch_ohlcv(sym, key, period, cache_only=False)
+        full_df = df.copy()
+        if key != "1d":
+            if show_extended:
+                df, _ = chart_api.slice_intraday_today_or_yesterday(
+                    df,
+                    sym,
+                    min_current_bars=12 if key == "5m" else 4,
+                    include_previous_context=True,
+                )
+            else:
+                df, _ = chart_api.slice_regular_intraday_with_context(
+                    df,
+                    sym,
+                    min_current_bars=12 if key == "5m" else 4,
+                    include_previous_context=True,
+                )
         if df.empty:
             return {
                 "symbol": sym,
@@ -446,10 +354,17 @@ def _build_chart_board_light(
             effective_avwap_mode,
             cache_only=False,
         )
-        regular_mask = chart_api._regular_us_session_mask(df.index)
-        profile_source = df.loc[regular_mask].copy()
-        if profile_source.empty:
-            profile_source = df
+        try:
+            avwap_clean = avwap.replace([float("inf"), float("-inf")], float("nan")).dropna()
+            avwap_value = float(avwap_clean.iloc[-1]) if not avwap_clean.empty else None
+        except Exception:
+            avwap_value = None
+        profile_source = df
+        if key != "1d":
+            regular_mask = chart_api._regular_us_session_mask(df.index)
+            profile_source = df.loc[regular_mask].copy()
+            if profile_source.empty:
+                profile_source = df
         vp_price, vp_vol, vp_low, vp_high, _ = chart_api._volume_profile_by_price(profile_source, bins=24)
         max_profile_volume = float(vp_vol.max()) if not vp_vol.empty else 0.0
         volume_profile = [
@@ -463,6 +378,9 @@ def _build_chart_board_light(
             for price, low, high, volume in zip(vp_price.values, vp_low.values, vp_high.values, vp_vol.values)
         ]
         close = df["Close"]
+        daily_ema20 = chart_api.ema(full_df["Close"], 20).reindex(df.index) if key == "1d" and not full_df.empty else close.iloc[0:0]
+        daily_ma50 = full_df["Close"].rolling(50).mean().reindex(df.index) if key == "1d" and not full_df.empty else close.iloc[0:0]
+        daily_ma200 = full_df["Close"].rolling(200).mean().reindex(df.index) if key == "1d" and not full_df.empty else close.iloc[0:0]
         rsi_period = 7 if key == "5m" else 14
         rsi_series = chart_api.rsi(close, rsi_period)
         rsi_ma = chart_api.ema(rsi_series, 9)
@@ -494,11 +412,13 @@ def _build_chart_board_light(
             "interval": key,
             "source": "lightweight-single",
             "market_provider": chart_api.get_market_provider(),
-            "show_extended": show_extended,
+            "show_extended": show_extended if key != "1d" else None,
             "user_avg_cost": user_avg_cost,
             "avwap_mode": effective_avwap_mode,
             "avwap_label": avwap_label,
             "avwap_anchor": avwap_anchor.strftime("%Y-%m-%d"),
+            "avwap_value": avwap_value,
+            "rsi_period": rsi_period,
             "latest_price": latest_price if latest_price > 0 else None,
             "latest_change_pct": latest_change_pct,
             "candles": candles,
@@ -507,6 +427,9 @@ def _build_chart_board_light(
                 "avwap": _series_for_lightweight(avwap, key),
                 "avwap_upper": _series_for_lightweight(avwap_upper, key),
                 "avwap_lower": _series_for_lightweight(avwap_lower, key),
+                "ema20": _series_for_lightweight(daily_ema20, key),
+                "ma50": _series_for_lightweight(daily_ma50, key),
+                "ma200": _series_for_lightweight(daily_ma200, key),
             },
             "volume_profile": volume_profile,
             "indicators": {
@@ -521,63 +444,6 @@ def _build_chart_board_light(
     except Exception as exc:
         return {"symbol": sym, "interval": key, "source": "lightweight-single", "error": str(exc)}
 
-
-def _patch_latest_candle(payload: dict[str, Any], price: float) -> None:
-    figure = payload.get("figure") or {}
-    traces = figure.get("data") or []
-    target: dict[str, Any] | None = None
-    target_x = ""
-    for trace in traces:
-        if trace.get("type") != "candlestick":
-            continue
-        xs = trace.get("x") or []
-        if not xs:
-            continue
-        last_x = str(xs[-1])
-        if target is None or last_x > target_x:
-            target = trace
-            target_x = last_x
-    if target is None:
-        return
-    for key in ("close", "high", "low"):
-        values = target.get(key)
-        if not isinstance(values, list) or not values:
-            return
-    target["close"][-1] = price
-    target["high"][-1] = max(float(target["high"][-1]), price)
-    target["low"][-1] = min(float(target["low"][-1]), price)
-
-
-def _patch_latest_price(payload: dict[str, Any], price: float, change_pct: float | None = None) -> None:
-    if price <= 0:
-        return
-    _patch_latest_candle(payload, price)
-    figure = payload.get("figure") or {}
-    layout = figure.get("layout") or {}
-    for shape in layout.get("shapes") or []:
-        if shape.get("name") == "latest_price_line":
-            shape["y0"] = price
-            shape["y1"] = price
-    for annotation in layout.get("annotations") or []:
-        if annotation.get("name") == "latest_price_label":
-            annotation["y"] = price
-            change_text = f"<br>{change_pct:+.2f}%" if change_pct is not None else ""
-            annotation["text"] = f"最新 {price:.2f}{change_text}"
-    payload["latest_price"] = price
-    payload["latest_change_pct"] = change_pct
-
-
-@app.get("/api/chart-board")
-def chart_board(
-    symbol: str = "VOO",
-    interval: str = "1d",
-    theme: str = "Trading Dark",
-    avwap_mode: str = "earnings",
-    show_extended: bool = True,
-) -> dict[str, Any]:
-    return _build_chart_board(symbol, interval, theme, avwap_mode, show_extended)
-
-
 @app.get("/api/chart-board-light")
 def chart_board_light(
     symbol: str = "VOO",
@@ -586,16 +452,6 @@ def chart_board_light(
     show_extended: bool = True,
 ) -> dict[str, Any]:
     return _build_chart_board_light(symbol, interval, avwap_mode, show_extended)
-
-
-@app.get("/api/chart-board-global")
-def chart_board_global(
-    interval: str = "5m",
-    theme: str = "Trading Dark",
-    show_extended: bool = True,
-    columns: int = 1,
-) -> dict[str, Any]:
-    return _build_global_chart_board(interval, theme, show_extended, columns)
 
 
 @app.get("/api/chart-board-global-light")
@@ -695,61 +551,74 @@ async def quotes_ws(websocket: WebSocket) -> None:
         return
 
 
-@app.websocket("/ws/chart-board")
-async def chart_board_ws(websocket: WebSocket) -> None:
+def _light_revision_snapshot(symbols: list[str], interval: str) -> dict[str, tuple[int, int]]:
+    return {
+        symbol: (get_futu_kline_revision(symbol, interval), get_futu_quote_revision(symbol))
+        for symbol in symbols
+    }
+
+
+@app.websocket("/ws/chart-board-light")
+async def chart_board_light_ws(websocket: WebSocket) -> None:
     await websocket.accept()
     symbol = str(websocket.query_params.get("symbol", "VOO")).upper()
-    interval = str(websocket.query_params.get("interval", "1d"))
-    theme = str(websocket.query_params.get("theme", "Trading Dark"))
+    interval = str(websocket.query_params.get("interval", "5m"))
     avwap_mode = str(websocket.query_params.get("avwap_mode", "earnings"))
     show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
     if symbol not in _chart_labels():
         symbol = "VOO"
-    if interval not in {"1d", "15m", "5m"}:
-        interval = "1d"
+    if interval not in {"15m", "5m"}:
+        await websocket.close()
+        return
 
-    last_revision = -1
-    last_quote_revision = -1
+    last_revision: tuple[int, int] | None = None
     last_sent_at = 0.0
-    payload: dict[str, Any] | None = None
     try:
         while True:
-            revision = get_futu_kline_revision(symbol, interval)
-            quote_revision = get_futu_quote_revision(symbol)
+            current = (get_futu_kline_revision(symbol, interval), get_futu_quote_revision(symbol))
             now = asyncio.get_running_loop().time()
-            kline_changed = last_revision < 0 or revision != last_revision
-            quote_changed = quote_revision != last_quote_revision
-            if kline_changed and (last_revision < 0 or now - last_sent_at >= 1.0):
-                payload = await asyncio.to_thread(
-                    _build_chart_board,
-                    symbol,
-                    interval,
-                    theme,
-                    avwap_mode,
-                    show_extended,
-                )
+            if last_revision is None or (current != last_revision and now - last_sent_at >= 0.75):
+                payload = await asyncio.to_thread(_build_chart_board_light, symbol, interval, avwap_mode, show_extended)
                 payload["realtime"] = True
-                payload["revision"] = revision
-                payload["quote_revision"] = quote_revision
-                subscription = futu_subscription_status()
-                payload["kline_subscription"] = (
-                    not subscription.get("kline_error")
-                    and symbol in set(subscription.get("kline_symbols") or [])
-                )
+                payload["revision"] = current[0]
+                payload["quote_revision"] = current[1]
                 await websocket.send_json(payload)
-                last_revision = revision
-                last_quote_revision = quote_revision
+                last_revision = current
                 last_sent_at = now
-            elif quote_changed and payload is not None and now - last_sent_at >= 0.75:
-                quote = get_futu_subscription_quotes().get(symbol) or {}
-                latest_price = float(quote.get("price") or 0.0)
-                latest_change_pct = float(quote["change_pct"]) if quote.get("change_pct") is not None else None
-                if latest_price > 0:
-                    _patch_latest_price(payload, latest_price, latest_change_pct)
-                    payload["quote_revision"] = quote_revision
-                    await websocket.send_json(payload)
-                    last_quote_revision = quote_revision
-                    last_sent_at = now
             await asyncio.sleep(0.25)
     except WebSocketDisconnect:
         return
+
+
+@app.websocket("/ws/chart-board-global-light")
+async def chart_board_global_light_ws(websocket: WebSocket) -> None:
+    await websocket.accept()
+    interval = str(websocket.query_params.get("interval", "5m"))
+    show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
+    try:
+        columns = int(websocket.query_params.get("columns", "1"))
+    except Exception:
+        columns = 1
+    if interval not in {"15m", "5m"}:
+        await websocket.close()
+        return
+
+    symbols = list(_chart_labels().keys())
+    last_revision: dict[str, tuple[int, int]] | None = None
+    last_sent_at = 0.0
+    try:
+        while True:
+            current = _light_revision_snapshot(symbols, interval)
+            now = asyncio.get_running_loop().time()
+            if last_revision is None or (current != last_revision and now - last_sent_at >= 0.75):
+                payload = await asyncio.to_thread(_build_global_chart_board_light, interval, show_extended, columns)
+                payload["realtime"] = True
+                payload["revisions"] = current
+                await websocket.send_json(payload)
+                last_revision = current
+                last_sent_at = now
+            await asyncio.sleep(0.25)
+    except WebSocketDisconnect:
+        return
+
+

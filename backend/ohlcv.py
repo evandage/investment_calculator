@@ -15,7 +15,13 @@ Interval = Literal["1d", "15m", "5m"]
 _OHLCV_CACHE: dict[tuple[str, str, bool], tuple[dict[str, Any], float]] = {}
 _OHLCV_TTL_SECONDS = {"1d": 300, "15m": 45, "5m": 30}
 _TZ_NEW_YORK = ZoneInfo("America/New_York")
+_TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _FUTU_HISTORY_TIMEOUT_SECONDS = float(os.environ.get("FUTU_HISTORY_TIMEOUT_SECONDS", "8"))
+
+
+def _market_tz(symbol: str) -> ZoneInfo:
+    code = FUTU_US.get(symbol, "")
+    return _TZ_SHANGHAI if code.startswith(("SH.", "SZ.")) else _TZ_NEW_YORK
 
 
 def _period_for_interval(interval: Interval) -> str:
@@ -83,7 +89,7 @@ def _merge_realtime_bar(
     pushed = get_futu_subscription_kline(symbol, interval)
     if not pushed:
         return bars
-    ts = _ts_to_lightweight(pushed.get("time_key"), interval, source_tz=_TZ_NEW_YORK)
+    ts = _ts_to_lightweight(pushed.get("time_key"), interval, source_tz=_market_tz(symbol))
     if ts is None:
         return bars
     realtime = _clean_bar({**pushed, "time": ts})
@@ -94,13 +100,14 @@ def _merge_realtime_bar(
     return sorted(merged, key=lambda bar: str(bar.get("time")))
 
 
-def _latest_us_trading_day_bars(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _latest_trading_day_bars(symbol: str, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not bars:
         return bars
+    tz = _market_tz(symbol)
     dated: list[tuple[dict[str, Any], object]] = []
     for bar in bars:
         try:
-            trading_day = datetime.fromtimestamp(int(bar["time"]), _TZ_NEW_YORK).date()
+            trading_day = datetime.fromtimestamp(int(bar["time"]), tz).date()
         except (KeyError, TypeError, ValueError, OSError):
             continue
         dated.append((bar, trading_day))
@@ -110,18 +117,26 @@ def _latest_us_trading_day_bars(bars: list[dict[str, Any]]) -> list[dict[str, An
     return [bar for bar, day in dated if day == latest_day]
 
 
-def _latest_us_regular_session_bars(
+def _in_regular_session(symbol: str, local_time: datetime) -> bool:
+    minutes = local_time.hour * 60 + local_time.minute
+    if FUTU_US.get(symbol, "").startswith(("SH.", "SZ.")):
+        return (9 * 60 + 30 <= minutes < 11 * 60 + 30) or (13 * 60 <= minutes < 15 * 60)
+    return 9 * 60 + 30 <= minutes < 16 * 60
+
+
+def _latest_regular_session_bars(
+    symbol: str,
     bars: list[dict[str, Any]],
     min_current_bars: int = 6,
 ) -> list[dict[str, Any]]:
+    tz = _market_tz(symbol)
     regular: list[tuple[dict[str, Any], object]] = []
     for bar in bars:
         try:
-            local_time = datetime.fromtimestamp(int(bar["time"]), _TZ_NEW_YORK)
+            local_time = datetime.fromtimestamp(int(bar["time"]), tz)
         except (KeyError, TypeError, ValueError, OSError):
             continue
-        minutes = local_time.hour * 60 + local_time.minute
-        if 9 * 60 + 30 <= minutes < 16 * 60:
+        if _in_regular_session(symbol, local_time):
             regular.append((bar, local_time.date()))
     if not regular:
         return []
@@ -170,7 +185,7 @@ def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[s
                 ts = _ts_to_lightweight(
                     _row_value(item, "time_key"),
                     interval,
-                    source_tz=_TZ_NEW_YORK,
+                    source_tz=_market_tz(symbol),
                 )
                 if ts is None:
                     continue
@@ -259,9 +274,9 @@ def fetch_ohlcv(symbol: str, interval: str, show_extended: bool = True) -> dict[
             merged
             if iv == "1d"
             else (
-                _latest_us_trading_day_bars(merged)
+                _latest_trading_day_bars(sym, merged)
                 if show_extended
-                else _latest_us_regular_session_bars(merged, 12 if iv == "5m" else 4)
+                else _latest_regular_session_bars(sym, merged, 12 if iv == "5m" else 4)
             )
         )
         payload["source"] = "futu-subscribe"
@@ -282,9 +297,9 @@ def fetch_ohlcv(symbol: str, interval: str, show_extended: bool = True) -> dict[
             bars[-1200:]
             if iv == "1d"
             else (
-                _latest_us_trading_day_bars(bars)
+                _latest_trading_day_bars(sym, bars)
                 if show_extended
-                else _latest_us_regular_session_bars(bars, 12 if iv == "5m" else 4)
+                else _latest_regular_session_bars(sym, bars, 12 if iv == "5m" else 4)
             )
         ),
     }

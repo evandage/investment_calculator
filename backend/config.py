@@ -141,6 +141,7 @@ FUTU_US = {
     "AVGO": "US.AVGO",
     "NVDA": "US.NVDA",
     "SGOV": "US.SGOV",
+    "510330.SS": "SH.510330",
 }
 
 

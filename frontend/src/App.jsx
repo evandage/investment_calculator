@@ -1,13 +1,12 @@
-import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
-import { CandlestickSeries, createChart, HistogramSeries, LineSeries } from "lightweight-charts";
+import { BaselineSeries, CandlestickSeries, createChart, HistogramSeries, LineSeries } from "lightweight-charts";
 import { Activity, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
-
-const Plot = lazy(() => import("react-plotly.js"));
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
   `${window.location.protocol}//${window.location.hostname}:8010`;
+const WS_BASE = API_BASE.replace(/^http/i, "ws");
 const HEATMAP_LAYOUT_WIDTH = 100;
 const HEATMAP_LAYOUT_HEIGHT = 78;
 const TERMINAL_CHART = {
@@ -25,48 +24,6 @@ const TERMINAL_CHART = {
   legend: "#10233a",
 };
 const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
-
-function plotWrapStyle(figure) {
-  const height = Number(figure?.layout?.height || 980);
-  return { height: `${height}px` };
-}
-
-function terminalAxis(axis = {}) {
-  const next = {
-    ...axis,
-    gridcolor: axis.showgrid === false ? axis.gridcolor : TERMINAL_CHART.grid,
-    linecolor: TERMINAL_CHART.axis,
-    zerolinecolor: TERMINAL_CHART.zero,
-    tickfont: { ...(axis.tickfont || {}), color: TERMINAL_CHART.textMuted },
-  };
-  if (axis.title && typeof axis.title === "object") {
-    next.title = {
-      ...axis.title,
-      font: { ...(axis.title.font || {}), color: TERMINAL_CHART.textMuted },
-    };
-  }
-  return next;
-}
-
-function terminalPlotLayout(layout = {}) {
-  const next = {
-    ...layout,
-    paper_bgcolor: "rgba(0,0,0,0)",
-    plot_bgcolor: TERMINAL_CHART.surface,
-    font: { ...(layout.font || {}), family: PLOT_FONT, color: TERMINAL_CHART.textSoft },
-    legend: {
-      ...(layout.legend || {}),
-      bgcolor: TERMINAL_CHART.legend,
-      bordercolor: "rgba(148, 163, 184, 0.24)",
-      borderwidth: 1,
-      font: { ...(layout.legend?.font || {}), color: TERMINAL_CHART.textSoft },
-    },
-  };
-  Object.keys(layout).forEach((key) => {
-    if (/^[xy]axis\d*$/.test(key)) next[key] = terminalAxis(layout[key]);
-  });
-  return next;
-}
 
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
 const shanghaiDateFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -116,6 +73,16 @@ function fmtMoney(value, currency = "USD", digits = 2) {
 function fmtPct(value) {
   const num = Number(value || 0);
   return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
+}
+
+function chartPriceDigits(symbol) {
+  const normalized = String(symbol || "").toUpperCase();
+  return normalized === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalized) ? 3 : 2;
+}
+
+function fmtChartPrice(value, symbol) {
+  const num = Number(value || 0);
+  return num.toFixed(chartPriceDigits(symbol));
 }
 
 function dailyAmount(value, pct) {
@@ -500,114 +467,12 @@ function Visualizations({ data }) {
 function PerformanceChart({ history }) {
   const points = history?.points || [];
   const latest = points[points.length - 1];
-  const weekdayFormatter = useMemo(() => new Intl.DateTimeFormat("zh-CN", { weekday: "short" }), []);
-  const series = [
-    ["portfolio_return_pct", "我的组合", "#1d4ed8", "rgba(37, 99, 235, 0.20)", "solid", 4.5],
-    ["001015_return_pct", "沪深300", "#a16207", "rgba(0,0,0,0)", "solid", 2.3],
-    ["VOO_return_pct", "VOO", "#8b5cf6", "rgba(0,0,0,0)", "solid", 2.5],
-    ["QQQ_return_pct", "QQQ", "#7dd3fc", "rgba(0,0,0,0)", "solid", 2.8],
-  ].map(([key, name, color, fillcolor, dash, width]) => {
-    const terminalSeries = {
-      portfolio_return_pct: { color: TERMINAL_CHART.yellow, fillcolor: "rgba(250, 204, 21, 0.16)", width: 4.6 },
-      "001015_return_pct": { color: TERMINAL_CHART.coral, fillcolor: "rgba(0,0,0,0)", width: 2.6 },
-      VOO_return_pct: { color: TERMINAL_CHART.violet, fillcolor: "rgba(0,0,0,0)", width: 2.5 },
-      QQQ_return_pct: { color: TERMINAL_CHART.cyan, fillcolor: "rgba(0,0,0,0)", width: 2.8 },
-    }[key];
-    return terminalSeries
-      ? [key, name, terminalSeries.color, terminalSeries.fillcolor, dash, terminalSeries.width]
-      : [key, name, color, fillcolor, dash, width];
-  });
-  const figure = useMemo(() => {
-    const dates = points.map((point) => point.date);
-    const tickText = dates.map((day) => {
-      const date = new Date(`${day}T00:00:00+08:00`);
-      return `${day}<br>${weekdayFormatter.format(date)}`;
-    });
-    return {
-      data: series.map(([key, name, color, fillcolor, dash, width]) => {
-        const isPortfolio = key === "portfolio_return_pct";
-        return {
-          type: "scatter",
-          mode: points.length > 1 ? "lines+markers" : "markers",
-          name,
-          x: dates,
-          y: points.map((point) => point[key]),
-          customdata: points.map((point) => point[key.replace("_return_pct", "_daily_pct")]),
-          connectgaps: false,
-          fill: isPortfolio ? "tozeroy" : "none",
-          fillcolor,
-          line: {
-            color,
-            width,
-            shape: "spline",
-            smoothing: 0.65,
-            dash,
-          },
-          marker: {
-            color,
-            size: isPortfolio ? 9 : 6,
-            line: { color: "#0b1b2e", width: 1.2 },
-          },
-          hovertemplate: "%{x}<br>%{fullData.name}<br>累计: %{y:.2f}%<br>当日: %{customdata:.2f}%<extra></extra>",
-        };
-      }),
-      layout: terminalPlotLayout({
-        autosize: true,
-        height: 430,
-        margin: { l: 58, r: 24, t: 18, b: 44 },
-        paper_bgcolor: "rgba(0,0,0,0)",
-        plot_bgcolor: "rgba(2,6,23,0.18)",
-        font: { color: "#cbd5e1", family: "Inter, Microsoft YaHei, system-ui, sans-serif" },
-        xaxis: {
-          type: "category",
-          categoryorder: "array",
-          categoryarray: dates,
-          tickmode: "array",
-          tickvals: dates,
-          ticktext: tickText,
-          showgrid: false,
-          linecolor: "rgba(148, 163, 184, 0.24)",
-          tickfont: { color: "#94a3b8" },
-        },
-        yaxis: {
-          title: { text: "收益率", font: { color: "#94a3b8" } },
-          ticksuffix: "%",
-          zeroline: true,
-          zerolinecolor: "rgba(226, 232, 240, 0.42)",
-          gridcolor: "rgba(148, 163, 184, 0.12)",
-          linecolor: "rgba(148, 163, 184, 0.24)",
-          tickfont: { color: "#94a3b8" },
-        },
-        legend: {
-          orientation: "h",
-          x: 0,
-          xanchor: "left",
-          y: 1.12,
-          yanchor: "bottom",
-          font: { color: "#cbd5e1" },
-        },
-        hovermode: "x unified",
-        shapes: [
-          {
-            type: "rect",
-            xref: "paper",
-            yref: "paper",
-            x0: 0,
-            y0: 0,
-            x1: 1,
-            y1: 1,
-            fillcolor: "rgba(15, 35, 58, 0.62)",
-            line: { width: 0 },
-            layer: "below",
-          },
-        ],
-      }),
-      config: {
-        displayModeBar: false,
-        responsive: true,
-      },
-    };
-  }, [points, weekdayFormatter]);
+  const series = useMemo(() => [
+    ["portfolio_return_pct", "我的组合", TERMINAL_CHART.yellow, 4],
+    ["001015_return_pct", "沪深300", TERMINAL_CHART.coral, 2],
+    ["VOO_return_pct", "VOO", TERMINAL_CHART.violet, 2],
+    ["QQQ_return_pct", "QQQ", TERMINAL_CHART.cyan, 2],
+  ], []);
 
   return (
     <section className="chartPanel performancePanel">
@@ -626,14 +491,133 @@ function PerformanceChart({ history }) {
         ))}
       </div>
       <div className="performancePlot">
-        <Suspense fallback={<div className="plotLoading">加载图表中...</div>}>
-          <Plot data={figure.data} layout={figure.layout} config={figure.config} useResizeHandler style={{ width: "100%", height: "100%" }} />
-        </Suspense>
+        <PerformanceLightweightChart points={points} series={series} />
       </div>
     </section>
   );
 }
 
+function PerformanceLightweightChart({ points, series }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const lineSeriesRef = useRef([]);
+  const pointByTimeRef = useRef(new Map());
+  const [tooltip, setTooltip] = useState({ visible: false, left: 0, top: 0, point: null });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const chart = createChart(container, {
+      autoSize: true,
+      layout: {
+        background: { color: "#0b1b2e" },
+        textColor: TERMINAL_CHART.textMuted,
+        fontFamily: PLOT_FONT,
+        fontSize: 12,
+      },
+      grid: {
+        vertLines: { color: "rgba(148, 163, 184, 0.08)" },
+        horzLines: { color: "rgba(148, 163, 184, 0.14)" },
+      },
+      rightPriceScale: {
+        borderColor: "rgba(148, 163, 184, 0.22)",
+        scaleMargins: { top: 0.12, bottom: 0.14 },
+      },
+      timeScale: {
+        borderColor: "rgba(148, 163, 184, 0.22)",
+        timeVisible: false,
+        rightOffset: 0,
+        fixRightEdge: true,
+        tickMarkFormatter: formatLightweightChartTime,
+      },
+      localization: {
+        priceFormatter: (value) => `${Number(value).toFixed(2)}%`,
+        timeFormatter: formatLightweightChartTime,
+      },
+      crosshair: {
+        vertLine: { color: "rgba(226, 232, 240, 0.34)", width: 1, style: 2 },
+        horzLine: { color: "rgba(226, 232, 240, 0.22)", width: 1, style: 2 },
+      },
+    });
+    chartRef.current = chart;
+    lineSeriesRef.current = series.map(([, , color, width], index) => {
+      if (index === 0) {
+        return chart.addSeries(BaselineSeries, {
+          baseValue: { type: "price", price: 0 },
+          topLineColor: color,
+          topFillColor1: "rgba(250, 204, 21, 0.52)",
+          topFillColor2: "rgba(250, 204, 21, 0.10)",
+          bottomLineColor: color,
+          bottomFillColor1: "rgba(250, 204, 21, 0)",
+          bottomFillColor2: "rgba(250, 204, 21, 0)",
+          lineWidth: width,
+          priceLineVisible: false,
+          lastValueVisible: true,
+        });
+      }
+      return chart.addSeries(LineSeries, {
+        color,
+        lineWidth: width,
+        priceLineVisible: false,
+        lastValueVisible: true,
+      });
+    });
+    chart.subscribeCrosshairMove((param) => {
+      if (!param?.point || !param.time) {
+        setTooltip((current) => current.visible ? { ...current, visible: false } : current);
+        return;
+      }
+      const point = pointByTimeRef.current.get(String(param.time));
+      if (!point) {
+        setTooltip((current) => current.visible ? { ...current, visible: false } : current);
+        return;
+      }
+      const left = Math.min(Math.max(param.point.x + 14, 8), Math.max(8, container.clientWidth - 230));
+      const top = Math.min(Math.max(param.point.y + 14, 8), Math.max(8, container.clientHeight - 154));
+      setTooltip({ visible: true, left, top, point });
+    });
+    return () => {
+      chartRef.current = null;
+      lineSeriesRef.current = [];
+      chart.remove();
+    };
+  }, [series]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    pointByTimeRef.current = new Map((points || []).map((point) => [String(point.date), point]));
+    lineSeriesRef.current.forEach((line, index) => {
+      const [key] = series[index];
+      const rows = [];
+      for (const point of points || []) {
+        const value = Number(point?.[key]);
+        if (!point?.date || !Number.isFinite(value)) continue;
+        rows.push({ time: point.date, value });
+      }
+      line.setData(rows);
+    });
+    if (points?.length) chart.timeScale().fitContent();
+  }, [points, series]);
+
+  return (
+    <div className="performanceLwCanvas" ref={containerRef}>
+      {tooltip.visible && tooltip.point ? (
+        <div className="performanceTooltip" style={{ left: tooltip.left, top: tooltip.top }}>
+          <strong>{tooltip.point.date}</strong>
+          <span className={tone(tooltip.point.portfolio_daily_pct)}>
+            当日 {tooltip.point.portfolio_daily_pct == null ? "-" : fmtPct(tooltip.point.portfolio_daily_pct)}
+          </span>
+          {series.map(([key, name, color]) => (
+            <span key={key} style={{ "--series-color": color }}>
+              <i />{name} {tooltip.point[key] == null ? "-" : fmtPct(tooltip.point[key])}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 function LightweightKlineCard({ item }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -723,7 +707,10 @@ function LightweightKlineCard({ item }) {
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
+    const handleVisibleRangeChange = () => requestPriceAutoscale(candleSeries);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     return () => {
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
@@ -752,6 +739,7 @@ function LightweightKlineCard({ item }) {
     volumeSeries.setData(volumes);
     if (!didFitContentRef.current && candles.length) {
       chart.timeScale().fitContent();
+      requestPriceAutoscale(candleSeries);
       didFitContentRef.current = true;
     }
   }, [candles, volumes]);
@@ -761,10 +749,10 @@ function LightweightKlineCard({ item }) {
       <div className="lwChartHeader">
         <div>
           <strong>{item.symbol}</strong>
-          <span>{item.label}</span>
+          <span>{item.full_label || item.label}</span>
         </div>
         <div className={tone(item.latest_change_pct)}>
-          <strong>{Number(item.latest_price || 0).toFixed(2)}</strong>
+          <strong>{fmtChartPrice(item.latest_price, item.symbol)}</strong>
           <span>{item.latest_change_pct == null ? "-" : fmtPct(item.latest_change_pct)}</span>
         </div>
       </div>
@@ -808,6 +796,17 @@ function normalizeLineData(rows = []) {
   return out;
 }
 
+function requestPriceAutoscale(series) {
+  if (!series?.priceScale) return;
+  window.requestAnimationFrame(() => {
+    try {
+      series.priceScale().setAutoScale(true);
+    } catch {
+      // Ignore chart lifecycle races during fast page switches.
+    }
+  });
+}
+
 function SingleLightweightChart({ data, viewKey }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -840,6 +839,22 @@ function SingleLightweightChart({ data, viewKey }) {
   })).filter((row) => row.time != null && Number.isFinite(row.value)), [data]);
   const overlays = data?.overlays || {};
   const indicators = data?.indicators || {};
+  const isDaily = data?.interval === "1d";
+  const rsiPeriod = Number(data?.rsi_period) || (data?.interval === "5m" ? 7 : 14);
+  const avwapValue = Number(data?.avwap_value);
+  const avwapSkewsIntradayScale = useMemo(() => {
+    if (isDaily || !Number.isFinite(avwapValue) || !candles.length) return false;
+    const lows = candles.map((row) => row.low).filter(Number.isFinite);
+    const highs = candles.map((row) => row.high).filter(Number.isFinite);
+    if (!lows.length || !highs.length) return false;
+    const low = Math.min(...lows);
+    const high = Math.max(...highs);
+    const span = Math.max(high - low, high * 0.005, 1e-9);
+    return avwapValue > high + span * 0.25 || avwapValue < low - span * 0.25;
+  }, [avwapValue, candles, isDaily]);
+  const avwapText = Number.isFinite(avwapValue)
+    ? `${data?.avwap_label || "AVWAP"} ${fmtChartPrice(avwapValue, data?.symbol)}${avwapSkewsIntradayScale ? "（未绘制）" : ""}`
+    : (data?.avwap_label || "AVWAP");
   const volumeProfile = useMemo(() => (data?.volume_profile || [])
     .map((row) => ({
       low: Number(row.low),
@@ -897,8 +912,8 @@ function SingleLightweightChart({ data, viewKey }) {
       borderDownColor: TERMINAL_CHART.coral,
       wickUpColor: TERMINAL_CHART.green,
       wickDownColor: TERMINAL_CHART.coral,
-      priceLineColor: TERMINAL_CHART.yellow,
-      priceLineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
     }, 0);
     const volume = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
@@ -910,14 +925,17 @@ function SingleLightweightChart({ data, viewKey }) {
     const avwapUpper = chart.addSeries(LineSeries, { color: "rgba(45, 212, 191, 0.52)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }, 0);
     const avwapLower = chart.addSeries(LineSeries, { color: "rgba(45, 212, 191, 0.52)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }, 0);
     const avwap = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 2, lastValueVisible: false, priceLineVisible: false }, 0);
-    const rsi = chart.addSeries(LineSeries, { color: TERMINAL_CHART.violet, lineWidth: 1, title: "RSI" }, 1);
+    const ema20 = chart.addSeries(LineSeries, { color: "rgba(245, 158, 11, 0.96)", lineWidth: 1, title: "EMA20", lastValueVisible: false, priceLineVisible: false }, 0);
+    const ma50 = chart.addSeries(LineSeries, { color: "rgba(192, 132, 252, 0.96)", lineWidth: 1, title: "MA50", lastValueVisible: false, priceLineVisible: false }, 0);
+    const ma200 = chart.addSeries(LineSeries, { color: "rgba(156, 163, 175, 0.95)", lineWidth: 1, title: "MA200", lastValueVisible: false, priceLineVisible: false }, 0);
+    const rsi = chart.addSeries(LineSeries, { color: TERMINAL_CHART.violet, lineWidth: 1, title: `RSI(${rsiPeriod})` }, 1);
     const rsiMa = chart.addSeries(LineSeries, { color: TERMINAL_CHART.yellow, lineWidth: 1, title: "RSI EMA" }, 1);
     const macdHist = chart.addSeries(HistogramSeries, { color: "rgba(148, 163, 184, 0.35)", priceLineVisible: false, lastValueVisible: false }, 2);
     const macd = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 1, title: "MACD" }, 2);
     const macdSignal = chart.addSeries(LineSeries, { color: TERMINAL_CHART.coral, lineWidth: 1, title: "Signal" }, 2);
     rsi.createPriceLine({ price: 70, color: "rgba(248, 113, 113, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
     rsi.createPriceLine({ price: 30, color: "rgba(52, 211, 153, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
-    seriesRef.current = { candle, volume, avwapUpper, avwapLower, avwap, rsi, rsiMa, macdHist, macd, macdSignal };
+    seriesRef.current = { candle, volume, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
     chartRef.current = chart;
     const updateProfile = () => {
       const candleSeries = seriesRef.current.candle;
@@ -935,14 +953,17 @@ function SingleLightweightChart({ data, viewKey }) {
       setProfileBars(bars);
     };
     chart.timeScale().subscribeVisibleTimeRangeChange(updateProfile);
+    const handleVisibleRangeChange = () => requestPriceAutoscale(candle);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     return () => {
       chart.timeScale().unsubscribeVisibleTimeRangeChange(updateProfile);
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       chartRef.current = null;
       seriesRef.current = {};
       priceLinesRef.current = {};
       chart.remove();
     };
-  }, [viewKey]);
+  }, [viewKey, rsiPeriod]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -950,9 +971,13 @@ function SingleLightweightChart({ data, viewKey }) {
     if (!chart || !series.candle) return;
     series.candle.setData(candles);
     series.volume.setData(volumes);
-    series.avwapUpper.setData(normalizeLineData(overlays.avwap_upper));
-    series.avwapLower.setData(normalizeLineData(overlays.avwap_lower));
-    series.avwap.setData(normalizeLineData(overlays.avwap));
+    const shouldDrawAvwap = isDaily || !avwapSkewsIntradayScale;
+    series.avwapUpper.setData([]);
+    series.avwapLower.setData([]);
+    series.avwap.setData(shouldDrawAvwap ? normalizeLineData(overlays.avwap) : []);
+    series.ema20.setData(isDaily ? normalizeLineData(overlays.ema20) : []);
+    series.ma50.setData(isDaily ? normalizeLineData(overlays.ma50) : []);
+    series.ma200.setData(isDaily ? normalizeLineData(overlays.ma200) : []);
     series.rsi.setData(normalizeLineData(indicators.rsi));
     series.rsiMa.setData(normalizeLineData(indicators.rsi_ma));
     series.macd.setData(normalizeLineData(indicators.macd));
@@ -963,6 +988,7 @@ function SingleLightweightChart({ data, viewKey }) {
     })));
     if (priceLinesRef.current.latest) series.candle.removePriceLine(priceLinesRef.current.latest);
     if (priceLinesRef.current.cost) series.candle.removePriceLine(priceLinesRef.current.cost);
+    if (priceLinesRef.current.avwap) series.avwap.removePriceLine(priceLinesRef.current.avwap);
     priceLinesRef.current = {};
     if (Number(data?.latest_price) > 0) {
       priceLinesRef.current.latest = series.candle.createPriceLine({
@@ -977,15 +1003,30 @@ function SingleLightweightChart({ data, viewKey }) {
     if (Number(data?.user_avg_cost) > 0) {
       priceLinesRef.current.cost = series.candle.createPriceLine({
         price: Number(data.user_avg_cost),
-        color: TERMINAL_CHART.violet,
+        color: "rgba(180, 83, 9, 0.96)",
         lineWidth: 1,
         lineStyle: 2,
         axisLabelVisible: true,
         title: "Cost",
       });
     }
+    if (shouldDrawAvwap && Number.isFinite(avwapValue) && avwapValue > 0) {
+      priceLinesRef.current.avwap = series.avwap.createPriceLine({
+        price: avwapValue,
+        color: TERMINAL_CHART.cyan,
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: "AVWAP",
+      });
+    }
     if (!didFitContentRef.current && candles.length) {
-      chart.timeScale().fitContent();
+      if (isDaily && candles.length > 100) {
+        chart.timeScale().setVisibleLogicalRange({ from: candles.length - 100, to: candles.length + 14 });
+      } else {
+        chart.timeScale().fitContent();
+      }
+      requestPriceAutoscale(series.candle);
       didFitContentRef.current = true;
     }
     window.setTimeout(() => {
@@ -1003,17 +1044,17 @@ function SingleLightweightChart({ data, viewKey }) {
       }).filter(Boolean);
       setProfileBars(bars);
     }, 0);
-  }, [candles, volumes, overlays, indicators, data, volumeProfile]);
+  }, [candles, volumes, overlays, indicators, data, volumeProfile, isDaily, avwapSkewsIntradayScale]);
 
   return (
     <div className="singleLwWrap">
       <div className="singleLwHeader">
         <div>
           <strong>{data?.symbol}</strong>
-          <span>{data?.label} · {data?.interval} · {data?.avwap_label || "AVWAP"}</span>
+          <span>{data?.label} · {data?.interval} · {avwapText}{data?.avwap_anchor ? ` · 锚点 ${data.avwap_anchor}` : ""}</span>
         </div>
         <div className={tone(data?.latest_change_pct)}>
-          <strong>{Number(data?.latest_price || 0).toFixed(2)}</strong>
+          <strong>{fmtChartPrice(data?.latest_price, data?.symbol)}</strong>
           <span>{data?.latest_change_pct == null ? "-" : fmtPct(data.latest_change_pct)}</span>
         </div>
       </div>
@@ -1044,10 +1085,7 @@ function KlinePage({ dashboardData }) {
   const [error, setError] = useState("");
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [globalColumns, setGlobalColumns] = useState(globalKlineColumns);
-  const [userXAxisRanges, setUserXAxisRanges] = useState({});
-  const userXAxisRangesRef = useRef({});
   const loadRequestRef = useRef(0);
-  const globalSilentLoadingRef = useRef(false);
   const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
@@ -1072,13 +1110,13 @@ function KlinePage({ dashboardData }) {
           ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
           : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
       );
-      const endpoint = scope === "global" ? "chart-board-global-light" : (interval === "1d" ? "chart-board" : "chart-board-light");
+      const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
-      if (silent && scope === "global" && payload?.figure && (!payload.figure.data || payload.figure.data.length === 0)) return;
-      setData(applySavedXAxisRangesToPayload(payload));
+      if (silent && scope === "global" && payload?.charts && payload.charts.length === 0) return;
+      setData(payload);
     } catch (err) {
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
       setError(err instanceof DOMException && err.name === "AbortError" ? "K线请求超时" : (err instanceof Error ? err.message : String(err)));
@@ -1089,96 +1127,46 @@ function KlinePage({ dashboardData }) {
   }
 
   useEffect(() => {
-    userXAxisRangesRef.current = {};
-    setUserXAxisRanges({});
     load();
   }, [scope, symbol, interval, avwapMode, showExtended, globalColumns]);
 
-  function handlePlotRelayout(event) {
-    if (!event) return;
-    setUserXAxisRanges((current) => {
-      const next = { ...userXAxisRangesRef.current, ...current };
-      let changed = false;
-      for (const [key, value] of Object.entries(event)) {
-        const rangePart = key.match(/^(xaxis\d*)\.range\[(0|1)\]$/);
-        if (rangePart) {
-          const axis = rangePart[1];
-          const index = Number(rangePart[2]);
-          const range = Array.isArray(next[axis]) ? [...next[axis]] : [undefined, undefined];
-          range[index] = value;
-          if (range[0] !== undefined && range[1] !== undefined) {
-            next[axis] = range;
-            changed = true;
-          }
-          continue;
-        }
-        const range = key.match(/^(xaxis\d*)\.range$/);
-        if (range && Array.isArray(value) && value.length >= 2) {
-          next[range[1]] = [value[0], value[1]];
-          changed = true;
-          continue;
-        }
-        const autorange = key.match(/^(xaxis\d*)\.autorange$/);
-        if (autorange && value) {
-          delete next[autorange[1]];
-          changed = true;
-        }
-      }
-      if (changed) {
-        userXAxisRangesRef.current = next;
-        return next;
-      }
-      return current;
-    });
-  }
-
-  function layoutWithUserXAxisRanges(layout) {
-    const next = { ...(layout || {}) };
-    const ranges = { ...userXAxisRanges, ...userXAxisRangesRef.current };
-    for (const [axis, range] of Object.entries(ranges)) {
-      if (Array.isArray(range) && range.length >= 2) {
-        next[axis] = { ...(next[axis] || {}), range };
-      }
-    }
-    return next;
-  }
-
-  function applySavedXAxisRangesToPayload(payload) {
-    const ranges = userXAxisRangesRef.current;
-    if (!payload || !ranges || Object.keys(ranges).length === 0) return payload;
-    const applyToFigure = (figure) => {
-      if (!figure?.layout) return figure;
-      return { ...figure, layout: layoutWithUserXAxisRanges(figure.layout) };
-    };
-    return { ...payload, figure: applyToFigure(payload.figure) };
-  }
-
   useEffect(() => {
-    if (scope !== "global") return undefined;
-    setRealtimeConnected(false);
-    let disposed = false;
-    let timer;
-    const refresh = async () => {
-      if (disposed) return;
-      if (globalSilentLoadingRef.current) {
-        timer = window.setTimeout(refresh, 3000);
-        return;
-      }
-      globalSilentLoadingRef.current = true;
+    if (interval === "1d") {
+      setRealtimeConnected(false);
+      return undefined;
+    }
+    const isEtfSymbol = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
+    let effectiveAvwapMode = avwapMode;
+    if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
+    const qs = new URLSearchParams(
+      scope === "global"
+        ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
+        : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
+    );
+    const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
+    const signature = requestSignature;
+    const socket = new WebSocket(`${WS_BASE}/ws/${endpoint}?${qs.toString()}`);
+    socket.onopen = () => {
+      if (requestSignatureRef.current === signature) setRealtimeConnected(true);
+    };
+    socket.onmessage = (event) => {
+      if (requestSignatureRef.current !== signature) return;
       try {
-        await load({ silent: true });
-      } finally {
-        globalSilentLoadingRef.current = false;
-        if (!disposed) timer = window.setTimeout(refresh, 8000);
+        setData(JSON.parse(event.data));
+      } catch {
+        setError("K线推送数据解析失败");
       }
     };
-    timer = window.setTimeout(refresh, 8000);
-    return () => {
-      disposed = true;
-      window.clearTimeout(timer);
-      globalSilentLoadingRef.current = false;
+    socket.onerror = () => {
+      if (requestSignatureRef.current === signature) setError("K线实时订阅连接失败");
     };
-  }, [scope, interval, showExtended, globalColumns]);
+    socket.onclose = () => {
+      if (requestSignatureRef.current === signature) setRealtimeConnected(false);
+    };
+    return () => {
+      socket.close();
+    };
+  }, [scope, symbol, interval, avwapMode, showExtended, globalColumns]);
 
   useEffect(() => {
     function onResize() {
@@ -1192,25 +1180,15 @@ function KlinePage({ dashboardData }) {
   }, []);
 
   useEffect(() => {
+    if (scope === "single" && interval !== "1d") return undefined;
     setRealtimeConnected(false);
     return undefined;
   }, [scope, symbol, interval, avwapMode, showExtended]);
 
-  const figure = scope === "single" ? data?.figure : null;
   const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
   const avwapSelectValue = interval === "1d" && avwapMode === "today_open"
     ? (isEtf ? "high_60d" : "earnings")
     : (isEtf && avwapMode === "earnings" ? "high_60d" : avwapMode);
-  const themedFigureLayout = figure
-    ? {
-        ...terminalPlotLayout(layoutWithUserXAxisRanges(figure.layout)),
-        autosize: true,
-        dragmode: "zoom",
-        uirevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-        editrevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-        selectionrevision: `${scope}-${symbol}-${interval}-${avwapMode}-${showExtended}`,
-      }
-    : null;
 
   return (
     <section className="chartPanel technicalPanel">
@@ -1252,30 +1230,8 @@ function KlinePage({ dashboardData }) {
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} /> : null}
-      {scope === "single" && interval !== "1d" && data?.candles ? (
+      {scope === "single" && data?.candles ? (
         <SingleLightweightChart data={data} viewKey={`${data.symbol}-${data.interval}-${data.show_extended}-${data.avwap_mode}`} />
-      ) : null}
-      {scope === "single" && figure ? (
-        <div className="plotWrap" style={plotWrapStyle(figure)}>
-          <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
-            <Plot
-              data={figure.data}
-              revision={0}
-              layout={themedFigureLayout}
-              onRelayout={handlePlotRelayout}
-              config={{
-                responsive: true,
-                displaylogo: false,
-                displayModeBar: true,
-                scrollZoom: true,
-                doubleClick: "reset+autosize",
-                modeBarButtonsToRemove: ["select2d", "lasso2d"],
-              }}
-              useResizeHandler
-              style={{ width: "100%", height: "100%" }}
-            />
-          </Suspense>
-        </div>
       ) : null}
     </section>
   );
@@ -1952,3 +1908,4 @@ export default function App() {
     </main>
   );
 }
+

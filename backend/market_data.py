@@ -54,6 +54,7 @@ _FUTU_SUB_KLINES: dict[tuple[str, str], dict[str, Any]] = {}
 _FUTU_SUB_KLINE_REVISIONS: dict[tuple[str, str], int] = {}
 _FUTU_SUB_KLINE_ERROR = ""
 _FUTU_SUB_TICKER_ERROR = ""
+_FUTU_SUBSCRIBE_SYMBOLS = tuple(dict.fromkeys((*USD_SYMBOLS, "510330.SS")))
 NY_TZ = ZoneInfo("America/New_York")
 
 
@@ -229,7 +230,7 @@ def _update_futu_subscription_quotes(data: Any) -> None:
 
 def _update_futu_subscription_klines(data: Any) -> None:
     code_to_sym = {code: sym for sym, code in FUTU_US.items()}
-    interval_by_type = {"K_DAY": "1d", "K_15M": "15m", "K_5M": "5m"}
+    interval_by_type = {"K_15M": "15m", "K_5M": "5m"}
     with _FUTU_SUB_LOCK:
         for i in range(len(data)):
             row = data.iloc[i] if hasattr(data, "iloc") else data[i]
@@ -337,7 +338,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         ctx.set_handler(QuoteHandler())
         ctx.set_handler(KlineHandler())
         ctx.set_handler(TickerHandler())
-        subscribe_symbols = list(USD_SYMBOLS)
+        subscribe_symbols = [sym for sym in _FUTU_SUBSCRIBE_SYMBOLS if sym in FUTU_US]
         ret, msg = ctx.subscribe(
             [FUTU_US[sym] for sym in subscribe_symbols],
             [SubType.QUOTE],
@@ -363,7 +364,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
             _FUTU_SUB_TICKER_ERROR = str(ticker_msg)
         kline_ret, kline_msg = ctx.subscribe(
             [FUTU_US[sym] for sym in subscribe_symbols],
-            [SubType.K_DAY, SubType.K_15M, SubType.K_5M],
+            [SubType.K_15M, SubType.K_5M],
             is_first_push=True,
             subscribe_push=True,
             extended_time=True,
@@ -371,14 +372,14 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         if kline_ret != RET_OK:
             _FUTU_SUB_KLINE_ERROR = str(kline_msg)
         else:
-            for sym in USD_SYMBOLS:
+            for sym in subscribe_symbols:
                 code = FUTU_US[sym]
-                for interval, ktype in (("1d", KLType.K_DAY), ("15m", KLType.K_15M), ("5m", KLType.K_5M)):
+                for interval, ktype in (("15m", KLType.K_15M), ("5m", KLType.K_5M)):
                     seed_ret, seed_data = ctx.get_cur_kline(code, 1, ktype=ktype, autype=AuType.QFQ)
                     if seed_ret != RET_OK or seed_data is None or len(seed_data) == 0:
                         continue
                     seed = seed_data.copy()
-                    seed["k_type"] = {"1d": "K_DAY", "15m": "K_15M", "5m": "K_5M"}[interval]
+                    seed["k_type"] = {"15m": "K_15M", "5m": "K_5M"}[interval]
                     _update_futu_subscription_klines(seed)
         with _FUTU_SUB_LOCK:
             _FUTU_SUB_CTX = ctx

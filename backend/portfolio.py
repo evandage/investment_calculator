@@ -1108,7 +1108,6 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     holdings, balances, storage_mode = load_user_state(user_id)
     forward_pe = market.get("forward_pe", {})
     valuation_metrics = market.get("valuation_metrics", {})
-
     rows: list[dict[str, Any]] = []
     value_cny_by_symbol: dict[str, float] = {}
     total_value_cny = 0.0

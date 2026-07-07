@@ -842,9 +842,50 @@ h2 {
 }
 
 .performancePlot {
+  overflow: hidden;
   width: 100%;
   height: 430px;
   margin-top: 10px;
+}
+
+.performanceLwCanvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.performanceTooltip {
+  position: absolute;
+  z-index: 6;
+  min-width: 210px;
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 8px;
+  background: rgba(8, 21, 34, 0.94);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  font-size: 0.78rem;
+}
+
+.performanceTooltip strong {
+  color: var(--text-main);
+}
+
+.performanceTooltip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.performanceTooltip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--series-color);
 }
 
 .performanceStats {
@@ -1139,47 +1180,11 @@ h2 {
   color: #fff;
 }
 
-.plotWrap {
-  width: 100%;
-  height: 980px;
-  min-height: 520px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  overflow: hidden;
-  margin-top: 12px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.11), rgba(5, 16, 31, 0.38));
-  box-shadow: var(--glass-shadow-soft);
-}
 
-.plotWrap .modebar {
-  top: 8px !important;
-  right: 8px !important;
-  padding: 3px !important;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 14px;
-  background: rgba(14, 29, 48, 0.62);
-  box-shadow: var(--glass-shadow-soft);
-}
 
-.plotWrap .modebar-group {
-  background: transparent !important;
-}
 
-.plotWrap .modebar-btn {
-  border-radius: 10px;
-  color: rgba(236, 246, 255, 0.78) !important;
-}
 
-.plotWrap .modebar-btn:hover {
-  background: rgba(255, 255, 255, 0.14) !important;
-  color: #fff !important;
-}
 
-.plotLoading {
-  height: 100%;
-  display: grid;
-  place-items: center;
-}
 
 .lwChartGrid {
   --lw-cols: 4;
@@ -1233,6 +1238,21 @@ h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.lwChartHeader .up strong,
+.lwChartHeader .up span {
+  color: var(--green);
+}
+
+.lwChartHeader .down strong,
+.lwChartHeader .down span {
+  color: var(--red);
+}
+
+.lwChartHeader .flat strong,
+.lwChartHeader .flat span {
+  color: var(--text-soft);
 }
 
 .lwChartCanvas {
@@ -1294,6 +1314,21 @@ h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.singleLwHeader .up strong,
+.singleLwHeader .up span {
+  color: var(--green);
+}
+
+.singleLwHeader .down strong,
+.singleLwHeader .down span {
+  color: var(--red);
+}
+
+.singleLwHeader .flat strong,
+.singleLwHeader .flat span {
+  color: var(--text-soft);
 }
 
 .singleLwCanvas {
@@ -1828,17 +1863,8 @@ tbody th {
     width: 100%;
   }
 
-  .plotWrap {
-    width: 100%;
-    height: min(760px, calc(100dvh - 170px)) !important;
-    min-height: 540px;
-    border-left: 0;
-    border-right: 0;
-    border-radius: 0;
-    margin-top: 8px;
-  }
-
   .performancePlot {
+    overflow: hidden;
     height: 360px;
   }
 
@@ -1950,7 +1976,6 @@ select,
 .budgetPanel,
 .chartPanel,
 .toolbarRow,
-.plotWrap,
 .tableWrap,
 .modalBackdrop,
 .modalPanel,
@@ -2016,7 +2041,6 @@ button:focus-visible {
 .budgetPanel,
 .chartPanel,
 .toolbarRow,
-.plotWrap,
 .tableWrap,
 .modalPanel,
 .satelliteUniverseRow {
@@ -2259,15 +2283,7 @@ tbody th {
   color: #fff;
 }
 
-.plotWrap {
-  background: #081522;
-}
 
-.plotWrap .modebar {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: #10233a;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-}
 
 .tableWrap {
   background: #0d1d31;
@@ -2330,3 +2346,4 @@ tbody tr:hover th {
   background: #10233a;
   box-shadow: 0 28px 76px rgba(0, 0, 0, 0.45);
 }
+
