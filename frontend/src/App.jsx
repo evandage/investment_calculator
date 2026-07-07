@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
-import { BaselineSeries, CandlestickSeries, createChart, HistogramSeries, LineSeries } from "lightweight-charts";
+import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, HistogramSeries, LineSeries } from "lightweight-charts";
 import { Activity, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
 
 const API_BASE =
@@ -501,6 +501,7 @@ function PerformanceLightweightChart({ points, series }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const lineSeriesRef = useRef([]);
+  const cashFlowMarkersRef = useRef(null);
   const pointByTimeRef = useRef(new Map());
   const [tooltip, setTooltip] = useState({ visible: false, left: 0, top: 0, point: null });
 
@@ -542,7 +543,7 @@ function PerformanceLightweightChart({ points, series }) {
     chartRef.current = chart;
     lineSeriesRef.current = series.map(([, , color, width], index) => {
       if (index === 0) {
-        return chart.addSeries(BaselineSeries, {
+        const portfolioSeries = chart.addSeries(BaselineSeries, {
           baseValue: { type: "price", price: 0 },
           topLineColor: color,
           topFillColor1: "rgba(250, 204, 21, 0.52)",
@@ -554,6 +555,8 @@ function PerformanceLightweightChart({ points, series }) {
           priceLineVisible: false,
           lastValueVisible: true,
         });
+        cashFlowMarkersRef.current = createSeriesMarkers(portfolioSeries, [], { autoScale: true, zOrder: "top" });
+        return portfolioSeries;
       }
       return chart.addSeries(LineSeries, {
         color,
@@ -579,6 +582,7 @@ function PerformanceLightweightChart({ points, series }) {
     return () => {
       chartRef.current = null;
       lineSeriesRef.current = [];
+      cashFlowMarkersRef.current = null;
       chart.remove();
     };
   }, [series]);
@@ -597,6 +601,15 @@ function PerformanceLightweightChart({ points, series }) {
       }
       line.setData(rows);
     });
+    cashFlowMarkersRef.current?.setMarkers((points || [])
+      .filter((point) => point?.date && point.cash_flow_flag)
+      .map((point) => ({
+        time: point.date,
+        position: "aboveBar",
+        color: TERMINAL_CHART.yellow,
+        shape: "circle",
+        text: "资金",
+      })));
     if (points?.length) chart.timeScale().fitContent();
   }, [points, series]);
 
@@ -608,6 +621,15 @@ function PerformanceLightweightChart({ points, series }) {
           <span className={tone(tooltip.point.portfolio_daily_pct)}>
             当日 {tooltip.point.portfolio_daily_pct == null ? "-" : fmtPct(tooltip.point.portfolio_daily_pct)}
           </span>
+          <span className={tone(tooltip.point.holding_pnl_cny)}>
+            总盈亏 {tooltip.point.holding_pnl_cny == null ? "-" : fmtMoney(tooltip.point.holding_pnl_cny, "CNY")}
+          </span>
+          <span className={tone(tooltip.point.holding_daily_pnl_cny)}>
+            当日盈亏 {tooltip.point.holding_daily_pnl_cny == null ? "-" : fmtMoney(tooltip.point.holding_daily_pnl_cny, "CNY")}
+          </span>
+          {tooltip.point.cash_flow_flag ? (
+            <span>资金流/交易 {fmtMoney(tooltip.point.cash_flow_cny || 0, "CNY")}</span>
+          ) : null}
           {series.map(([key, name, color]) => (
             <span key={key} style={{ "--series-color": color }}>
               <i />{name} {tooltip.point[key] == null ? "-" : fmtPct(tooltip.point[key])}

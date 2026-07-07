@@ -280,6 +280,14 @@ def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
                 clean["holding_daily_pnl_pct"] = float(item.get("holding_daily_pnl_pct", 0.0))
             except (TypeError, ValueError):
                 clean["holding_daily_pnl_pct"] = None
+        for key in ("holding_pnl_cny", "holding_cost_cny", "holding_daily_pnl_cny", "holding_daily_basis_cny", "cash_flow_cny"):
+            if key in item:
+                try:
+                    clean[key] = float(item.get(key, 0.0))
+                except (TypeError, ValueError):
+                    clean[key] = 0.0
+        if "cash_flow_flag" in item:
+            clean["cash_flow_flag"] = bool(item.get("cash_flow_flag"))
         benchmarks: dict[str, float] = {}
         raw_benchmarks = item.get("benchmark_prices", {})
         if isinstance(raw_benchmarks, dict):

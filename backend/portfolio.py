@@ -686,7 +686,7 @@ def completed_portfolio_daily_pct(
     histories: dict[str, dict[str, float]],
     fx: float,
     day_trades: list[dict[str, Any]] | None = None,
-) -> tuple[float, dict[str, float]]:
+) -> tuple[float, dict[str, float], float, float]:
     symbol_daily_pct: dict[str, float] = {}
     symbol_basis: dict[str, float] = {}
     symbol_pnl: dict[str, float] = {}
@@ -752,21 +752,21 @@ def completed_portfolio_daily_pct(
 
     total_basis = sum(symbol_basis.values())
     if total_basis <= 0:
-        return 0.0, symbol_daily_pct
+        return 0.0, symbol_daily_pct, 0.0, 0.0
     total_pnl = 0.0
     for sym, basis in symbol_basis.items():
         pnl = symbol_pnl.get(sym, 0.0)
         daily_pct = pnl / basis * 100.0
         symbol_daily_pct[sym] = daily_pct
         total_pnl += pnl
-    return total_pnl / total_basis * 100.0, symbol_daily_pct
+    return total_pnl / total_basis * 100.0, symbol_daily_pct, total_pnl, total_basis
 
 
 def holding_pnl_pct_for_snapshot(
     holdings_snapshot: dict[str, dict[str, float]],
     prices: dict[str, float],
     fx: float,
-) -> float:
+) -> dict[str, float]:
     total_value = 0.0
     total_cost = 0.0
     for sym, holding in holdings_snapshot.items():
@@ -778,7 +778,13 @@ def holding_pnl_pct_for_snapshot(
         multiplier = fx if sym in USD_SYMBOLS else 1.0
         total_value += shares * price * multiplier
         total_cost += shares * avg_cost * multiplier
-    return (total_value - total_cost) / total_cost * 100.0 if total_cost > 0 else 0.0
+    total_pnl = total_value - total_cost
+    return {
+        "pct": total_pnl / total_cost * 100.0 if total_cost > 0 else 0.0,
+        "amount_cny": total_pnl,
+        "cost_cny": total_cost,
+        "value_cny": total_value,
+    }
 
 
 def current_portfolio_daily_pct(
@@ -788,7 +794,7 @@ def current_portfolio_daily_pct(
     fx: float,
     day: str,
     now: datetime,
-) -> tuple[float, dict[str, float]]:
+) -> tuple[float, dict[str, float], float, float]:
     trades = load_trade_records(user_id)
     finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
     holdings_snapshot = holdings_snapshot_for_day(day, holdings, finalized_rows, trades)
@@ -852,8 +858,8 @@ def current_portfolio_daily_pct(
         total_pnl += pnl
 
     if total_basis <= 0:
-        return 0.0, symbol_daily_pct
-    return total_pnl / total_basis * 100.0, symbol_daily_pct
+        return 0.0, symbol_daily_pct, 0.0, 0.0
+    return total_pnl / total_basis * 100.0, symbol_daily_pct, total_pnl, total_basis
 
 
 def apply_trade_to_holdings(
@@ -942,7 +948,7 @@ def ensure_completed_performance_history(
         return rows
     for day in missing_days:
         holdings_snapshot = holdings_snapshot_for_day(day, holdings, sorted(rows_by_date.values(), key=lambda item: item["date"]), trades)
-        portfolio_daily_pct, symbol_daily_pct = completed_portfolio_daily_pct(holdings_snapshot, day, histories, fx, trades)
+        portfolio_daily_pct, symbol_daily_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(holdings_snapshot, day, histories, fx, trades)
         benchmark_daily_pct = {
             sym: (daily_pct if daily_pct is not None else 0.0)
             for sym in ("001015", "VOO", "QQQ")
@@ -958,12 +964,24 @@ def ensure_completed_performance_history(
             for sym in holdings_snapshot
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
+        holding_pnl = holding_pnl_pct_for_snapshot(holdings_snapshot, holding_prices, fx)
+        day_cash_flow_cny = sum(
+            max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
+            for trade in trades
+            if str(trade.get("trade_date") or "")[:10] == day
+        )
         rows_by_date[day] = {
             "date": day,
             "portfolio_daily_pct": portfolio_daily_pct,
             "portfolio_return_pct": 0.0,
-            "holding_pnl_pct": holding_pnl_pct_for_snapshot(holdings_snapshot, holding_prices, fx),
+            "holding_pnl_pct": holding_pnl["pct"],
+            "holding_pnl_cny": holding_pnl["amount_cny"],
+            "holding_cost_cny": holding_pnl["cost_cny"],
             "holding_daily_pnl_pct": portfolio_daily_pct,
+            "holding_daily_pnl_cny": holding_daily_pnl_cny,
+            "holding_daily_basis_cny": holding_daily_basis_cny,
+            "cash_flow_cny": day_cash_flow_cny,
+            "cash_flow_flag": day_cash_flow_cny > 0,
             "total_assets_cny": 0.0,
             "total_cost_cny": 0.0,
             "benchmark_prices": benchmark_prices,
@@ -1006,6 +1024,10 @@ def build_performance_history(
     total_cost_cny: float,
     portfolio_return_pct: float,
     portfolio_daily_pct: float,
+    holding_pnl_cny: float,
+    holding_daily_pnl_cny: float,
+    holding_daily_basis_cny: float,
+    cash_flow_cny: float,
 ) -> dict[str, Any]:
     now = datetime.now(TZ_SHANGHAI)
     today = performance_history_date(now)
@@ -1042,7 +1064,13 @@ def build_performance_history(
         "portfolio_daily_pct": portfolio_daily_pct,
         "portfolio_return_pct": portfolio_return_pct,
         "holding_pnl_pct": portfolio_return_pct,
+        "holding_pnl_cny": holding_pnl_cny,
+        "holding_cost_cny": total_cost_cny,
         "holding_daily_pnl_pct": portfolio_daily_pct,
+        "holding_daily_pnl_cny": holding_daily_pnl_cny,
+        "holding_daily_basis_cny": holding_daily_basis_cny,
+        "cash_flow_cny": cash_flow_cny,
+        "cash_flow_flag": cash_flow_cny > 0,
         "total_assets_cny": total_assets_cny,
         "total_cost_cny": total_cost_cny,
         "benchmark_prices": benchmark_prices,
@@ -1092,6 +1120,12 @@ def build_performance_history(
             "date": row["date"],
             "portfolio_return_pct": holding_pnl_pct,
             "portfolio_daily_pct": portfolio_daily,
+            "holding_pnl_cny": coerce_optional_float(row.get("holding_pnl_cny")),
+            "holding_cost_cny": coerce_optional_float(row.get("holding_cost_cny")),
+            "holding_daily_pnl_cny": coerce_optional_float(row.get("holding_daily_pnl_cny")),
+            "holding_daily_basis_cny": coerce_optional_float(row.get("holding_daily_basis_cny")),
+            "cash_flow_cny": coerce_optional_float(row.get("cash_flow_cny")) or 0.0,
+            "cash_flow_flag": bool(row.get("cash_flow_flag")),
             "market_open_symbols": row.get("market_open_symbols") or [],
         }
         daily_pcts = row.get("benchmark_daily_pct") or {}
@@ -1363,9 +1397,13 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         _daily_amount(value_cny_by_symbol.get(s, 0.0), history_daily_pct_for_symbol(s, quotes[s], history_day, history_now))
         for s in ALL_SYMBOLS
     )
-    investment_daily_pct, _ = current_portfolio_daily_pct(user_id, holdings, quotes, fx, history_day, history_now)
     total_pnl_cny = total_value_cny - total_cost_cny
     total_pnl_pct = total_pnl_cny / total_cost_cny * 100.0 if total_cost_cny > 0 else 0.0
+    today_cash_flow_cny = sum(
+        max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
+        for trade in load_trade_records(user_id)
+        if str(trade.get("trade_date") or "")[:10] == history_day
+    )
     performance_history = build_performance_history(
         user_id,
         quotes,
@@ -1374,7 +1412,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         total_assets_cny,
         total_cost_cny,
         total_pnl_pct,
-        investment_daily_pct,
+        history_weighted_daily_pct,
+        total_pnl_cny,
+        weighted_daily_change_cny,
+        total_value_cny,
+        today_cash_flow_cny,
     )
 
     return {
