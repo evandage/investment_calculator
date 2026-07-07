@@ -2,10 +2,8 @@
   "evan": [
     {
       "date": "2026-06-29",
-      "portfolio_daily_pct": 1.198946445127076,
       "portfolio_return_pct": 0.0,
-      "holding_pnl_pct": 1.3236312514218178,
-      "holding_daily_pnl_pct": 1.198946445127076,
+      "portfolio_daily_pct": 1.1213511503578313,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
       "benchmark_prices": {
@@ -18,43 +16,30 @@
         "VOO": 1.603855220362238,
         "QQQ": 2.485421502576024
       },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
       "symbol_daily_pct": {
-        "VOO": 1.6038552203622474,
-        "QQQ": 2.4854215025760147,
-        "ISRG": 0.31381270076600903,
-        "TEM": 3.8653366583541167,
-        "GOOGL": 4.8193485284092565,
-        "MSFT": -1.1797195484891638,
-        "AVGO": 2.035504903840888,
-        "NVDA": 1.2673349607853313,
-        "SGOV": 0.019870839861954103,
-        "001015": 1.4107883817427305
+        "VOO": 1.603855220362238,
+        "QQQ": 2.485421502576024,
+        "ISRG": 0.313812700766003,
+        "GOOGL": 4.819348528409262,
+        "MSFT": -1.1797195484891665,
+        "AVGO": 2.035504903840879,
+        "NVDA": 1.2673349607853268,
+        "TEM": 3.8653366583541127,
+        "SGOV": 0.019929404071961088,
+        "001015": 1.4107883817427336
       },
       "holdings_snapshot": {
         "VOO": {
-          "shares": 3.0451,
-          "avg_cost": 654.8684772257069
+          "shares": 2.3498,
+          "avg_cost": 646.5231083496468
         },
         "QQQ": {
-          "shares": 1.5806999999999998,
-          "avg_cost": 725.7021851078638
+          "shares": 1.0693,
+          "avg_cost": 726.846950341345
         },
         "ISRG": {
           "shares": 0.7807000000000001,
           "avg_cost": 414.1
-        },
-        "TEM": {
-          "shares": 0.1835,
-          "avg_cost": 54.49591280653951
-        },
-        "PLTR": {
-          "shares": 0.0,
-          "avg_cost": 100.0
         },
         "GOOGL": {
           "shares": 0.5794,
@@ -72,25 +57,27 @@
           "shares": 0.6187,
           "avg_cost": 210.08566348795858
         },
+        "TEM": {
+          "shares": 0.1835,
+          "avg_cost": 54.49591280653951
+        },
         "SGOV": {
           "shares": 30.0,
           "avg_cost": 100.52
         },
         "001015": {
-          "shares": 12230.51,
-          "avg_cost": 2.3648485968287503
+          "shares": 10550.44,
+          "avg_cost": 2.3623
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
+      "estimated_symbols": [],
       "updated_at": "2026-06-29T08:00:00+08:00"
     },
     {
       "date": "2026-06-30",
-      "portfolio_daily_pct": 0.6572314006313896,
       "portfolio_return_pct": 0.0,
-      "holding_pnl_pct": 1.989561972266119,
-      "holding_daily_pnl_pct": 0.6572314006313896,
+      "portfolio_daily_pct": 0.6005258126652134,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
       "benchmark_prices": {
@@ -103,22 +90,165 @@
         "VOO": 0.8516761868401224,
         "QQQ": 1.7014694508894035
       },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
       "symbol_daily_pct": {
-        "VOO": 0.8516761868401277,
-        "QQQ": 1.701469450889396,
-        "ISRG": -2.0420228095672144,
-        "TEM": -0.6516892471274268,
-        "GOOGL": 1.0518874593524747,
-        "MSFT": 1.207369020810155,
-        "AVGO": 1.4230097999731537,
-        "NVDA": 2.626045032569116,
+        "VOO": 0.8516761868401224,
+        "QQQ": 1.7014694508894035,
+        "ISRG": -2.042022809567212,
+        "GOOGL": 1.051887459352474,
+        "MSFT": 1.2073690208101562,
+        "AVGO": 1.4230097999731628,
+        "NVDA": 2.626045032569113,
+        "TEM": -0.6516892471274294,
         "SGOV": 0.0,
-        "001015": 0.8183306055646489
+        "001015": 0.8183306055646433
+      },
+      "holdings_snapshot": {
+        "VOO": {
+          "shares": 2.3498,
+          "avg_cost": 646.5231083496468
+        },
+        "QQQ": {
+          "shares": 1.0693,
+          "avg_cost": 726.846950341345
+        },
+        "ISRG": {
+          "shares": 0.7807000000000001,
+          "avg_cost": 414.1
+        },
+        "GOOGL": {
+          "shares": 0.5794,
+          "avg_cost": 364.1269623748706
+        },
+        "MSFT": {
+          "shares": 0.3033,
+          "avg_cost": 423.0217804154302
+        },
+        "AVGO": {
+          "shares": 0.5664,
+          "avg_cost": 418.2912358757062
+        },
+        "NVDA": {
+          "shares": 0.6187,
+          "avg_cost": 210.08566348795858
+        },
+        "TEM": {
+          "shares": 0.1835,
+          "avg_cost": 54.49591280653951
+        },
+        "SGOV": {
+          "shares": 30.0,
+          "avg_cost": 100.52
+        },
+        "001015": {
+          "shares": 10550.44,
+          "avg_cost": 2.3623
+        }
+      },
+      "finalized": true,
+      "estimated_symbols": [],
+      "updated_at": "2026-06-30T08:00:00+08:00"
+    },
+    {
+      "date": "2026-07-01",
+      "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": -0.2524855725069849,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
+      "benchmark_prices": {
+        "001015": 2.453,
+        "VOO": 685.46,
+        "QQQ": 725.17
+      },
+      "benchmark_daily_pct": {
+        "001015": -0.44642857142858094,
+        "VOO": -0.19656091204262038,
+        "QQQ": -1.5249864204236907
+      },
+      "symbol_daily_pct": {
+        "VOO": -0.19656091204262038,
+        "QQQ": -1.0865875932726827,
+        "ISRG": 1.1818547575940475,
+        "GOOGL": 1.07451660743767,
+        "MSFT": 3.0186049005415327,
+        "AVGO": -2.2263401720714837,
+        "NVDA": -1.254435504023188,
+        "TEM": 6.33523217676506,
+        "SGOV": 0.025673991240826588,
+        "001015": -0.44642857142858094
+      },
+      "holdings_snapshot": {
+        "VOO": {
+          "shares": 2.3498,
+          "avg_cost": 646.5231083496468
+        },
+        "QQQ": {
+          "shares": 1.3058999999999998,
+          "avg_cost": 725.3139168389619
+        },
+        "ISRG": {
+          "shares": 0.7807000000000001,
+          "avg_cost": 414.1
+        },
+        "GOOGL": {
+          "shares": 0.5794,
+          "avg_cost": 364.1269623748706
+        },
+        "MSFT": {
+          "shares": 0.3033,
+          "avg_cost": 423.0217804154302
+        },
+        "AVGO": {
+          "shares": 0.5664,
+          "avg_cost": 418.2912358757062
+        },
+        "NVDA": {
+          "shares": 0.6187,
+          "avg_cost": 210.08566348795858
+        },
+        "TEM": {
+          "shares": 0.1835,
+          "avg_cost": 54.49591280653951
+        },
+        "SGOV": {
+          "shares": 30.0,
+          "avg_cost": 100.52
+        },
+        "001015": {
+          "shares": 10550.44,
+          "avg_cost": 2.3623
+        }
+      },
+      "finalized": true,
+      "estimated_symbols": [],
+      "updated_at": "2026-07-01T08:00:00+08:00"
+    },
+    {
+      "date": "2026-07-02",
+      "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": -1.1196124948221557,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
+      "benchmark_prices": {
+        "001015": 2.378,
+        "VOO": 684.84,
+        "QQQ": 712.6
+      },
+      "benchmark_daily_pct": {
+        "001015": -3.057480635955967,
+        "VOO": -0.09045020861903064,
+        "QQQ": -1.7333866541638376
+      },
+      "symbol_daily_pct": {
+        "VOO": -0.010913900043860364,
+        "QQQ": -1.7893587135320137,
+        "ISRG": 5.872558278244444,
+        "GOOGL": -0.3599014423742296,
+        "MSFT": 1.6160091599875188,
+        "AVGO": -2.4069962636053464,
+        "NVDA": -1.3918412794817288,
+        "TEM": -2.1590909090909065,
+        "SGOV": 0.03984063745019127,
+        "001015": -3.0574806359559616
       },
       "holdings_snapshot": {
         "VOO": {
@@ -133,14 +263,6 @@
           "shares": 0.7807000000000001,
           "avg_cost": 414.1
         },
-        "TEM": {
-          "shares": 0.1835,
-          "avg_cost": 54.49591280653951
-        },
-        "PLTR": {
-          "shares": 0.0,
-          "avg_cost": 100.0
-        },
         "GOOGL": {
           "shares": 0.5794,
           "avg_cost": 364.1269623748706
@@ -157,195 +279,27 @@
           "shares": 0.6187,
           "avg_cost": 210.08566348795858
         },
-        "SGOV": {
-          "shares": 30.0,
-          "avg_cost": 100.52
-        },
-        "001015": {
-          "shares": 12230.51,
-          "avg_cost": 2.3648485968287503
-        }
-      },
-      "estimated_symbols": [],
-      "finalized": true,
-      "updated_at": "2026-06-30T08:00:00+08:00"
-    },
-    {
-      "date": "2026-07-01",
-      "portfolio_daily_pct": -0.30055067528753715,
-      "portfolio_return_pct": 0.0,
-      "holding_pnl_pct": 1.6540254346579952,
-      "holding_daily_pnl_pct": -0.30055067528753715,
-      "total_assets_cny": 0.0,
-      "total_cost_cny": 0.0,
-      "benchmark_prices": {
-        "001015": 2.453,
-        "VOO": 685.46,
-        "QQQ": 725.17
-      },
-      "benchmark_daily_pct": {
-        "001015": -0.44642857142858094,
-        "VOO": -0.19656091204262038,
-        "QQQ": -1.5249864204236907
-      },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
-      "symbol_daily_pct": {
-        "VOO": -0.19656091204261866,
-        "QQQ": -1.2103500375428016,
-        "ISRG": 1.1818547575940426,
-        "TEM": 6.335232176765064,
-        "GOOGL": 1.0745166074376624,
-        "MSFT": 3.018604900541524,
-        "AVGO": -2.2263401720714824,
-        "NVDA": -1.254435504023185,
-        "SGOV": 0.025673991240818848,
-        "001015": -0.4464285714285763
-      },
-      "holdings_snapshot": {
-        "VOO": {
-          "shares": 3.0451,
-          "avg_cost": 654.8684772257069
-        },
-        "QQQ": {
-          "shares": 1.8172999999999997,
-          "avg_cost": 724.7495977549114
-        },
-        "ISRG": {
-          "shares": 0.7807000000000001,
-          "avg_cost": 414.1
-        },
         "TEM": {
           "shares": 0.1835,
           "avg_cost": 54.49591280653951
         },
-        "PLTR": {
-          "shares": 0.0,
-          "avg_cost": 100.0
-        },
-        "GOOGL": {
-          "shares": 0.5794,
-          "avg_cost": 364.1269623748706
-        },
-        "MSFT": {
-          "shares": 0.3033,
-          "avg_cost": 423.0217804154302
-        },
-        "AVGO": {
-          "shares": 0.5664,
-          "avg_cost": 418.2912358757062
-        },
-        "NVDA": {
-          "shares": 0.6187,
-          "avg_cost": 210.08566348795858
-        },
         "SGOV": {
           "shares": 30.0,
           "avg_cost": 100.52
         },
         "001015": {
-          "shares": 12230.51,
-          "avg_cost": 2.3648485968287503
+          "shares": 10550.44,
+          "avg_cost": 2.3623
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
-      "updated_at": "2026-07-01T08:00:00+08:00"
-    },
-    {
-      "date": "2026-07-02",
-      "portfolio_daily_pct": -1.1914898854631066,
-      "portfolio_return_pct": 0.0,
-      "holding_pnl_pct": 0.3531441305601337,
-      "holding_daily_pnl_pct": -1.1914898854631066,
-      "total_assets_cny": 0.0,
-      "total_cost_cny": 0.0,
-      "benchmark_prices": {
-        "001015": 2.378,
-        "VOO": 684.84,
-        "QQQ": 712.6
-      },
-      "benchmark_daily_pct": {
-        "001015": -3.057480635955967,
-        "VOO": -0.09045020861903064,
-        "QQQ": -1.7333866541638376
-      },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
-      "symbol_daily_pct": {
-        "VOO": -0.025708422289192283,
-        "QQQ": -1.7756826030395432,
-        "ISRG": 5.872558278244443,
-        "TEM": -2.1590909090909065,
-        "GOOGL": -0.3599014423742296,
-        "MSFT": 1.6160091599875186,
-        "AVGO": -2.406996263605347,
-        "NVDA": -1.3918412794817288,
-        "SGOV": 0.03984063745019127,
-        "001015": -3.0574806359559616
-      },
-      "holdings_snapshot": {
-        "VOO": {
-          "shares": 3.7404,
-          "avg_cost": 660.1112180515453
-        },
-        "QQQ": {
-          "shares": 2.0921,
-          "avg_cost": 725.1170804454856
-        },
-        "ISRG": {
-          "shares": 0.7807000000000001,
-          "avg_cost": 414.1
-        },
-        "TEM": {
-          "shares": 0.1835,
-          "avg_cost": 54.49591280653951
-        },
-        "PLTR": {
-          "shares": 0.0,
-          "avg_cost": 100.0
-        },
-        "GOOGL": {
-          "shares": 0.5794,
-          "avg_cost": 364.1269623748706
-        },
-        "MSFT": {
-          "shares": 0.3033,
-          "avg_cost": 423.0217804154302
-        },
-        "AVGO": {
-          "shares": 0.5664,
-          "avg_cost": 418.2912358757062
-        },
-        "NVDA": {
-          "shares": 0.6187,
-          "avg_cost": 210.08566348795858
-        },
-        "SGOV": {
-          "shares": 30.0,
-          "avg_cost": 100.52
-        },
-        "001015": {
-          "shares": 12230.51,
-          "avg_cost": 2.3648485968287503
-        }
-      },
       "estimated_symbols": [],
-      "finalized": true,
       "updated_at": "2026-07-02T08:00:00+08:00"
     },
     {
       "date": "2026-07-03",
-      "portfolio_daily_pct": 0.7989907485281617,
       "portfolio_return_pct": 0.0,
-      "holding_pnl_pct": 0.6312547280664605,
-      "holding_daily_pnl_pct": 0.7989907485281617,
+      "portfolio_daily_pct": 0.7989907485281617,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
       "benchmark_prices": {
@@ -358,32 +312,21 @@
         "VOO": 0.0,
         "QQQ": 0.0
       },
-      "market_open_symbols": [
-        "001015"
-      ],
       "symbol_daily_pct": {
         "001015": 0.7989907485281617
       },
       "holdings_snapshot": {
         "VOO": {
-          "shares": 3.7404,
-          "avg_cost": 660.1112180515453
+          "shares": 3.0451,
+          "avg_cost": 654.8684772257069
         },
         "QQQ": {
-          "shares": 2.0921,
-          "avg_cost": 725.1170804454856
+          "shares": 1.5806999999999998,
+          "avg_cost": 725.7021851078638
         },
         "ISRG": {
           "shares": 0.7807000000000001,
           "avg_cost": 414.1
-        },
-        "TEM": {
-          "shares": 0.1835,
-          "avg_cost": 54.49591280653951
-        },
-        "PLTR": {
-          "shares": 0.0,
-          "avg_cost": 100.0
         },
         "GOOGL": {
           "shares": 0.5794,
@@ -401,25 +344,27 @@
           "shares": 0.6187,
           "avg_cost": 210.08566348795858
         },
+        "TEM": {
+          "shares": 0.1835,
+          "avg_cost": 54.49591280653951
+        },
         "SGOV": {
           "shares": 30.0,
           "avg_cost": 100.52
         },
         "001015": {
-          "shares": 12230.51,
-          "avg_cost": 2.3648485968287503
+          "shares": 10550.44,
+          "avg_cost": 2.3623
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
+      "estimated_symbols": [],
       "updated_at": "2026-07-03T08:00:00+08:00"
     },
     {
       "date": "2026-07-06",
-      "portfolio_daily_pct": 0.5500193052208772,
+      "portfolio_daily_pct": 0.5296067998601147,
       "portfolio_return_pct": 0.0,
-      "holding_pnl_pct": 1.155748724961286,
-      "holding_daily_pnl_pct": 0.5500193052208772,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
       "benchmark_prices": {
@@ -439,36 +384,28 @@
       ],
       "symbol_daily_pct": {
         "VOO": 0.8439927574323889,
-        "QQQ": 1.4341846758349743,
+        "QQQ": 1.434184675834974,
         "ISRG": 1.6009013872913769,
-        "TEM": 0.7134561141529777,
         "GOOGL": 1.8198994192992566,
         "MSFT": -0.9603318907014263,
         "AVGO": 3.7314468026078482,
         "NVDA": 0.3695529435918487,
+        "TEM": 0.7134561141529777,
         "SGOV": 0.0,
-        "001015": 0.24843554795064676
+        "001015": 0.2596496269926905
       },
       "holdings_snapshot": {
         "VOO": {
-          "shares": 3.7404,
-          "avg_cost": 660.1112180515453
+          "shares": 3.0451,
+          "avg_cost": 654.8684772257069
         },
         "QQQ": {
-          "shares": 2.0921,
-          "avg_cost": 725.1170804454856
+          "shares": 1.5806999999999998,
+          "avg_cost": 725.7021851078638
         },
         "ISRG": {
           "shares": 0.7807000000000001,
           "avg_cost": 414.1
-        },
-        "TEM": {
-          "shares": 0.1835,
-          "avg_cost": 54.49591280653951
-        },
-        "PLTR": {
-          "shares": 0.0,
-          "avg_cost": 100.0
         },
         "GOOGL": {
           "shares": 0.5794,
@@ -486,13 +423,17 @@
           "shares": 0.6187,
           "avg_cost": 210.08566348795858
         },
+        "TEM": {
+          "shares": 0.1835,
+          "avg_cost": 54.49591280653951
+        },
         "SGOV": {
           "shares": 30.0,
           "avg_cost": 100.52
         },
         "001015": {
-          "shares": 13910.58,
-          "avg_cost": 2.3667815728747468
+          "shares": 12230.51,
+          "avg_cost": 2.3648485968287503
         }
       },
       "estimated_symbols": [],

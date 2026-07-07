@@ -485,7 +485,7 @@ function PerformanceChart({ history }) {
       <div className="performanceStats">
         {series.map(([key, name, color]) => (
           <div className="performanceStat" key={key} style={{ "--series-color": color }}>
-            <span>{name}</span>
+            <span>{key === "portfolio_return_pct" ? "持仓盈亏" : name}</span>
             <strong className={tone(latest?.[key])}>{latest?.[key] == null ? "-" : fmtPct(latest[key])}</strong>
           </div>
         ))}

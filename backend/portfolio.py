@@ -47,7 +47,9 @@ _DRAWDOWN_CACHE_TTL_SECONDS = 21600
 QQQ_MONTH_END_WINDOW_DAYS = 5
 NY_TZ = ZoneInfo("America/New_York")
 PERFORMANCE_WRITE_HOUR = 8
-PERFORMANCE_HISTORY_START_DATE = "2026-06-29"
+PERFORMANCE_HISTORY_START_DATE = "2026-07-07"
+PERFORMANCE_CHART_START_DATE = "2026-07-07"
+PERFORMANCE_CHART_BASELINE_DATE = "2026-07-06"
 FUND_HISTORY_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -760,6 +762,100 @@ def completed_portfolio_daily_pct(
     return total_pnl / total_basis * 100.0, symbol_daily_pct
 
 
+def holding_pnl_pct_for_snapshot(
+    holdings_snapshot: dict[str, dict[str, float]],
+    prices: dict[str, float],
+    fx: float,
+) -> float:
+    total_value = 0.0
+    total_cost = 0.0
+    for sym, holding in holdings_snapshot.items():
+        price = float(prices.get(sym) or 0.0)
+        shares = max(0.0, float(holding.get("shares", 0.0) or 0.0))
+        avg_cost = max(0.0, float(holding.get("avg_cost", 0.0) or 0.0))
+        if price <= 0 or shares <= 0 or avg_cost <= 0:
+            continue
+        multiplier = fx if sym in USD_SYMBOLS else 1.0
+        total_value += shares * price * multiplier
+        total_cost += shares * avg_cost * multiplier
+    return (total_value - total_cost) / total_cost * 100.0 if total_cost > 0 else 0.0
+
+
+def current_portfolio_daily_pct(
+    user_id: str,
+    holdings: dict[str, dict[str, float]],
+    quotes: dict[str, Any],
+    fx: float,
+    day: str,
+    now: datetime,
+) -> tuple[float, dict[str, float]]:
+    trades = load_trade_records(user_id)
+    finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
+    holdings_snapshot = holdings_snapshot_for_day(day, holdings, finalized_rows, trades)
+    trades_by_symbol: dict[str, list[dict[str, Any]]] = {}
+    for trade in trades:
+        if str(trade.get("trade_date") or "")[:10] != day:
+            continue
+        sym = str(trade.get("symbol", "")).upper()
+        if sym:
+            trades_by_symbol.setdefault(sym, []).append(trade)
+
+    symbol_daily_pct: dict[str, float] = {}
+    total_basis = 0.0
+    total_pnl = 0.0
+    for sym, holding in holdings_snapshot.items():
+        quote = quotes.get(sym) or {}
+        try:
+            close_price = float(quote.get("price") or 0.0)
+            prev_price = float(quote.get("prev_close") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if close_price <= 0 or prev_price <= 0:
+            continue
+
+        close_shares = max(0.0, float(holding.get("shares", 0.0) or 0.0))
+        old_shares = close_shares
+        buy_lots: list[tuple[float, float]] = []
+        sell_lots: list[tuple[float, float]] = []
+        for trade in trades_by_symbol.get(sym, []):
+            shares = max(0.0, float(trade.get("shares", 0.0) or 0.0))
+            amount = max(0.0, float(trade.get("amount_usd", 0.0) or 0.0))
+            if shares <= 0 or amount <= 0:
+                continue
+            trade_price = amount / shares
+            if str(trade.get("action", "buy")).lower() == "sell":
+                sell_lots.append((shares, trade_price))
+                old_shares += shares
+            else:
+                buy_lots.append((shares, trade_price))
+                old_shares -= shares
+        old_shares = max(0.0, old_shares)
+
+        multiplier = fx if sym in USD_SYMBOLS else 1.0
+        remaining_old_shares = old_shares
+        basis = 0.0
+        pnl = 0.0
+        for shares, trade_price in sell_lots:
+            sold_old_shares = min(remaining_old_shares, shares)
+            basis += sold_old_shares * prev_price * multiplier
+            pnl += sold_old_shares * (trade_price - prev_price) * multiplier
+            remaining_old_shares -= sold_old_shares
+        basis += remaining_old_shares * prev_price * multiplier
+        pnl += remaining_old_shares * (close_price - prev_price) * multiplier
+        for shares, trade_price in buy_lots:
+            basis += shares * trade_price * multiplier
+            pnl += shares * (close_price - trade_price) * multiplier
+        if basis <= 0:
+            continue
+        symbol_daily_pct[sym] = pnl / basis * 100.0
+        total_basis += basis
+        total_pnl += pnl
+
+    if total_basis <= 0:
+        return 0.0, symbol_daily_pct
+    return total_pnl / total_basis * 100.0, symbol_daily_pct
+
+
 def apply_trade_to_holdings(
     holdings: dict[str, dict[str, float]],
     trade: dict[str, Any],
@@ -857,10 +953,17 @@ def ensure_completed_performance_history(
             for sym in ("001015", "VOO", "QQQ")
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
+        holding_prices = {
+            sym: price
+            for sym in holdings_snapshot
+            if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
+        }
         rows_by_date[day] = {
             "date": day,
             "portfolio_daily_pct": portfolio_daily_pct,
             "portfolio_return_pct": 0.0,
+            "holding_pnl_pct": holding_pnl_pct_for_snapshot(holdings_snapshot, holding_prices, fx),
+            "holding_daily_pnl_pct": portfolio_daily_pct,
             "total_assets_cny": 0.0,
             "total_cost_cny": 0.0,
             "benchmark_prices": benchmark_prices,
@@ -938,6 +1041,8 @@ def build_performance_history(
         "date": today,
         "portfolio_daily_pct": portfolio_daily_pct,
         "portfolio_return_pct": portfolio_return_pct,
+        "holding_pnl_pct": portfolio_return_pct,
+        "holding_daily_pnl_pct": portfolio_daily_pct,
         "total_assets_cny": total_assets_cny,
         "total_cost_cny": total_cost_cny,
         "benchmark_prices": benchmark_prices,
@@ -949,27 +1054,21 @@ def build_performance_history(
         "updated_at": now.isoformat(timespec="seconds"),
     }
     rows_by_date = {row["date"]: row for row in rows}
-    if is_weekday(today) and history_quotes_usable:
+    if is_weekday(today):
         rows_by_date[today] = current
-    rows = sorted(rows_by_date.values(), key=lambda row: row["date"])
-
-    baseline_date = ""
-    if rows:
-        try:
-            baseline_date = previous_market_open_day(rows[0]["date"], fetch_close_histories(set(benchmark_symbols)))
-        except Exception:
-            baseline_date = previous_market_open_day(rows[0]["date"], {})
-
+    rows = sorted(
+        (row for row in rows_by_date.values() if str(row.get("date", "")) >= PERFORMANCE_CHART_START_DATE),
+        key=lambda row: row["date"],
+    )
     points: list[dict[str, Any]] = []
     cumulative = {
-        "portfolio": 1.0,
         "001015": 1.0,
         "VOO": 1.0,
         "QQQ": 1.0,
     }
-    if baseline_date:
+    if rows:
         baseline_point = {
-            "date": baseline_date,
+            "date": PERFORMANCE_CHART_BASELINE_DATE,
             "portfolio_return_pct": 0.0,
             "portfolio_daily_pct": 0.0,
             "market_open_symbols": list(benchmark_symbols),
@@ -981,12 +1080,17 @@ def build_performance_history(
 
     for row_index, row in enumerate(rows):
         portfolio_daily = coerce_optional_float(row.get("portfolio_daily_pct"))
+        holding_daily = coerce_optional_float(row.get("holding_daily_pnl_pct"))
+        if holding_daily is not None:
+            portfolio_daily = holding_daily
         if portfolio_daily is None:
             portfolio_daily = 0.0
-        cumulative["portfolio"] *= 1.0 + portfolio_daily / 100.0
+        holding_pnl_pct = coerce_optional_float(row.get("holding_pnl_pct"))
+        if holding_pnl_pct is None:
+            continue
         point = {
             "date": row["date"],
-            "portfolio_return_pct": (cumulative["portfolio"] - 1.0) * 100.0,
+            "portfolio_return_pct": holding_pnl_pct,
             "portfolio_daily_pct": portfolio_daily,
             "market_open_symbols": row.get("market_open_symbols") or [],
         }
@@ -995,11 +1099,6 @@ def build_performance_history(
             for sym in benchmark_symbols:
                 daily_pct = coerce_optional_float(daily_pcts.get(sym))
                 if daily_pct is None:
-                    if row_index == 0:
-                        daily_pct = 0.0
-                        point[f"{sym}_return_pct"] = 0.0
-                        point[f"{sym}_daily_pct"] = 0.0
-                        continue
                     point[f"{sym}_return_pct"] = None
                     point[f"{sym}_daily_pct"] = None
                     continue
@@ -1264,6 +1363,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         _daily_amount(value_cny_by_symbol.get(s, 0.0), history_daily_pct_for_symbol(s, quotes[s], history_day, history_now))
         for s in ALL_SYMBOLS
     )
+    investment_daily_pct, _ = current_portfolio_daily_pct(user_id, holdings, quotes, fx, history_day, history_now)
     total_pnl_cny = total_value_cny - total_cost_cny
     total_pnl_pct = total_pnl_cny / total_cost_cny * 100.0 if total_cost_cny > 0 else 0.0
     performance_history = build_performance_history(
@@ -1274,7 +1374,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         total_assets_cny,
         total_cost_cny,
         total_pnl_pct,
-        history_weighted_daily_pct,
+        investment_daily_pct,
     )
 
     return {
