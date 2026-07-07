@@ -5,6 +5,7 @@ import importlib
 import json
 import sys
 import threading
+from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -29,6 +30,8 @@ from .market_data import (
 from .ohlcv import fetch_ohlcv
 from .portfolio import build_dashboard, confirm_trades, delete_trade_record, save_rebalance_budget, start_performance_history_scheduler
 from .storage import load_balances, load_holdings, load_satellite_targets, save_balances, save_holdings, save_satellite_targets
+
+TZ_SHANGHAI = config_module.TZ_SHANGHAI
 
 
 class HoldingPayload(BaseModel):
@@ -268,6 +271,98 @@ def _build_global_chart_board(
         return {"symbol": "GLOBAL", "symbols": symbols, "interval": key, "source": "my-template-global", "figure": None, "error": str(exc)}
 
 
+def _timestamp_for_lightweight(value: Any, interval: str = "5m") -> int | str:
+    if hasattr(value, "to_pydatetime"):
+        value = value.to_pydatetime()
+    if isinstance(value, datetime):
+        if interval == "1d":
+            return value.date().isoformat()
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=TZ_SHANGHAI)
+        return int(value.timestamp())
+    text = str(value)
+    if interval == "1d" or (" " not in text and "T" not in text):
+        return text[:10]
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=TZ_SHANGHAI)
+        return int(parsed.timestamp())
+    except Exception:
+        return text
+
+
+def _build_global_chart_board_light(
+    interval: str = "5m",
+    show_extended: bool = True,
+    columns: int = 1,
+) -> dict[str, Any]:
+    chart_api = importlib.import_module("chart_boards")
+    chart_api.configure_market_provider("futu")
+    key = interval if interval in {"1d", "15m", "5m"} else "5m"
+    cols = min(5, max(1, int(columns or 1)))
+    labels = _chart_labels()
+    symbols = list(labels.keys())
+    quotes = get_futu_subscription_quotes()
+    charts: list[dict[str, Any]] = []
+    for sym in symbols:
+        try:
+            payload = fetch_ohlcv(sym, key, show_extended)
+            bars = payload.get("bars") or []
+        except Exception:
+            bars = []
+        if key == "1d":
+            bars = bars[-90:]
+        quote = quotes.get(sym) or {}
+        last_close = float(bars[-1].get("close") or 0.0) if bars else 0.0
+        latest_price = float(quote.get("price") or last_close or 0.0)
+        latest_change_pct = quote.get("regular_change_pct", quote.get("change_pct"))
+        if key != "1d" and show_extended and quote.get("extended_change_pct") is not None:
+            latest_change_pct = quote.get("extended_change_pct")
+        candles = [
+            {
+                "time": _timestamp_for_lightweight(bar.get("time"), key),
+                "open": float(bar.get("open") or 0.0),
+                "high": float(bar.get("high") or 0.0),
+                "low": float(bar.get("low") or 0.0),
+                "close": float(bar.get("close") or 0.0),
+            }
+            for bar in bars
+            if bar.get("time") is not None
+        ]
+        volumes = [
+            {
+                "time": item["time"],
+                "value": float(bar.get("volume") or 0.0),
+                "color": "rgba(34, 197, 94, 0.28)" if item["close"] >= item["open"] else "rgba(239, 68, 68, 0.28)",
+            }
+            for item, bar in zip(candles, bars)
+        ]
+        charts.append(
+            {
+                "symbol": sym,
+                "label": labels.get(sym, sym),
+                "candles": candles,
+                "volumes": volumes,
+                "latest_price": latest_price,
+                "latest_change_pct": latest_change_pct,
+                "source": "lightweight",
+            }
+        )
+
+    return {
+        "symbol": "GLOBAL",
+        "symbols": symbols,
+        "interval": key,
+        "source": "lightweight-global",
+        "market_provider": chart_api.get_market_provider(),
+        "show_extended": show_extended if key != "1d" else None,
+        "columns": cols,
+        "charts": charts,
+        "error": "",
+    }
+
+
 def _patch_latest_candle(payload: dict[str, Any], price: float) -> None:
     figure = payload.get("figure") or {}
     traces = figure.get("data") or []
@@ -332,6 +427,15 @@ def chart_board_global(
     columns: int = 1,
 ) -> dict[str, Any]:
     return _build_global_chart_board(interval, theme, show_extended, columns)
+
+
+@app.get("/api/chart-board-global-light")
+def chart_board_global_light(
+    interval: str = "5m",
+    show_extended: bool = True,
+    columns: int = 1,
+) -> dict[str, Any]:
+    return _build_global_chart_board_light(interval, show_extended, columns)
 
 
 @app.get("/api/holdings")

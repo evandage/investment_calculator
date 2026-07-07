@@ -1328,7 +1328,13 @@ def _market_tz(symbol: str) -> ZoneInfo:
     return ZoneInfo("America/New_York")
 
 
-def slice_intraday_today_or_yesterday(df: pd.DataFrame, symbol: str) -> tuple[pd.DataFrame, str]:
+def slice_intraday_today_or_yesterday(
+    df: pd.DataFrame,
+    symbol: str,
+    *,
+    min_current_bars: int = 1,
+    include_previous_context: bool = False,
+) -> tuple[pd.DataFrame, str]:
     """分钟 K 只保留：本地市场「当日」有 bar 则当日；否则「昨日」；再无则数据内最近交易日。"""
     if df.empty:
         return df, ""
@@ -1355,6 +1361,14 @@ def slice_intraday_today_or_yesterday(df: pd.DataFrame, symbol: str) -> tuple[pd
         note = f"{picked} 最近交易日"
 
     mask = bar_dates == picked
+    if include_previous_context and int(mask.sum()) < max(1, min_current_bars):
+        dates = sorted(pd.unique(bar_dates))
+        if picked in dates:
+            picked_pos = dates.index(picked)
+            if picked_pos > 0:
+                previous = dates[picked_pos - 1]
+                mask = bar_dates.isin([previous, picked])
+                note += f" + {previous} context"
     out = df.loc[mask].copy()
     out.index = idx_local[mask]
     return out, note
@@ -2404,9 +2418,19 @@ def fig_15m_vwap_rsi(
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "15m", "2d", cache_only=cache_only)
     if show_extended:
-        df, _ = slice_intraday_today_or_yesterday(df, symbol)
+        df, _ = slice_intraday_today_or_yesterday(
+            df,
+            symbol,
+            min_current_bars=4,
+            include_previous_context=True,
+        )
     else:
-        df, _ = slice_regular_intraday_with_context(df, symbol, min_current_bars=4)
+        df, _ = slice_regular_intraday_with_context(
+            df,
+            symbol,
+            min_current_bars=4,
+            include_previous_context=True,
+        )
     if df.empty:
         fig = go.Figure()
         fig.add_annotation(
@@ -2474,6 +2498,7 @@ def fig_15m_vwap_rsi(
         go.Scatter(
             x=df.index,
             y=v_hi,
+            mode="lines",
             name="AVWAP+1σ",
             line=dict(color=theme["vwap_band"], width=1, dash="dot"),
             legendgroup="vwap_band",
@@ -2486,6 +2511,7 @@ def fig_15m_vwap_rsi(
         go.Scatter(
             x=df.index,
             y=v_lo,
+            mode="lines",
             name="AVWAP−1σ",
             line=dict(color=theme["vwap_band"], width=1, dash="dot"),
             fill="tonexty",
@@ -2500,6 +2526,7 @@ def fig_15m_vwap_rsi(
         go.Scatter(
             x=df.index,
             y=vw,
+            mode="lines",
             name=f"AVWAP · {avwap_label}",
             line=dict(color=theme["vwap"], width=1.35),
         ),
@@ -2690,9 +2717,19 @@ def fig_5m_vwap_rsi7(
     theme = get_chart_theme(chart_theme)
     df = fetch_ohlcv(symbol, "5m", "2d", cache_only=cache_only)
     if show_extended:
-        df, _ = slice_intraday_today_or_yesterday(df, symbol)
+        df, _ = slice_intraday_today_or_yesterday(
+            df,
+            symbol,
+            min_current_bars=12,
+            include_previous_context=True,
+        )
     else:
-        df, _ = slice_regular_intraday_with_context(df, symbol, min_current_bars=12)
+        df, _ = slice_regular_intraday_with_context(
+            df,
+            symbol,
+            min_current_bars=12,
+            include_previous_context=True,
+        )
     if df.empty:
         fig = go.Figure()
         fig.add_annotation(
@@ -2753,6 +2790,7 @@ def fig_5m_vwap_rsi7(
         go.Scatter(
             x=df.index,
             y=v_hi,
+            mode="lines",
             name="AVWAP+1σ",
             line=dict(color=theme["vwap_band"], width=1, dash="dot"),
             legendgroup="vwap_band",
@@ -2765,6 +2803,7 @@ def fig_5m_vwap_rsi7(
         go.Scatter(
             x=df.index,
             y=v_lo,
+            mode="lines",
             name="AVWAP−1σ",
             line=dict(color=theme["vwap_band"], width=1, dash="dot"),
             fill="tonexty",
@@ -2779,6 +2818,7 @@ def fig_5m_vwap_rsi7(
         go.Scatter(
             x=df.index,
             y=vw,
+            mode="lines",
             name=f"AVWAP · {avwap_label}",
             line=dict(color=theme["vwap"], width=1.35),
         ),

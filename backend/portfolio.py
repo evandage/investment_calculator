@@ -440,6 +440,17 @@ def _quote_price_line(symbol: str, quote: dict[str, Any]) -> str:
     return text
 
 
+def treemap_daily_pct(quote: dict[str, Any], regular_pct: float) -> float:
+    session = str(quote.get("session") or "").lower()
+    if session not in {"premarket", "postmarket"}:
+        return regular_pct
+    regular_price = float(quote.get("regular_price") or 0.0)
+    extended_price = float(quote.get("extended_price") or 0.0)
+    if regular_price <= 0 or extended_price <= 0:
+        return regular_pct
+    return (extended_price / regular_price - 1.0) * 100.0
+
+
 def build_visualizations(
     rows: list[dict[str, Any]],
     balances: dict[str, float],
@@ -1173,9 +1184,9 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         regular_value = shares * regular_price
         regular_value_cny = regular_value * fx if currency == "USD" else regular_value
         regular_pct = float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
-        effective_pct = float(quote.get("change_pct", regular_pct))
         change_cny = _daily_amount(regular_value_cny, regular_pct)
         extended_pct = quote.get("extended_change_pct") if quote.get("session") != "regular" else None
+        effective_pct = treemap_daily_pct(quote, regular_pct)
         extended_change_cny = None
         if isinstance(extended_pct, (int, float)):
             extended_change = regular_value * (float(extended_pct) / 100.0)

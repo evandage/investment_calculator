@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
+import { CandlestickSeries, createChart, HistogramSeries } from "lightweight-charts";
 import { Activity, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
 
 const Plot = lazy(() => import("react-plotly.js"));
@@ -74,6 +75,14 @@ const shanghaiDateFormatter = new Intl.DateTimeFormat("zh-CN", {
   month: "2-digit",
   day: "2-digit",
 });
+const shanghaiKlineTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: SHANGHAI_TIME_ZONE,
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
 
 function formatShanghaiInputDate(date = new Date()) {
   const parts = shanghaiDateFormatter.formatToParts(date);
@@ -81,6 +90,19 @@ function formatShanghaiInputDate(date = new Date()) {
   const month = parts.find((part) => part.type === "month")?.value || "01";
   const day = parts.find((part) => part.type === "day")?.value || "01";
   return `${year}-${month}-${day}`;
+}
+
+function formatLightweightChartTime(time) {
+  if (typeof time === "string") return time;
+  if (typeof time === "number" && Number.isFinite(time)) {
+    return shanghaiKlineTimeFormatter.format(new Date(time * 1000));
+  }
+  if (time && typeof time === "object" && "year" in time) {
+    const month = String(time.month).padStart(2, "0");
+    const day = String(time.day).padStart(2, "0");
+    return `${time.year}-${month}-${day}`;
+  }
+  return "";
 }
 
 function fmtMoney(value, currency = "USD", digits = 2) {
@@ -612,6 +634,166 @@ function PerformanceChart({ history }) {
   );
 }
 
+function LightweightKlineCard({ item }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const candleSeriesRef = useRef(null);
+  const volumeSeriesRef = useRef(null);
+  const didFitContentRef = useRef(false);
+  const dataRangeRef = useRef({ first: null, last: null, length: 0 });
+  const { candles, volumes } = useMemo(() => {
+    const volumeByTime = new Map((item?.volumes || []).map((bar) => [bar.time, bar]));
+    const nextCandles = [];
+    const nextVolumes = [];
+    let lastTime = null;
+    for (const raw of item?.candles || []) {
+      const time = normalizeLightweightTime(raw.time);
+      const open = Number(raw.open);
+      const high = Number(raw.high);
+      const low = Number(raw.low);
+      const close = Number(raw.close);
+      if (time == null || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) continue;
+      if (open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
+      if (lastTime != null && typeof time === typeof lastTime && time <= lastTime) continue;
+      const candle = { time, open, high, low, close };
+      const volume = volumeByTime.get(raw.time) || volumeByTime.get(time) || {};
+      nextCandles.push(candle);
+      nextVolumes.push({
+        time,
+        value: Number.isFinite(Number(volume.value)) ? Number(volume.value) : 0,
+        color: volume.color || (close >= open ? "rgba(34, 197, 94, 0.28)" : "rgba(239, 68, 68, 0.28)"),
+      });
+      lastTime = time;
+    }
+    return { candles: nextCandles, volumes: nextVolumes };
+  }, [item]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const chart = createChart(container, {
+      autoSize: true,
+      layout: {
+        background: { color: "#0b1b2e" },
+        textColor: TERMINAL_CHART.textMuted,
+        fontFamily: PLOT_FONT,
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: "rgba(148, 163, 184, 0.08)" },
+        horzLines: { color: "rgba(148, 163, 184, 0.12)" },
+      },
+      rightPriceScale: {
+        borderColor: "rgba(148, 163, 184, 0.22)",
+        scaleMargins: { top: 0.08, bottom: 0.24 },
+      },
+      timeScale: {
+        borderColor: "rgba(148, 163, 184, 0.22)",
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 2,
+        barSpacing: 7,
+        tickMarkFormatter: formatLightweightChartTime,
+      },
+      localization: {
+        timeFormatter: formatLightweightChartTime,
+      },
+      crosshair: {
+        vertLine: { color: "rgba(203, 213, 225, 0.35)", labelBackgroundColor: "#1d4ed8" },
+        horzLine: { color: "rgba(203, 213, 225, 0.35)", labelBackgroundColor: "#1d4ed8" },
+      },
+    });
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: TERMINAL_CHART.green,
+      downColor: TERMINAL_CHART.coral,
+      borderUpColor: TERMINAL_CHART.green,
+      borderDownColor: TERMINAL_CHART.coral,
+      wickUpColor: TERMINAL_CHART.green,
+      wickDownColor: TERMINAL_CHART.coral,
+      priceLineColor: TERMINAL_CHART.yellow,
+      priceLineWidth: 1,
+    });
+    const volumeSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: "volume" },
+      priceScaleId: "",
+      lastValueVisible: false,
+      priceLineVisible: false,
+    });
+    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+    chartRef.current = chart;
+    candleSeriesRef.current = candleSeries;
+    volumeSeriesRef.current = volumeSeries;
+    return () => {
+      chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      chart.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    const chart = chartRef.current;
+    if (!candleSeries || !volumeSeries || !chart) return;
+    const nextRange = candles.length
+      ? { first: candles[0].time, last: candles[candles.length - 1].time, length: candles.length }
+      : { first: null, last: null, length: 0 };
+    const previousRange = dataRangeRef.current;
+    const rangeChanged =
+      nextRange.first !== previousRange.first ||
+      nextRange.last !== previousRange.last ||
+      Math.abs(nextRange.length - previousRange.length) > 8;
+    if (rangeChanged && Math.abs(nextRange.length - previousRange.length) > 8) {
+      didFitContentRef.current = false;
+    }
+    dataRangeRef.current = nextRange;
+    candleSeries.setData(candles);
+    volumeSeries.setData(volumes);
+    if (!didFitContentRef.current && candles.length) {
+      chart.timeScale().fitContent();
+      didFitContentRef.current = true;
+    }
+  }, [candles, volumes]);
+
+  return (
+    <article className="lwChartCard">
+      <div className="lwChartHeader">
+        <div>
+          <strong>{item.symbol}</strong>
+          <span>{item.label}</span>
+        </div>
+        <div className={tone(item.latest_change_pct)}>
+          <strong>{Number(item.latest_price || 0).toFixed(2)}</strong>
+          <span>{item.latest_change_pct == null ? "-" : fmtPct(item.latest_change_pct)}</span>
+        </div>
+      </div>
+      <div className="lwChartCanvas" ref={containerRef}>
+        {!candles.length ? <div className="muted lwEmpty">暂无K线数据</div> : null}
+      </div>
+    </article>
+  );
+}
+
+function GlobalLightweightBoard({ data, viewKey }) {
+  const columns = Math.min(5, Math.max(1, Number(data?.columns || 1)));
+  const charts = data?.charts || [];
+  return (
+    <div className="lwChartGrid" style={{ "--lw-cols": columns }}>
+      {charts.map((item) => <LightweightKlineCard item={item} key={`${item.symbol}-${viewKey}`} />)}
+    </div>
+  );
+}
+
+function normalizeLightweightTime(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    if (/^\d+$/.test(value)) return Number(value);
+    return value;
+  }
+  return value;
+}
+
 function KlinePage({ dashboardData }) {
   const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState("VOO");
@@ -626,6 +808,7 @@ function KlinePage({ dashboardData }) {
   const [userXAxisRanges, setUserXAxisRanges] = useState({});
   const userXAxisRangesRef = useRef({});
   const loadRequestRef = useRef(0);
+  const globalSilentLoadingRef = useRef(false);
   const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
@@ -636,6 +819,8 @@ function KlinePage({ dashboardData }) {
     const signature = requestSignature;
     if (!silent) setLoading(true);
     setError("");
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), scope === "global" ? 30000 : 20000);
     try {
       const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
       let effectiveAvwapMode = avwapMode;
@@ -648,8 +833,8 @@ function KlinePage({ dashboardData }) {
           ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
           : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
       );
-      const endpoint = scope === "global" ? "chart-board-global" : "chart-board";
-      const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`);
+      const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board";
+      const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
@@ -657,8 +842,9 @@ function KlinePage({ dashboardData }) {
       setData(applySavedXAxisRangesToPayload(payload));
     } catch (err) {
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
-      setError(err instanceof Error ? err.message : String(err));
+      setError(err instanceof DOMException && err.name === "AbortError" ? "K线请求超时" : (err instanceof Error ? err.message : String(err)));
     } finally {
+      window.clearTimeout(timeoutId);
       if (!silent && requestId === loadRequestRef.current && signature === requestSignatureRef.current) setLoading(false);
     }
   }
@@ -731,8 +917,28 @@ function KlinePage({ dashboardData }) {
   useEffect(() => {
     if (scope !== "global") return undefined;
     setRealtimeConnected(false);
-    const id = window.setInterval(() => load({ silent: true }), 2000);
-    return () => window.clearInterval(id);
+    let disposed = false;
+    let timer;
+    const refresh = async () => {
+      if (disposed) return;
+      if (globalSilentLoadingRef.current) {
+        timer = window.setTimeout(refresh, 3000);
+        return;
+      }
+      globalSilentLoadingRef.current = true;
+      try {
+        await load({ silent: true });
+      } finally {
+        globalSilentLoadingRef.current = false;
+        if (!disposed) timer = window.setTimeout(refresh, 8000);
+      }
+    };
+    timer = window.setTimeout(refresh, 8000);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+      globalSilentLoadingRef.current = false;
+    };
   }, [scope, interval, showExtended, globalColumns]);
 
   useEffect(() => {
@@ -795,7 +1001,7 @@ function KlinePage({ dashboardData }) {
     };
   }, [scope, symbol, interval, avwapMode, showExtended]);
 
-  const figure = data?.figure;
+  const figure = scope === "single" ? data?.figure : null;
   const isEtf = ["VOO", "QQQ", "SGOV"].includes(symbol);
   const themedFigureLayout = figure
     ? {
@@ -846,7 +1052,8 @@ function KlinePage({ dashboardData }) {
       {data && scope === "single" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
-      {figure ? (
+      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} /> : null}
+      {scope === "single" && figure ? (
         <div className="plotWrap" style={plotWrapStyle(figure)}>
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>
             <Plot

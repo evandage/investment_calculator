@@ -137,6 +137,12 @@ def _infer_us_session(state: str = "") -> str:
     return "overnight"
 
 
+def _pct_from_base(price: float | None, base: float | None) -> float | None:
+    if not price or not base or base <= 0:
+        return None
+    return (price / base - 1.0) * 100.0
+
+
 def _price_matches_change_pct(price: float | None, base: float | None, pct: float | None) -> bool:
     if not price or not base or base <= 0 or pct is None:
         return False
@@ -180,14 +186,8 @@ def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | N
         return None
     base = prev_close if prev_close and prev_close > 0 else last_price
     price = extended_price if session != "regular" and session != "closed" and extended_price and extended_price > 0 else last_price
-    if (
-        session not in {"regular", "closed"}
-        and extended_change_pct is None
-        and extended_price
-        and extended_price > 0
-        and last_price > 0
-    ):
-        extended_change_pct = (extended_price / last_price - 1.0) * 100.0
+    if session not in {"regular", "closed"} and extended_change_pct is None:
+        extended_change_pct = _pct_from_base(extended_price, last_price)
     if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9 or session == "closed":
         extended_price = None
         extended_change_pct = None
@@ -594,16 +594,11 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
                 continue
             base = prev_close if prev_close and prev_close > 0 else last_price
             price = extended_price if session != "regular" and extended_price and extended_price > 0 else last_price
-            if (
-                session != "regular"
-                and extended_change_pct is None
-                and extended_price
-                and extended_price > 0
-                and last_price > 0
-            ):
-                extended_change_pct = (extended_price / last_price - 1.0) * 100.0
+            if session != "regular" and extended_change_pct is None:
+                extended_change_pct = _pct_from_base(extended_price, last_price)
             if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9:
                 extended_price = None
+                extended_change_pct = None
             out[sym] = {
                 "symbol": sym,
                 "price": price,

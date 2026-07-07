@@ -360,6 +360,85 @@
       "finalized": true,
       "estimated_symbols": [],
       "updated_at": "2026-07-03T08:00:00+08:00"
+    },
+    {
+      "date": "2026-07-06",
+      "portfolio_daily_pct": 0.5296067998601147,
+      "portfolio_return_pct": 0.0,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
+      "benchmark_prices": {
+        "001015": 2.401,
+        "VOO": 690.62,
+        "QQQ": 722.82
+      },
+      "benchmark_daily_pct": {
+        "001015": 0.16687526074259385,
+        "VOO": 0.843992757432388,
+        "QQQ": 1.4341846758349819
+      },
+      "market_open_symbols": [
+        "001015",
+        "VOO",
+        "QQQ"
+      ],
+      "symbol_daily_pct": {
+        "VOO": 0.8439927574323889,
+        "QQQ": 1.434184675834974,
+        "ISRG": 1.6009013872913769,
+        "GOOGL": 1.8198994192992566,
+        "MSFT": -0.9603318907014263,
+        "AVGO": 3.7314468026078482,
+        "NVDA": 0.3695529435918487,
+        "TEM": 0.7134561141529777,
+        "SGOV": 0.0,
+        "001015": 0.2596496269926905
+      },
+      "holdings_snapshot": {
+        "VOO": {
+          "shares": 3.0451,
+          "avg_cost": 654.8684772257069
+        },
+        "QQQ": {
+          "shares": 1.5806999999999998,
+          "avg_cost": 725.7021851078638
+        },
+        "ISRG": {
+          "shares": 0.7807000000000001,
+          "avg_cost": 414.1
+        },
+        "GOOGL": {
+          "shares": 0.5794,
+          "avg_cost": 364.1269623748706
+        },
+        "MSFT": {
+          "shares": 0.3033,
+          "avg_cost": 423.0217804154302
+        },
+        "AVGO": {
+          "shares": 0.5664,
+          "avg_cost": 418.2912358757062
+        },
+        "NVDA": {
+          "shares": 0.6187,
+          "avg_cost": 210.08566348795858
+        },
+        "TEM": {
+          "shares": 0.1835,
+          "avg_cost": 54.49591280653951
+        },
+        "SGOV": {
+          "shares": 30.0,
+          "avg_cost": 100.52
+        },
+        "001015": {
+          "shares": 12230.51,
+          "avg_cost": 2.3648485968287503
+        }
+      },
+      "estimated_symbols": [],
+      "finalized": true,
+      "updated_at": "2026-07-06T08:00:00+08:00"
     }
   ]
 }
