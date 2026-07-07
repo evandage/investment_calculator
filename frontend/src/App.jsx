@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
-import { CandlestickSeries, createChart, HistogramSeries } from "lightweight-charts";
+import { CandlestickSeries, createChart, HistogramSeries, LineSeries } from "lightweight-charts";
 import { Activity, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
 
 const Plot = lazy(() => import("react-plotly.js"));
@@ -794,12 +794,251 @@ function normalizeLightweightTime(value) {
   return value;
 }
 
+function normalizeLineData(rows = []) {
+  const out = [];
+  let lastTime = null;
+  for (const row of rows || []) {
+    const time = normalizeLightweightTime(row.time);
+    const value = Number(row.value);
+    if (time == null || !Number.isFinite(value)) continue;
+    if (lastTime != null && typeof time === typeof lastTime && time <= lastTime) continue;
+    out.push({ time, value });
+    lastTime = time;
+  }
+  return out;
+}
+
+function SingleLightweightChart({ data, viewKey }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const seriesRef = useRef({});
+  const priceLinesRef = useRef({});
+  const didFitContentRef = useRef(false);
+  const volumeProfileRef = useRef([]);
+  const [profileBars, setProfileBars] = useState([]);
+  const candles = useMemo(() => {
+    const out = [];
+    let lastTime = null;
+    for (const raw of data?.candles || []) {
+      const time = normalizeLightweightTime(raw.time);
+      const open = Number(raw.open);
+      const high = Number(raw.high);
+      const low = Number(raw.low);
+      const close = Number(raw.close);
+      if (time == null || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) continue;
+      if (open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
+      if (lastTime != null && typeof time === typeof lastTime && time <= lastTime) continue;
+      out.push({ time, open, high, low, close });
+      lastTime = time;
+    }
+    return out;
+  }, [data]);
+  const volumes = useMemo(() => (data?.volumes || []).map((row) => ({
+    time: normalizeLightweightTime(row.time),
+    value: Number(row.value || 0),
+    color: row.color || "rgba(148, 163, 184, 0.24)",
+  })).filter((row) => row.time != null && Number.isFinite(row.value)), [data]);
+  const overlays = data?.overlays || {};
+  const indicators = data?.indicators || {};
+  const volumeProfile = useMemo(() => (data?.volume_profile || [])
+    .map((row) => ({
+      low: Number(row.low),
+      high: Number(row.high),
+      pct: Math.max(0, Math.min(1, Number(row.pct || 0))),
+    }))
+    .filter((row) => Number.isFinite(row.low) && Number.isFinite(row.high) && row.pct > 0), [data]);
+
+  useEffect(() => {
+    volumeProfileRef.current = volumeProfile;
+  }, [volumeProfile]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    didFitContentRef.current = false;
+    const chart = createChart(container, {
+      autoSize: true,
+      layout: {
+        background: { color: "#0b1b2e" },
+        textColor: TERMINAL_CHART.textMuted,
+        fontFamily: PLOT_FONT,
+        fontSize: 11,
+        panes: {
+          separatorColor: "rgba(148, 163, 184, 0.22)",
+          separatorHoverColor: "rgba(96, 165, 250, 0.45)",
+        },
+      },
+      grid: {
+        vertLines: { color: "rgba(148, 163, 184, 0.08)" },
+        horzLines: { color: "rgba(148, 163, 184, 0.12)" },
+      },
+      rightPriceScale: {
+        borderColor: "rgba(148, 163, 184, 0.22)",
+        scaleMargins: { top: 0.08, bottom: 0.24 },
+      },
+      timeScale: {
+        borderColor: "rgba(148, 163, 184, 0.22)",
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 4,
+        barSpacing: 8,
+        tickMarkFormatter: formatLightweightChartTime,
+      },
+      localization: { timeFormatter: formatLightweightChartTime },
+      crosshair: {
+        vertLine: { color: "rgba(203, 213, 225, 0.35)", labelBackgroundColor: "#1d4ed8" },
+        horzLine: { color: "rgba(203, 213, 225, 0.35)", labelBackgroundColor: "#1d4ed8" },
+      },
+    });
+    const candle = chart.addSeries(CandlestickSeries, {
+      upColor: TERMINAL_CHART.green,
+      downColor: TERMINAL_CHART.coral,
+      borderUpColor: TERMINAL_CHART.green,
+      borderDownColor: TERMINAL_CHART.coral,
+      wickUpColor: TERMINAL_CHART.green,
+      wickDownColor: TERMINAL_CHART.coral,
+      priceLineColor: TERMINAL_CHART.yellow,
+      priceLineWidth: 1,
+    }, 0);
+    const volume = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: "volume" },
+      priceScaleId: "",
+      lastValueVisible: false,
+      priceLineVisible: false,
+    }, 0);
+    volume.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+    const avwapUpper = chart.addSeries(LineSeries, { color: "rgba(45, 212, 191, 0.52)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }, 0);
+    const avwapLower = chart.addSeries(LineSeries, { color: "rgba(45, 212, 191, 0.52)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }, 0);
+    const avwap = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 2, lastValueVisible: false, priceLineVisible: false }, 0);
+    const rsi = chart.addSeries(LineSeries, { color: TERMINAL_CHART.violet, lineWidth: 1, title: "RSI" }, 1);
+    const rsiMa = chart.addSeries(LineSeries, { color: TERMINAL_CHART.yellow, lineWidth: 1, title: "RSI EMA" }, 1);
+    const macdHist = chart.addSeries(HistogramSeries, { color: "rgba(148, 163, 184, 0.35)", priceLineVisible: false, lastValueVisible: false }, 2);
+    const macd = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 1, title: "MACD" }, 2);
+    const macdSignal = chart.addSeries(LineSeries, { color: TERMINAL_CHART.coral, lineWidth: 1, title: "Signal" }, 2);
+    rsi.createPriceLine({ price: 70, color: "rgba(248, 113, 113, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+    rsi.createPriceLine({ price: 30, color: "rgba(52, 211, 153, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+    seriesRef.current = { candle, volume, avwapUpper, avwapLower, avwap, rsi, rsiMa, macdHist, macd, macdSignal };
+    chartRef.current = chart;
+    const updateProfile = () => {
+      const candleSeries = seriesRef.current.candle;
+      if (!candleSeries) return;
+      const bars = volumeProfileRef.current.map((row) => {
+        const yLow = candleSeries.priceToCoordinate(row.low);
+        const yHigh = candleSeries.priceToCoordinate(row.high);
+        if (yLow == null || yHigh == null) return null;
+        return {
+          top: Math.min(yLow, yHigh),
+          height: Math.max(2, Math.abs(yLow - yHigh)),
+          width: `${Math.max(5, row.pct * 100)}%`,
+        };
+      }).filter(Boolean);
+      setProfileBars(bars);
+    };
+    chart.timeScale().subscribeVisibleTimeRangeChange(updateProfile);
+    return () => {
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(updateProfile);
+      chartRef.current = null;
+      seriesRef.current = {};
+      priceLinesRef.current = {};
+      chart.remove();
+    };
+  }, [viewKey]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series.candle) return;
+    series.candle.setData(candles);
+    series.volume.setData(volumes);
+    series.avwapUpper.setData(normalizeLineData(overlays.avwap_upper));
+    series.avwapLower.setData(normalizeLineData(overlays.avwap_lower));
+    series.avwap.setData(normalizeLineData(overlays.avwap));
+    series.rsi.setData(normalizeLineData(indicators.rsi));
+    series.rsiMa.setData(normalizeLineData(indicators.rsi_ma));
+    series.macd.setData(normalizeLineData(indicators.macd));
+    series.macdSignal.setData(normalizeLineData(indicators.macd_signal));
+    series.macdHist.setData(normalizeLineData(indicators.macd_hist).map((row) => ({
+      ...row,
+      color: row.value >= 0 ? "rgba(52, 211, 153, 0.42)" : "rgba(248, 113, 113, 0.42)",
+    })));
+    if (priceLinesRef.current.latest) series.candle.removePriceLine(priceLinesRef.current.latest);
+    if (priceLinesRef.current.cost) series.candle.removePriceLine(priceLinesRef.current.cost);
+    priceLinesRef.current = {};
+    if (Number(data?.latest_price) > 0) {
+      priceLinesRef.current.latest = series.candle.createPriceLine({
+        price: Number(data.latest_price),
+        color: TERMINAL_CHART.yellow,
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: "Latest",
+      });
+    }
+    if (Number(data?.user_avg_cost) > 0) {
+      priceLinesRef.current.cost = series.candle.createPriceLine({
+        price: Number(data.user_avg_cost),
+        color: TERMINAL_CHART.violet,
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: "Cost",
+      });
+    }
+    if (!didFitContentRef.current && candles.length) {
+      chart.timeScale().fitContent();
+      didFitContentRef.current = true;
+    }
+    window.setTimeout(() => {
+      const candleSeries = seriesRef.current.candle;
+      if (!candleSeries) return;
+      const bars = volumeProfileRef.current.map((row) => {
+        const yLow = candleSeries.priceToCoordinate(row.low);
+        const yHigh = candleSeries.priceToCoordinate(row.high);
+        if (yLow == null || yHigh == null) return null;
+        return {
+          top: Math.min(yLow, yHigh),
+          height: Math.max(2, Math.abs(yLow - yHigh)),
+          width: `${Math.max(5, row.pct * 100)}%`,
+        };
+      }).filter(Boolean);
+      setProfileBars(bars);
+    }, 0);
+  }, [candles, volumes, overlays, indicators, data, volumeProfile]);
+
+  return (
+    <div className="singleLwWrap">
+      <div className="singleLwHeader">
+        <div>
+          <strong>{data?.symbol}</strong>
+          <span>{data?.label} · {data?.interval} · {data?.avwap_label || "AVWAP"}</span>
+        </div>
+        <div className={tone(data?.latest_change_pct)}>
+          <strong>{Number(data?.latest_price || 0).toFixed(2)}</strong>
+          <span>{data?.latest_change_pct == null ? "-" : fmtPct(data.latest_change_pct)}</span>
+        </div>
+      </div>
+      <div className="singleLwCanvas" ref={containerRef}>
+        <div className="singleLwProfile" aria-hidden="true">
+          {profileBars.map((bar, index) => (
+            <span
+              className="singleLwProfileBar"
+              key={`${index}-${bar.top}`}
+              style={{ top: `${bar.top}px`, height: `${bar.height}px`, width: bar.width }}
+            />
+          ))}
+        </div>
+        {!candles.length ? <div className="muted lwEmpty">暂无K线数据</div> : null}
+      </div>
+    </div>
+  );
+}
+
 function KlinePage({ dashboardData }) {
   const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState("VOO");
   const [interval, setInterval] = useState("1d");
-  const [avwapMode, setAvwapMode] = useState("earnings");
-  const [showExtended, setShowExtended] = useState(true);
+  const [avwapMode, setAvwapMode] = useState("today_open");
+  const [showExtended, setShowExtended] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -822,7 +1061,7 @@ function KlinePage({ dashboardData }) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), scope === "global" ? 30000 : 20000);
     try {
-      const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
+      const isEtfSymbol = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
       let effectiveAvwapMode = avwapMode;
       if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
       if (interval === "1d" && effectiveAvwapMode === "today_open") {
@@ -833,7 +1072,7 @@ function KlinePage({ dashboardData }) {
           ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
           : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
       );
-      const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board";
+      const endpoint = scope === "global" ? "chart-board-global-light" : (interval === "1d" ? "chart-board" : "chart-board-light");
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
@@ -953,56 +1192,15 @@ function KlinePage({ dashboardData }) {
   }, []);
 
   useEffect(() => {
-    if (scope !== "single") {
-      setRealtimeConnected(false);
-      return undefined;
-    }
-    if (interval === "1d") {
-      setRealtimeConnected(false);
-      return undefined;
-    }
-    const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
-    let effectiveAvwapMode = avwapMode;
-    if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
-    if (interval === "1d" && effectiveAvwapMode === "today_open") {
-      effectiveAvwapMode = isEtfSymbol ? "high_60d" : "earnings";
-    }
-    const qs = new URLSearchParams({ symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) });
-    const wsBase = API_BASE.replace(/^http/, "ws");
-    let disposed = false;
-    let socket;
-    let reconnectTimer;
-
-    function connect() {
-      socket = new WebSocket(`${wsBase}/ws/chart-board?${qs.toString()}`);
-      socket.onopen = () => setRealtimeConnected(false);
-      socket.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          setData(applySavedXAxisRangesToPayload(payload));
-          setRealtimeConnected(Boolean(payload.kline_subscription));
-          setError("");
-        } catch {
-          // Ignore malformed frames and wait for the next K-line update.
-        }
-      };
-      socket.onerror = () => setRealtimeConnected(false);
-      socket.onclose = () => {
-        setRealtimeConnected(false);
-        if (!disposed) reconnectTimer = window.setTimeout(connect, 2000);
-      };
-    }
-
-    connect();
-    return () => {
-      disposed = true;
-      window.clearTimeout(reconnectTimer);
-      socket?.close();
-    };
+    setRealtimeConnected(false);
+    return undefined;
   }, [scope, symbol, interval, avwapMode, showExtended]);
 
   const figure = scope === "single" ? data?.figure : null;
-  const isEtf = ["VOO", "QQQ", "SGOV"].includes(symbol);
+  const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
+  const avwapSelectValue = interval === "1d" && avwapMode === "today_open"
+    ? (isEtf ? "high_60d" : "earnings")
+    : (isEtf && avwapMode === "earnings" ? "high_60d" : avwapMode);
   const themedFigureLayout = figure
     ? {
         ...terminalPlotLayout(layoutWithUserXAxisRanges(figure.layout)),
@@ -1029,13 +1227,14 @@ function KlinePage({ dashboardData }) {
           ))}
         </div>
         {scope === "single" ? <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
-          {(dashboardData?.holdings || [])
+          {[...(dashboardData?.holdings || [])
             .filter((row) => row.currency === "USD" && row.symbol !== "SGOV")
             .map((row) => row.symbol)
-            .map((item) => <option key={item} value={item}>{item}</option>)}
+            , "510330.SS"]
+            .map((item) => <option key={item} value={item}>{item === "510330.SS" ? "510330 沪深300ETF" : item}</option>)}
         </select> : null}
         {scope === "single" ? (
-          <select value={isEtf && avwapMode === "earnings" ? "high_60d" : (interval === "1d" && avwapMode === "today_open" ? (isEtf ? "high_60d" : "earnings") : avwapMode)} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
+          <select value={avwapSelectValue} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
             {!isEtf ? <option value="earnings">AVWAP：最近财报日</option> : null}
             <option value="high_60d">AVWAP：最近60日历史高点</option>
             <option value="selloff_60d">AVWAP：最近60日大跌低点</option>
@@ -1053,6 +1252,9 @@ function KlinePage({ dashboardData }) {
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} /> : null}
+      {scope === "single" && interval !== "1d" && data?.candles ? (
+        <SingleLightweightChart data={data} viewKey={`${data.symbol}-${data.interval}-${data.show_extended}-${data.avwap_mode}`} />
+      ) : null}
       {scope === "single" && figure ? (
         <div className="plotWrap" style={plotWrapStyle(figure)}>
           <Suspense fallback={<div className="muted plotLoading">模板图加载中</div>}>

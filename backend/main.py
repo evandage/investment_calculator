@@ -80,16 +80,18 @@ class DeleteTradePayload(BaseModel):
 
 
 def _chart_symbols() -> set[str]:
-    return {"VOO", "QQQ", *config_module.SATELLITE_SYMBOLS}
+    return {"VOO", "QQQ", *config_module.SATELLITE_SYMBOLS, "510330.SS"}
 
 
 def _chart_labels() -> dict[str, str]:
     symbols = ("VOO", "QQQ", *config_module.SATELLITE_SYMBOLS)
-    return {
+    labels = {
         symbol: config_module.ASSET_META.get(symbol, {}).get("label", symbol)
         for symbol in symbols
         if symbol in config_module.ASSET_META
     }
+    labels["510330.SS"] = "沪深300ETF"
+    return labels
 
 
 def _refresh_satellite_runtime_config() -> None:
@@ -363,6 +365,163 @@ def _build_global_chart_board_light(
     }
 
 
+def _series_for_lightweight(series: Any, interval: str) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    try:
+        clean = series.replace([float("inf"), float("-inf")], float("nan")).dropna()
+    except Exception:
+        clean = series
+    for idx, value in clean.items():
+        try:
+            numeric = float(value)
+        except Exception:
+            continue
+        if numeric != numeric:
+            continue
+        out.append({"time": _timestamp_for_lightweight(idx, interval), "value": numeric})
+    return out
+
+
+def _build_chart_board_light(
+    symbol: str = "VOO",
+    interval: str = "5m",
+    avwap_mode: str = "earnings",
+    show_extended: bool = True,
+) -> dict[str, Any]:
+    sym = str(symbol or "VOO").upper()
+    if sym not in _chart_symbols():
+        sym = "VOO"
+    key = interval if interval in {"15m", "5m"} else "5m"
+    chart_api = importlib.import_module("chart_boards")
+    chart_api.configure_market_provider("futu")
+    labels = _chart_labels()
+    holding = load_holdings().get(sym, {})
+    shares = float(holding.get("shares", 0.0) or 0.0)
+    avg_cost = float(holding.get("avg_cost", 0.0) or 0.0)
+    user_avg_cost = avg_cost if shares > 0 and avg_cost > 0 else None
+    quote = get_futu_subscription_quotes().get(sym) or {}
+    latest_price = float(quote.get("price") or 0.0)
+    latest_change_pct = quote.get("change_pct")
+    effective_avwap_mode = avwap_mode
+    if sym in {"VOO", "QQQ", "SGOV", "510330.SS"} and effective_avwap_mode == "earnings":
+        effective_avwap_mode = "high_60d"
+
+    try:
+        df = chart_api.fetch_ohlcv(sym, key, "2d", cache_only=False)
+        if show_extended:
+            df, _ = chart_api.slice_intraday_today_or_yesterday(
+                df,
+                sym,
+                min_current_bars=12 if key == "5m" else 4,
+                include_previous_context=True,
+            )
+        else:
+            df, _ = chart_api.slice_regular_intraday_with_context(
+                df,
+                sym,
+                min_current_bars=12 if key == "5m" else 4,
+                include_previous_context=True,
+            )
+        if df.empty:
+            return {
+                "symbol": sym,
+                "label": labels.get(sym, sym),
+                "interval": key,
+                "source": "lightweight-single",
+                "market_provider": chart_api.get_market_provider(),
+                "show_extended": show_extended,
+                "user_avg_cost": user_avg_cost,
+                "latest_price": latest_price if latest_price > 0 else None,
+                "latest_change_pct": latest_change_pct,
+                "candles": [],
+                "volumes": [],
+                "overlays": {},
+                "indicators": {},
+                "error": "",
+            }
+
+        avwap, avwap_upper, avwap_lower, avwap_anchor, avwap_label = chart_api.anchored_vwap_and_bands(
+            sym,
+            df,
+            effective_avwap_mode,
+            cache_only=False,
+        )
+        regular_mask = chart_api._regular_us_session_mask(df.index)
+        profile_source = df.loc[regular_mask].copy()
+        if profile_source.empty:
+            profile_source = df
+        vp_price, vp_vol, vp_low, vp_high, _ = chart_api._volume_profile_by_price(profile_source, bins=24)
+        max_profile_volume = float(vp_vol.max()) if not vp_vol.empty else 0.0
+        volume_profile = [
+            {
+                "price": float(price),
+                "low": float(low),
+                "high": float(high),
+                "volume": float(volume),
+                "pct": float(volume) / max_profile_volume if max_profile_volume > 0 else 0.0,
+            }
+            for price, low, high, volume in zip(vp_price.values, vp_low.values, vp_high.values, vp_vol.values)
+        ]
+        close = df["Close"]
+        rsi_period = 7 if key == "5m" else 14
+        rsi_series = chart_api.rsi(close, rsi_period)
+        rsi_ma = chart_api.ema(rsi_series, 9)
+        macd_line, macd_signal, macd_hist = chart_api.macd_series(close)
+        last_close = float(close.iloc[-1]) if len(close) else 0.0
+        if latest_price <= 0:
+            latest_price = last_close
+        candles = [
+            {
+                "time": _timestamp_for_lightweight(idx, key),
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": float(row["Close"]),
+            }
+            for idx, row in df.iterrows()
+        ]
+        volumes = [
+            {
+                "time": item["time"],
+                "value": float(row.get("Volume") or 0.0),
+                "color": "rgba(34, 197, 94, 0.28)" if item["close"] >= item["open"] else "rgba(239, 68, 68, 0.28)",
+            }
+            for item, (_, row) in zip(candles, df.iterrows())
+        ]
+        return {
+            "symbol": sym,
+            "label": labels.get(sym, sym),
+            "interval": key,
+            "source": "lightweight-single",
+            "market_provider": chart_api.get_market_provider(),
+            "show_extended": show_extended,
+            "user_avg_cost": user_avg_cost,
+            "avwap_mode": effective_avwap_mode,
+            "avwap_label": avwap_label,
+            "avwap_anchor": avwap_anchor.strftime("%Y-%m-%d"),
+            "latest_price": latest_price if latest_price > 0 else None,
+            "latest_change_pct": latest_change_pct,
+            "candles": candles,
+            "volumes": volumes,
+            "overlays": {
+                "avwap": _series_for_lightweight(avwap, key),
+                "avwap_upper": _series_for_lightweight(avwap_upper, key),
+                "avwap_lower": _series_for_lightweight(avwap_lower, key),
+            },
+            "volume_profile": volume_profile,
+            "indicators": {
+                "rsi": _series_for_lightweight(rsi_series, key),
+                "rsi_ma": _series_for_lightweight(rsi_ma, key),
+                "macd": _series_for_lightweight(macd_line, key),
+                "macd_signal": _series_for_lightweight(macd_signal, key),
+                "macd_hist": _series_for_lightweight(macd_hist, key),
+            },
+            "error": "",
+        }
+    except Exception as exc:
+        return {"symbol": sym, "interval": key, "source": "lightweight-single", "error": str(exc)}
+
+
 def _patch_latest_candle(payload: dict[str, Any], price: float) -> None:
     figure = payload.get("figure") or {}
     traces = figure.get("data") or []
@@ -417,6 +576,16 @@ def chart_board(
     show_extended: bool = True,
 ) -> dict[str, Any]:
     return _build_chart_board(symbol, interval, theme, avwap_mode, show_extended)
+
+
+@app.get("/api/chart-board-light")
+def chart_board_light(
+    symbol: str = "VOO",
+    interval: str = "5m",
+    avwap_mode: str = "earnings",
+    show_extended: bool = True,
+) -> dict[str, Any]:
+    return _build_chart_board_light(symbol, interval, avwap_mode, show_extended)
 
 
 @app.get("/api/chart-board-global")
