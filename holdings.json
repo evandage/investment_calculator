@@ -1,39 +1,35 @@
 {
   "VOO": {
-    "shares": 3.1471,
-    "avg_cost": 655.886371580185
+    "shares": 3.1478,
+    "avg_cost": 655.8741
   },
   "QQQ": {
-    "shares": 2.146699999999979,
-    "avg_cost": 720.69569292403
+    "shares": 2.1437,
+    "avg_cost": 721.66
   },
   "ISRG": {
     "shares": 0.5994,
-    "avg_cost": 414.1
+    "avg_cost": 408.93
   },
   "TEM": {
     "shares": 0.1835,
-    "avg_cost": 54.49591280653951
+    "avg_cost": 54.49
   },
   "PLTR": {
     "shares": 0.0,
     "avg_cost": 100.0
   },
   "GOOGL": {
-    "shares": 0.44400000000000006,
-    "avg_cost": 364.1269623748706
+    "shares": 0.4442,
+    "avg_cost": 363.71
   },
   "MSFT": {
-    "shares": 0.3033,
-    "avg_cost": 423.0217804154302
+    "shares": 0.3036,
+    "avg_cost": 422.81
   },
   "AVGO": {
-    "shares": 0.456,
-    "avg_cost": 418.2912358757062
-  },
-  "NVDA": {
-    "shares": 0.0,
-    "avg_cost": 0.0
+    "shares": 0.4569,
+    "avg_cost": 421.25
   },
   "SGOV": {
     "shares": 23.0,

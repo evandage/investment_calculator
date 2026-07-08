@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
-import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, HistogramSeries, LineSeries } from "lightweight-charts";
+import { BaselineSeries, CandlestickSeries, createChart, HistogramSeries, LineSeries } from "lightweight-charts";
 import { Activity, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
 
 const API_BASE =
@@ -12,6 +12,7 @@ const HEATMAP_LAYOUT_HEIGHT = 78;
 const TERMINAL_CHART = {
   yellow: "#facc15",
   cyan: "#22d3ee",
+  deepBlue: "#2563eb",
   violet: "#a78bfa",
   green: "#34d399",
   coral: "#fb7185",
@@ -24,6 +25,7 @@ const TERMINAL_CHART = {
   legend: "#10233a",
 };
 const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
+const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"];
 
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
 const shanghaiDateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -135,6 +137,19 @@ function tierClass(intensity) {
     probe: "tierSmall",
     month_end: "tierMedium",
   }[String(intensity || "").toLowerCase()] || "tierNone";
+}
+
+function tierLabel(intensity) {
+  return {
+    none: "-",
+    normal: "普通",
+    probe: "QQQ -2%分批",
+    month_end: "QQQ月底补齐",
+    small: "小加",
+    medium: "中加",
+    large: "大加",
+    sell: "卖出",
+  }[String(intensity || "none").toLowerCase()] || String(intensity || "-");
 }
 
 function globalKlineColumns(width = window.innerWidth) {
@@ -278,6 +293,21 @@ function PageNav({ page, setPage }) {
 
 function Summary({ data }) {
   const summary = data.summary;
+  const fx = Number(summary.fx || 0);
+  const usdRows = (data.holdings || []).filter((row) => row.currency === "USD");
+  const usdHoldingValue = usdRows.reduce((sum, row) => sum + Number(row.value || 0), 0);
+  const usdHoldingCost = usdRows.reduce((sum, row) => sum + Number(row.shares || 0) * Number(row.avg_cost || 0), 0);
+  const usdCash = Number(data.balances?.cash_usd || 0);
+  const usdTotalAssets = usdHoldingValue + usdCash;
+  const usdPnl = usdRows.reduce((sum, row) => sum + Number(row.pnl || 0), 0);
+  const usdPnlPct = usdHoldingCost > 0 ? (usdPnl / usdHoldingCost) * 100 : 0;
+  const usdDailyChange = usdRows.reduce(
+    (total, row) => total + dailyAmount(row.value, row.effective_daily_pct),
+    0,
+  );
+  const usdDailyPct = usdHoldingValue - usdDailyChange > 0
+    ? (usdDailyChange / (usdHoldingValue - usdDailyChange)) * 100
+    : 0;
   const weightedDailyChangeCny = Number.isFinite(Number(summary.weighted_daily_change_cny))
     ? Number(summary.weighted_daily_change_cny)
     : (data.holdings || []).reduce(
@@ -286,8 +316,31 @@ function Summary({ data }) {
       );
   return (
     <section className="summaryGrid">
+      <div className="summaryRowLabel">美元资产</div>
       <div className="summaryItem">
-        <span>总资产</span>
+        <span>资产规模</span>
+        <strong>{fmtMoney(usdTotalAssets, "USD")}</strong>
+      </div>
+      <div className="summaryItem">
+        <span>持仓盈亏</span>
+        <strong className={tone(usdPnl)}>
+          {fmtMoney(usdPnl, "USD")} · {fmtPct(usdPnlPct)}
+        </strong>
+      </div>
+      <div className="summaryItem">
+        <span>当日加权</span>
+        <strong className={tone(usdDailyChange)}>
+          {fmtMoney(usdDailyChange, "USD")} · {fmtPct(usdDailyPct)}
+        </strong>
+      </div>
+      <div className="summaryItem fxSummaryItem">
+        <span>汇率</span>
+        <strong>{fx.toFixed(4)}</strong>
+        <em>成本 {Number(summary.avg_fx_rate || fx).toFixed(4)}</em>
+      </div>
+      <div className="summaryRowLabel">总资产</div>
+      <div className="summaryItem">
+        <span>资产规模</span>
         <strong>{fmtMoney(summary.total_assets_cny, "CNY")}</strong>
       </div>
       <div className="summaryItem">
@@ -298,13 +351,9 @@ function Summary({ data }) {
       </div>
       <div className="summaryItem">
         <span>当日加权</span>
-        <strong className={tone(summary.weighted_daily_pct)}>
+        <strong className={tone(weightedDailyChangeCny)}>
           {fmtMoney(weightedDailyChangeCny, "CNY")} · {fmtPct(summary.weighted_daily_pct)}
         </strong>
-      </div>
-      <div className="summaryItem">
-        <span>汇率</span>
-        <strong>{Number(summary.fx || 0).toFixed(4)}</strong>
       </div>
     </section>
   );
@@ -489,11 +538,52 @@ function Visualizations({ data }) {
   );
 }
 
+function withUsdPerformanceFallback(points) {
+  let cumulativeUsd = 1;
+  return (points || []).map((point, index) => {
+    const explicitReturn = Number(point?.usd_return_pct);
+    const explicitDaily = Number(point?.usd_daily_pct);
+    if (Number.isFinite(explicitReturn)) {
+      if (index > 0) cumulativeUsd = 1 + explicitReturn / 100;
+      return point;
+    }
+
+    if (index === 0) {
+      cumulativeUsd = 1;
+      return { ...point, usd_return_pct: 0, usd_daily_pct: 0 };
+    }
+
+    const snapshot = point?.holdings_snapshot || {};
+    const symbolDailyPct = point?.symbol_daily_pct || {};
+    let basis = 0;
+    let pnl = 0;
+    USD_PERFORMANCE_SYMBOLS.forEach((symbol) => {
+      const holding = snapshot[symbol];
+      const dailyPct = Number(symbolDailyPct[symbol]);
+      if (!holding || !Number.isFinite(dailyPct)) return;
+      const cost = Number(holding.shares || 0) * Number(holding.avg_cost || 0);
+      if (!Number.isFinite(cost) || cost <= 0) return;
+      basis += cost;
+      pnl += cost * dailyPct / 100;
+    });
+
+    if (basis <= 0) return point;
+    const fallbackDaily = Number.isFinite(explicitDaily) ? explicitDaily : pnl / basis * 100;
+    cumulativeUsd *= 1 + fallbackDaily / 100;
+    return {
+      ...point,
+      usd_daily_pct: fallbackDaily,
+      usd_return_pct: (cumulativeUsd - 1) * 100,
+    };
+  });
+}
+
 function PerformanceChart({ history }) {
-  const points = history?.points || [];
+  const points = useMemo(() => withUsdPerformanceFallback(history?.points || []), [history?.points]);
   const latest = points[points.length - 1];
   const series = useMemo(() => [
-    ["portfolio_return_pct", "我的组合", TERMINAL_CHART.yellow, 4],
+    ["portfolio_return_pct", "总资产", TERMINAL_CHART.yellow, 4],
+    ["usd_return_pct", "美元资产", TERMINAL_CHART.deepBlue, 3],
     ["001015_return_pct", "沪深300", TERMINAL_CHART.coral, 2],
     ["VOO_return_pct", "VOO", TERMINAL_CHART.violet, 2],
     ["QQQ_return_pct", "QQQ", TERMINAL_CHART.cyan, 2],
@@ -510,7 +600,7 @@ function PerformanceChart({ history }) {
       <div className="performanceStats">
         {series.map(([key, name, color]) => (
           <div className="performanceStat" key={key} style={{ "--series-color": color }}>
-            <span>{key === "portfolio_return_pct" ? "持仓盈亏" : name}</span>
+            <span>{name}</span>
             <strong className={tone(latest?.[key])}>{latest?.[key] == null ? "-" : fmtPct(latest[key])}</strong>
           </div>
         ))}
@@ -526,8 +616,8 @@ function PerformanceLightweightChart({ points, series }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const lineSeriesRef = useRef([]);
-  const cashFlowMarkersRef = useRef(null);
   const pointByTimeRef = useRef(new Map());
+  const [axisMarkers, setAxisMarkers] = useState([]);
   const [tooltip, setTooltip] = useState({ visible: false, left: 0, top: 0, point: null });
 
   useEffect(() => {
@@ -567,12 +657,12 @@ function PerformanceLightweightChart({ points, series }) {
     });
     chartRef.current = chart;
     lineSeriesRef.current = series.map(([, , color, width], index) => {
-      if (index === 0) {
+      if (index <= 1) {
         const portfolioSeries = chart.addSeries(BaselineSeries, {
           baseValue: { type: "price", price: 0 },
           topLineColor: color,
-          topFillColor1: "rgba(250, 204, 21, 0.52)",
-          topFillColor2: "rgba(250, 204, 21, 0.10)",
+          topFillColor1: index === 0 ? "rgba(250, 204, 21, 0.52)" : "rgba(37, 99, 235, 0.42)",
+          topFillColor2: index === 0 ? "rgba(250, 204, 21, 0.10)" : "rgba(37, 99, 235, 0.08)",
           bottomLineColor: color,
           bottomFillColor1: "rgba(250, 204, 21, 0)",
           bottomFillColor2: "rgba(250, 204, 21, 0)",
@@ -580,7 +670,6 @@ function PerformanceLightweightChart({ points, series }) {
           priceLineVisible: false,
           lastValueVisible: true,
         });
-        cashFlowMarkersRef.current = createSeriesMarkers(portfolioSeries, [], { autoScale: true, zOrder: "top" });
         return portfolioSeries;
       }
       return chart.addSeries(LineSeries, {
@@ -607,7 +696,6 @@ function PerformanceLightweightChart({ points, series }) {
     return () => {
       chartRef.current = null;
       lineSeriesRef.current = [];
-      cashFlowMarkersRef.current = null;
       chart.remove();
     };
   }, [series]);
@@ -626,31 +714,47 @@ function PerformanceLightweightChart({ points, series }) {
       }
       line.setData(rows);
     });
-    cashFlowMarkersRef.current?.setMarkers((points || [])
-      .filter((point) => point?.date && point.cash_flow_flag)
-      .map((point) => ({
-        time: point.date,
-        position: "aboveBar",
-        color: TERMINAL_CHART.yellow,
-        shape: "circle",
-        text: "资金",
-      })));
-    if (points?.length) chart.timeScale().fitContent();
+    function updateAxisMarkers() {
+      const markers = (points || [])
+        .filter((point) => point?.date && point.cash_flow_flag)
+        .map((point) => {
+          const coordinate = chart.timeScale().timeToCoordinate(point.date);
+          return Number.isFinite(coordinate) ? { date: point.date, left: coordinate } : null;
+        })
+        .filter(Boolean);
+      setAxisMarkers(markers);
+    }
+    if (points?.length) {
+      chart.timeScale().fitContent();
+      window.requestAnimationFrame(updateAxisMarkers);
+    } else {
+      setAxisMarkers([]);
+    }
+    chart.timeScale().subscribeVisibleTimeRangeChange(updateAxisMarkers);
+    return () => chart.timeScale().unsubscribeVisibleTimeRangeChange(updateAxisMarkers);
   }, [points, series]);
 
   return (
     <div className="performanceLwCanvas" ref={containerRef}>
+      <div className="performanceAxisMarkers" aria-hidden="true">
+        {axisMarkers.map((marker) => (
+          <span className="performanceAxisMarker" key={marker.date} style={{ left: marker.left }}>T</span>
+        ))}
+      </div>
       {tooltip.visible && tooltip.point ? (
         <div className="performanceTooltip" style={{ left: tooltip.left, top: tooltip.top }}>
           <strong>{tooltip.point.date}</strong>
           <span className={tone(tooltip.point.portfolio_daily_pct)}>
-            当日 {tooltip.point.portfolio_daily_pct == null ? "-" : fmtPct(tooltip.point.portfolio_daily_pct)}
+            总资产当日 {tooltip.point.portfolio_daily_pct == null ? "-" : fmtPct(tooltip.point.portfolio_daily_pct)}
+          </span>
+          <span className={tone(tooltip.point.usd_daily_pct)}>
+            美元资产当日 {tooltip.point.usd_daily_pct == null ? "-" : fmtPct(tooltip.point.usd_daily_pct)}
           </span>
           <span className={tone(tooltip.point.holding_pnl_cny)}>
-            总盈亏 {tooltip.point.holding_pnl_cny == null ? "-" : fmtMoney(tooltip.point.holding_pnl_cny, "CNY")}
+            总资产盈亏 {tooltip.point.holding_pnl_cny == null ? "-" : fmtMoney(tooltip.point.holding_pnl_cny, "CNY")}
           </span>
-          <span className={tone(tooltip.point.holding_daily_pnl_cny)}>
-            当日盈亏 {tooltip.point.holding_daily_pnl_cny == null ? "-" : fmtMoney(tooltip.point.holding_daily_pnl_cny, "CNY")}
+          <span className={tone(tooltip.point.usd_pnl_usd)}>
+            美元资产盈亏 {tooltip.point.usd_pnl_usd == null ? "-" : fmtMoney(tooltip.point.usd_pnl_usd, "USD")}
           </span>
           {tooltip.point.cash_flow_flag ? (
             <span>资金流/交易 {fmtMoney(tooltip.point.cash_flow_cny || 0, "CNY")}</span>
@@ -1299,6 +1403,7 @@ function KlinePage({ dashboardData }) {
 
 function AssetMetricCards({ data, holdings, balances }) {
   const fx = Number(data.summary?.fx || 7.1);
+  const avgFx = Number(data.summary?.avg_fx_rate || fx);
   const rows = data.holdings.map((row) => {
     const draft = holdings[row.symbol] || {};
     const shares = Number(draft.shares ?? row.shares ?? 0);
@@ -1307,7 +1412,7 @@ function AssetMetricCards({ data, holdings, balances }) {
     const value = shares * price;
     const cost = shares * avgCost;
     const isUsd = row.currency === "USD";
-    return { ...row, value, cost, valueCny: isUsd ? value * fx : value, costCny: isUsd ? cost * fx : cost };
+    return { ...row, value, cost, valueCny: isUsd ? value * fx : value, costCny: isUsd ? cost * avgFx : cost };
   });
 
   const usdRows = rows.filter((row) => row.currency === "USD");
@@ -1438,23 +1543,31 @@ function Rebalance({ data, onSaved }) {
     () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row.currency || "USD"])),
     [data.holdings],
   );
+  const backdropPointerStartedOnSelf = useRef(false);
   const defaultTradeDate = previousTradingDateFromShanghai();
   const [activeTradeSymbol, setActiveTradeSymbol] = useState("");
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [universeOpen, setUniverseOpen] = useState(false);
+  const [fxConversionOpen, setFxConversionOpen] = useState(false);
   const [inputs, setInputs] = useState({});
   const [budgetInputs, setBudgetInputs] = useState({});
   const [balanceInputs, setBalanceInputs] = useState({});
+  const [fxInputs, setFxInputs] = useState({});
   const [universeInputs, setUniverseInputs] = useState([]);
   const [editingBalances, setEditingBalances] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingBudget, setSavingBudget] = useState(false);
   const [savingBalances, setSavingBalances] = useState(false);
+  const [savingFxConversion, setSavingFxConversion] = useState(false);
   const [savingUniverse, setSavingUniverse] = useState(false);
   const [deletingTradeId, setDeletingTradeId] = useState("");
+  const [deletingFxConversionId, setDeletingFxConversionId] = useState("");
+  const [tradeHistoryOpen, setTradeHistoryOpen] = useState(false);
+  const [fxHistoryOpen, setFxHistoryOpen] = useState(false);
   const [balanceMessage, setBalanceMessage] = useState("");
   const [tradeMessage, setTradeMessage] = useState("");
+  const [fxConversionMessage, setFxConversionMessage] = useState("");
   const [tradeToast, setTradeToast] = useState(null);
 
   useEffect(() => {
@@ -1503,6 +1616,15 @@ function Rebalance({ data, onSaved }) {
     resetBalanceDraft();
   }, [data.balances, editingBalances]);
 
+  useEffect(() => {
+    setFxInputs((prev) => ({
+      converted_date: prev.converted_date || defaultTradeDate,
+      cny_amount: prev.cny_amount ?? "",
+      usd_amount: prev.usd_amount ?? "",
+      note: prev.note ?? "",
+    }));
+  }, [defaultTradeDate]);
+
   const tradeTotals = useMemo(() => Object.entries(inputs).reduce(
     (totals, item) => {
       const [symbol, value] = item;
@@ -1514,6 +1636,10 @@ function Rebalance({ data, onSaved }) {
     { buy_USD: 0, sell_USD: 0, buy_CNY: 0, sell_CNY: 0 },
   ), [inputs, currencyBySymbol]);
   const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
+  const sortedTrades = useMemo(() => (data.trades || []).slice().reverse(), [data.trades]);
+  const visibleTrades = tradeHistoryOpen ? sortedTrades.slice(0, 20) : sortedTrades.slice(0, 3);
+  const sortedFxConversions = useMemo(() => (data.fx_conversions || []).slice().reverse(), [data.fx_conversions]);
+  const visibleFxConversions = fxHistoryOpen ? sortedFxConversions.slice(0, 20) : sortedFxConversions.slice(0, 3);
 
   function update(symbol, key, value) {
     setInputs((prev) => ({ ...prev, [symbol]: { ...prev[symbol], [key]: value } }));
@@ -1527,8 +1653,22 @@ function Rebalance({ data, onSaved }) {
     setBalanceInputs((prev) => ({ ...prev, [key]: value }));
   }
 
+  function updateFxInput(key, value) {
+    setFxInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
   function updateUniverse(index, key, value) {
     setUniverseInputs((prev) => prev.map((item, idx) => (idx === index ? { ...item, [key]: value } : item)));
+  }
+
+  function trackBackdropPointerDown(event) {
+    backdropPointerStartedOnSelf.current = event.target === event.currentTarget;
+  }
+
+  function shouldCloseFromBackdropClick(event) {
+    const shouldClose = backdropPointerStartedOnSelf.current && event.target === event.currentTarget;
+    backdropPointerStartedOnSelf.current = false;
+    return shouldClose;
   }
 
   function addUniverseRow() {
@@ -1555,6 +1695,16 @@ function Rebalance({ data, onSaved }) {
 
   function openTradeEditor(symbol) {
     setActiveTradeSymbol((prev) => (prev === symbol ? "" : symbol));
+  }
+
+  function openFxConversionEditor() {
+    setFxInputs((prev) => ({
+      converted_date: prev.converted_date || defaultTradeDate,
+      cny_amount: prev.cny_amount ?? "",
+      usd_amount: prev.usd_amount ?? "",
+      note: prev.note ?? "",
+    }));
+    setFxConversionOpen(true);
   }
 
   async function save(symbolToSave = "") {
@@ -1618,6 +1768,66 @@ function Rebalance({ data, onSaved }) {
       showTradeToast(`交易撤销失败：${message}`, "down");
     } finally {
       setDeletingTradeId("");
+    }
+  }
+
+  async function saveFxConversion() {
+    setSavingFxConversion(true);
+    setFxConversionMessage("");
+    try {
+      const response = await fetch(`${API_BASE}/api/fx-conversions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: data.user_id,
+          converted_date: fxInputs.converted_date || defaultTradeDate,
+          cny_amount: Number(fxInputs.cny_amount || 0),
+          usd_amount: Number(fxInputs.usd_amount || 0),
+          note: fxInputs.note || "",
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${response.status}`);
+      }
+      await onSaved();
+      setFxInputs((prev) => ({ ...prev, cny_amount: "", usd_amount: "", note: "" }));
+      setFxConversionOpen(false);
+      showTradeToast("购汇记录已保存", "up");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setFxConversionMessage(message);
+      showTradeToast(`购汇保存失败：${message}`, "down");
+    } finally {
+      setSavingFxConversion(false);
+    }
+  }
+
+  async function deleteFxConversion(record) {
+    const recordId = String(record.id || "");
+    if (!recordId) return;
+    const confirmed = window.confirm(`确认撤销 ${record.converted_date || ""} 购汇记录？`);
+    if (!confirmed) return;
+    setDeletingFxConversionId(recordId);
+    setFxConversionMessage("");
+    try {
+      const response = await fetch(`${API_BASE}/api/fx-conversions/${encodeURIComponent(recordId)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: data.user_id }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${response.status}`);
+      }
+      await onSaved();
+      showTradeToast("购汇记录已撤销", "up");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setFxConversionMessage(message);
+      showTradeToast(`购汇撤销失败：${message}`, "down");
+    } finally {
+      setDeletingFxConversionId("");
     }
   }
 
@@ -1703,41 +1913,7 @@ function Rebalance({ data, onSaved }) {
         <button className="primary" onClick={() => setEditingBalances(true)}>编辑现金</button>
         <button className="primary" onClick={openUniverseEditor}>编辑卫星标的</button>
         <button className="primary" onClick={() => openTradeEditor(tradeRows[0]?.symbol || "")}>记录一条买卖</button>
-      </div>
-      <div className="sectionHeader subHeader">
-        <h2>交易记录</h2>
-        <span className="muted">买入或卖出后会按交易日期重算该日之后的收益曲线</span>
-      </div>
-      {tradeMessage ? <div className="saveMessage down">{tradeMessage}</div> : null}
-      <div className="tableWrap">
-        <table>
-          <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>股数</th><th>成交金额</th><th>成交成本</th><th>收盘差额</th><th>持仓成本变化</th><th>档位</th><th>操作</th></tr></thead>
-          <tbody>
-            {(data.trades || []).slice().reverse().slice(0, 20).map((trade, index) => (
-              <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
-                <td>{trade.trade_date || trade.date || "-"}</td>
-                <td>{trade.symbol}</td>
-                <td>{trade.action === "sell" ? "卖出" : "买入"}</td>
-                <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
-                <td>{fmtMoney(trade.price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}</td>
-                <td className={tone(trade.close_effect)} title={trade.close_price ? `当日收盘 ${fmtMoney(trade.close_price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}` : ""}>
-                  {fmtTradeCloseEffect(trade, currencyBySymbol[trade.symbol] || "USD")}
-                </td>
-                <td>{fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}</td>
-                <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.intensity || "-"}</span></td>
-                <td>
-                  <button onClick={() => deleteTrade(trade)} disabled={deletingTradeId === trade.id}>
-                    {deletingTradeId === trade.id ? "撤销中" : "撤销"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!(data.trades || []).length ? (
-              <tr><td colSpan={10} className="muted">暂无交易记录</td></tr>
-            ) : null}
-          </tbody>
-        </table>
+        <button className="primary" onClick={openFxConversionEditor}>记录换汇</button>
       </div>
       <div className="sectionHeader">
         <h2>再平衡建议</h2>
@@ -1754,7 +1930,9 @@ function Rebalance({ data, onSaved }) {
         <button onClick={() => setRulesOpen(true)}>算法规则</button>
       </div>
       {budgetOpen ? (
-        <div className="modalBackdrop" role="presentation" onClick={() => setBudgetOpen(false)}>
+        <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
+          if (shouldCloseFromBackdropClick(event)) setBudgetOpen(false);
+        }}>
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>预算设置</h2>
@@ -1777,7 +1955,9 @@ function Rebalance({ data, onSaved }) {
         </div>
       ) : null}
       {rulesOpen ? (
-        <div className="modalBackdrop" role="presentation" onClick={() => setRulesOpen(false)}>
+        <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
+          if (shouldCloseFromBackdropClick(event)) setRulesOpen(false);
+        }}>
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader"><h2>{data.rebalance.rules?.title || "算法规则"}</h2><button onClick={() => setRulesOpen(false)}>关闭</button></div>
             {(data.rebalance.rules?.sections || []).map((section) => (
@@ -1790,8 +1970,8 @@ function Rebalance({ data, onSaved }) {
         </div>
       ) : null}
       {universeOpen ? (
-        <div className="modalBackdrop" role="presentation" onClick={(event) => {
-          if (event.target === event.currentTarget) setUniverseOpen(false);
+        <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
+          if (shouldCloseFromBackdropClick(event)) setUniverseOpen(false);
         }}>
           <div className="modalPanel satelliteUniverseModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
@@ -1844,14 +2024,11 @@ function Rebalance({ data, onSaved }) {
         <table>
           <thead>
             <tr>
-              <th>标的</th><th>目前占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>实际差值（分配后）</th><th>净买入</th><th>档位</th><th>估值/追高系数</th><th>说明</th>
+              <th>标的</th><th>目前占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>实际差值</th><th>净买入</th><th>档位</th><th>估值/追高系数</th><th>说明</th>
             </tr>
           </thead>
           <tbody>
             {suggestionRows.map((row) => {
-              const suggestedActionUsd = Number(row.suggested_sell_usd || 0) > Number(row.suggested_buy_usd || 0)
-                ? -Number(row.suggested_sell_usd || 0)
-                : Number(row.suggested_buy_usd || 0);
               return (
                 <React.Fragment key={row.symbol}>
                   <tr>
@@ -1865,9 +2042,6 @@ function Rebalance({ data, onSaved }) {
                     </td>
                     <td className="planCell">
                       <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</div>
-                      <div className={`cellSubtext ${tone(suggestedActionUsd)}`}>
-                        分配后 {fmtMoney(suggestedActionUsd, row.currency || "USD")}
-                      </div>
                     </td>
                     <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
                     <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
@@ -1880,12 +2054,122 @@ function Rebalance({ data, onSaved }) {
           </tbody>
         </table>
       </div>
+      <div className="tradeHistoryBlock">
+        <div className="sectionHeader subHeader">
+          <div>
+            <h2>交易记录</h2>
+            <span className="muted">买入或卖出后会按交易日期重算该日之后的收益曲线</span>
+          </div>
+          {sortedTrades.length > 3 ? (
+            <button onClick={() => setTradeHistoryOpen((value) => !value)}>
+              {tradeHistoryOpen ? "收起" : "显示更多"}
+            </button>
+          ) : null}
+        </div>
+        {tradeMessage ? <div className="saveMessage down">{tradeMessage}</div> : null}
+        <div className="tableWrap">
+          <table>
+            <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>股数</th><th>成交金额</th><th>成交成本</th><th>收盘差额</th><th>持仓成本变化</th><th>档位</th><th>操作</th></tr></thead>
+            <tbody>
+              {visibleTrades.map((trade, index) => (
+                <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
+                  <td>{trade.trade_date || trade.date || "-"}</td>
+                  <td>{trade.symbol}</td>
+                  <td>{trade.action === "sell" ? "卖出" : "买入"}</td>
+                  <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                  <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
+                  <td>{fmtMoney(trade.price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}</td>
+                  <td className={tone(trade.close_effect)} title={trade.close_price ? `当日收盘 ${fmtMoney(trade.close_price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}` : ""}>
+                    {fmtTradeCloseEffect(trade, currencyBySymbol[trade.symbol] || "USD")}
+                  </td>
+                  <td>{fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}</td>
+                  <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{tierLabel(trade.intensity)}</span></td>
+                  <td>
+                    <button onClick={() => deleteTrade(trade)} disabled={deletingTradeId === trade.id}>
+                      {deletingTradeId === trade.id ? "撤销中" : "撤销"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!sortedTrades.length ? (
+                <tr><td colSpan={10} className="muted">暂无交易记录</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="fxConversionBlock">
+        <div className="sectionHeader subHeader">
+          <div>
+            <h2>购汇记录</h2>
+            <span className="muted">
+              平均汇率 {Number(data.summary?.avg_fx_rate || data.summary?.fx || 0).toFixed(4)} ·
+              已购汇 {fmtMoney(data.summary?.fx_conversion_total_usd || 0, "USD")} / {fmtMoney(data.summary?.fx_conversion_total_cny || 0, "CNY")} ·
+              美元持仓汇兑影响 <span className={tone(data.summary?.usd_fx_pnl_cny)}>{fmtMoney(data.summary?.usd_fx_pnl_cny || 0, "CNY")}</span>
+            </span>
+          </div>
+          {sortedFxConversions.length > 3 ? (
+            <button onClick={() => setFxHistoryOpen((value) => !value)}>
+              {fxHistoryOpen ? "收起" : "显示更多"}
+            </button>
+          ) : null}
+        </div>
+        {fxConversionMessage ? <div className="saveMessage down">{fxConversionMessage}</div> : null}
+        <div className="tableWrap">
+          <table>
+            <thead><tr><th>日期</th><th>人民币金额</th><th>美元金额</th><th>汇率</th><th>备注</th><th>操作</th></tr></thead>
+            <tbody>
+              {visibleFxConversions.map((record) => (
+                <tr key={record.id}>
+                  <td>{record.converted_date || "-"}</td>
+                  <td>{fmtMoney(record.cny_amount, "CNY")}</td>
+                  <td>{fmtMoney(record.usd_amount, "USD")}</td>
+                  <td>{Number(record.rate || 0).toFixed(4)}</td>
+                  <td>{record.note || "-"}</td>
+                  <td>
+                    <button onClick={() => deleteFxConversion(record)} disabled={deletingFxConversionId === record.id}>
+                      {deletingFxConversionId === record.id ? "撤销中" : "撤销"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!sortedFxConversions.length ? (
+                <tr><td colSpan={6} className="muted">暂无购汇记录</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {fxConversionOpen ? (
+        <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
+          if (shouldCloseFromBackdropClick(event)) setFxConversionOpen(false);
+        }}>
+          <div className="modalPanel fxConversionModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <h2>记录换汇</h2>
+              <button onClick={() => setFxConversionOpen(false)} disabled={savingFxConversion}>关闭</button>
+            </div>
+            <div className="fxConversionEditor">
+              <label>日期<input type="date" value={fxInputs.converted_date || defaultTradeDate} onChange={(event) => updateFxInput("converted_date", event.target.value)} /></label>
+              <label>人民币金额<input value={fxInputs.cny_amount ?? ""} onChange={(event) => updateFxInput("cny_amount", event.target.value)} inputMode="decimal" /></label>
+              <label>美元金额<input value={fxInputs.usd_amount ?? ""} onChange={(event) => updateFxInput("usd_amount", event.target.value)} inputMode="decimal" /></label>
+              <label>备注<input value={fxInputs.note ?? ""} onChange={(event) => updateFxInput("note", event.target.value)} /></label>
+            </div>
+            <div className="actions">
+              <button onClick={() => setFxConversionOpen(false)} disabled={savingFxConversion}>取消</button>
+              <button className="primary" onClick={saveFxConversion} disabled={savingFxConversion}><Save size={16} /> 保存换汇</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {activeTradeSymbol ? (() => {
         const row = tradeRows.find((item) => item.symbol === activeTradeSymbol);
         const currentInput = inputs[activeTradeSymbol] || {};
         if (!row) return null;
         return (
-          <div className="modalBackdrop" role="presentation" onClick={() => setActiveTradeSymbol("")}>
+          <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
+            if (shouldCloseFromBackdropClick(event)) setActiveTradeSymbol("");
+          }}>
             <div className="modalPanel singleTradeModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className="sectionHeader">
                 <h2>记录买卖 · {row.symbol}</h2>
@@ -1939,7 +2223,12 @@ function Rebalance({ data, onSaved }) {
       })() : null}
       {balanceMessage ? <div className={balanceMessage === "现金与已变现已保存" ? "saveMessage up" : "saveMessage down"}>{balanceMessage}</div> : null}
       {editingBalances ? (
-        <div className="modalBackdrop" role="presentation" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }}>
+        <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
+          if (shouldCloseFromBackdropClick(event)) {
+            resetBalanceDraft();
+            setEditingBalances(false);
+          }
+        }}>
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>现金与已变现</h2>

@@ -11,6 +11,7 @@ from .config import (
     DEFAULT_SATELLITE_TARGET_PCTS,
     FALLBACK_PRICES,
     HOLDINGS_FILE,
+    FX_CONVERSION_RECORDS_FILE,
     MONTHLY_USAGE_FILE,
     PORTFOLIO_HISTORY_FILE,
     SATELLITE_SYMBOLS,
@@ -280,7 +281,20 @@ def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
                 clean["holding_daily_pnl_pct"] = float(item.get("holding_daily_pnl_pct", 0.0))
             except (TypeError, ValueError):
                 clean["holding_daily_pnl_pct"] = None
-        for key in ("holding_pnl_cny", "holding_cost_cny", "holding_daily_pnl_cny", "holding_daily_basis_cny", "cash_flow_cny"):
+        for key in (
+            "holding_pnl_cny",
+            "holding_cost_cny",
+            "holding_daily_pnl_cny",
+            "holding_daily_basis_cny",
+            "usd_return_pct",
+            "usd_pnl_usd",
+            "usd_cost_usd",
+            "usd_value_usd",
+            "usd_daily_pct",
+            "usd_daily_pnl_usd",
+            "usd_daily_basis_usd",
+            "cash_flow_cny",
+        ):
             if key in item:
                 try:
                     clean[key] = float(item.get(key, 0.0))
@@ -444,6 +458,77 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
                 "prev_avg_cost": prev_avg_cost,
                 "new_avg_cost": new_avg_cost,
                 "intensity": str(item.get("intensity") or "normal"),
+                "created_at": str(item.get("created_at") or ""),
+            }
+        )
+    return normalized
+
+
+def load_fx_conversion_records(user_id: str = "evan") -> list[dict[str, Any]]:
+    raw = _read_json(FX_CONVERSION_RECORDS_FILE, {})
+    user_key = str(user_id or "local").strip() or "local"
+    rows = raw.get(user_key, []) if isinstance(raw, dict) else []
+    if not isinstance(rows, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        converted_date = str(item.get("converted_date") or item.get("date") or "").strip()[:10]
+        if not converted_date:
+            continue
+        try:
+            cny_amount = max(0.0, float(item.get("cny_amount", 0.0) or 0.0))
+            usd_amount = max(0.0, float(item.get("usd_amount", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            continue
+        if cny_amount <= 0 or usd_amount <= 0:
+            continue
+        out.append(
+            {
+                "id": str(item.get("id") or f"{converted_date}-{len(out)}"),
+                "converted_date": converted_date,
+                "cny_amount": cny_amount,
+                "usd_amount": usd_amount,
+                "rate": cny_amount / usd_amount,
+                "note": str(item.get("note") or ""),
+                "created_at": str(item.get("created_at") or ""),
+            }
+        )
+    return sorted(out, key=lambda row: (row["converted_date"], row["created_at"], row["id"]))
+
+
+def save_fx_conversion_records(user_id: str, rows: list[dict[str, Any]]) -> None:
+    raw = _read_json(FX_CONVERSION_RECORDS_FILE, {})
+    store = raw if isinstance(raw, dict) else {}
+    user_key = str(user_id or "local").strip() or "local"
+    store[user_key] = load_fx_conversion_records_from_rows(rows)
+    _write_json(FX_CONVERSION_RECORDS_FILE, store)
+
+
+def load_fx_conversion_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        converted_date = str(item.get("converted_date") or item.get("date") or "").strip()[:10]
+        if not converted_date:
+            continue
+        try:
+            cny_amount = max(0.0, float(item.get("cny_amount", 0.0) or 0.0))
+            usd_amount = max(0.0, float(item.get("usd_amount", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            continue
+        if cny_amount <= 0 or usd_amount <= 0:
+            continue
+        normalized.append(
+            {
+                "id": str(item.get("id") or f"{converted_date}-{len(normalized)}"),
+                "converted_date": converted_date,
+                "cny_amount": cny_amount,
+                "usd_amount": usd_amount,
+                "rate": cny_amount / usd_amount,
+                "note": str(item.get("note") or ""),
                 "created_at": str(item.get("created_at") or ""),
             }
         )

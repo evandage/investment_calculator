@@ -27,7 +27,15 @@ from .market_data import (
     stop_futu_quote_subscription,
 )
 from .ohlcv import fetch_ohlcv
-from .portfolio import build_dashboard, confirm_trades, delete_trade_record, save_rebalance_budget, start_performance_history_scheduler
+from .portfolio import (
+    add_fx_conversion_record,
+    build_dashboard,
+    confirm_trades,
+    delete_fx_conversion_record,
+    delete_trade_record,
+    save_rebalance_budget,
+    start_performance_history_scheduler,
+)
 from .storage import load_balances, load_holdings, load_satellite_targets, save_balances, save_holdings, save_satellite_targets
 
 TZ_SHANGHAI = config_module.TZ_SHANGHAI
@@ -76,6 +84,14 @@ class RebalanceBudgetPayload(BaseModel):
 
 class DeleteTradePayload(BaseModel):
     user_id: str = "evan"
+
+
+class FxConversionPayload(BaseModel):
+    user_id: str = "evan"
+    converted_date: str | None = None
+    cny_amount: float
+    usd_amount: float
+    note: str = ""
 
 
 def _chart_symbols() -> set[str]:
@@ -531,6 +547,26 @@ def confirm_execution(payload: ExecutionPayload) -> dict[str, Any]:
 def delete_trade(trade_id: str, payload: DeleteTradePayload) -> dict[str, Any]:
     try:
         result = delete_trade_record(payload.user_id, trade_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["dashboard"] = build_dashboard(payload.user_id)
+    return result
+
+
+@app.post("/api/fx-conversions")
+def add_fx_conversion(payload: FxConversionPayload) -> dict[str, Any]:
+    try:
+        result = add_fx_conversion_record(payload.user_id, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["dashboard"] = build_dashboard(payload.user_id)
+    return result
+
+
+@app.delete("/api/fx-conversions/{record_id}")
+def delete_fx_conversion(record_id: str, payload: DeleteTradePayload) -> dict[str, Any]:
+    try:
+        result = delete_fx_conversion_record(payload.user_id, record_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result["dashboard"] = build_dashboard(payload.user_id)

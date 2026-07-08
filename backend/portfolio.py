@@ -29,11 +29,13 @@ from .config import (
 from .market_data import fetch_quotes
 from .storage import (
     load_monthly_usage,
+    load_fx_conversion_records,
     load_portfolio_history,
     load_trade_records,
     load_satellite_targets,
     load_user_state,
     save_monthly_usage,
+    save_fx_conversion_records,
     save_portfolio_history,
     save_trade_records,
     save_user_state,
@@ -50,7 +52,7 @@ PERFORMANCE_WRITE_HOUR = 8
 US_MARKET_CLOSE_MINUTE = 16 * 60
 PERFORMANCE_HISTORY_START_DATE = "2026-07-07"
 PERFORMANCE_CHART_START_DATE = "2026-07-07"
-PERFORMANCE_CHART_BASELINE_DATE = "2026-07-06"
+PERFORMANCE_CHART_BASELINE_DATE = "2026-07-07"
 FUND_HISTORY_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -119,18 +121,18 @@ def rebalance_rules_payload(
                 "heading": "建仓期分母",
                 "items": [
                     f"建仓期默认计算到 {BUILD_TARGET_YEAR}-{BUILD_TARGET_MONTH:02d}，当前共 {build_months} 个月。",
-                    f"未来入金按下个月起计算，共 {future_cash_months} 个月，每月 USD {planned_new_cash_usd:,.2f}。",
-                    "目标分母 = 当前美元持仓 + USD 现金 + 未来每月计划入金；SGOV 已包含在当前美元资产内，超过 20% 的部分只进入可动用资金池，不重复加进目标分母。",
+                    f"未来入金仍保留为预算参考，共 {future_cash_months} 个月，每月 USD {planned_new_cash_usd:,.2f}，但本轮建议只使用当前可释放资金。",
+                    "目标分母 = USD 现金 + SGOV 当前金额 + 各美元标的持仓成本金额；是否接近目标优先看成本占比，而不是市值占比。",
                 ],
             },
             {
                 "heading": "建议金额",
                 "items": [
-                    "先用月初口径持仓计算缺口：月初口径 = 当前持仓金额 - 本月已买金额。",
-                    "VOO/QQQ 再按剩余月份和档位倍率计算本月计划应买。",
+                    "先用持仓成本金额计算缺口；如果成本口径已接近目标，即使股价下跌导致市值缩水，也不重复提示买入。",
+                    "VOO/QQQ 再按剩余月份和档位倍率计算本轮计划应买。",
                     f"卫星股以10月底目标金额为 1x；{zero_target_note}",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股主要看 Forward PE，PLTR/TEM 用 60 日历史涨跌位置定档，VOO 仍按回撤触发档位，近 5 日涨幅偏热时只做备注提示。",
-                    "可动用资金不足时按比例缩放计划应买；卫星股按当前持仓计算实时缺口，不再使用本月累计买入作为月度封顶。",
+                    "建议买入总额受 USD 现金与 SGOV 安全线以上可释放额度限制；可动用资金不足时按比例缩放计划应买。",
                 ],
             },
             {
@@ -333,6 +335,17 @@ def pe_judgment(symbol: str, forward_pe: float | None) -> str:
     if forward_pe <= high:
         return "合理"
     return "偏贵"
+
+
+def fx_conversion_summary(records: list[dict[str, Any]], fallback_fx: float) -> dict[str, float]:
+    total_cny = sum(max(0.0, float(row.get("cny_amount", 0.0) or 0.0)) for row in records)
+    total_usd = sum(max(0.0, float(row.get("usd_amount", 0.0) or 0.0)) for row in records)
+    avg_rate = total_cny / total_usd if total_usd > 0 else fallback_fx
+    return {
+        "total_cny": total_cny,
+        "total_usd": total_usd,
+        "avg_rate": avg_rate,
+    }
 
 
 def valuation_split_for_row(symbol: str, item: dict[str, Any]) -> tuple[float, str]:
@@ -688,6 +701,8 @@ def completed_portfolio_daily_pct(
     histories: dict[str, dict[str, float]],
     fx: float,
     day_trades: list[dict[str, Any]] | None = None,
+    symbols: set[str] | None = None,
+    native_usd: bool = False,
 ) -> tuple[float, dict[str, float], float, float]:
     symbol_daily_pct: dict[str, float] = {}
     symbol_basis: dict[str, float] = {}
@@ -704,6 +719,8 @@ def completed_portfolio_daily_pct(
         trades_by_symbol.setdefault(sym, []).append(trade)
 
     for sym, holding in holdings_snapshot.items():
+        if symbols is not None and sym not in symbols:
+            continue
         close_price = close_on(histories.get(sym, {}), day)
         prev_price = close_on_or_before(histories.get(sym, {}), prev_day)
         if prev_price is None:
@@ -729,7 +746,7 @@ def completed_portfolio_daily_pct(
                 old_shares -= shares
         old_shares = max(0.0, old_shares)
 
-        multiplier = fx if sym in USD_SYMBOLS else 1.0
+        multiplier = 1.0 if native_usd else (fx if sym in USD_SYMBOLS else 1.0)
         remaining_old_shares = old_shares
         basis = 0.0
         pnl = 0.0
@@ -768,16 +785,20 @@ def holding_pnl_pct_for_snapshot(
     holdings_snapshot: dict[str, dict[str, float]],
     prices: dict[str, float],
     fx: float,
+    symbols: set[str] | None = None,
+    native_usd: bool = False,
 ) -> dict[str, float]:
     total_value = 0.0
     total_cost = 0.0
     for sym, holding in holdings_snapshot.items():
+        if symbols is not None and sym not in symbols:
+            continue
         price = float(prices.get(sym) or 0.0)
         shares = max(0.0, float(holding.get("shares", 0.0) or 0.0))
         avg_cost = max(0.0, float(holding.get("avg_cost", 0.0) or 0.0))
         if price <= 0 or shares <= 0 or avg_cost <= 0:
             continue
-        multiplier = fx if sym in USD_SYMBOLS else 1.0
+        multiplier = 1.0 if native_usd else (fx if sym in USD_SYMBOLS else 1.0)
         total_value += shares * price * multiplier
         total_cost += shares * avg_cost * multiplier
     total_pnl = total_value - total_cost
@@ -979,6 +1000,39 @@ def ensure_completed_performance_history(
     trades = load_trade_records(user_id)
     symbols = set(holdings) | {str(trade.get("symbol", "")).upper() for trade in trades} | {"001015", "VOO", "QQQ"}
     histories = fetch_close_histories(symbols)
+    backfilled = False
+    for row in rows:
+        if row.get("usd_return_pct") is not None or not row.get("holdings_snapshot"):
+            continue
+        day = str(row.get("date") or "")[:10]
+        if not day:
+            continue
+        snapshot = row.get("holdings_snapshot") or {}
+        holding_prices = {
+            sym: price
+            for sym in snapshot
+            if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
+        }
+        usd_holding_pnl = holding_pnl_pct_for_snapshot(snapshot, holding_prices, fx, set(USD_SYMBOLS), True)
+        usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
+            snapshot,
+            day,
+            histories,
+            fx,
+            trades,
+            set(USD_SYMBOLS),
+            True,
+        )
+        row["usd_return_pct"] = usd_holding_pnl["pct"]
+        row["usd_pnl_usd"] = usd_holding_pnl["amount_cny"]
+        row["usd_cost_usd"] = usd_holding_pnl["cost_cny"]
+        row["usd_value_usd"] = usd_holding_pnl["value_cny"]
+        row["usd_daily_pct"] = usd_daily_pct
+        row["usd_daily_pnl_usd"] = holding_daily_pnl_usd
+        row["usd_daily_basis_usd"] = holding_daily_basis_usd
+        backfilled = True
+    if backfilled:
+        save_portfolio_history(user_id, sorted(rows, key=lambda row: row["date"]))
     missing_days = [
         day
         for day in date_range(start_day, completed_day)
@@ -989,6 +1043,15 @@ def ensure_completed_performance_history(
     for day in missing_days:
         holdings_snapshot = holdings_snapshot_for_day(day, holdings, sorted(rows_by_date.values(), key=lambda item: item["date"]), trades)
         portfolio_daily_pct, symbol_daily_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(holdings_snapshot, day, histories, fx, trades)
+        usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
+            holdings_snapshot,
+            day,
+            histories,
+            fx,
+            trades,
+            set(USD_SYMBOLS),
+            True,
+        )
         benchmark_daily_pct = {
             sym: (daily_pct if daily_pct is not None else 0.0)
             for sym in ("001015", "VOO", "QQQ")
@@ -1005,6 +1068,7 @@ def ensure_completed_performance_history(
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
         holding_pnl = holding_pnl_pct_for_snapshot(holdings_snapshot, holding_prices, fx)
+        usd_holding_pnl = holding_pnl_pct_for_snapshot(holdings_snapshot, holding_prices, fx, set(USD_SYMBOLS), True)
         day_cash_flow_cny = sum(
             max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
             for trade in trades
@@ -1020,6 +1084,13 @@ def ensure_completed_performance_history(
             "holding_daily_pnl_pct": portfolio_daily_pct,
             "holding_daily_pnl_cny": holding_daily_pnl_cny,
             "holding_daily_basis_cny": holding_daily_basis_cny,
+            "usd_return_pct": usd_holding_pnl["pct"],
+            "usd_pnl_usd": usd_holding_pnl["amount_cny"],
+            "usd_cost_usd": usd_holding_pnl["cost_cny"],
+            "usd_value_usd": usd_holding_pnl["value_cny"],
+            "usd_daily_pct": usd_daily_pct,
+            "usd_daily_pnl_usd": holding_daily_pnl_usd,
+            "usd_daily_basis_usd": holding_daily_basis_usd,
             "cash_flow_cny": day_cash_flow_cny,
             "cash_flow_flag": day_cash_flow_cny > 0,
             "total_assets_cny": 0.0,
@@ -1067,6 +1138,12 @@ def build_performance_history(
     holding_pnl_cny: float,
     holding_daily_pnl_cny: float,
     holding_daily_basis_cny: float,
+    usd_return_pct: float,
+    usd_pnl_usd: float,
+    usd_cost_usd: float,
+    usd_daily_pct: float,
+    usd_daily_pnl_usd: float,
+    usd_daily_basis_usd: float,
     cash_flow_cny: float,
 ) -> dict[str, Any]:
     now = datetime.now(TZ_SHANGHAI)
@@ -1109,6 +1186,12 @@ def build_performance_history(
         "holding_daily_pnl_pct": portfolio_daily_pct,
         "holding_daily_pnl_cny": holding_daily_pnl_cny,
         "holding_daily_basis_cny": holding_daily_basis_cny,
+        "usd_return_pct": usd_return_pct,
+        "usd_pnl_usd": usd_pnl_usd,
+        "usd_cost_usd": usd_cost_usd,
+        "usd_daily_pct": usd_daily_pct,
+        "usd_daily_pnl_usd": usd_daily_pnl_usd,
+        "usd_daily_basis_usd": usd_daily_basis_usd,
         "cash_flow_cny": cash_flow_cny,
         "cash_flow_flag": cash_flow_cny > 0,
         "total_assets_cny": total_assets_cny,
@@ -1124,6 +1207,7 @@ def build_performance_history(
     rows_by_date = {row["date"]: row for row in rows}
     if is_weekday(today):
         rows_by_date[today] = current
+        save_portfolio_history(user_id, sorted(rows_by_date.values(), key=lambda row: row["date"]))
     rows = sorted(
         (row for row in rows_by_date.values() if str(row.get("date", "")) >= PERFORMANCE_CHART_START_DATE),
         key=lambda row: row["date"],
@@ -1139,6 +1223,8 @@ def build_performance_history(
             "date": PERFORMANCE_CHART_BASELINE_DATE,
             "portfolio_return_pct": 0.0,
             "portfolio_daily_pct": 0.0,
+            "usd_return_pct": 0.0,
+            "usd_daily_pct": 0.0,
             "market_open_symbols": list(benchmark_symbols),
         }
         for sym in benchmark_symbols:
@@ -1147,6 +1233,8 @@ def build_performance_history(
         points.append(baseline_point)
 
     for row_index, row in enumerate(rows):
+        if str(row.get("date", "")) <= PERFORMANCE_CHART_BASELINE_DATE:
+            continue
         portfolio_daily = coerce_optional_float(row.get("portfolio_daily_pct"))
         holding_daily = coerce_optional_float(row.get("holding_daily_pnl_pct"))
         if holding_daily is not None:
@@ -1164,9 +1252,17 @@ def build_performance_history(
             "holding_cost_cny": coerce_optional_float(row.get("holding_cost_cny")),
             "holding_daily_pnl_cny": coerce_optional_float(row.get("holding_daily_pnl_cny")),
             "holding_daily_basis_cny": coerce_optional_float(row.get("holding_daily_basis_cny")),
+            "usd_return_pct": coerce_optional_float(row.get("usd_return_pct")),
+            "usd_daily_pct": coerce_optional_float(row.get("usd_daily_pct")),
+            "usd_pnl_usd": coerce_optional_float(row.get("usd_pnl_usd")),
+            "usd_cost_usd": coerce_optional_float(row.get("usd_cost_usd")),
+            "usd_daily_pnl_usd": coerce_optional_float(row.get("usd_daily_pnl_usd")),
+            "usd_daily_basis_usd": coerce_optional_float(row.get("usd_daily_basis_usd")),
             "cash_flow_cny": coerce_optional_float(row.get("cash_flow_cny")) or 0.0,
             "cash_flow_flag": bool(row.get("cash_flow_flag")),
             "market_open_symbols": row.get("market_open_symbols") or [],
+            "symbol_daily_pct": row.get("symbol_daily_pct") or {},
+            "holdings_snapshot": row.get("holdings_snapshot") or {},
         }
         daily_pcts = row.get("benchmark_daily_pct") or {}
         if isinstance(daily_pcts, dict):
@@ -1279,11 +1375,14 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     quotes = market["quotes"]
     fx = float(market["fx"]["rate"])
     holdings, balances, storage_mode = load_user_state(user_id)
+    fx_conversions = load_fx_conversion_records(user_id)
+    fx_conversion_stats = fx_conversion_summary(fx_conversions, fx)
+    usd_cost_fx = float(fx_conversion_stats["avg_rate"] or fx)
     raw_holdings = holdings
     history_day = performance_history_date()
     finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
     trades = load_trade_records(user_id)
-    holdings = holdings_snapshot_for_day(history_day, raw_holdings, finalized_rows, trades)
+    holdings = raw_holdings
     for sym in ALL_SYMBOLS:
         holdings.setdefault(sym, raw_holdings.get(sym, {"shares": 0.0, "avg_cost": 0.0}))
     forward_pe = market.get("forward_pe", {})
@@ -1315,7 +1414,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         value = shares * price
         cost = shares * avg_cost
         value_cny = value * fx if meta["currency"] == "USD" else value
-        cost_cny = cost * fx if meta["currency"] == "USD" else cost
+        cost_cny = cost * usd_cost_fx if meta["currency"] == "USD" else cost
         pnl = value - cost
         pnl_cny = value_cny - cost_cny
         total_value_cny += value_cny
@@ -1473,8 +1572,31 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         _daily_amount(value_cny_by_symbol.get(s, 0.0), history_daily_pct_for_symbol(s, quotes[s], history_day, history_now))
         for s in ALL_SYMBOLS
     )
+    usd_value_usd = sum(value_cny_by_symbol.get(s, 0.0) / fx for s in USD_SYMBOLS) if fx > 0 else 0.0
+    usd_cost_usd = sum(
+        float(holdings[s].get("shares", 0.0) or 0.0) * float(holdings[s].get("avg_cost", 0.0) or 0.0)
+        for s in USD_SYMBOLS
+    )
+    usd_pnl_usd = usd_value_usd - usd_cost_usd
+    usd_return_pct = usd_pnl_usd / usd_cost_usd * 100.0 if usd_cost_usd > 0 else 0.0
+    usd_daily_pnl_usd = sum(
+        _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, history_daily_pct_for_symbol(s, quotes[s], history_day, history_now))
+        for s in USD_SYMBOLS
+    )
+    usd_daily_basis_usd = usd_value_usd
+    usd_daily_pct = (
+        usd_daily_pnl_usd / (usd_value_usd - usd_daily_pnl_usd) * 100.0
+        if usd_value_usd - usd_daily_pnl_usd > 0
+        else 0.0
+    )
     total_pnl_cny = total_value_cny - total_cost_cny
     total_pnl_pct = total_pnl_cny / total_cost_cny * 100.0 if total_cost_cny > 0 else 0.0
+    usd_position_value_usd = sum(
+        float(holdings[sym].get("shares", 0.0) or 0.0) * float(quotes[sym].get("price") or 0.0)
+        for sym in USD_SYMBOLS
+    )
+    usd_fx_pnl_cny = usd_position_value_usd * (fx - usd_cost_fx)
+    current_rows = [row for row in rows if float(row.get("shares", 0.0) or 0.0) > 1e-9]
     today_cash_flow_cny = sum(
         max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
         for trade in trades
@@ -1492,6 +1614,12 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         total_pnl_cny,
         weighted_daily_change_cny,
         total_value_cny,
+        usd_return_pct,
+        usd_pnl_usd,
+        usd_cost_usd,
+        usd_daily_pct,
+        usd_daily_pnl_usd,
+        usd_daily_basis_usd,
         today_cash_flow_cny,
     )
 
@@ -1499,10 +1627,15 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "user_id": user_id,
         "storage_mode": storage_mode,
         "market": market,
-        "holdings": rows,
+        "holdings": current_rows,
         "balances": balances,
+        "fx_conversions": fx_conversions,
         "summary": {
             "fx": fx,
+            "avg_fx_rate": usd_cost_fx,
+            "fx_conversion_total_cny": fx_conversion_stats["total_cny"],
+            "fx_conversion_total_usd": fx_conversion_stats["total_usd"],
+            "usd_fx_pnl_cny": usd_fx_pnl_cny,
             "total_value_cny": total_value_cny,
             "total_cost_cny": total_cost_cny,
             "cash_total_cny": cash_total_cny,
@@ -1514,7 +1647,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "weighted_daily_change_usd": weighted_daily_change_cny / fx if fx > 0 else 0.0,
         },
         "daily_cards": daily_cards,
-        "visualizations": build_visualizations(rows, balances, value_cny_by_symbol, fx),
+        "visualizations": build_visualizations(current_rows, balances, value_cny_by_symbol, fx),
         "targets": target_weights,
         "satellite_targets": load_satellite_targets(),
         "satellite_universe": load_satellite_universe_config(),
@@ -1554,15 +1687,19 @@ def build_rebalance_v2(
 
     usd_weight_total = sum(target_weights[s] for s in USD_SYMBOLS)
     cash_usd = float(balances.get("cash_usd", 0.0))
-    usd_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS) + cash_usd * fx
-    usd_total_usd = usd_total_cny / fx if fx > 0 else 0.0
+    cost_usd_by_symbol: dict[str, float] = {}
+    for item in holding_rows:
+        sym = str(item.get("symbol", "")).upper()
+        if sym not in USD_SYMBOLS or sym == "SGOV":
+            continue
+        shares = max(0.0, float(item.get("shares", 0.0) or 0.0))
+        avg_cost = max(0.0, float(item.get("avg_cost", 0.0) or 0.0))
+        cost_usd_by_symbol[sym] = shares * avg_cost
     sgov_target_pct = target_weights["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
     sgov_current_usd = value_cny_by_symbol.get("SGOV", 0.0) / fx if fx > 0 else 0.0
-    planned_total_usd = usd_total_usd + future_cash_total_usd
+    planned_total_usd = cash_usd + sgov_current_usd + sum(cost_usd_by_symbol.values())
     planned_sgov_target_usd = sgov_target_pct * planned_total_usd
     sgov_excess_usd = max(0.0, sgov_current_usd - planned_sgov_target_usd)
-    used_budget_usd = sum(float(v) for v in bought_amounts.values())
-
     rows: list[dict[str, Any]] = []
     full_rebalance_need_usd = 0.0
     has_large_trigger = False
@@ -1571,13 +1708,16 @@ def build_rebalance_v2(
         if sym not in USD_SYMBOLS or sym == "SGOV":
             continue
         current_usd = item["value_cny"] / fx if fx > 0 else 0.0
+        cost_usd = cost_usd_by_symbol.get(sym, 0.0)
         already = float(bought_amounts.get(sym, 0.0))
         already_sold = float(sold_amounts.get(sym, 0.0))
         is_satellite = sym in SATELLITE_SYMBOLS
-        planning_current = current_usd if is_satellite else max(0.0, current_usd - already + already_sold)
+        planning_current = cost_usd
         target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
-        gap = target_usd - planning_current
+        raw_gap = target_usd - planning_current
+        target_tolerance_usd = max(5.0, target_usd * 0.01)
+        gap = 0.0 if abs(raw_gap) <= target_tolerance_usd else raw_gap
         drawdown_pct = item.get("drawdown_pct")
         multiplier, action, signal, intensity = signal_for_historical_position(sym, item, phase)
         if sym == "QQQ" and phase == REBALANCE_PHASE_BUILD and intensity_rank(intensity) < intensity_rank("small"):
@@ -1594,22 +1734,24 @@ def build_rebalance_v2(
 
         if is_satellite:
             base_budget = max(0.0, target_usd)
-            planned = base_budget * float(multiplier)
-            gap_capped_plan = min(max(0.0, gap), planned)
+            tier_plan = base_budget * float(multiplier)
+            gap_capped_plan = min(max(0.0, gap), tier_plan)
+            planned = gap_capped_plan
             planned_formula_parts = [
-                f"10月底目标金额 {_fmt_usd_compact(target_usd)} = 1.00x",
-                f"目标 {_fmt_usd_compact(target_usd)} - 当前 {_fmt_usd_compact(current_usd)} = 实时缺口 {_fmt_usd_compact(gap)}",
-                f"1.00x × {float(multiplier):.2f} = {_fmt_usd_compact(base_budget * float(multiplier))}",
-                f"本轮建议不超过实时缺口 => {_fmt_usd_compact(gap_capped_plan)}",
+                f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
+                f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 持仓成本 {_fmt_usd_compact(planning_current)}",
+                f"当前市值 {_fmt_usd_compact(current_usd)} 仅作行情参考",
+                f"档位计划 {_fmt_usd_compact(tier_plan)} = 目标 {_fmt_usd_compact(base_budget)} x {float(multiplier):.2f}x",
+                f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 档位计划)",
             ]
         else:
             base_budget = max(0.0, gap) / max(1, build_month_count)
             planned = min(max(0.0, gap), base_budget * multiplier)
             planned_formula_parts = [
-                f"目标 {_fmt_usd_compact(target_usd)} - 月初 {_fmt_usd_compact(planning_current)} = 缺口 {_fmt_usd_compact(gap)}",
-                f"缺口 / {build_month_count}月 = {_fmt_usd_compact(base_budget)}",
-                f"x {float(multiplier):.2f}档 = {_fmt_usd_compact(base_budget * multiplier)}",
-                f"取不超过缺口 => {_fmt_usd_compact(min(max(0.0, gap), base_budget * multiplier))}",
+                f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
+                f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 持仓成本 {_fmt_usd_compact(planning_current)}",
+                f"月度基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {build_month_count}月",
+                f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 月度基准 x {float(multiplier):.2f}x)",
             ]
         planned_formula = "；".join(planned_formula_parts)
 
@@ -1626,9 +1768,6 @@ def build_rebalance_v2(
             else min(max(0.0, gap), base_budget * additional_multiplier) * split
         )
         suggested_cap = gap_capped_plan * split if is_satellite else raw_suggested
-        if already_bought_this_month:
-            raw_suggested = max(0.0, raw_planned * split - already)
-            additional_multiplier = raw_suggested / base_budget if base_budget > 0 else 0.0
         if already_bought_this_month and raw_suggested <= 1e-9:
             raw_suggested = 0.0
             additional_multiplier = 0.0
@@ -1645,8 +1784,10 @@ def build_rebalance_v2(
             )
         elif already > 0:
             note_parts.append(f"本月已买 USD {already:,.2f}，当前无需系统补买；仍可手动确认。")
+        elif raw_gap > 0 and gap == 0:
+            note_parts.append("按成本口径已接近目标仓位，价格下跌不触发重复加仓。")
         elif gap <= 0:
-            note_parts.append("当前仓位已达到或高于目标，系统建议不买。")
+            note_parts.append("当前成本仓位已达到或高于目标，系统建议不买。")
         else:
             note_parts.append("当前可动用资金不足或档位额度已用完，先保留观察。")
         if split_note:
@@ -1691,13 +1832,13 @@ def build_rebalance_v2(
                 "actual_sold_usd": already_sold,
                 "net_bought_usd": net_bought,
                 "planned_after_valuation_usd": suggested_cap if is_satellite else raw_planned * split,
-                "buy_difference_usd": gap if is_satellite else raw_planned * split - net_bought,
+                "buy_difference_usd": raw_planned - net_bought,
                 "month_start_value_usd": planning_current,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
                 "recent_5d_pct": item.get("recent_5d_pct"),
                 "target_pct": target_pct * 100.0,
-                "current_pct": current_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
+                "current_pct": planning_current / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym),
                 "valuation_split_factor": split,
@@ -1705,14 +1846,13 @@ def build_rebalance_v2(
             }
         )
 
-    sgov_available_usd = sgov_current_usd if has_large_trigger else sgov_excess_usd
-    non_sgov_suggested_sell_usd = sum(float(row.get("suggested_sell_usd") or 0.0) for row in rows)
+    sgov_available_usd = sgov_excess_usd
     if sgov_available_usd > 1e-9:
         sgov_price = float(market["quotes"].get("SGOV", {}).get("price") or 0.0)
         sgov_sell_note = (
-            "大档位触发，SGOV 可整体作为子弹动用。"
+            "大档位触发，但 SGOV 仍保留最低安全线，只释放安全线以上部分。"
             if has_large_trigger
-            else "SGOV 高于目标现金仓位，建议先卖出超出目标的部分作为子弹。"
+            else "SGOV 高于目标安全线，建议先卖出超出目标的部分作为子弹。"
         )
         rows.append(
             {
@@ -1750,13 +1890,13 @@ def build_rebalance_v2(
                 "note": sgov_sell_note,
             }
         )
-    deployable_pool_usd = cash_usd + sgov_available_usd + non_sgov_suggested_sell_usd
-    remaining_deployable_usd = max(0.0, deployable_pool_usd - used_budget_usd)
+    deployable_pool_usd = cash_usd + sgov_available_usd
+    remaining_deployable_usd = deployable_pool_usd
     raw_total = sum(float(row["raw_suggested_buy_usd"]) for row in rows)
     monthly_budget_usd = min(deployable_pool_usd, full_rebalance_need_usd) / max(1, build_month_count)
-    remaining_reference_budget_usd = max(0.0, monthly_budget_usd - used_budget_usd)
-    suggested_run_budget_usd = min(remaining_deployable_usd, max(remaining_reference_budget_usd, raw_total))
-    strategy_budget_usd = min(suggested_run_budget_usd, raw_total)
+    remaining_reference_budget_usd = monthly_budget_usd
+    suggested_run_budget_usd = min(remaining_deployable_usd, raw_total)
+    strategy_budget_usd = suggested_run_budget_usd
     scale = strategy_budget_usd / raw_total if raw_total > 0 else 0.0
     for row in rows:
         row["planned_buy_usd"] = row["raw_planned_buy_usd"]
@@ -1767,7 +1907,7 @@ def build_rebalance_v2(
         if float(row.get("suggested_sell_usd") or 0.0) > 0 and scaled_suggestion <= 1e-9:
             row["buy_difference_usd"] = -float(row.get("suggested_sell_usd") or 0.0)
         else:
-            row["buy_difference_usd"] = float(row.get("planned_after_valuation_usd", 0.0)) - float(row.get("net_bought_usd", 0.0))
+            row["buy_difference_usd"] = float(row.get("planned_buy_usd", 0.0)) - float(row.get("net_bought_usd", 0.0))
         price = float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0)
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
         row["suggested_sell_shares"] = float(row.get("suggested_sell_usd") or 0.0) / price if price > 0 else float(row.get("suggested_sell_shares") or 0.0)
@@ -1892,6 +2032,47 @@ def save_rebalance_budget(user_id: str, planned_cash_by_month: dict[str, float])
     return {"saved": True, "month_key": month_key, "planned_cash_by_month": clean}
 
 
+def add_fx_conversion_record(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    now = datetime.now(TZ_SHANGHAI)
+    converted_date = str(payload.get("converted_date") or payload.get("date") or now.date().isoformat()).strip()[:10]
+    try:
+        date.fromisoformat(converted_date)
+    except ValueError as exc:
+        raise ValueError("购汇日期无效") from exc
+    cny_amount = max(0.0, float(payload.get("cny_amount", 0.0) or 0.0))
+    usd_amount = max(0.0, float(payload.get("usd_amount", 0.0) or 0.0))
+    if cny_amount <= 0 or usd_amount <= 0:
+        raise ValueError("请填写人民币金额和美元金额")
+    records = load_fx_conversion_records(user_id)
+    records.append(
+        {
+            "id": f"{now.strftime('%Y%m%d%H%M%S')}-{len(records)}-FX",
+            "converted_date": converted_date,
+            "cny_amount": cny_amount,
+            "usd_amount": usd_amount,
+            "rate": cny_amount / usd_amount,
+            "note": str(payload.get("note") or ""),
+            "created_at": now.isoformat(timespec="seconds"),
+        }
+    )
+    save_fx_conversion_records(user_id, records)
+    invalidate_performance_history_from(user_id, converted_date)
+    return {"saved": True, "records": load_fx_conversion_records(user_id)}
+
+
+def delete_fx_conversion_record(user_id: str, record_id: str) -> dict[str, Any]:
+    records = load_fx_conversion_records(user_id)
+    target = next((record for record in records if str(record.get("id")) == str(record_id)), None)
+    if target is None:
+        raise ValueError("购汇记录不存在")
+    remaining = [record for record in records if str(record.get("id")) != str(record_id)]
+    save_fx_conversion_records(user_id, remaining)
+    converted_date = str(target.get("converted_date") or "")[:10]
+    if converted_date:
+        invalidate_performance_history_from(user_id, converted_date)
+    return {"deleted": True, "record_id": record_id, "records": load_fx_conversion_records(user_id)}
+
+
 def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, Any]:
     holdings, balances, _ = load_user_state(user_id)
     now = datetime.now(TZ_SHANGHAI)
@@ -2009,7 +2190,8 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
                 raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
             old_cost = prev_avg_cost
             cost_basis = shares * old_cost
-            holdings, sale_pnl = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
+            sale_pnl = amount - cost_basis
+            holdings, _ = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
             new_avg_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
             if is_cny_trade:
                 available_cny += amount

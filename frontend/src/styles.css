@@ -326,9 +326,24 @@ h2 {
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 86px repeat(3, minmax(0, 1fr)) minmax(140px, 0.7fr);
   gap: 10px;
   margin-bottom: 14px;
+  align-items: stretch;
+}
+
+.summaryRowLabel {
+  display: grid;
+  place-items: center;
+  min-height: 92px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: 0;
 }
 
 .summaryItem,
@@ -403,6 +418,23 @@ h2 {
 
 .summaryItem strong.flat {
   color: var(--text-soft);
+}
+
+.fxSummaryItem {
+  grid-column: 5;
+  grid-row: 1 / span 2;
+  min-height: 194px;
+}
+
+.fxSummaryItem strong {
+  font-size: 1.42rem;
+}
+
+.fxSummaryItem em {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .assetSections {
@@ -854,6 +886,33 @@ h2 {
   height: 100%;
 }
 
+.performanceAxisMarkers {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 23px;
+  height: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.performanceAxisMarker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+  border: 1px solid rgba(250, 204, 21, 0.92);
+  border-radius: 999px;
+  background: rgba(11, 27, 46, 0.94);
+  color: var(--amber);
+  font-size: 0.68rem;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.14), 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
 .performanceTooltip {
   position: absolute;
   z-index: 6;
@@ -890,7 +949,7 @@ h2 {
 
 .performanceStats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 10px;
   margin: 4px 0 8px;
 }
@@ -1532,7 +1591,7 @@ tbody th {
 
 .rebalanceActionRow {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin: 16px 0 8px;
   width: 100%;
@@ -1541,6 +1600,48 @@ tbody th {
 .rebalanceActionRow button {
   width: 100%;
   justify-content: center;
+}
+
+.tradeHistoryBlock {
+  margin-top: 18px;
+}
+
+.tradeHistoryBlock .subHeader,
+.fxConversionBlock .subHeader {
+  align-items: center;
+}
+
+.tradeHistoryBlock .tableWrap,
+.fxConversionBlock .tableWrap {
+  margin-top: 10px;
+}
+
+.fxConversionBlock {
+  margin-top: 18px;
+}
+
+.fxConversionModal {
+  width: min(720px, 96vw);
+}
+
+.fxConversionEditor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  margin: 8px 0 12px;
+}
+
+.fxConversionEditor label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.fxConversionEditor input {
+  width: 100%;
+  min-width: 0;
 }
 
 .modalBackdrop {
@@ -1789,8 +1890,26 @@ tbody th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .summaryRowLabel,
+  .fxSummaryItem {
+    grid-column: 1 / -1;
+  }
+
+  .fxSummaryItem {
+    grid-row: auto;
+    min-height: 96px;
+  }
+
   .assetSections {
     grid-template-columns: 1fr;
+  }
+
+  .fxConversionEditor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fxConversionEditor button {
+    grid-column: 1 / -1;
   }
 
   .cardGrid {
@@ -1915,7 +2034,8 @@ tbody th {
 
   .assetMetricGrid,
   .balanceEditGrid,
-  .budgetEditGrid {
+  .budgetEditGrid,
+  .fxConversionEditor {
     grid-template-columns: 1fr;
   }
 
