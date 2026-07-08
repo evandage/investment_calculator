@@ -105,6 +105,12 @@ function fmtCostChange(trade, currency = "USD") {
   return `${fmtMoney(prev, currency, digits)} -> ${fmtMoney(next, currency, digits)}`;
 }
 
+function fmtTradeCloseEffect(trade, currency = "USD") {
+  const value = Number(trade?.close_effect);
+  if (!Number.isFinite(value)) return "-";
+  return fmtMoney(value, currency);
+}
+
 function tone(value) {
   const num = Number(value || 0);
   if (num > 0) return "up";
@@ -1697,7 +1703,7 @@ function Rebalance({ data, onSaved }) {
       {tradeMessage ? <div className={["交易已保存", "交易已撤销"].includes(tradeMessage) ? "saveMessage up" : "saveMessage down"}>{tradeMessage}</div> : null}
       <div className="tableWrap">
         <table>
-          <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>股数</th><th>成交金额</th><th>成交成本</th><th>持仓成本变化</th><th>档位</th><th>操作</th></tr></thead>
+          <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>股数</th><th>成交金额</th><th>成交成本</th><th>收盘差额</th><th>持仓成本变化</th><th>档位</th><th>操作</th></tr></thead>
           <tbody>
             {(data.trades || []).slice().reverse().slice(0, 20).map((trade, index) => (
               <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
@@ -1707,6 +1713,9 @@ function Rebalance({ data, onSaved }) {
                 <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                 <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
                 <td>{fmtMoney(trade.price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}</td>
+                <td className={tone(trade.close_effect)} title={trade.close_price ? `当日收盘 ${fmtMoney(trade.close_price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}` : ""}>
+                  {fmtTradeCloseEffect(trade, currencyBySymbol[trade.symbol] || "USD")}
+                </td>
                 <td>{fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}</td>
                 <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.intensity || "-"}</span></td>
                 <td>
@@ -1717,7 +1726,7 @@ function Rebalance({ data, onSaved }) {
               </tr>
             ))}
             {!(data.trades || []).length ? (
-              <tr><td colSpan={9} className="muted">暂无交易记录</td></tr>
+              <tr><td colSpan={10} className="muted">暂无交易记录</td></tr>
             ) : null}
           </tbody>
         </table>

@@ -788,6 +788,44 @@ def holding_pnl_pct_for_snapshot(
     }
 
 
+def annotate_trade_close_effects(
+    trades: list[dict[str, Any]],
+    quotes: dict[str, Any],
+    fx: float,
+    history_day: str,
+) -> list[dict[str, Any]]:
+    symbols = {str(trade.get("symbol", "")).upper() for trade in trades if trade.get("symbol")}
+    histories = fetch_close_histories(symbols)
+    annotated: list[dict[str, Any]] = []
+    for trade in trades:
+        item = dict(trade)
+        sym = str(item.get("symbol", "")).upper()
+        trade_day = str(item.get("trade_date") or item.get("date") or "")[:10]
+        close_price = close_on(histories.get(sym, {}), trade_day)
+        if close_price is None and trade_day == history_day:
+            quote = quotes.get(sym) or {}
+            try:
+                close_price = float(quote.get("regular_price") or quote.get("price") or 0.0)
+            except (TypeError, ValueError):
+                close_price = None
+        try:
+            shares = max(0.0, float(item.get("shares", 0.0) or 0.0))
+            trade_price = float(item.get("price") or 0.0)
+        except (TypeError, ValueError):
+            shares = 0.0
+            trade_price = 0.0
+        if close_price and close_price > 0 and shares > 0 and trade_price > 0:
+            if str(item.get("action", "buy")).lower() == "sell":
+                effect_native = shares * (trade_price - close_price)
+            else:
+                effect_native = shares * (close_price - trade_price)
+            item["close_price"] = close_price
+            item["close_effect"] = effect_native
+            item["close_effect_cny"] = effect_native * fx if sym in USD_SYMBOLS else effect_native
+        annotated.append(item)
+    return annotated
+
+
 def current_portfolio_daily_pct(
     user_id: str,
     holdings: dict[str, dict[str, float]],
@@ -1481,7 +1519,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "satellite_universe": load_satellite_universe_config(),
         "performance_history": performance_history,
         "rebalance": build_rebalance_v2(user_id, rows, balances, market, value_cny_by_symbol, fx),
-        "trades": trades,
+        "trades": annotate_trade_close_effects(trades, quotes, fx, history_day),
     }
 
 
