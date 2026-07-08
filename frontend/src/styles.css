@@ -1456,7 +1456,8 @@ tbody th {
 
 .planCell {
   min-width: 220px;
-  vertical-align: top;
+  vertical-align: middle;
+  text-align: center;
 }
 
 .cellSubtext {
@@ -1665,11 +1666,6 @@ tbody th {
 
 .tradeModal {
   width: min(1180px, 96vw);
-}
-
-.activeTradeRow > th,
-.activeTradeRow > td {
-  background: rgba(56, 189, 248, 0.08);
 }
 
 .singleTradeModal {

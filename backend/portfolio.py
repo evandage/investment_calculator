@@ -138,7 +138,8 @@ def rebalance_rules_payload(
                 "items": [
                     "VOO：小加 -3% / 1.5x，中加 -7% / 2x，大加 -10% / 3x；近 5 日涨幅偏热时只在备注提示，不额外降低额度。",
                     "QQQ：月初默认 0.6x，-2% 试探 0.8x，月末补齐 1.0x；-5% 小加 1.5x，-10% 中加 2.5x，-13% 大加 4x。",
-                    "PLTR/TEM：按 60 日历史涨跌位置定档，PLTR 回撤约 -15%/-25%/-35% 对应 small/medium/large，TEM 回撤约 -12%/-20%/-28% 对应 small/medium/large。",
+                    "PLTR：正常 0.1x，小加 -15% / 0.2x，中加 -25% / 0.3x，大加 -35% / 0.5x；按 60 日历史涨跌位置定档。",
+                    "TEM：正常 0.1x，小加 -12% / 0.2x，中加 -20% / 0.3x，大加 -28% / 0.5x；按 60 日历史涨跌位置定档。",
                     "ISRG：正常 0.1x，小加 -15% / 0.2x，中加 -20% / 0.3x，大加 -23% / 0.5x。",
                     "GOOGL：正常 0.1x，小加 -11% / 0.2x，中加 -19% / 0.3x，大加 -24% / 0.5x。",
                     "MSFT：正常 0.1x，小加 -12% / 0.2x，中加 -18% / 0.3x，大加 -22% / 0.5x。",
@@ -237,16 +238,16 @@ def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> 
         return qqq_build_signal(drawdown_pct)
     if symbol in {"PLTR", "TEM"}:
         if not isinstance(drawdown_pct, (int, float)):
-            return 0.1, "历史波动观察", "normal", "normal"
+            return 0.1, "历史波动观察", "正常", "normal"
         drawdown = float(drawdown_pct)
         if symbol == "PLTR":
-            bands = [(-35.0, 0.5, "PLTR 历史低位大加", "large"), (-25.0, 0.3, "PLTR 历史低位中加", "medium"), (-15.0, 0.2, "PLTR 历史低位小加", "small")]
+            bands = [(-35.0, 0.5, "PLTR 历史低位大加", "大加", "large"), (-25.0, 0.3, "PLTR 历史低位中加", "中加", "medium"), (-15.0, 0.2, "PLTR 历史低位小加", "小加", "small")]
         else:
-            bands = [(-28.0, 0.5, "TEM 历史低位大加", "large"), (-20.0, 0.3, "TEM 历史低位中加", "medium"), (-12.0, 0.2, "TEM 历史低位小加", "small")]
-        for threshold, multiplier, action, intensity in bands:
+            bands = [(-28.0, 0.5, "TEM 历史低位大加", "大加", "large"), (-20.0, 0.3, "TEM 历史低位中加", "中加", "medium"), (-12.0, 0.2, "TEM 历史低位小加", "小加", "small")]
+        for threshold, multiplier, action, signal, intensity in bands:
             if drawdown <= threshold:
-                return multiplier, action, intensity, intensity
-        return 0.1, "历史波动观察", "normal", "normal"
+                return multiplier, action, signal, intensity
+        return 0.1, "历史波动观察", "正常", "normal"
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     if not rule:
         return 0.0, "暂无规则", "暂无规则", "normal"
@@ -279,10 +280,10 @@ def signal_for_intensity(symbol: str, phase: str, intensity: str) -> tuple[float
     intensity = normalize_intensity(intensity)
     if symbol in {"PLTR", "TEM"}:
         return {
-            "small": (0.2, f"{symbol} 历史低位小加", "small", "small"),
-            "medium": (0.3, f"{symbol} 历史低位中加", "medium", "medium"),
-            "large": (0.5, f"{symbol} 历史低位大加", "large", "large"),
-        }.get(intensity, (0.1, "历史波动观察", "normal", "normal"))
+            "small": (0.2, f"{symbol} 历史低位小加", "小加", "small"),
+            "medium": (0.3, f"{symbol} 历史低位中加", "中加", "medium"),
+            "large": (0.5, f"{symbol} 历史低位大加", "大加", "large"),
+        }.get(intensity, (0.1, "历史波动观察", "正常", "normal"))
     if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
         multiplier = intensity_multiplier(symbol, phase, intensity)
         action, signal = {
@@ -1685,6 +1686,7 @@ def build_rebalance_v2(
                 "suggested_buy_usd": raw_suggested,
                 "raw_suggested_buy_usd": raw_suggested,
                 "suggested_cap_usd": suggested_cap,
+                "suggested_sell_usd": max(0.0, -gap),
                 "actual_bought_usd": already,
                 "actual_sold_usd": already_sold,
                 "net_bought_usd": net_bought,
@@ -1704,7 +1706,51 @@ def build_rebalance_v2(
         )
 
     sgov_available_usd = sgov_current_usd if has_large_trigger else sgov_excess_usd
-    deployable_pool_usd = cash_usd + sgov_available_usd
+    non_sgov_suggested_sell_usd = sum(float(row.get("suggested_sell_usd") or 0.0) for row in rows)
+    if sgov_available_usd > 1e-9:
+        sgov_price = float(market["quotes"].get("SGOV", {}).get("price") or 0.0)
+        sgov_sell_note = (
+            "大档位触发，SGOV 可整体作为子弹动用。"
+            if has_large_trigger
+            else "SGOV 高于目标现金仓位，建议先卖出超出目标的部分作为子弹。"
+        )
+        rows.append(
+            {
+                "symbol": "SGOV",
+                "label": "SGOV",
+                "phase": phase,
+                "action": "卖出",
+                "signal": "卖出",
+                "intensity": "sell",
+                "planned_buy_usd": 0.0,
+                "raw_planned_buy_usd": 0.0,
+                "planned_buy_formula": f"目标 {_fmt_usd_compact(planned_sgov_target_usd)}，当前 {_fmt_usd_compact(sgov_current_usd)}",
+                "target_usd": planned_sgov_target_usd,
+                "base_budget_usd": 0.0,
+                "signal_multiplier": 0.0,
+                "suggested_buy_usd": 0.0,
+                "raw_suggested_buy_usd": 0.0,
+                "suggested_cap_usd": 0.0,
+                "suggested_sell_usd": sgov_available_usd,
+                "suggested_sell_shares": sgov_available_usd / sgov_price if sgov_price > 0 else 0.0,
+                "actual_bought_usd": float(bought_amounts.get("SGOV", 0.0)),
+                "actual_sold_usd": float(sold_amounts.get("SGOV", 0.0)),
+                "net_bought_usd": float(bought_amounts.get("SGOV", 0.0)) - float(sold_amounts.get("SGOV", 0.0)),
+                "planned_after_valuation_usd": 0.0,
+                "buy_difference_usd": -sgov_available_usd,
+                "month_start_value_usd": sgov_current_usd,
+                "gap_usd": planned_sgov_target_usd - sgov_current_usd,
+                "drawdown_pct": None,
+                "recent_5d_pct": None,
+                "target_pct": sgov_target_pct * 100.0,
+                "current_pct": sgov_current_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
+                "forward_pe": None,
+                "pe_band": "-",
+                "valuation_split_factor": 1.0,
+                "note": sgov_sell_note,
+            }
+        )
+    deployable_pool_usd = cash_usd + sgov_available_usd + non_sgov_suggested_sell_usd
     remaining_deployable_usd = max(0.0, deployable_pool_usd - used_budget_usd)
     raw_total = sum(float(row["raw_suggested_buy_usd"]) for row in rows)
     monthly_budget_usd = min(deployable_pool_usd, full_rebalance_need_usd) / max(1, build_month_count)
@@ -1718,8 +1764,13 @@ def build_rebalance_v2(
         if row["symbol"] in SATELLITE_SYMBOLS:
             scaled_suggestion = min(float(row.get("suggested_cap_usd", 0.0)), scaled_suggestion)
         row["suggested_buy_usd"] = scaled_suggestion
+        if float(row.get("suggested_sell_usd") or 0.0) > 0 and scaled_suggestion <= 1e-9:
+            row["buy_difference_usd"] = -float(row.get("suggested_sell_usd") or 0.0)
+        else:
+            row["buy_difference_usd"] = float(row.get("planned_after_valuation_usd", 0.0)) - float(row.get("net_bought_usd", 0.0))
         price = float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0)
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
+        row["suggested_sell_shares"] = float(row.get("suggested_sell_usd") or 0.0) / price if price > 0 else float(row.get("suggested_sell_shares") or 0.0)
     strategy_budget_usd = sum(float(row["suggested_buy_usd"]) for row in rows)
 
     return {

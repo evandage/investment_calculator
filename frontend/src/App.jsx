@@ -1457,10 +1457,12 @@ function Rebalance({ data, onSaved }) {
     if (activeTradeSymbol) return;
     const next = {};
     tradeRows.forEach((row) => {
+      const buyAmount = Number(row.suggested_buy_usd || 0);
+      const sellAmount = Number(row.suggested_sell_usd || 0);
       next[row.symbol] = {
-        action: "buy",
+        action: sellAmount > buyAmount ? "sell" : "buy",
         trade_date: defaultTradeDate,
-        amount_usd: Number(row.suggested_buy_usd || 0).toFixed(2),
+        amount_usd: Math.max(buyAmount, sellAmount).toFixed(2),
         shares: "",
         intensity: row.intensity || "normal",
       };
@@ -1836,16 +1838,17 @@ function Rebalance({ data, onSaved }) {
         <table>
           <thead>
             <tr>
-              <th>标的</th><th>目前占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>建议买入</th><th>净买入</th><th>差值</th><th>档位</th><th>估值/追高系数</th><th>说明</th><th>操作</th>
+              <th>标的</th><th>目前占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>实际差值（分配后）</th><th>净买入</th><th>档位</th><th>估值/追高系数</th><th>说明</th>
             </tr>
           </thead>
           <tbody>
             {suggestionRows.map((row) => {
-              const isActive = activeTradeSymbol === row.symbol;
-              const currentInput = inputs[row.symbol] || {};
+              const suggestedActionUsd = Number(row.suggested_sell_usd || 0) > Number(row.suggested_buy_usd || 0)
+                ? -Number(row.suggested_sell_usd || 0)
+                : Number(row.suggested_buy_usd || 0);
               return (
                 <React.Fragment key={row.symbol}>
-                  <tr className={isActive ? "activeTradeRow" : ""}>
+                  <tr>
                     <th>{row.symbol}</th>
                     <td>{Number(row.current_pct || 0).toFixed(2)}%</td>
                     <td>{Number(row.target_pct || 0).toFixed(2)}%</td>
@@ -1854,13 +1857,16 @@ function Rebalance({ data, onSaved }) {
                       <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
                       {row.planned_buy_formula ? <div className="cellSubtext">{row.planned_buy_formula}</div> : null}
                     </td>
-                    <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</td>
+                    <td className="planCell">
+                      <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</div>
+                      <div className={`cellSubtext ${tone(suggestedActionUsd)}`}>
+                        分配后 {fmtMoney(suggestedActionUsd, row.currency || "USD")}
+                      </div>
+                    </td>
                     <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
-                    <td className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</td>
                     <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
                     <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
                     <td className="note">{row.note}</td>
-                    <td><button onClick={() => openTradeEditor(row.symbol)}>{isActive ? "收起" : "记录"}</button></td>
                   </tr>
                 </React.Fragment>
               );
@@ -1913,8 +1919,8 @@ function Rebalance({ data, onSaved }) {
                   <input value={currentInput.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" />
                 </label>
                 <div className="singleTradeHint">
-                  <span>建议买入</span>
-                  <strong>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</strong>
+                  <span>建议买/卖</span>
+                  <strong>{fmtMoney(Number(row.suggested_sell_usd || 0) > Number(row.suggested_buy_usd || 0) ? -Number(row.suggested_sell_usd || 0) : Number(row.suggested_buy_usd || 0), row.currency || "USD")}</strong>
                 </div>
               </div>
               <div className="actions">
