@@ -121,14 +121,14 @@ def rebalance_rules_payload(
                 "heading": "建仓期分母",
                 "items": [
                     f"建仓期默认计算到 {BUILD_TARGET_YEAR}-{BUILD_TARGET_MONTH:02d}，当前共 {build_months} 个月。",
-                    f"未来入金仍保留为预算参考，共 {future_cash_months} 个月，每月 USD {planned_new_cash_usd:,.2f}，但本轮建议只使用当前可释放资金。",
-                    "目标分母 = USD 现金 + SGOV 当前金额 + 各美元标的持仓成本金额；是否接近目标优先看成本占比，而不是市值占比。",
+                    f"未来入金纳入目标分母，共 {future_cash_months} 个月，每月 USD {planned_new_cash_usd:,.2f}；本轮实际建议仍只使用当前可释放资金。",
+                    "目标分母 = USD 现金 + SGOV 当前金额 + 各美元标的持仓成本金额 + 未来入金；是否接近目标优先看成本占比，而不是市值占比。",
                 ],
             },
             {
                 "heading": "建议金额",
                 "items": [
-                    "先用持仓成本金额计算缺口；如果成本口径已接近目标，即使股价下跌导致市值缩水，也不重复提示买入。",
+                    "成本缺口按月初成本口径计算，即目标金额减去当前成本扣除本月已买后的金额。",
                     "VOO/QQQ 再按剩余月份和档位倍率计算本轮计划应买。",
                     f"卫星股以10月底目标金额为 1x；{zero_target_note}",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股主要看 Forward PE，PLTR/TEM 用 60 日历史涨跌位置定档，VOO 仍按回撤触发档位，近 5 日涨幅偏热时只做备注提示。",
@@ -1207,7 +1207,6 @@ def build_performance_history(
     rows_by_date = {row["date"]: row for row in rows}
     if is_weekday(today):
         rows_by_date[today] = current
-        save_portfolio_history(user_id, sorted(rows_by_date.values(), key=lambda row: row["date"]))
     rows = sorted(
         (row for row in rows_by_date.values() if str(row.get("date", "")) >= PERFORMANCE_CHART_START_DATE),
         key=lambda row: row["date"],
@@ -1697,7 +1696,7 @@ def build_rebalance_v2(
         cost_usd_by_symbol[sym] = shares * avg_cost
     sgov_target_pct = target_weights["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
     sgov_current_usd = value_cny_by_symbol.get("SGOV", 0.0) / fx if fx > 0 else 0.0
-    planned_total_usd = cash_usd + sgov_current_usd + sum(cost_usd_by_symbol.values())
+    planned_total_usd = cash_usd + sgov_current_usd + sum(cost_usd_by_symbol.values()) + future_cash_total_usd
     planned_sgov_target_usd = sgov_target_pct * planned_total_usd
     sgov_excess_usd = max(0.0, sgov_current_usd - planned_sgov_target_usd)
     rows: list[dict[str, Any]] = []
@@ -1712,10 +1711,10 @@ def build_rebalance_v2(
         already = float(bought_amounts.get(sym, 0.0))
         already_sold = float(sold_amounts.get(sym, 0.0))
         is_satellite = sym in SATELLITE_SYMBOLS
-        planning_current = cost_usd
+        month_start_cost_usd = max(0.0, cost_usd - already)
         target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
-        raw_gap = target_usd - planning_current
+        raw_gap = target_usd - month_start_cost_usd
         target_tolerance_usd = max(5.0, target_usd * 0.01)
         gap = 0.0 if abs(raw_gap) <= target_tolerance_usd else raw_gap
         drawdown_pct = item.get("drawdown_pct")
@@ -1739,7 +1738,7 @@ def build_rebalance_v2(
             planned = gap_capped_plan
             planned_formula_parts = [
                 f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
-                f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 持仓成本 {_fmt_usd_compact(planning_current)}",
+                f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 月初成本 {_fmt_usd_compact(month_start_cost_usd)}",
                 f"当前市值 {_fmt_usd_compact(current_usd)} 仅作行情参考",
                 f"档位计划 {_fmt_usd_compact(tier_plan)} = 目标 {_fmt_usd_compact(base_budget)} x {float(multiplier):.2f}x",
                 f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 档位计划)",
@@ -1749,7 +1748,7 @@ def build_rebalance_v2(
             planned = min(max(0.0, gap), base_budget * multiplier)
             planned_formula_parts = [
                 f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
-                f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 持仓成本 {_fmt_usd_compact(planning_current)}",
+                f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 月初成本 {_fmt_usd_compact(month_start_cost_usd)}",
                 f"月度基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {build_month_count}月",
                 f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 月度基准 x {float(multiplier):.2f}x)",
             ]
@@ -1833,12 +1832,13 @@ def build_rebalance_v2(
                 "net_bought_usd": net_bought,
                 "planned_after_valuation_usd": suggested_cap if is_satellite else raw_planned * split,
                 "buy_difference_usd": raw_planned - net_bought,
-                "month_start_value_usd": planning_current,
+                "month_start_value_usd": month_start_cost_usd,
+                "month_start_cost_usd": month_start_cost_usd,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
                 "recent_5d_pct": item.get("recent_5d_pct"),
                 "target_pct": target_pct * 100.0,
-                "current_pct": planning_current / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
+                "current_pct": month_start_cost_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym),
                 "valuation_split_factor": split,
