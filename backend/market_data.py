@@ -109,6 +109,25 @@ def _row_get(row: Any, key: str, default: Any = None) -> Any:
 def _infer_us_session(state: str = "") -> str:
     now = datetime.now(NY_TZ)
     normalized_state = str(state or "").lower()
+    weekday = now.weekday()
+    minutes = now.hour * 60 + now.minute
+
+    clock_session = "closed"
+    if weekday == 5:
+        clock_session = "closed"
+    elif weekday == 6 and minutes < 20 * 60:
+        clock_session = "closed"
+    elif weekday == 4 and minutes >= 20 * 60:
+        clock_session = "closed"
+    elif 4 * 60 <= minutes < 9 * 60 + 30:
+        clock_session = "premarket"
+    elif 9 * 60 + 30 <= minutes < 16 * 60:
+        clock_session = "regular"
+    elif 16 * 60 <= minutes < 20 * 60:
+        clock_session = "postmarket"
+    else:
+        clock_session = "overnight"
+
     if any(key in normalized_state for key in ("pre_market", "premarket", "pre-market")):
         return "premarket"
     if any(key in normalized_state for key in ("after_hours", "after_hour", "post_market", "postmarket", "after-hours")):
@@ -118,24 +137,8 @@ def _infer_us_session(state: str = "") -> str:
     if "open" in normalized_state and not any(key in normalized_state for key in ("pre", "after", "post", "overnight")):
         return "regular"
     if any(key in normalized_state for key in ("closed", "close", "rest")):
-        return "closed"
-
-    weekday = now.weekday()
-    minutes = now.hour * 60 + now.minute
-    if weekday == 5:
-        return "closed"
-    if weekday == 6 and minutes < 20 * 60:
-        return "closed"
-    if weekday == 4 and minutes >= 20 * 60:
-        return "closed"
-
-    if 4 * 60 <= minutes < 9 * 60 + 30:
-        return "premarket"
-    if 9 * 60 + 30 <= minutes < 16 * 60:
-        return "regular"
-    if 16 * 60 <= minutes < 20 * 60:
-        return "postmarket"
-    return "overnight"
+        return clock_session if clock_session == "regular" else "closed"
+    return clock_session
 
 
 def _pct_from_base(price: float | None, base: float | None) -> float | None:
@@ -201,7 +204,7 @@ def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | N
         "regular_change_pct": (last_price / base - 1.0) * 100.0 if base > 0 else 0.0,
         "extended_price": extended_price,
         "extended_change_pct": extended_change_pct,
-        "session": "regular" if session == "closed" else session,
+        "session": session,
         "source": "Futu OpenD 订阅",
     }
 
@@ -594,10 +597,10 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
             if not last_price or last_price <= 0:
                 continue
             base = prev_close if prev_close and prev_close > 0 else last_price
-            price = extended_price if session != "regular" and extended_price and extended_price > 0 else last_price
-            if session != "regular" and extended_change_pct is None:
+            price = extended_price if session != "regular" and session != "closed" and extended_price and extended_price > 0 else last_price
+            if session not in {"regular", "closed"} and extended_change_pct is None:
                 extended_change_pct = _pct_from_base(extended_price, last_price)
-            if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9:
+            if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9 or session == "closed":
                 extended_price = None
                 extended_change_pct = None
             out[sym] = {

@@ -47,6 +47,7 @@ _DRAWDOWN_CACHE_TTL_SECONDS = 21600
 QQQ_MONTH_END_WINDOW_DAYS = 5
 NY_TZ = ZoneInfo("America/New_York")
 PERFORMANCE_WRITE_HOUR = 8
+US_MARKET_CLOSE_MINUTE = 16 * 60
 PERFORMANCE_HISTORY_START_DATE = "2026-07-07"
 PERFORMANCE_CHART_START_DATE = "2026-07-07"
 PERFORMANCE_CHART_BASELINE_DATE = "2026-07-06"
@@ -443,14 +444,7 @@ def _quote_price_line(symbol: str, quote: dict[str, Any]) -> str:
 
 
 def treemap_daily_pct(quote: dict[str, Any], regular_pct: float) -> float:
-    session = str(quote.get("session") or "").lower()
-    if session not in {"premarket", "postmarket"}:
-        return regular_pct
-    regular_price = float(quote.get("regular_price") or 0.0)
-    extended_price = float(quote.get("extended_price") or 0.0)
-    if regular_price <= 0 or extended_price <= 0:
-        return regular_pct
-    return (extended_price / regular_price - 1.0) * 100.0
+    return regular_pct
 
 
 def build_visualizations(
@@ -577,8 +571,15 @@ def completed_performance_day(now: datetime | None = None) -> str:
     current = now or datetime.now(TZ_SHANGHAI)
     if current.tzinfo is None:
         current = current.replace(tzinfo=TZ_SHANGHAI)
-    offset = 1 if current.hour >= PERFORMANCE_WRITE_HOUR else 2
-    return (current.date() - timedelta(days=offset)).isoformat()
+    ny_now = current.astimezone(NY_TZ)
+    ny_day = ny_now.date()
+    ny_minutes = ny_now.hour * 60 + ny_now.minute
+    if ny_now.weekday() < 5 and ny_minutes >= US_MARKET_CLOSE_MINUTE:
+        return ny_day.isoformat()
+    previous = ny_day - timedelta(days=1)
+    while previous.weekday() >= 5:
+        previous -= timedelta(days=1)
+    return previous.isoformat()
 
 
 def previous_market_open_day(day: str, histories: dict[str, dict[str, float]]) -> str:
@@ -1217,7 +1218,7 @@ def coerce_optional_float(value: Any) -> float | None:
 def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_day: str, now: datetime) -> float:
     if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() == "closed":
         return 0.0
-    if symbol in {"VOO", "QQQ"} and str(quote.get("session") or "").lower() not in {"regular", "closed"}:
+    if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() not in {"regular", "closed"}:
         extended_pct = coerce_optional_float(quote.get("extended_change_pct"))
         if extended_pct is not None:
             return extended_pct
@@ -1239,6 +1240,13 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     quotes = market["quotes"]
     fx = float(market["fx"]["rate"])
     holdings, balances, storage_mode = load_user_state(user_id)
+    raw_holdings = holdings
+    history_day = performance_history_date()
+    finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
+    trades = load_trade_records(user_id)
+    holdings = holdings_snapshot_for_day(history_day, raw_holdings, finalized_rows, trades)
+    for sym in ALL_SYMBOLS:
+        holdings.setdefault(sym, raw_holdings.get(sym, {"shares": 0.0, "avg_cost": 0.0}))
     forward_pe = market.get("forward_pe", {})
     valuation_metrics = market.get("valuation_metrics", {})
     rows: list[dict[str, Any]] = []
@@ -1251,7 +1259,20 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         quote = quotes[sym]
         shares = float(holding["shares"])
         avg_cost = float(holding["avg_cost"])
-        price = float(quote["price"])
+        price = float(quote.get("price") or 0.0)
+        if price <= 0:
+            price = next(
+                (
+                    candidate
+                    for candidate in (
+                        float(quote.get("regular_price") or 0.0),
+                        float(quote.get("prev_close") or 0.0),
+                        avg_cost,
+                    )
+                    if candidate > 0
+                ),
+                0.0,
+            )
         value = shares * price
         cost = shares * avg_cost
         value_cny = value * fx if meta["currency"] == "USD" else value
@@ -1284,7 +1305,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "pnl_cny": pnl_cny,
                 "pnl_pct": pnl / cost * 100.0 if cost > 0 else 0.0,
                 "daily_pct": float(quote.get("regular_change_pct", quote.get("change_pct", 0.0))),
-                "effective_daily_pct": float(quote.get("change_pct", 0.0)),
+                "effective_daily_pct": history_daily_pct_for_symbol(sym, quote, history_day, datetime.now(TZ_SHANGHAI)),
                 "extended_pct": quote.get("extended_change_pct"),
                 "drawdown_pct": sixty_day.get("drawdown_pct"),
                 "rebound_pct": sixty_day.get("rebound_pct"),
@@ -1315,8 +1336,12 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         regular_price = float(quote.get("regular_price") or quote.get("price") or 0.0)
         regular_value = shares * regular_price
         regular_value_cny = regular_value * fx if currency == "USD" else regular_value
+        current_value = shares * float(quote.get("price") or regular_price or 0.0)
+        current_value_cny = current_value * fx if currency == "USD" else current_value
         regular_pct = float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
-        change_cny = _daily_amount(regular_value_cny, regular_pct)
+        summary_pct = history_daily_pct_for_symbol(sym, quote, history_day, datetime.now(TZ_SHANGHAI))
+        regular_change_cny = _daily_amount(regular_value_cny, regular_pct)
+        change_cny = _daily_amount(current_value_cny, summary_pct)
         extended_pct = quote.get("extended_change_pct") if quote.get("session") != "regular" else None
         effective_pct = treemap_daily_pct(quote, regular_pct)
         extended_change_cny = None
@@ -1328,8 +1353,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "label": ASSET_META[sym]["label"],
                 "price_line": _quote_price_line(sym, quote),
                 "regular_pct": regular_pct,
+                "summary_pct": summary_pct,
                 "effective_pct": effective_pct,
                 "extended_pct": extended_pct,
+                "regular_change_usd": regular_change_cny / fx if fx > 0 else 0.0,
+                "regular_change_cny": regular_change_cny,
                 "change_usd": change_cny / fx if fx > 0 else 0.0,
                 "change_cny": change_cny,
                 "extended_change_usd": extended_change_cny / fx if extended_change_cny is not None and fx > 0 else None,
@@ -1357,6 +1385,12 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         else 0.0
     )
     satellite_change_cny = sum(float(card_by_symbol[sym].get("change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
+    satellite_regular_change_cny = sum(float(card_by_symbol[sym].get("regular_change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
+    satellite_summary_pct = (
+        satellite_change_cny / sum(value_cny_by_symbol.get(sym, 0.0) for sym in SATELLITE_SYMBOLS) * 100.0
+        if sum(value_cny_by_symbol.get(sym, 0.0) for sym in SATELLITE_SYMBOLS) > 0
+        else 0.0
+    )
     satellite_extended_change_cny = (
         sum(float(card_by_symbol[sym].get("extended_change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
         if any(card_by_symbol[sym].get("extended_change_cny") is not None for sym in SATELLITE_SYMBOLS)
@@ -1372,7 +1406,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "label": "卫星仓位",
         "price_line": "",
         "regular_pct": satellite_regular_pct,
+        "summary_pct": satellite_summary_pct,
+        "effective_pct": satellite_regular_pct,
         "extended_pct": satellite_extended_pct,
+        "regular_change_usd": satellite_regular_change_cny / fx if fx > 0 else 0.0,
+        "regular_change_cny": satellite_regular_change_cny,
         "change_usd": satellite_change_cny / fx if fx > 0 else 0.0,
         "change_cny": satellite_change_cny,
         "extended_change_usd": satellite_extended_change_cny / fx if satellite_extended_change_cny is not None and fx > 0 else None,
@@ -1381,7 +1419,6 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     }
     daily_cards.insert(2, satellite_card)
 
-    history_day = performance_history_date()
     history_now = datetime.now(TZ_SHANGHAI)
     history_weighted_daily_pct = (
         sum(
@@ -1401,7 +1438,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     total_pnl_pct = total_pnl_cny / total_cost_cny * 100.0 if total_cost_cny > 0 else 0.0
     today_cash_flow_cny = sum(
         max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
-        for trade in load_trade_records(user_id)
+        for trade in trades
         if str(trade.get("trade_date") or "")[:10] == history_day
     )
     performance_history = build_performance_history(
@@ -1444,7 +1481,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "satellite_universe": load_satellite_universe_config(),
         "performance_history": performance_history,
         "rebalance": build_rebalance_v2(user_id, rows, balances, market, value_cny_by_symbol, fx),
-        "trades": load_trade_records(user_id),
+        "trades": trades,
     }
 
 
@@ -1854,9 +1891,8 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
         sym = str(item.get("symbol", "")).upper()
         if sym not in USD_SYMBOLS and sym != "001015":
             continue
-        if sym == "SGOV":
-            continue
         is_cny_trade = sym == "001015"
+        tracks_monthly_usage = sym != "SGOV" and not is_cny_trade
         action = str(item.get("action", "buy")).lower()
         if action not in {"buy", "sell"}:
             raise ValueError(f"{sym} 的交易方向无效")
@@ -1892,7 +1928,8 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             else:
                 available_usd += amount
                 realized_pnl += sale_pnl
-                sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
+                if tracks_monthly_usage:
+                    sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
                 total_sold += amount
         else:
             if is_cny_trade:
@@ -1908,11 +1945,12 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
                 available_cny -= amount
             else:
                 available_usd -= amount
-                amounts[sym] = float(amounts.get(sym, 0.0)) + amount
-                new_intensity = normalize_intensity(item.get("intensity", "normal"))
-                old_intensity = normalize_intensity(intensities.get(sym, "none"))
-                if intensity_rank(new_intensity) > intensity_rank(old_intensity):
-                    intensities[sym] = new_intensity
+                if tracks_monthly_usage:
+                    amounts[sym] = float(amounts.get(sym, 0.0)) + amount
+                    new_intensity = normalize_intensity(item.get("intensity", "normal"))
+                    old_intensity = normalize_intensity(intensities.get(sym, "none"))
+                    if intensity_rank(new_intensity) > intensity_rank(old_intensity):
+                        intensities[sym] = new_intensity
                 total_bought += amount
         usage["bought_amount_by_symbol"] = amounts
         usage["sold_amount_by_symbol"] = sold_amounts

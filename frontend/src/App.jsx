@@ -299,24 +299,35 @@ function Summary({ data }) {
 function DailyCards({ cards }) {
   return (
     <section className="cardGrid">
-      {cards.map((card) => (
-        <article className={`dailyCard ${card.wide ? "wideCard" : ""}`} key={card.symbol}>
-          <div className="cardTitle">{card.label}</div>
-          {card.price_line ? <div className="priceLine">{fmtCardPriceLine(card.price_line)}</div> : null}
-          <div className={tone(card.regular_pct)}>
-            {fmtPct(card.regular_pct)}
-            {card.extended_pct != null ? <span className={tone(card.extended_pct)}>（{fmtPct(card.extended_pct)}）</span> : null}
-          </div>
-          <div className={tone(card.change_usd)}>
-            {fmtMoney(card.change_usd, "USD")}
-            {card.extended_change_usd != null ? <span className={tone(card.extended_change_usd)}>（{Number(card.extended_change_usd).toFixed(2)}）</span> : null}
-          </div>
-          <div className={tone(card.change_cny)}>
-            {fmtMoney(card.change_cny, "CNY")}
-            {card.extended_change_cny != null ? <span className={tone(card.extended_change_cny)}>（{Number(card.extended_change_cny).toFixed(2)}）</span> : null}
-          </div>
-        </article>
-      ))}
+      {cards.map((card) => {
+        const regularPct = Number(card.regular_pct ?? 0);
+        const extendedPct = Number(card.extended_pct);
+        const hasDistinctExtendedPct = card.extended_pct != null && Math.abs(extendedPct - regularPct) > 0.0001;
+        const regularUsd = Number(card.regular_change_usd ?? card.change_usd ?? 0);
+        const regularCny = Number(card.regular_change_cny ?? card.change_cny ?? 0);
+        const extendedUsd = Number(card.extended_change_usd);
+        const extendedCny = Number(card.extended_change_cny);
+        const hasDistinctExtendedUsd = card.extended_change_usd != null && Math.abs(extendedUsd - regularUsd) > 0.005;
+        const hasDistinctExtendedCny = card.extended_change_cny != null && Math.abs(extendedCny - regularCny) > 0.005;
+        return (
+          <article className={`dailyCard ${card.wide ? "wideCard" : ""}`} key={card.symbol}>
+            <div className="cardTitle">{card.label}</div>
+            {card.price_line ? <div className="priceLine">{fmtCardPriceLine(card.price_line)}</div> : null}
+            <div className={tone(regularPct)}>
+              {fmtPct(regularPct)}
+              {hasDistinctExtendedPct ? <span className={tone(extendedPct)}>（{fmtPct(extendedPct)}）</span> : null}
+            </div>
+            <div className={tone(regularUsd)}>
+              {fmtMoney(regularUsd, "USD")}
+              {hasDistinctExtendedUsd ? <span className={tone(extendedUsd)}>（{extendedUsd.toFixed(2)}）</span> : null}
+            </div>
+            <div className={tone(regularCny)}>
+              {fmtMoney(regularCny, "CNY")}
+              {hasDistinctExtendedCny ? <span className={tone(extendedCny)}>（{extendedCny.toFixed(2)}）</span> : null}
+            </div>
+          </article>
+        );
+      })}
     </section>
   );
 }
@@ -716,6 +727,8 @@ function LightweightKlineCard({ item }) {
       borderDownColor: TERMINAL_CHART.coral,
       wickUpColor: TERMINAL_CHART.green,
       wickDownColor: TERMINAL_CHART.coral,
+      borderVisible: true,
+      wickVisible: true,
       priceLineColor: TERMINAL_CHART.yellow,
       priceLineWidth: 1,
     });
@@ -934,6 +947,8 @@ function SingleLightweightChart({ data, viewKey }) {
       borderDownColor: TERMINAL_CHART.coral,
       wickUpColor: TERMINAL_CHART.green,
       wickDownColor: TERMINAL_CHART.coral,
+      borderVisible: true,
+      wickVisible: true,
       priceLineVisible: false,
       lastValueVisible: false,
     }, 0);
@@ -991,11 +1006,20 @@ function SingleLightweightChart({ data, viewKey }) {
     const chart = chartRef.current;
     const series = seriesRef.current;
     if (!chart || !series.candle) return;
+    series.candle.applyOptions({
+      borderVisible: true,
+      wickVisible: true,
+      wickUpColor: TERMINAL_CHART.green,
+      wickDownColor: TERMINAL_CHART.coral,
+    });
     series.candle.setData(candles);
     series.volume.setData(volumes);
     const shouldDrawAvwap = isDaily || !avwapSkewsIntradayScale;
-    series.avwapUpper.setData([]);
-    series.avwapLower.setData([]);
+    const shouldDrawAvwapBands = shouldDrawAvwap && data?.avwap_mode === "today_open";
+    const avwapUpperRows = shouldDrawAvwapBands ? normalizeLineData(overlays.avwap_upper) : [];
+    const avwapLowerRows = shouldDrawAvwapBands ? normalizeLineData(overlays.avwap_lower) : [];
+    series.avwapUpper.setData(avwapUpperRows);
+    series.avwapLower.setData(avwapLowerRows);
     series.avwap.setData(shouldDrawAvwap ? normalizeLineData(overlays.avwap) : []);
     series.ema20.setData(isDaily ? normalizeLineData(overlays.ema20) : []);
     series.ma50.setData(isDaily ? normalizeLineData(overlays.ma50) : []);
@@ -1389,12 +1413,19 @@ function EditableHoldingsPage({ data }) {
 function Rebalance({ data, onSaved }) {
   const rows = data.rebalance.rows;
   const suggestionRows = useMemo(() => rows.filter((row) => row.symbol !== "001015"), [rows]);
+  const tradeRows = useMemo(() => {
+    const bySymbol = new Map((data.holdings || []).map((row) => [row.symbol, { ...row, intensity: "normal", suggested_buy_usd: 0 }]));
+    rows.forEach((row) => {
+      bySymbol.set(row.symbol, { ...(bySymbol.get(row.symbol) || {}), ...row });
+    });
+    return Array.from(bySymbol.values()).filter((row) => row.symbol);
+  }, [data.holdings, rows]);
   const currencyBySymbol = useMemo(
     () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row.currency || "USD"])),
     [data.holdings],
   );
   const defaultTradeDate = formatShanghaiInputDate();
-  const [editing, setEditing] = useState(false);
+  const [activeTradeSymbol, setActiveTradeSymbol] = useState("");
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [universeOpen, setUniverseOpen] = useState(false);
@@ -1417,9 +1448,9 @@ function Rebalance({ data, onSaved }) {
     if (!universeOpen) {
       setUniverseInputs(buildSatelliteUniverseDraft(data));
     }
-    if (editing) return;
+    if (activeTradeSymbol) return;
     const next = {};
-    rows.forEach((row) => {
+    tradeRows.forEach((row) => {
       next[row.symbol] = {
         action: "buy",
         trade_date: defaultTradeDate,
@@ -1429,7 +1460,7 @@ function Rebalance({ data, onSaved }) {
       };
     });
     setInputs(next);
-  }, [data.rebalance.month_key, rows, editing, data.rebalance.future_cash_by_month, defaultTradeDate, data.satellite_universe, data.satellite_targets, data.holdings, universeOpen]);
+  }, [data.rebalance.month_key, tradeRows, activeTradeSymbol, data.rebalance.future_cash_by_month, defaultTradeDate, data.satellite_universe, data.satellite_targets, data.holdings, universeOpen]);
 
   useEffect(() => {
     if (!tradeToast) return undefined;
@@ -1497,19 +1528,26 @@ function Rebalance({ data, onSaved }) {
     setUniverseOpen(true);
   }
 
-  function clearPending() {
+  function clearPending(symbolToClear = "") {
     setInputs((prev) => Object.fromEntries(Object.keys(prev).map((symbol) => [
       symbol,
-      { ...prev[symbol], trade_date: prev[symbol]?.trade_date || defaultTradeDate, amount_usd: "0.00", shares: "0" },
+      symbolToClear && symbol !== symbolToClear
+        ? prev[symbol]
+        : { ...prev[symbol], trade_date: prev[symbol]?.trade_date || defaultTradeDate, amount_usd: "0.00", shares: "0" },
     ])));
   }
 
-  async function save() {
+  function openTradeEditor(symbol) {
+    setActiveTradeSymbol((prev) => (prev === symbol ? "" : symbol));
+  }
+
+  async function save(symbolToSave = "") {
     setSaving(true);
     setTradeMessage("");
     setTradeToast(null);
     try {
       const executions = Object.entries(inputs)
+        .filter(([symbol]) => !symbolToSave || symbol === symbolToSave)
         .map(([symbol, item]) => ({
           symbol,
           action: item.action || "buy",
@@ -1519,12 +1557,15 @@ function Rebalance({ data, onSaved }) {
           intensity: item.intensity,
         }))
         .filter((item) => item.amount_usd > 0 && item.shares > 0);
+      if (!executions.length) {
+        throw new Error("请填写成交金额和成交股数");
+      }
       const response = await fetch(`${API_BASE}/api/rebalance/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, executions }) });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.detail || `HTTP ${response.status}`);
       }
-      setEditing(false);
+      setActiveTradeSymbol("");
       await onSaved();
       setTradeMessage("交易已保存");
       showTradeToast("交易已保存", "up");
@@ -1647,7 +1688,7 @@ function Rebalance({ data, onSaved }) {
         <button className="primary" onClick={() => setBudgetOpen(true)}>预算设置</button>
         <button className="primary" onClick={() => setEditingBalances(true)}>编辑现金</button>
         <button className="primary" onClick={openUniverseEditor}>编辑卫星标的</button>
-        <button className="primary" onClick={() => setEditing(true)}>记录买卖</button>
+        <button className="primary" onClick={() => openTradeEditor(tradeRows[0]?.symbol || "")}>记录一条买卖</button>
       </div>
       <div className="sectionHeader subHeader">
         <h2>交易记录</h2>
@@ -1786,77 +1827,95 @@ function Rebalance({ data, onSaved }) {
         <table>
           <thead>
             <tr>
-              <th>标的</th><th>目前占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>建议买入</th><th>净买入</th><th>差值</th><th>档位</th><th>估值/追高系数</th><th>说明</th>
+              <th>标的</th><th>目前占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>建议买入</th><th>净买入</th><th>差值</th><th>档位</th><th>估值/追高系数</th><th>说明</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
-            {suggestionRows.map((row) => (
-              <tr key={row.symbol}>
-                <th>{row.symbol}</th>
-                <td>{Number(row.current_pct || 0).toFixed(2)}%</td>
-                <td>{Number(row.target_pct || 0).toFixed(2)}%</td>
-                <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
-                <td className="planCell">
-                  <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
-                  {row.planned_buy_formula ? <div className="cellSubtext">{row.planned_buy_formula}</div> : null}
-                </td>
-                <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</td>
-                <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
-                <td className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</td>
-                <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
-                <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
-                <td className="note">{row.note}</td>
-              </tr>
-            ))}
+            {suggestionRows.map((row) => {
+              const isActive = activeTradeSymbol === row.symbol;
+              const currentInput = inputs[row.symbol] || {};
+              return (
+                <React.Fragment key={row.symbol}>
+                  <tr className={isActive ? "activeTradeRow" : ""}>
+                    <th>{row.symbol}</th>
+                    <td>{Number(row.current_pct || 0).toFixed(2)}%</td>
+                    <td>{Number(row.target_pct || 0).toFixed(2)}%</td>
+                    <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
+                    <td className="planCell">
+                      <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
+                      {row.planned_buy_formula ? <div className="cellSubtext">{row.planned_buy_formula}</div> : null}
+                    </td>
+                    <td className={tone(row.suggested_buy_usd)}>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</td>
+                    <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
+                    <td className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</td>
+                    <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
+                    <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
+                    <td className="note">{row.note}</td>
+                    <td><button onClick={() => openTradeEditor(row.symbol)}>{isActive ? "收起" : "记录"}</button></td>
+                  </tr>
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      {editing ? (
-        <div className="modalBackdrop" role="presentation" onClick={() => setEditing(false)}>
-          <div className="modalPanel tradeModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <div className="sectionHeader">
-              <h2>买卖确认</h2>
-              <button onClick={() => setEditing(false)} disabled={saving}>关闭</button>
-            </div>
-            <div className="tableWrap">
-              <table>
-                <thead><tr><th>标的</th><th>方向</th><th>日期</th><th>当前档位</th><th>成交金额</th><th>成交股数</th><th>建议买入</th></tr></thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.symbol}>
-                      <th>{row.symbol}</th>
-                      <td>
-                        <select value={inputs[row.symbol]?.action || "buy"} onChange={(event) => update(row.symbol, "action", event.target.value)}>
-                          <option value="buy">买入</option>
-                          <option value="sell">卖出</option>
-                        </select>
-                      </td>
-                      <td><input type="date" value={inputs[row.symbol]?.trade_date || defaultTradeDate} onChange={(event) => update(row.symbol, "trade_date", event.target.value)} /></td>
-                      <td>
-                        <select className={tierClass(inputs[row.symbol]?.intensity || row.intensity)} value={inputs[row.symbol]?.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
-                          <option value="normal">普通</option>
-                          <option value="probe">QQQ -2%分批</option>
-                          <option value="month_end">QQQ月底补齐</option>
-                          <option value="small">小加</option>
-                          <option value="medium">中加</option>
-                          <option value="large">大加</option>
-                        </select>
-                      </td>
-                      <td><input value={inputs[row.symbol]?.amount_usd ?? ""} onChange={(event) => update(row.symbol, "amount_usd", event.target.value)} inputMode="decimal" /></td>
-                      <td><input value={inputs[row.symbol]?.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" /></td>
-                      <td>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="actions">
-              <button onClick={clearPending}>清零待确认交易</button>
-              <button className="primary" onClick={save} disabled={saving}><Save size={16} /> 确认买卖并同步持仓</button>
+      {activeTradeSymbol ? (() => {
+        const row = tradeRows.find((item) => item.symbol === activeTradeSymbol);
+        const currentInput = inputs[activeTradeSymbol] || {};
+        if (!row) return null;
+        return (
+          <div className="modalBackdrop" role="presentation" onClick={() => setActiveTradeSymbol("")}>
+            <div className="modalPanel singleTradeModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className="sectionHeader">
+                <h2>记录买卖 · {row.symbol}</h2>
+                <button onClick={() => setActiveTradeSymbol("")} disabled={saving}>关闭</button>
+              </div>
+              <div className="singleTradeGrid">
+                <label>标的
+                  <select value={activeTradeSymbol} onChange={(event) => setActiveTradeSymbol(event.target.value)}>
+                    {tradeRows.map((item) => (
+                      <option key={item.symbol} value={item.symbol}>{item.symbol}{item.label && item.label !== item.symbol ? ` · ${item.label}` : ""}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>方向
+                  <select value={currentInput.action || "buy"} onChange={(event) => update(row.symbol, "action", event.target.value)}>
+                    <option value="buy">买入</option>
+                    <option value="sell">卖出</option>
+                  </select>
+                </label>
+                <label>日期
+                  <input type="date" value={currentInput.trade_date || defaultTradeDate} onChange={(event) => update(row.symbol, "trade_date", event.target.value)} />
+                </label>
+                <label>档位
+                  <select className={tierClass(currentInput.intensity || row.intensity)} value={currentInput.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
+                    <option value="normal">普通</option>
+                    <option value="probe">QQQ -2%分批</option>
+                    <option value="month_end">QQQ月底补齐</option>
+                    <option value="small">小加</option>
+                    <option value="medium">中加</option>
+                    <option value="large">大加</option>
+                  </select>
+                </label>
+                <label>成交金额
+                  <input value={currentInput.amount_usd ?? ""} onChange={(event) => update(row.symbol, "amount_usd", event.target.value)} inputMode="decimal" />
+                </label>
+                <label>成交股数
+                  <input value={currentInput.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" />
+                </label>
+                <div className="singleTradeHint">
+                  <span>建议买入</span>
+                  <strong>{fmtMoney(row.suggested_buy_usd, row.currency || "USD")}</strong>
+                </div>
+              </div>
+              <div className="actions">
+                <button onClick={() => clearPending(row.symbol)} disabled={saving}>清零</button>
+                <button className="primary" onClick={() => save(row.symbol)} disabled={saving}><Save size={16} /> 保存这一条</button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        );
+      })() : null}
       {balanceMessage ? <div className={balanceMessage === "现金与已变现已保存" ? "saveMessage up" : "saveMessage down"}>{balanceMessage}</div> : null}
       {editingBalances ? (
         <div className="modalBackdrop" role="presentation" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }}>

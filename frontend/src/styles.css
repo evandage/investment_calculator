@@ -1667,6 +1667,42 @@ tbody th {
   width: min(1180px, 96vw);
 }
 
+.activeTradeRow > th,
+.activeTradeRow > td {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.singleTradeModal {
+  width: min(680px, 96vw);
+}
+
+.singleTradeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.singleTradeGrid label,
+.singleTradeHint {
+  display: grid;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.singleTradeGrid input,
+.singleTradeGrid select {
+  width: 100%;
+  min-width: 0;
+}
+
+.singleTradeHint strong {
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
 .satelliteUniverseModal {
   width: min(1180px, 96vw);
 }
@@ -1848,6 +1884,10 @@ tbody th {
   }
 
   .rebalanceActionRow {
+    grid-template-columns: 1fr;
+  }
+
+  .singleTradeGrid {
     grid-template-columns: 1fr;
   }
 

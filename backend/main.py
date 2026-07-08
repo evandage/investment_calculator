@@ -354,6 +354,10 @@ def _build_chart_board_light(
             effective_avwap_mode,
             cache_only=False,
         )
+        if key != "1d" and effective_avwap_mode == "today_open":
+            atr_band = chart_api.atr_series(df, 14).reindex(avwap.index)
+            avwap_upper = avwap + atr_band
+            avwap_lower = avwap - atr_band
         try:
             avwap_clean = avwap.replace([float("inf"), float("-inf")], float("nan")).dropna()
             avwap_value = float(avwap_clean.iloc[-1]) if not avwap_clean.empty else None
