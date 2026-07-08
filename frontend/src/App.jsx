@@ -26,7 +26,7 @@ const TERMINAL_CHART = {
 const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
 
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
-const shanghaiDateFormatter = new Intl.DateTimeFormat("zh-CN", {
+const shanghaiDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SHANGHAI_TIME_ZONE,
   year: "numeric",
   month: "2-digit",
@@ -40,13 +40,21 @@ const shanghaiKlineTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
   hour12: false,
 });
-
-function formatShanghaiInputDate(date = new Date()) {
-  const parts = shanghaiDateFormatter.formatToParts(date);
+function formatPartsDate(formatter, date) {
+  const parts = formatter.formatToParts(date);
   const year = parts.find((part) => part.type === "year")?.value || "1970";
   const month = parts.find((part) => part.type === "month")?.value || "01";
   const day = parts.find((part) => part.type === "day")?.value || "01";
   return `${year}-${month}-${day}`;
+}
+
+function previousTradingDateFromShanghai(date = new Date()) {
+  const shanghaiToday = formatPartsDate(shanghaiDateFormatter, date);
+  const cursor = new Date(`${shanghaiToday}T12:00:00Z`);
+  do {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  } while (cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6);
+  return cursor.toISOString().slice(0, 10);
 }
 
 function formatLightweightChartTime(time) {
@@ -1430,7 +1438,7 @@ function Rebalance({ data, onSaved }) {
     () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row.currency || "USD"])),
     [data.holdings],
   );
-  const defaultTradeDate = formatShanghaiInputDate();
+  const defaultTradeDate = previousTradingDateFromShanghai();
   const [activeTradeSymbol, setActiveTradeSymbol] = useState("");
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -1575,7 +1583,6 @@ function Rebalance({ data, onSaved }) {
       }
       setActiveTradeSymbol("");
       await onSaved();
-      setTradeMessage("交易已保存");
       showTradeToast("交易已保存", "up");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1604,7 +1611,6 @@ function Rebalance({ data, onSaved }) {
         throw new Error(body.detail || `HTTP ${response.status}`);
       }
       await onSaved();
-      setTradeMessage("交易已撤销");
       showTradeToast("交易已撤销", "up");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1702,7 +1708,7 @@ function Rebalance({ data, onSaved }) {
         <h2>交易记录</h2>
         <span className="muted">买入或卖出后会按交易日期重算该日之后的收益曲线</span>
       </div>
-      {tradeMessage ? <div className={["交易已保存", "交易已撤销"].includes(tradeMessage) ? "saveMessage up" : "saveMessage down"}>{tradeMessage}</div> : null}
+      {tradeMessage ? <div className="saveMessage down">{tradeMessage}</div> : null}
       <div className="tableWrap">
         <table>
           <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>股数</th><th>成交金额</th><th>成交成本</th><th>收盘差额</th><th>持仓成本变化</th><th>档位</th><th>操作</th></tr></thead>

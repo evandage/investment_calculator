@@ -307,11 +307,17 @@
     {
       "date": "2026-07-03",
       "portfolio_return_pct": 0.0,
-      "portfolio_daily_pct": 0.7989907485281617,
+      "portfolio_daily_pct": 0.7843860525177869,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
-      "holding_pnl_pct": 0.6312547280664605,
-      "holding_daily_pnl_pct": 0.7989907485281617,
+      "holding_pnl_pct": 0.6332461199287915,
+      "holding_daily_pnl_pct": 0.7843860525177869,
+      "holding_pnl_cny": 554.6675714769808,
+      "holding_cost_cny": 87591.152005693,
+      "holding_daily_pnl_cny": 259.5074799999957,
+      "holding_daily_basis_cny": 33084.152780000004,
+      "cash_flow_cny": 4000.0,
+      "cash_flow_flag": true,
       "benchmark_prices": {
         "001015": 2.397,
         "VOO": 684.84,
@@ -323,7 +329,7 @@
         "QQQ": 0.0
       },
       "symbol_daily_pct": {
-        "001015": 0.7989907485281617
+        "001015": 0.7843860525177869
       },
       "holdings_snapshot": {
         "VOO": {
@@ -363,8 +369,8 @@
           "avg_cost": 100.52
         },
         "001015": {
-          "shares": 12230.51,
-          "avg_cost": 2.3648485968287503
+          "shares": 13910.58,
+          "avg_cost": 2.3667815728747468
         }
       },
       "finalized": true,
@@ -374,11 +380,17 @@
     {
       "date": "2026-07-06",
       "portfolio_return_pct": 0.0,
-      "portfolio_daily_pct": 0.5500193052208772,
+      "portfolio_daily_pct": 0.519146137453943,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
-      "holding_pnl_pct": 1.155748724961286,
-      "holding_daily_pnl_pct": 0.5500193052208772,
+      "holding_pnl_pct": 1.1556797301549437,
+      "holding_daily_pnl_pct": 0.519146137453943,
+      "holding_pnl_cny": 1012.2731891389994,
+      "holding_cost_cny": 87591.152005693,
+      "holding_daily_pnl_cny": 457.6056176619995,
+      "holding_daily_basis_cny": 88145.81957717,
+      "cash_flow_cny": 0.0,
+      "cash_flow_flag": false,
       "benchmark_prices": {
         "001015": 2.401,
         "VOO": 690.62,
@@ -399,7 +411,7 @@
         "AVGO": 3.7314468026078482,
         "NVDA": 0.3695529435918487,
         "SGOV": 0.0,
-        "001015": 0.24843554795064676
+        "001015": 0.16687526074259507
       },
       "holdings_snapshot": {
         "VOO": {
@@ -449,16 +461,16 @@
     },
     {
       "date": "2026-07-07",
-      "portfolio_daily_pct": -0.7120773093335442,
+      "portfolio_daily_pct": -0.6598846626939213,
       "portfolio_return_pct": 0.0,
-      "holding_pnl_pct": 0.45682732480949173,
-      "holding_pnl_cny": 399.7105259811942,
-      "holding_cost_cny": 87497.07039697841,
-      "holding_daily_pnl_pct": -0.7120773093335442,
-      "holding_daily_pnl_cny": -630.3818386219975,
-      "holding_daily_basis_cny": 88527.1627615816,
-      "cash_flow_cny": 0,
-      "cash_flow_flag": false,
+      "holding_pnl_pct": 0.5788751322010397,
+      "holding_pnl_cny": 485.95136647125764,
+      "holding_cost_cny": 83947.52848054454,
+      "holding_daily_pnl_pct": -0.6598846626939213,
+      "holding_daily_pnl_cny": -605.6749800969985,
+      "holding_daily_basis_cny": 91784.9761236128,
+      "cash_flow_cny": 9940.364296499998,
+      "cash_flow_flag": true,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
       "benchmark_prices": {
@@ -477,28 +489,28 @@
         "QQQ"
       ],
       "symbol_daily_pct": {
-        "VOO": -0.5125828965277525,
-        "QQQ": -1.8524667275393734,
-        "ISRG": -1.2776378716817165,
-        "TEM": 10.265150000000009,
-        "GOOGL": 0.15554221470283064,
+        "VOO": -0.4959626322956966,
+        "QQQ": -1.384566295426163,
+        "ISRG": -0.5287677148930123,
+        "TEM": -1.0049423393739694,
+        "GOOGL": 0.29878264520047365,
         "MSFT": 0.5430004654289616,
-        "AVGO": -0.8344477132923254,
-        "NVDA": 0.7057018665302968,
-        "SGOV": -0.10937655364422733,
+        "AVGO": -1.2755306337384393,
+        "NVDA": -1.39418945631129,
+        "SGOV": 0.01875082968272642,
         "001015": -0.9162848812994501
       },
       "holdings_snapshot": {
         "VOO": {
-          "shares": 3.7404,
-          "avg_cost": 660.1112180515453
+          "shares": 3.8424,
+          "avg_cost": 660.8057464084947
         },
         "QQQ": {
-          "shares": 2.0921,
-          "avg_cost": 725.1170804454856
+          "shares": 2.6581,
+          "avg_cost": 721.1983913321546
         },
         "ISRG": {
-          "shares": 0.7807000000000001,
+          "shares": 0.5994,
           "avg_cost": 414.1
         },
         "TEM": {
@@ -506,7 +518,7 @@
           "avg_cost": 54.49591280653951
         },
         "GOOGL": {
-          "shares": 0.5794,
+          "shares": 0.44400000000000006,
           "avg_cost": 364.1269623748706
         },
         "MSFT": {
@@ -514,15 +526,15 @@
           "avg_cost": 423.0217804154302
         },
         "AVGO": {
-          "shares": 0.5664,
+          "shares": 0.456,
           "avg_cost": 418.2912358757062
         },
         "NVDA": {
-          "shares": 0.6187,
-          "avg_cost": 210.08566348795858
+          "shares": 0.0,
+          "avg_cost": 0.0
         },
         "SGOV": {
-          "shares": 30.0,
+          "shares": 23.0,
           "avg_cost": 100.52
         },
         "001015": {

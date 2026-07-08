@@ -47,7 +47,7 @@
       "updated_at": "2026-06-29T15:40:16+08:00"
     },
     "2026-07": {
-      "used_budget_usd": 844.8399999999999,
+      "used_budget_usd": 1314.8400000000001,
       "planned_new_cash_usd": 700.0,
       "planned_cash_by_month": {},
       "bought_symbols": [
@@ -55,15 +55,20 @@
         "VOO"
       ],
       "bought_amount_by_symbol": {
-        "QQQ": 369.9,
-        "VOO": 474.94
+        "QQQ": 769.9,
+        "VOO": 544.94
       },
-      "sold_amount_by_symbol": {},
+      "sold_amount_by_symbol": {
+        "ISRG": 80.0,
+        "GOOGL": 50.0,
+        "AVGO": 40.0,
+        "NVDA": 119.3
+      },
       "bought_intensity_by_symbol": {
-        "QQQ": "probe",
+        "QQQ": "small",
         "VOO": "normal"
       },
-      "updated_at": "2026-07-06T16:44:38+08:00"
+      "updated_at": "2026-07-08T11:01:14+08:00"
     }
   }
 }
