@@ -1,7 +1,7 @@
 {
   "VOO": {
-    "shares": 3.1478,
-    "avg_cost": 655.8741
+    "shares": 3.1753,
+    "avg_cost": 664.684574600825
   },
   "QQQ": {
     "shares": 2.1437,
@@ -16,8 +16,8 @@
     "avg_cost": 54.49
   },
   "PLTR": {
-    "shares": 0.0,
-    "avg_cost": 100.0
+    "shares": 0.1941,
+    "avg_cost": 128.74806800618236
   },
   "GOOGL": {
     "shares": 0.4442,

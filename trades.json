@@ -151,21 +151,6 @@
       "created_at": "2026-07-08T10:56:27+08:00"
     },
     {
-      "id": "20260708105919-10-NVDA",
-      "trade_date": "2026-07-07",
-      "symbol": "NVDA",
-      "action": "sell",
-      "amount_usd": 119.3,
-      "shares": 0.6187,
-      "price": 192.82366251818328,
-      "cost_basis": 129.98,
-      "realized_pnl": -10.679999999999993,
-      "prev_avg_cost": 210.08566348795858,
-      "new_avg_cost": 0.0,
-      "intensity": "small",
-      "created_at": "2026-07-08T10:59:19+08:00"
-    },
-    {
       "id": "20260708110114-11-QQQ",
       "trade_date": "2026-07-07",
       "symbol": "QQQ",
@@ -179,6 +164,51 @@
       "new_avg_cost": 720.69569292403,
       "intensity": "small",
       "created_at": "2026-07-08T11:01:14+08:00"
+    },
+    {
+      "id": "20260708215250-11-VOO",
+      "trade_date": "2026-07-08",
+      "symbol": "VOO",
+      "action": "sell",
+      "amount_usd": 664.97,
+      "shares": 0.9725,
+      "price": 683.7737789203085,
+      "cost_basis": 637.83756225,
+      "realized_pnl": 27.13243775000001,
+      "prev_avg_cost": 655.8741,
+      "new_avg_cost": 655.8741,
+      "intensity": "normal",
+      "created_at": "2026-07-08T21:52:50+08:00"
+    },
+    {
+      "id": "20260708215411-12-VOO",
+      "trade_date": "2026-07-08",
+      "symbol": "VOO",
+      "action": "buy",
+      "amount_usd": 683.85,
+      "shares": 1.0,
+      "price": 683.85,
+      "cost_basis": 683.85,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 655.8741,
+      "new_avg_cost": 664.684574600825,
+      "intensity": "normal",
+      "created_at": "2026-07-08T21:54:11+08:00"
+    },
+    {
+      "id": "20260708215448-13-PLTR",
+      "trade_date": "2026-07-08",
+      "symbol": "PLTR",
+      "action": "buy",
+      "amount_usd": 24.99,
+      "shares": 0.1941,
+      "price": 128.74806800618236,
+      "cost_basis": 24.99,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 100.0,
+      "new_avg_cost": 128.74806800618236,
+      "intensity": "small",
+      "created_at": "2026-07-08T21:54:48+08:00"
     }
   ]
 }

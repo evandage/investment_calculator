@@ -442,6 +442,21 @@ def _fmt_usd_compact(value: float) -> str:
     return f"{float(value):,.0f}" if abs(float(value)) >= 100 else f"{float(value):,.2f}"
 
 
+def _fmt_usd_exact(value: float) -> str:
+    return f"{float(value):,.2f}"
+
+
+def trade_cost_basis(record: dict[str, Any]) -> float:
+    cost_basis = max(0.0, float(record.get("cost_basis", 0.0) or 0.0))
+    if cost_basis > 0:
+        return cost_basis
+    shares = max(0.0, float(record.get("shares", 0.0) or 0.0))
+    prev_avg_cost = max(0.0, float(record.get("prev_avg_cost", 0.0) or 0.0))
+    if shares > 0 and prev_avg_cost > 0:
+        return shares * prev_avg_cost
+    return max(0.0, float(record.get("amount_usd", 0.0) or 0.0))
+
+
 def _currency_value_to_cny(value: float, currency: str, fx: float) -> float:
     return value * fx if currency == "USD" else value
 
@@ -1682,6 +1697,21 @@ def build_rebalance_v2(
     bought_amounts = dict(usage.get("bought_amount_by_symbol", {}))
     sold_amounts = dict(usage.get("sold_amount_by_symbol", {}))
     bought_intensities = {sym: normalize_intensity(v) for sym, v in usage.get("bought_intensity_by_symbol", {}).items()}
+    monthly_trade_records = [
+        record
+        for record in load_trade_records(user_id)
+        if str(record.get("trade_date") or "")[:7] == month_key
+    ]
+    bought_cost_by_symbol: dict[str, float] = {}
+    sold_cost_by_symbol: dict[str, float] = {}
+    for record in monthly_trade_records:
+        sym = str(record.get("symbol", "")).upper()
+        if sym not in USD_SYMBOLS or sym == "SGOV":
+            continue
+        if str(record.get("action", "buy")).lower() == "sell":
+            sold_cost_by_symbol[sym] = sold_cost_by_symbol.get(sym, 0.0) + trade_cost_basis(record)
+        else:
+            bought_cost_by_symbol[sym] = bought_cost_by_symbol.get(sym, 0.0) + trade_cost_basis(record)
     target_weights = effective_target_weights()
 
     usd_weight_total = sum(target_weights[s] for s in USD_SYMBOLS)
@@ -1696,7 +1726,15 @@ def build_rebalance_v2(
         cost_usd_by_symbol[sym] = shares * avg_cost
     sgov_target_pct = target_weights["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
     sgov_current_usd = value_cny_by_symbol.get("SGOV", 0.0) / fx if fx > 0 else 0.0
-    planned_total_usd = cash_usd + sgov_current_usd + sum(cost_usd_by_symbol.values()) + future_cash_total_usd
+    holding_cost_total_usd = sum(cost_usd_by_symbol.values())
+    planned_total_usd = cash_usd + sgov_current_usd + holding_cost_total_usd + future_cash_total_usd
+    planned_total_formula = (
+        f"分母 USD {_fmt_usd_exact(planned_total_usd)} = "
+        f"非SGOV持仓成本 USD {_fmt_usd_exact(holding_cost_total_usd)} + "
+        f"USD现金 USD {_fmt_usd_exact(cash_usd)} + "
+        f"SGOV USD {_fmt_usd_exact(sgov_current_usd)} + "
+        f"未来资金 USD {_fmt_usd_exact(future_cash_total_usd)}"
+    )
     planned_sgov_target_usd = sgov_target_pct * planned_total_usd
     sgov_excess_usd = max(0.0, sgov_current_usd - planned_sgov_target_usd)
     rows: list[dict[str, Any]] = []
@@ -1711,12 +1749,16 @@ def build_rebalance_v2(
         already = float(bought_amounts.get(sym, 0.0))
         already_sold = float(sold_amounts.get(sym, 0.0))
         is_satellite = sym in SATELLITE_SYMBOLS
-        month_start_cost_usd = max(0.0, cost_usd - already)
+        bought_cost = bought_cost_by_symbol.get(sym, already)
+        sold_cost = sold_cost_by_symbol.get(sym, 0.0)
+        month_start_cost_usd = max(0.0, cost_usd - bought_cost + sold_cost)
         target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
         raw_gap = target_usd - month_start_cost_usd
         target_tolerance_usd = max(5.0, target_usd * 0.01)
         gap = 0.0 if abs(raw_gap) <= target_tolerance_usd else raw_gap
+        raw_actual_gap = target_usd - cost_usd
+        actual_gap = 0.0 if abs(raw_actual_gap) <= target_tolerance_usd else raw_actual_gap
         drawdown_pct = item.get("drawdown_pct")
         multiplier, action, signal, intensity = signal_for_historical_position(sym, item, phase)
         if sym == "QQQ" and phase == REBALANCE_PHASE_BUILD and intensity_rank(intensity) < intensity_rank("small"):
@@ -1737,8 +1779,11 @@ def build_rebalance_v2(
             gap_capped_plan = min(max(0.0, gap), tier_plan)
             planned = gap_capped_plan
             planned_formula_parts = [
+                planned_total_formula,
                 f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
+                f"月初成本 {_fmt_usd_compact(month_start_cost_usd)} = 当前成本 {_fmt_usd_compact(cost_usd)} - 本月买入成本 {_fmt_usd_compact(bought_cost)} + 本月卖出释放成本 {_fmt_usd_compact(sold_cost)}",
                 f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 月初成本 {_fmt_usd_compact(month_start_cost_usd)}",
+                f"实际差值 {_fmt_usd_compact(actual_gap)} = 目标 {_fmt_usd_compact(target_usd)} - 当前成本 {_fmt_usd_compact(cost_usd)}",
                 f"当前市值 {_fmt_usd_compact(current_usd)} 仅作行情参考",
                 f"档位计划 {_fmt_usd_compact(tier_plan)} = 目标 {_fmt_usd_compact(base_budget)} x {float(multiplier):.2f}x",
                 f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 档位计划)",
@@ -1747,8 +1792,11 @@ def build_rebalance_v2(
             base_budget = max(0.0, gap) / max(1, build_month_count)
             planned = min(max(0.0, gap), base_budget * multiplier)
             planned_formula_parts = [
+                planned_total_formula,
                 f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
+                f"月初成本 {_fmt_usd_compact(month_start_cost_usd)} = 当前成本 {_fmt_usd_compact(cost_usd)} - 本月买入成本 {_fmt_usd_compact(bought_cost)} + 本月卖出释放成本 {_fmt_usd_compact(sold_cost)}",
                 f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 月初成本 {_fmt_usd_compact(month_start_cost_usd)}",
+                f"实际差值 {_fmt_usd_compact(actual_gap)} = 目标 {_fmt_usd_compact(target_usd)} - 当前成本 {_fmt_usd_compact(cost_usd)}",
                 f"月度基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {build_month_count}月",
                 f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 月度基准 x {float(multiplier):.2f}x)",
             ]
@@ -1826,14 +1874,18 @@ def build_rebalance_v2(
                 "suggested_buy_usd": raw_suggested,
                 "raw_suggested_buy_usd": raw_suggested,
                 "suggested_cap_usd": suggested_cap,
-                "suggested_sell_usd": max(0.0, -gap),
+                "suggested_sell_usd": max(0.0, -actual_gap),
                 "actual_bought_usd": already,
                 "actual_sold_usd": already_sold,
                 "net_bought_usd": net_bought,
                 "planned_after_valuation_usd": suggested_cap if is_satellite else raw_planned * split,
-                "buy_difference_usd": raw_planned - net_bought,
+                "buy_difference_usd": actual_gap,
+                "actual_gap_usd": actual_gap,
                 "month_start_value_usd": month_start_cost_usd,
                 "month_start_cost_usd": month_start_cost_usd,
+                "current_cost_usd": cost_usd,
+                "month_bought_cost_usd": bought_cost,
+                "month_sold_cost_usd": sold_cost,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
                 "recent_5d_pct": item.get("recent_5d_pct"),
@@ -1904,10 +1956,12 @@ def build_rebalance_v2(
         if row["symbol"] in SATELLITE_SYMBOLS:
             scaled_suggestion = min(float(row.get("suggested_cap_usd", 0.0)), scaled_suggestion)
         row["suggested_buy_usd"] = scaled_suggestion
-        if float(row.get("suggested_sell_usd") or 0.0) > 0 and scaled_suggestion <= 1e-9:
-            row["buy_difference_usd"] = -float(row.get("suggested_sell_usd") or 0.0)
-        else:
-            row["buy_difference_usd"] = float(row.get("planned_buy_usd", 0.0)) - float(row.get("net_bought_usd", 0.0))
+        row["buy_difference_usd"] = float(
+            row.get(
+                "actual_gap_usd",
+                float(row.get("planned_buy_usd", 0.0)) - float(row.get("net_bought_usd", 0.0)),
+            )
+        )
         price = float(market["quotes"].get(row["symbol"], {}).get("price") or 0.0)
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
         row["suggested_sell_shares"] = float(row.get("suggested_sell_usd") or 0.0) / price if price > 0 else float(row.get("suggested_sell_shares") or 0.0)

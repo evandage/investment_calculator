@@ -80,6 +80,12 @@ function fmtMoney(value, currency = "USD", digits = 2) {
   })}`;
 }
 
+function fmtSignedMoney(value, currency = "USD", digits = 2) {
+  const num = Number(value || 0);
+  const sign = num >= 0 ? "+" : "-";
+  return `${sign}${fmtMoney(Math.abs(num), currency, digits)}`;
+}
+
 function fmtPct(value) {
   const num = Number(value || 0);
   return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
@@ -108,11 +114,23 @@ function fmtCardPriceLine(value) {
 }
 
 function fmtCostChange(trade, currency = "USD") {
+  const delta = tradeCostDelta(trade);
+  if (Number.isFinite(delta) && Math.abs(delta) > 1e-9) return fmtSignedMoney(delta, currency);
+  return "-";
+}
+
+function tradeCostDelta(trade) {
+  const amount = Number(trade?.amount_usd || 0);
+  const costBasis = Number(trade?.cost_basis || 0);
+  return trade?.action === "sell" ? -(costBasis > 0 ? costBasis : amount) : amount;
+}
+
+function fmtAvgCostChangeTitle(trade, currency = "USD") {
   const prev = Number(trade?.prev_avg_cost || 0);
   const next = Number(trade?.new_avg_cost || 0);
-  if (!Number.isFinite(prev) || !Number.isFinite(next) || (prev === 0 && next === 0)) return "-";
+  if (!Number.isFinite(prev) || !Number.isFinite(next) || (prev === 0 && next === 0)) return "";
   const digits = currency === "USD" ? 2 : 4;
-  return `${fmtMoney(prev, currency, digits)} -> ${fmtMoney(next, currency, digits)}`;
+  return `均价 ${fmtMoney(prev, currency, digits)} -> ${fmtMoney(next, currency, digits)}`;
 }
 
 function fmtTradeCloseEffect(trade, currency = "USD") {
@@ -2082,7 +2100,9 @@ function Rebalance({ data, onSaved }) {
                   <td className={tone(trade.close_effect)} title={trade.close_price ? `当日收盘 ${fmtMoney(trade.close_price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}` : ""}>
                     {fmtTradeCloseEffect(trade, currencyBySymbol[trade.symbol] || "USD")}
                   </td>
-                  <td>{fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}</td>
+                  <td className={tone(tradeCostDelta(trade))} title={fmtAvgCostChangeTitle(trade, currencyBySymbol[trade.symbol] || "USD")}>
+                    {fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}
+                  </td>
                   <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{tierLabel(trade.intensity)}</span></td>
                   <td>
                     <button onClick={() => deleteTrade(trade)} disabled={deletingTradeId === trade.id}>
@@ -2299,4 +2319,3 @@ export default function App() {
     </main>
   );
 }
-
