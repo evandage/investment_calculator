@@ -54,7 +54,7 @@ _FUTU_SUB_KLINES: dict[tuple[str, str], dict[str, Any]] = {}
 _FUTU_SUB_KLINE_REVISIONS: dict[tuple[str, str], int] = {}
 _FUTU_SUB_KLINE_ERROR = ""
 _FUTU_SUB_TICKER_ERROR = ""
-_FUTU_SUBSCRIBE_SYMBOLS = tuple(dict.fromkeys((*USD_SYMBOLS, "510330.SS")))
+_FUTU_SUBSCRIBE_SYMBOLS = tuple(dict.fromkeys(USD_SYMBOLS))
 NY_TZ = ZoneInfo("America/New_York")
 
 
