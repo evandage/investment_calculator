@@ -114,15 +114,20 @@ function fmtCardPriceLine(value) {
 }
 
 function fmtCostChange(trade, currency = "USD") {
-  const delta = tradeCostDelta(trade);
-  if (Number.isFinite(delta) && Math.abs(delta) > 1e-9) return fmtSignedMoney(delta, currency);
+  const prev = Number(trade?.prev_avg_cost);
+  const next = Number(trade?.new_avg_cost);
+  if (Number.isFinite(prev) && Number.isFinite(next) && !(prev === 0 && next === 0)) {
+    const digits = currency === "USD" ? 2 : 4;
+    return `${fmtMoney(prev, currency, digits)} -> ${fmtMoney(next, currency, digits)}`;
+  }
   return "-";
 }
 
 function tradeCostDelta(trade) {
-  const amount = Number(trade?.amount_usd || 0);
-  const costBasis = Number(trade?.cost_basis || 0);
-  return trade?.action === "sell" ? -(costBasis > 0 ? costBasis : amount) : amount;
+  const prev = Number(trade?.prev_avg_cost);
+  const next = Number(trade?.new_avg_cost);
+  if (!Number.isFinite(prev) || !Number.isFinite(next)) return 0;
+  return next - prev;
 }
 
 function fmtAvgCostChangeTitle(trade, currency = "USD") {
@@ -548,7 +553,7 @@ function Visualizations({ data }) {
   const viz = data.visualizations || {};
   return (
     <section className="visualGrid">
-      <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_cny" formatValue={(value) => fmtMoney(value, "CNY")} />
+      <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value, row) => row.symbol === "001015" ? fmtMoney(row.pnl_cny, "CNY") : fmtMoney(value, "USD")} />
       <BarList title="卫星仓位浮盈亏排名" rows={viz.satellite_pnl_rank || []} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} />
       <CompareBars title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比" rows={viz.allocation_compare || []} />
       <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" />
@@ -682,8 +687,8 @@ function PerformanceLightweightChart({ points, series }) {
           topFillColor1: index === 0 ? "rgba(250, 204, 21, 0.52)" : "rgba(37, 99, 235, 0.42)",
           topFillColor2: index === 0 ? "rgba(250, 204, 21, 0.10)" : "rgba(37, 99, 235, 0.08)",
           bottomLineColor: color,
-          bottomFillColor1: "rgba(250, 204, 21, 0)",
-          bottomFillColor2: "rgba(250, 204, 21, 0)",
+          bottomFillColor1: index === 0 ? "rgba(250, 204, 21, 0.24)" : "rgba(37, 99, 235, 0.22)",
+          bottomFillColor2: index === 0 ? "rgba(250, 204, 21, 0.04)" : "rgba(37, 99, 235, 0.04)",
           lineWidth: width,
           priceLineVisible: false,
           lastValueVisible: true,
@@ -1419,7 +1424,7 @@ function KlinePage({ dashboardData }) {
   );
 }
 
-function AssetMetricCards({ data, holdings, balances }) {
+function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const fx = Number(data.summary?.fx || 7.1);
   const avgFx = Number(data.summary?.avg_fx_rate || fx);
   const rows = data.holdings.map((row) => {
@@ -1441,14 +1446,37 @@ function AssetMetricCards({ data, holdings, balances }) {
   const usdRealized = Number(balances.realized_usd || 0) + Number(balances.sgov_dividend_usd || 0);
   const usdTotal = usdValue + usdCash;
   const usdReturn = usdCost ? (usdUnrealized / usdCost) * 100 : 0;
+  const cnyInvestmentUnrealized = rows
+    .filter((row) => row.currency !== "USD")
+    .reduce((sum, row) => sum + (row.value - row.cost), 0);
 
   const totalCostCny = rows.reduce((sum, row) => sum + row.costCny, 0);
   const totalValueCny = rows.reduce((sum, row) => sum + row.valueCny, 0);
-  const totalUnrealizedCny = totalValueCny - totalCostCny;
+  const investmentUnrealizedCny = usdUnrealized * fx + cnyInvestmentUnrealized;
+  const fxUnrealizedCny = (usdCost + usdCash) * (fx - avgFx);
+  const totalUnrealizedCny = investmentUnrealizedCny + fxUnrealizedCny;
+  const totalReturnBasisCny = totalCostCny + usdCash * avgFx;
+  const pnlSplitTotal = Math.max(1, Math.abs(investmentUnrealizedCny) + Math.abs(fxUnrealizedCny));
   const cashCny = Number(balances.cash_cny || 0) + usdCash * fx;
   const totalRealizedCny = Number(balances.realized_cny || 0) + usdRealized * fx;
   const totalAssetsCny = totalValueCny + cashCny;
-  const totalReturn = totalCostCny ? (totalUnrealizedCny / totalCostCny) * 100 : 0;
+  const totalReturn = totalReturnBasisCny ? (totalUnrealizedCny / totalReturnBasisCny) * 100 : 0;
+  const usdDetailItems = [
+    ["成本", fmtMoney(usdCost, "USD")],
+    ["持仓市值", fmtMoney(usdValue, "USD")],
+    ["已变现盈亏", fmtMoney(usdRealized, "USD")],
+    ["现金", fmtMoney(usdCash, "USD")],
+    ["总资产", fmtMoney(usdTotal, "USD")],
+    ["收益率", fmtPct(usdReturn)],
+  ];
+  const totalDetailItems = [
+    ["成本基准", fmtMoney(totalReturnBasisCny, "CNY")],
+    ["持仓市值", fmtMoney(totalValueCny, "CNY")],
+    ["已变现盈亏", fmtMoney(totalRealizedCny, "CNY")],
+    ["现金", fmtMoney(cashCny, "CNY")],
+    ["总资产", fmtMoney(totalAssetsCny, "CNY")],
+    ["收益率", fmtPct(totalReturn)],
+  ];
 
   return (
     <div className="assetSections">
@@ -1458,19 +1486,60 @@ function AssetMetricCards({ data, holdings, balances }) {
           <div className="assetMetricCard"><span>已变现盈亏</span><strong>{fmtMoney(usdRealized, "USD")}</strong></div>
           <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(usdUnrealized)}>{fmtMoney(usdUnrealized, "USD")}</strong><em className={tone(usdReturn)}>{fmtPct(usdReturn)}</em></div>
         </div>
-        <p className="assetCaption">
-          成本 {fmtMoney(usdCost, "USD")} | 持仓市值 {fmtMoney(usdValue, "USD")} | 已变现盈亏 {fmtMoney(usdRealized, "USD")} | 现金 {fmtMoney(usdCash, "USD")} | 总资产 {fmtMoney(usdTotal, "USD")} | 收益率 = 未实现浮盈亏 / 美元持仓成本 = {fmtPct(usdReturn)}
-        </p>
+        <div className="assetDetailPanel">
+          <div className="assetDetailGrid">
+            {usdDetailItems.map(([label, value]) => (
+              <div className="assetDetailItem" key={`usd-${label}`}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <p>收益率 = 未实现浮盈亏 / 美元持仓成本。</p>
+        </div>
       </div>
       <div className="assetMetricBlock">
-        <h2>总资产（折合CNY）</h2>
+        <div className="assetMetricTitleRow">
+          <h2>总资产（折合CNY）</h2>
+          {totalActions}
+        </div>
         <div className="assetMetricGrid">
           <div className="assetMetricCard"><span>已变现盈亏</span><strong>{fmtMoney(totalRealizedCny, "CNY")}</strong></div>
           <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(totalUnrealizedCny)}>{fmtMoney(totalUnrealizedCny, "CNY")}</strong><em className={tone(totalReturn)}>{fmtPct(totalReturn)}</em></div>
         </div>
-        <p className="assetCaption">
-          成本 {fmtMoney(totalCostCny, "CNY")} | 持仓市值 {fmtMoney(totalValueCny, "CNY")} | 已变现盈亏 {fmtMoney(totalRealizedCny, "CNY")} | 现金 {fmtMoney(cashCny, "CNY")} | 总资产 {fmtMoney(totalAssetsCny, "CNY")} | 收益率 = 未实现浮盈亏 / 持仓成本 = {fmtPct(totalReturn)}
-        </p>
+        <div className="assetDetailPanel">
+          <div className="assetDetailGrid">
+            {totalDetailItems.map(([label, value]) => (
+              <div className="assetDetailItem" key={`total-${label}`}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <p>合计浮盈亏 = 投资组合浮盈亏 + 汇率浮盈亏；收益率 = 合计浮盈亏 / 成本基准。</p>
+        </div>
+      </div>
+      <div className="pnlBreakdownPanel" aria-label="总资产浮盈亏分解">
+        <div className="pnlBreakdownGrid">
+          <div className="pnlBreakdownItem">
+            <span>投资组合浮盈亏</span>
+            <strong className={tone(investmentUnrealizedCny)}>{fmtMoney(investmentUnrealizedCny, "CNY")}</strong>
+          </div>
+          <div className="pnlBreakdownItem">
+            <span>汇率浮盈亏</span>
+            <strong className={tone(fxUnrealizedCny)}>{fmtMoney(fxUnrealizedCny, "CNY")}</strong>
+          </div>
+        </div>
+        <div className="pnlSplitViz">
+          <div className="pnlSplitTrack">
+            <div className={`pnlSplitSegment ${tone(investmentUnrealizedCny)}`} style={{ width: `${Math.abs(investmentUnrealizedCny) / pnlSplitTotal * 100}%` }} />
+            <div className={`pnlSplitSegment ${tone(fxUnrealizedCny)}`} style={{ width: `${Math.abs(fxUnrealizedCny) / pnlSplitTotal * 100}%` }} />
+          </div>
+          <div className="pnlSplitLegend">
+            <span><i className={tone(investmentUnrealizedCny)} />投资</span>
+            <span><i className={tone(fxUnrealizedCny)} />汇率</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1493,9 +1562,19 @@ function buildSatelliteUniverseDraft(data) {
   }));
 }
 
-function EditableHoldingsPage({ data }) {
+function EditableHoldingsPage({ data, onSaved }) {
   const [holdings, setHoldings] = useState({});
   const [balances, setBalances] = useState({});
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [editingBalances, setEditingBalances] = useState(false);
+  const [universeOpen, setUniverseOpen] = useState(false);
+  const [budgetInputs, setBudgetInputs] = useState({});
+  const [balanceInputs, setBalanceInputs] = useState({});
+  const [universeInputs, setUniverseInputs] = useState([]);
+  const [savingBudget, setSavingBudget] = useState(false);
+  const [savingBalances, setSavingBalances] = useState(false);
+  const [savingUniverse, setSavingUniverse] = useState(false);
+  const [balanceMessage, setBalanceMessage] = useState("");
   const realtimeTotalValueCny = (data.holdings || []).reduce(
     (sum, row) => sum + Math.max(0, Number(row.value_cny || 0)),
     0,
@@ -1516,9 +1595,119 @@ function EditableHoldingsPage({ data }) {
     resetDraft();
   }, [data]);
 
+  useEffect(() => {
+    setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance?.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+    if (!universeOpen) setUniverseInputs(buildSatelliteUniverseDraft(data));
+  }, [data.rebalance?.future_cash_by_month, data.satellite_universe, data.satellite_targets, universeOpen]);
+
+  function resetBalanceDraft() {
+    setBalanceInputs({
+      cash_usd: String(data.balances?.cash_usd ?? 0),
+      cash_cny: String(data.balances?.cash_cny ?? 0),
+      realized_usd: String(data.balances?.realized_usd ?? 0),
+      realized_cny: String(data.balances?.realized_cny ?? 0),
+      sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
+    });
+  }
+
+  useEffect(() => {
+    if (!editingBalances) resetBalanceDraft();
+  }, [data.balances, editingBalances]);
+
+  function updateBudget(month, value) {
+    setBudgetInputs((prev) => ({ ...prev, [month]: value }));
+  }
+
+  function updateBalance(key, value) {
+    setBalanceInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateUniverse(index, key, value) {
+    setUniverseInputs((prev) => prev.map((item, idx) => (idx === index ? { ...item, [key]: value } : item)));
+  }
+
+  function addUniverseRow() {
+    setUniverseInputs((prev) => [...prev, { symbol: "", target_pct: "0" }]);
+  }
+
+  function removeUniverseRow(index) {
+    setUniverseInputs((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  async function saveBudget() {
+    setSavingBudget(true);
+    try {
+      const planned_cash_by_month = Object.fromEntries(Object.entries(budgetInputs).map(([month, value]) => [month, Number(value || 0)]));
+      const response = await fetch(`${API_BASE}/api/rebalance/budget`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: data.user_id, planned_cash_by_month }),
+      });
+      if (!response.ok) throw new Error(`budget HTTP ${response.status}`);
+      setBudgetOpen(false);
+      await onSaved();
+    } finally {
+      setSavingBudget(false);
+    }
+  }
+
+  async function saveBalances() {
+    setSavingBalances(true);
+    setBalanceMessage("");
+    try {
+      const nextBalances = Object.fromEntries(Object.entries(balanceInputs).map(([key, value]) => [key, Number(value || 0)]));
+      const response = await fetch(`${API_BASE}/api/balances`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balances: nextBalances }),
+      });
+      if (!response.ok) throw new Error(`balances HTTP ${response.status}`);
+      setBalanceMessage("现金与已变现已保存");
+      setEditingBalances(false);
+      await onSaved();
+    } catch (err) {
+      setBalanceMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingBalances(false);
+    }
+  }
+
+  async function saveUniverse() {
+    setSavingUniverse(true);
+    try {
+      const items = universeInputs
+        .map((item) => ({
+          symbol: String(item.symbol || "").trim().toUpperCase(),
+          label: String(item.symbol || "").trim().toUpperCase(),
+          target_pct: Number(item.target_pct || 0),
+        }))
+        .filter((item) => item.symbol);
+      const response = await fetch(`${API_BASE}/api/satellite-universe`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      if (!response.ok) throw new Error(`satellite universe HTTP ${response.status}`);
+      setUniverseOpen(false);
+      await onSaved();
+    } finally {
+      setSavingUniverse(false);
+    }
+  }
+
+  const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
+  const holdingActions = (
+    <div className="assetTitleActions">
+      <button className="toolButton compactTool" onClick={() => setBudgetOpen(true)}>预算</button>
+      <button className="toolButton compactTool" onClick={() => setEditingBalances(true)}>现金</button>
+      <button className="toolButton compactTool" onClick={() => setUniverseOpen(true)}>标的</button>
+    </div>
+  );
+
   return (
     <section>
-      <AssetMetricCards data={data} holdings={holdings} balances={balances} />
+      <AssetMetricCards data={data} holdings={holdings} balances={balances} totalActions={holdingActions} />
+      {balanceMessage ? <div className={balanceMessage === "现金与已变现已保存" ? "saveMessage up" : "saveMessage down"}>{balanceMessage}</div> : null}
       <div className="tableWrap">
         <table className="editableHoldingsTable">
           <thead>
@@ -1548,6 +1737,92 @@ function EditableHoldingsPage({ data }) {
           </tbody>
         </table>
       </div>
+      {budgetOpen ? (
+        <div className="modalBackdrop" role="presentation" onClick={(event) => {
+          if (event.target === event.currentTarget) setBudgetOpen(false);
+        }}>
+          <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <h2>预算</h2>
+              <button className="toolButton compactTool" onClick={() => setBudgetOpen(false)} disabled={savingBudget}>关闭</button>
+            </div>
+            <div className="muted">未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance?.planned_total_usd || 0, "USD")}</div>
+            <div className="budgetEditGrid">
+              {Object.entries(budgetInputs).map(([month, value]) => (
+                <label key={month}>{month} 可投入(USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
+              ))}
+            </div>
+            <div className="actions">
+              <button onClick={() => setBudgetOpen(false)} disabled={savingBudget}>取消</button>
+              <button className="primary" onClick={saveBudget} disabled={savingBudget}><Save size={16} /> 保存</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {editingBalances ? (
+        <div className="modalBackdrop" role="presentation" onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            resetBalanceDraft();
+            setEditingBalances(false);
+          }
+        }}>
+          <div className="modalPanel balanceModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <div>
+                <h2>现金与已变现</h2>
+                <span className="muted">维护现金、已变现盈亏和 SGOV 股息，保存后会重算看板。</span>
+              </div>
+              <button className="toolButton compactTool" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>关闭</button>
+            </div>
+            <div className="balanceEditGrid">
+              <label><span>USD 现金</span><input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>CNY 现金</span><input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
+              <label><span>USD 已变现</span><input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
+              <label className="balanceWide"><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
+            </div>
+            <div className="actions">
+              <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>
+              <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {universeOpen ? (
+        <div className="modalBackdrop" role="presentation" onClick={(event) => {
+          if (event.target === event.currentTarget) setUniverseOpen(false);
+        }}>
+          <div className="modalPanel satelliteUniverseModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <h2>卫星标的</h2>
+              <button className="toolButton compactTool" onClick={() => setUniverseOpen(false)} disabled={savingUniverse}>关闭</button>
+            </div>
+            <div className="satelliteUniverseRows">
+              {universeInputs.map((item, index) => {
+                const targetValue = Number(item.target_pct || 0);
+                return (
+                  <div className="satelliteUniverseRow" key={`holdings-universe-${index}`}>
+                    <label>标的<input value={item.symbol} onChange={(event) => updateUniverse(index, "symbol", event.target.value)} /></label>
+                    <div className="universeTargetCell" style={{ "--target-fill": `${Math.min(100, Math.max(0, targetValue))}%` }}>
+                      <div className="targetSliderLabel"><strong>目标比例</strong><span>{targetValue.toFixed(2)}%</span></div>
+                      <input className="targetRange" type="range" min="0" max="100" step="0.1" value={targetValue} onChange={(event) => updateUniverse(index, "target_pct", event.target.value)} />
+                      <div className="targetNumberWrap">
+                        <input className="targetNumber" value={item.target_pct} onChange={(event) => updateUniverse(index, "target_pct", event.target.value)} inputMode="decimal" />
+                        <span>%</span>
+                      </div>
+                    </div>
+                    <button className="iconDanger" aria-label={`删除 ${item.symbol || "空行"}`} onClick={() => removeUniverseRow(index)}><Trash2 size={16} /></button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="actions">
+              <button onClick={addUniverseRow}><Plus size={16} /> 新增</button>
+              <button className="primary" onClick={saveUniverse} disabled={savingUniverse}><Save size={16} /> 保存</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1931,13 +2206,6 @@ function Rebalance({ data, onSaved }) {
           </div>
         </div>
       ) : null}
-      <div className="rebalanceActionRow">
-        <button className="primary" onClick={() => setBudgetOpen(true)}>预算设置</button>
-        <button className="primary" onClick={() => setEditingBalances(true)}>编辑现金</button>
-        <button className="primary" onClick={openUniverseEditor}>编辑卫星标的</button>
-        <button className="primary" onClick={() => openTradeEditor(tradeRows[0]?.symbol || "")}>记录一条买卖</button>
-        <button className="primary" onClick={openFxConversionEditor}>记录换汇</button>
-      </div>
       <div className="sectionHeader">
         <h2>再平衡建议</h2>
         <span className="muted">
@@ -1950,7 +2218,7 @@ function Rebalance({ data, onSaved }) {
         <span className="muted">
           建仓到 {data.rebalance.build_target} · 未来入金 {data.rebalance.future_cash_months} 个月 · 缩放 {Number(data.rebalance.suggestion_scale || 1).toFixed(2)}
         </span>
-        <button onClick={() => setRulesOpen(true)}>算法规则</button>
+        <button className="toolButton compactTool" onClick={() => setRulesOpen(true)}>规则</button>
       </div>
       {budgetOpen ? (
         <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
@@ -2044,10 +2312,23 @@ function Rebalance({ data, onSaved }) {
         </div>
       ) : null}
       <div className="tableWrap">
-        <table>
+        <table className="rebalanceTable">
+          <colgroup>
+            <col className="colSymbol" />
+            <col className="colPct" />
+            <col className="colPct" />
+            <col className="colPct" />
+            <col className="colMoney" />
+            <col className="colMoney" />
+            <col className="colMoney" />
+            <col className="colTier" />
+            <col className="colFactor" />
+            <col className="colNote" />
+            <col className="colFormula" />
+          </colgroup>
           <thead>
             <tr>
-              <th>标的</th><th>月初占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>实际差值</th><th>净买入</th><th>档位</th><th>估值/追高系数</th><th>说明</th>
+              <th>标的</th><th>月初占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>实际差值</th><th>净买入</th><th>档位</th><th>估值/追高系数</th><th>说明</th><th>计算过程</th>
             </tr>
           </thead>
           <tbody>
@@ -2061,7 +2342,6 @@ function Rebalance({ data, onSaved }) {
                     <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
                     <td className="planCell">
                       <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
-                      {row.planned_buy_formula ? <div className="cellSubtext">{row.planned_buy_formula}</div> : null}
                     </td>
                     <td className="planCell">
                       <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</div>
@@ -2070,6 +2350,7 @@ function Rebalance({ data, onSaved }) {
                     <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
                     <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
                     <td className="note">{row.note}</td>
+                    <td className="formulaCell">{row.planned_buy_formula || "-"}</td>
                   </tr>
                 </React.Fragment>
               );
@@ -2083,11 +2364,14 @@ function Rebalance({ data, onSaved }) {
             <h2>交易记录</h2>
             <span className="muted">买入或卖出后会按交易日期重算该日之后的收益曲线</span>
           </div>
-          {sortedTrades.length > 3 ? (
-            <button onClick={() => setTradeHistoryOpen((value) => !value)}>
-              {tradeHistoryOpen ? "收起" : "显示更多"}
-            </button>
-          ) : null}
+          <div className="headerActions">
+            <button className="toolButton primaryTool" onClick={() => openTradeEditor(tradeRows[0]?.symbol || "")}>交易</button>
+            {sortedTrades.length > 3 ? (
+              <button className="toolButton compactTool" onClick={() => setTradeHistoryOpen((value) => !value)}>
+                {tradeHistoryOpen ? "收起" : "更多"}
+              </button>
+            ) : null}
+          </div>
         </div>
         {tradeMessage ? <div className="saveMessage down">{tradeMessage}</div> : null}
         <div className="tableWrap">
@@ -2130,14 +2414,17 @@ function Rebalance({ data, onSaved }) {
             <span className="muted">
               平均汇率 {Number(data.summary?.avg_fx_rate || data.summary?.fx || 0).toFixed(4)} ·
               已购汇 {fmtMoney(data.summary?.fx_conversion_total_usd || 0, "USD")} / {fmtMoney(data.summary?.fx_conversion_total_cny || 0, "CNY")} ·
-              美元持仓汇兑影响 <span className={tone(data.summary?.usd_fx_pnl_cny)}>{fmtMoney(data.summary?.usd_fx_pnl_cny || 0, "CNY")}</span>
+              美元资产汇兑影响 <span className={tone(data.summary?.usd_fx_pnl_cny)}>{fmtMoney(data.summary?.usd_fx_pnl_cny || 0, "CNY")}</span>
             </span>
           </div>
-          {sortedFxConversions.length > 3 ? (
-            <button onClick={() => setFxHistoryOpen((value) => !value)}>
-              {fxHistoryOpen ? "收起" : "显示更多"}
-            </button>
-          ) : null}
+          <div className="headerActions">
+            <button className="toolButton primaryTool" onClick={openFxConversionEditor}>换汇</button>
+            {sortedFxConversions.length > 3 ? (
+              <button className="toolButton compactTool" onClick={() => setFxHistoryOpen((value) => !value)}>
+                {fxHistoryOpen ? "收起" : "更多"}
+              </button>
+            ) : null}
+          </div>
         </div>
         {fxConversionMessage ? <div className="saveMessage down">{fxConversionMessage}</div> : null}
         <div className="tableWrap">
@@ -2254,21 +2541,24 @@ function Rebalance({ data, onSaved }) {
             setEditingBalances(false);
           }
         }}>
-          <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+          <div className="modalPanel balanceModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
-              <h2>现金与已变现</h2>
-              <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>关闭</button>
+              <div>
+                <h2>现金与已变现</h2>
+                <span className="muted">维护现金、已变现盈亏和 SGOV 股息，保存后会重算看板。</span>
+              </div>
+              <button className="toolButton compactTool" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>关闭</button>
             </div>
             <div className="balanceEditGrid">
-              <label>USD现金<input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
-              <label>CNY现金<input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
-              <label>USD已变现<input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
-              <label>CNY已变现<input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
-              <label>SGOV股息<input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>USD 现金</span><input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>CNY 现金</span><input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
+              <label><span>USD 已变现</span><input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
+              <label className="balanceWide"><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
             <div className="actions">
               <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>
-              <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存现金</button>
+              <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存</button>
             </div>
           </div>
         </div>
@@ -2289,8 +2579,8 @@ function DashboardPage({ data }) {
   );
 }
 
-function HoldingsPage({ data }) {
-  return <EditableHoldingsPage data={data} />;
+function HoldingsPage({ data, onSaved }) {
+  return <EditableHoldingsPage data={data} onSaved={onSaved} />;
 }
 
 function RebalancePage({ data, onSaved }) {
@@ -2318,7 +2608,7 @@ export default function App() {
       <Header data={data} onRefresh={load} />
       <PageNav page={page} setPage={setPage} />
       {page === "dashboard" ? <DashboardPage data={data} /> : null}
-      {page === "holdings" ? <HoldingsPage data={data} /> : null}
+      {page === "holdings" ? <HoldingsPage data={data} onSaved={load} /> : null}
       {page === "rebalance" ? <RebalancePage data={data} onSaved={load} /> : null}
       {page === "kline" ? <KlinePage dashboardData={data} /> : null}
     </main>

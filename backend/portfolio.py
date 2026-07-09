@@ -492,10 +492,12 @@ def build_visualizations(
     pnl_rank = []
     satellite_pnl_rank = []
     satellite_pnl_cny = 0.0
+    satellite_pnl_usd = 0.0
     for row in rows:
         sym = row["symbol"]
         if sym in SATELLITE_SYMBOLS:
             satellite_pnl_cny += float(row["pnl_cny"])
+            satellite_pnl_usd += float(row["pnl"])
             satellite_pnl_rank.append(
                 {
                     "symbol": sym,
@@ -507,18 +509,30 @@ def build_visualizations(
             )
         elif sym in ("VOO", "QQQ", "SGOV", "001015"):
             pnl_cny = float(row["pnl_cny"])
+            pnl_usd = float(row["pnl"]) if row["currency"] == "USD" else (pnl_cny / fx if fx > 0 else 0.0)
             if sym == "SGOV":
-                pnl_cny += float(balances.get("sgov_dividend_usd", 0.0)) * fx
+                sgov_dividend_usd = float(balances.get("sgov_dividend_usd", 0.0))
+                pnl_usd += sgov_dividend_usd
+                pnl_cny += sgov_dividend_usd * fx
             pnl_rank.append(
                 {
                     "symbol": sym,
                     "label": row["label"],
+                    "pnl_usd": pnl_usd,
                     "pnl_cny": pnl_cny,
                     "currency": "CNY",
                 }
             )
-    pnl_rank.append({"symbol": "SATELLITE", "label": "卫星仓位", "pnl_cny": satellite_pnl_cny, "currency": "CNY"})
-    pnl_rank.sort(key=lambda item: item["pnl_cny"], reverse=True)
+    pnl_rank.append(
+        {
+            "symbol": "SATELLITE",
+            "label": "卫星仓位",
+            "pnl_usd": satellite_pnl_usd,
+            "pnl_cny": satellite_pnl_cny,
+            "currency": "CNY",
+        }
+    )
+    pnl_rank.sort(key=lambda item: item["pnl_usd"], reverse=True)
     satellite_pnl_rank.sort(key=lambda item: item["pnl"], reverse=True)
 
     allocation_order = [
@@ -1603,14 +1617,18 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         if usd_value_usd - usd_daily_pnl_usd > 0
         else 0.0
     )
-    total_pnl_cny = total_value_cny - total_cost_cny
-    total_pnl_pct = total_pnl_cny / total_cost_cny * 100.0 if total_cost_cny > 0 else 0.0
-    usd_position_value_usd = sum(
-        float(holdings[sym].get("shares", 0.0) or 0.0) * float(quotes[sym].get("price") or 0.0)
-        for sym in USD_SYMBOLS
-    )
-    usd_fx_pnl_cny = usd_position_value_usd * (fx - usd_cost_fx)
-    current_rows = [row for row in rows if float(row.get("shares", 0.0) or 0.0) > 1e-9]
+    holding_pnl_cny = total_value_cny - total_cost_cny
+    usd_cash_fx_pnl_cny = cash_usd * (fx - usd_cost_fx)
+    total_pnl_cny = holding_pnl_cny + usd_cash_fx_pnl_cny
+    total_return_basis_cny = total_cost_cny + cash_usd * usd_cost_fx
+    total_pnl_pct = total_pnl_cny / total_return_basis_cny * 100.0 if total_return_basis_cny > 0 else 0.0
+    usd_fx_pnl_cny = (usd_cost_usd + cash_usd) * (fx - usd_cost_fx)
+    current_rows = [
+        row
+        for row in rows
+        if float(row.get("shares", 0.0) or 0.0) > 1e-9
+        or float(target_weights.get(str(row.get("symbol", "")).upper(), 0.0) or 0.0) > 1e-9
+    ]
     today_cash_flow_cny = sum(
         max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
         for trade in trades
@@ -1652,6 +1670,9 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "usd_fx_pnl_cny": usd_fx_pnl_cny,
             "total_value_cny": total_value_cny,
             "total_cost_cny": total_cost_cny,
+            "total_return_basis_cny": total_return_basis_cny,
+            "holding_pnl_cny": holding_pnl_cny,
+            "usd_cash_fx_pnl_cny": usd_cash_fx_pnl_cny,
             "cash_total_cny": cash_total_cny,
             "total_assets_cny": total_assets_cny,
             "total_pnl_cny": total_pnl_cny,

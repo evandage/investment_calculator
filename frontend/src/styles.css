@@ -440,17 +440,42 @@ h2 {
 .assetSections {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 18px;
   margin: 8px 0 18px;
 }
 
 .assetMetricBlock {
+  display: grid;
+  gap: 12px;
+  align-content: start;
   min-width: 0;
 }
 
 .assetMetricBlock h2 {
   margin: 0 0 10px;
   font-size: 1.18rem;
+}
+
+.assetMetricTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.assetMetricTitleRow h2 {
+  margin-bottom: 10px;
+}
+
+.assetTitleActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
 }
 
 .assetMetricGrid {
@@ -496,25 +521,185 @@ h2 {
   font-weight: 800;
 }
 
-.assetCaption {
-  margin: 12px 0 0;
+.assetDetailPanel {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  min-height: 128px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.assetDetailGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.assetDetailItem {
+  min-width: 0;
+}
+
+.assetDetailItem span {
+  display: block;
   color: var(--text-muted);
-  line-height: 1.7;
-  font-size: 0.9rem;
+  font-size: 0.76rem;
+}
+
+.assetDetailItem strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-main);
+  font-size: 0.92rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetDetailPanel p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.45;
+  font-size: 0.82rem;
+}
+
+.pnlBreakdownPanel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pnlBreakdownGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pnlBreakdownItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(7, 21, 37, 0.34);
+}
+
+.pnlBreakdownItem span {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnlBreakdownItem strong {
+  font-size: 1.05rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pnlSplitViz {
+  display: grid;
+  gap: 7px;
+}
+
+.pnlSplitTrack {
+  display: flex;
+  height: 10px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(226, 238, 251, 0.12);
+}
+
+.pnlSplitSegment {
+  min-width: 3px;
+  height: 100%;
+}
+
+.pnlSplitSegment.up,
+.pnlSplitLegend i.up {
+  background: linear-gradient(90deg, rgba(45, 164, 126, 0.9), rgba(97, 230, 176, 0.95));
+}
+
+.pnlSplitSegment.down,
+.pnlSplitLegend i.down {
+  background: linear-gradient(90deg, rgba(184, 78, 86, 0.9), rgba(255, 138, 130, 0.95));
+}
+
+.pnlSplitSegment.flat,
+.pnlSplitLegend i.flat {
+  background: rgba(226, 238, 251, 0.48);
+}
+
+.pnlSplitLegend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pnlSplitLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pnlSplitLegend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+
+.balanceModal {
+  width: min(760px, 96vw);
 }
 
 .balanceEditGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(130px, 1fr));
-  gap: 10px;
-  margin: 10px 0 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 16px;
 }
 
 .balanceEditGrid label {
-  color: var(--text-soft);
   display: grid;
-  gap: 6px;
-  font-size: 0.86rem;
+  gap: 7px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.balanceEditGrid label span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.balanceEditGrid input {
+  width: 100%;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.balanceEditGrid .balanceWide {
+  grid-column: 1 / -1;
 }
 
 .targetEditor {
@@ -965,12 +1150,19 @@ h2 {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.performanceStat:nth-child(-n + 2) {
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.3), rgba(255, 255, 255, 0.1)),
+    rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.52);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
 .performanceStat:first-child {
   background:
-    linear-gradient(135deg, rgba(78, 166, 255, 0.24), rgba(255, 255, 255, 0.12)),
+    linear-gradient(135deg, rgba(250, 204, 21, 0.22), rgba(255, 255, 255, 0.1)),
     rgba(255, 255, 255, 0.08);
-  border-color: rgba(112, 215, 255, 0.42);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  border-color: rgba(250, 204, 21, 0.38);
 }
 
 .performanceStat::before {
@@ -1465,6 +1657,19 @@ table {
   min-width: 980px;
 }
 
+.rebalanceTable {
+  min-width: 1780px;
+  table-layout: fixed;
+}
+
+.rebalanceTable .colSymbol { width: 76px; }
+.rebalanceTable .colPct { width: 92px; }
+.rebalanceTable .colMoney { width: 112px; }
+.rebalanceTable .colTier { width: 104px; }
+.rebalanceTable .colFactor { width: 120px; }
+.rebalanceTable .colFormula { width: 420px; }
+.rebalanceTable .colNote { width: 440px; }
+
 th,
 td {
   padding: 10px 11px;
@@ -1508,24 +1713,26 @@ tbody th {
 
 .note {
   white-space: normal;
-  min-width: 220px;
   text-align: left;
   color: var(--text-soft);
+  line-height: 1.45;
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 
 .planCell {
-  min-width: 220px;
   vertical-align: middle;
   text-align: center;
 }
 
-.cellSubtext {
-  margin-top: 4px;
-  max-width: 240px;
+.formulaCell {
   color: var(--text-soft);
-  font-size: 0.74rem;
-  line-height: 1.35;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  text-align: left;
   white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 
 .tierBadge {
@@ -1590,16 +1797,47 @@ tbody th {
 }
 
 .rebalanceActionRow {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
   margin: 16px 0 8px;
   width: 100%;
 }
 
 .rebalanceActionRow button {
-  width: 100%;
   justify-content: center;
+}
+
+.toolButton {
+  min-height: 34px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  font-weight: 850;
+  box-shadow: none;
+}
+
+.toolButton:hover:not(:disabled) {
+  border-color: rgba(112, 215, 255, 0.44);
+  background: rgba(112, 215, 255, 0.12);
+  color: var(--text-main);
+}
+
+.toolButton.primaryTool {
+  border-color: rgba(112, 215, 255, 0.5);
+  background: rgba(78, 166, 255, 0.18);
+  color: var(--text-main);
+}
+
+.toolButton.compactTool {
+  min-height: 30px;
+  padding: 5px 11px;
+  font-size: 0.8rem;
 }
 
 .tradeHistoryBlock {
@@ -1902,6 +2140,14 @@ tbody th {
 
   .assetSections {
     grid-template-columns: 1fr;
+  }
+
+  .pnlBreakdownGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .assetDetailGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .fxConversionEditor {
@@ -2241,7 +2487,7 @@ h2,
 .legendLine,
 .verticalAmount,
 .verticalBar span,
-.cellSubtext,
+.formulaCell,
 .note {
   color: var(--text-muted);
   text-shadow: none;
