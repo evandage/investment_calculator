@@ -1531,7 +1531,9 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const totalCostCny = rows.reduce((sum, row) => sum + row.costCny, 0);
   const totalValueCny = rows.reduce((sum, row) => sum + row.valueCny, 0);
   const investmentUnrealizedCny = usdUnrealized * fx + cnyInvestmentUnrealized;
+  const investmentFormula = `${fmtMoney(usdUnrealized, "USD")} 美元收益 × ${fx.toFixed(4)} + ${fmtMoney(cnyInvestmentUnrealized, "CNY")} 沪深300收益 = ${fmtMoney(investmentUnrealizedCny, "CNY")}`;
   const fxUnrealizedCny = (usdCost + usdCash) * (fx - avgFx);
+  const fxFormula = `(${fmtMoney(usdCost, "USD")} 投资成本 + ${fmtMoney(usdCash, "USD")} 现金) × (${fx.toFixed(4)} - ${avgFx.toFixed(4)}) = ${fmtMoney(fxUnrealizedCny, "CNY")}`;
   const totalUnrealizedCny = investmentUnrealizedCny + fxUnrealizedCny;
   const totalReturnBasisCny = totalCostCny + usdCash * avgFx;
   const pnlSplitTotal = Math.max(1, Math.abs(investmentUnrealizedCny) + Math.abs(fxUnrealizedCny));
@@ -1602,10 +1604,12 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
           <div className="pnlBreakdownItem">
             <span>投资组合浮盈亏</span>
             <strong className={tone(investmentUnrealizedCny)}>{fmtMoney(investmentUnrealizedCny, "CNY")}</strong>
+            <small>{investmentFormula}</small>
           </div>
           <div className="pnlBreakdownItem">
             <span>汇率浮盈亏</span>
             <strong className={tone(fxUnrealizedCny)}>{fmtMoney(fxUnrealizedCny, "CNY")}</strong>
+            <small>{fxFormula}</small>
           </div>
         </div>
         <div className="pnlSplitViz">
@@ -1741,6 +1745,7 @@ function EditableHoldingsPage({ data, onSaved }) {
       });
       if (!response.ok) throw new Error(await readApiError(response, `balances HTTP ${response.status}`));
       setBalanceMessage("现金与已变现已保存");
+      window.alert("现金与已变现已保存");
       setEditingBalances(false);
       await onSaved();
     } catch (err) {
@@ -2234,6 +2239,7 @@ function Rebalance({ data, onSaved }) {
       });
       if (!response.ok) throw new Error(await readApiError(response, `balances HTTP ${response.status}`));
       setBalanceMessage("现金与已变现已保存");
+      window.alert("现金与已变现已保存");
       setEditingBalances(false);
       onSaved().catch(() => {});
     } catch (err) {

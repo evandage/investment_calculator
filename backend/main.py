@@ -525,6 +525,7 @@ def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, An
     if "chart_boards" in sys.modules:
         importlib.reload(sys.modules["chart_boards"])
     stop_futu_quote_subscription()
+    threading.Thread(target=start_futu_quote_subscription, kwargs={"force": True}, daemon=True).start()
     return {
         "saved": True,
         "items": items,

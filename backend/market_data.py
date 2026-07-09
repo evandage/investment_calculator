@@ -12,21 +12,12 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from . import config as app_config
 from .config import (
-    ALL_SYMBOLS,
-    FALLBACK_PRICES,
-    FUND_CODES,
-    FUTU_US,
     HTTP_TIMEOUT,
-    PE_BANDS,
-    PS_BANDS,
-    QQ_US,
     REQUEST_HEADERS,
     ROOT_DIR,
-    SATELLITE_SYMBOLS,
-    SINA_GB,
     TZ_SHANGHAI,
-    USD_SYMBOLS,
 )
 
 _QUOTES_CACHE: dict[str, Any] | None = None
@@ -54,8 +45,19 @@ _FUTU_SUB_KLINES: dict[tuple[str, str], dict[str, Any]] = {}
 _FUTU_SUB_KLINE_REVISIONS: dict[tuple[str, str], int] = {}
 _FUTU_SUB_KLINE_ERROR = ""
 _FUTU_SUB_TICKER_ERROR = ""
-_FUTU_SUBSCRIBE_SYMBOLS = tuple(dict.fromkeys(USD_SYMBOLS))
 NY_TZ = ZoneInfo("America/New_York")
+
+
+def _usd_symbols() -> tuple[str, ...]:
+    return tuple(app_config.USD_SYMBOLS)
+
+
+def _satellite_symbols() -> tuple[str, ...]:
+    return tuple(app_config.SATELLITE_SYMBOLS)
+
+
+def _futu_subscribe_symbols() -> tuple[str, ...]:
+    return tuple(sym for sym in dict.fromkeys(_usd_symbols()) if sym in app_config.FUTU_US)
 
 
 def futu_opend_config() -> tuple[str, int]:
@@ -210,7 +212,7 @@ def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | N
 
 
 def _update_futu_subscription_quotes(data: Any) -> None:
-    code_to_sym = {code: sym for sym, code in FUTU_US.items()}
+    code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
     now = time.time()
     next_quotes: dict[str, dict[str, Any]] = {}
     for i in range(len(data)):
@@ -232,7 +234,7 @@ def _update_futu_subscription_quotes(data: Any) -> None:
 
 
 def _update_futu_subscription_klines(data: Any) -> None:
-    code_to_sym = {code: sym for sym, code in FUTU_US.items()}
+    code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
     interval_by_type = {"K_15M": "15m", "K_5M": "5m"}
     with _FUTU_SUB_LOCK:
         for i in range(len(data)):
@@ -255,7 +257,7 @@ def _update_futu_subscription_klines(data: Any) -> None:
 
 
 def _update_futu_subscription_tickers(data: Any) -> None:
-    code_to_sym = {code: sym for sym, code in FUTU_US.items()}
+    code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
     now = time.time()
     with _FUTU_SUB_LOCK:
         for i in range(len(data)):
@@ -277,7 +279,7 @@ def _update_futu_subscription_tickers(data: Any) -> None:
 
 
 def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
-    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR, _FUTU_SUB_KLINE_ERROR, _FUTU_SUB_TICKER_ERROR
+    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR, _FUTU_SUB_KLINE_ERROR, _FUTU_SUB_TICKER_ERROR, _QUOTES_CACHE, _QUOTES_CACHE_AT
     with _FUTU_SUB_LOCK:
         if _FUTU_SUB_STARTED and _FUTU_SUB_CTX is not None and not force:
             return futu_subscription_status()
@@ -291,6 +293,11 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         _FUTU_SUB_LAST_ERROR = ""
         _FUTU_SUB_KLINE_ERROR = ""
         _FUTU_SUB_TICKER_ERROR = ""
+        _FUTU_SUB_QUOTES.clear()
+        _FUTU_SUB_UPDATED_AT.clear()
+        _FUTU_SUB_KLINES.clear()
+        _QUOTES_CACHE = None
+        _QUOTES_CACHE_AT = 0.0
 
     if not is_futu_opend_available():
         with _FUTU_SUB_LOCK:
@@ -341,9 +348,9 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         ctx.set_handler(QuoteHandler())
         ctx.set_handler(KlineHandler())
         ctx.set_handler(TickerHandler())
-        subscribe_symbols = [sym for sym in _FUTU_SUBSCRIBE_SYMBOLS if sym in FUTU_US]
+        subscribe_symbols = _futu_subscribe_symbols()
         ret, msg = ctx.subscribe(
-            [FUTU_US[sym] for sym in subscribe_symbols],
+            [app_config.FUTU_US[sym] for sym in subscribe_symbols],
             [SubType.QUOTE],
             is_first_push=True,
             subscribe_push=True,
@@ -357,7 +364,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
                 _FUTU_SUB_LAST_ERROR = str(msg)
             return futu_subscription_status()
         ticker_ret, ticker_msg = ctx.subscribe(
-            [FUTU_US[sym] for sym in subscribe_symbols],
+            [app_config.FUTU_US[sym] for sym in subscribe_symbols],
             [SubType.TICKER],
             is_first_push=True,
             subscribe_push=True,
@@ -366,7 +373,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         if ticker_ret != RET_OK:
             _FUTU_SUB_TICKER_ERROR = str(ticker_msg)
         kline_ret, kline_msg = ctx.subscribe(
-            [FUTU_US[sym] for sym in subscribe_symbols],
+            [app_config.FUTU_US[sym] for sym in subscribe_symbols],
             [SubType.K_15M, SubType.K_5M],
             is_first_push=True,
             subscribe_push=True,
@@ -376,7 +383,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
             _FUTU_SUB_KLINE_ERROR = str(kline_msg)
         else:
             for sym in subscribe_symbols:
-                code = FUTU_US[sym]
+                code = app_config.FUTU_US[sym]
                 for interval, ktype in (("15m", KLType.K_15M), ("5m", KLType.K_5M)):
                     seed_ret, seed_data = ctx.get_cur_kline(code, 1, ktype=ktype, autype=AuType.QFQ)
                     if seed_ret != RET_OK or seed_data is None or len(seed_data) == 0:
@@ -538,8 +545,9 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
     host, port = futu_opend_config()
     ctx = None
     out: dict[str, dict[str, Any]] = {}
-    futu_codes = [FUTU_US[sym] for sym in USD_SYMBOLS]
-    code_to_sym = {code: sym for sym, code in FUTU_US.items()}
+    usd_symbols = _usd_symbols()
+    futu_codes = [app_config.FUTU_US[sym] for sym in usd_symbols if sym in app_config.FUTU_US]
+    code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
     try:
         ctx = OpenQuoteContext(host=host, port=port)
         ret, snapshot = ctx.get_market_snapshot(futu_codes)
@@ -626,7 +634,8 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
 
 
 def fetch_tencent_us_quotes() -> dict[str, dict[str, Any]]:
-    url = "http://qt.gtimg.cn/q=" + ",".join(QQ_US.values())
+    qq_us = dict(app_config.QQ_US)
+    url = "http://qt.gtimg.cn/q=" + ",".join(qq_us.values())
     try:
         r = requests.get(url, timeout=HTTP_TIMEOUT, headers=REQUEST_HEADERS)
         r.encoding = "gbk"
@@ -650,7 +659,7 @@ def fetch_tencent_us_quotes() -> dict[str, dict[str, Any]]:
         if price > 0:
             raw[code] = {"price": price, "change_pct": change_pct}
     out = {}
-    for sym, code in QQ_US.items():
+    for sym, code in qq_us.items():
         item = raw.get(code)
         if item:
             out[sym] = {
@@ -668,7 +677,7 @@ def fetch_tencent_us_quotes() -> dict[str, dict[str, Any]]:
 
 
 def fetch_sina_us_quote(symbol: str) -> dict[str, Any] | None:
-    code = SINA_GB.get(symbol)
+    code = app_config.SINA_GB.get(symbol)
     if not code:
         return None
     try:
@@ -817,7 +826,7 @@ def _extract_peg(forward_pe: float | None, data: dict[str, Any]) -> float | None
     return forward_pe / annual_growth_pct
 
 
-def fetch_valuation_metrics(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, dict[str, float]]:
+def fetch_valuation_metrics(symbols: tuple[str, ...] | None = None) -> dict[str, dict[str, float]]:
     global _VALUATION_METRICS_CACHE, _FORWARD_PE_CACHE_AT
     now = time.time()
     if _VALUATION_METRICS_CACHE is not None and now - _FORWARD_PE_CACHE_AT < 1800:
@@ -831,10 +840,11 @@ def fetch_valuation_metrics(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dic
     host, port = futu_opend_config()
     ctx = None
     out: dict[str, dict[str, float]] = {}
+    symbols = symbols if symbols is not None else _satellite_symbols()
     try:
         ctx = OpenQuoteContext(host=host, port=port)
         for sym in symbols:
-            code = FUTU_US.get(sym)
+            code = app_config.FUTU_US.get(sym)
             if not code:
                 continue
             try:
@@ -850,7 +860,7 @@ def fetch_valuation_metrics(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dic
                 if peg is not None and peg > 0:
                     metrics["peg"] = peg
                 out[sym] = metrics
-            if sym in PS_BANDS:
+            if sym in app_config.PS_BANDS:
                 try:
                     ps_ret, ps_data = ctx.get_valuation_detail(code, valuation_type=3, interval_type=8)
                 except Exception:
@@ -877,7 +887,7 @@ def fetch_valuation_metrics(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dic
     return out
 
 
-def fetch_forward_pe(symbols: tuple[str, ...] = SATELLITE_SYMBOLS) -> dict[str, float]:
+def fetch_forward_pe(symbols: tuple[str, ...] | None = None) -> dict[str, float]:
     return {
         sym: metrics["forward_pe"]
         for sym, metrics in fetch_valuation_metrics(symbols).items()
@@ -897,7 +907,8 @@ def fetch_quotes() -> dict[str, Any]:
         subscription_quotes = get_futu_subscription_quotes()
     provider = "futu-subscribe" if subscription_quotes else ("futu" if futu_available else "tencent")
     quotes = dict(subscription_quotes)
-    if futu_available and len(quotes) < len(USD_SYMBOLS):
+    usd_symbols = _usd_symbols()
+    if futu_available and len(quotes) < len(usd_symbols):
         snapshot_quotes = fetch_futu_us_quotes()
         for sym, quote in snapshot_quotes.items():
             quotes.setdefault(sym, quote)
@@ -906,19 +917,19 @@ def fetch_quotes() -> dict[str, Any]:
     if not quotes:
         provider = "tencent"
         quotes = fetch_tencent_us_quotes()
-    for sym in USD_SYMBOLS:
+    for sym in usd_symbols:
         if sym not in quotes:
             fallback = fetch_sina_us_quote(sym)
             if fallback:
                 quotes[sym] = fallback
-    for sym, code in FUND_CODES.items():
+    for sym, code in app_config.FUND_CODES.items():
         fund = fetch_fund_quote(code)
         if fund:
             fund["symbol"] = sym
             quotes[sym] = fund
-    for sym in ALL_SYMBOLS:
+    for sym in app_config.ALL_SYMBOLS:
         if sym not in quotes:
-            price = FALLBACK_PRICES[sym]
+            price = app_config.FALLBACK_PRICES[sym]
             quotes[sym] = {
                 "symbol": sym,
                 "price": price,
@@ -946,7 +957,7 @@ def fetch_quotes() -> dict[str, Any]:
         "fx": fetch_fx_usdcny(),
         "valuation_metrics": valuation_metrics,
         "forward_pe": forward_pe,
-        "pe_bands": PE_BANDS,
+        "pe_bands": app_config.PE_BANDS,
     }
     _QUOTES_CACHE = payload
     _QUOTES_CACHE_AT = now

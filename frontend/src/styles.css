@@ -609,6 +609,14 @@ h2 {
   white-space: nowrap;
 }
 
+.pnlBreakdownItem small {
+  grid-column: 1 / -1;
+  color: rgba(191, 219, 254, 0.72);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
 .pnlSplitViz {
   display: grid;
   gap: 7px;
