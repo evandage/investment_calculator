@@ -91,6 +91,49 @@ function fmtPct(value) {
   return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
 }
 
+const BALANCE_FIELD_LABELS = {
+  cash_usd: "USD 现金",
+  cash_cny: "CNY 现金",
+  realized_usd: "USD 已变现",
+  realized_cny: "CNY 已变现",
+  sgov_dividend_usd: "SGOV 股息",
+};
+
+function parseAmountInput(value, label = "金额") {
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
+  const normalized = raw.replace(/[,\s，]/g, "");
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount)) {
+    throw new Error(`${label} 不是有效数字：${raw}`);
+  }
+  return amount;
+}
+
+async function readApiError(response, fallback) {
+  const text = await response.text().catch(() => "");
+  if (!text) return fallback;
+  try {
+    const body = JSON.parse(text);
+    if (typeof body?.detail === "string") return body.detail;
+    if (Array.isArray(body?.detail)) {
+      return body.detail
+        .map((item) => `${(item.loc || []).join(".")}: ${item.msg || item.type || "请求无效"}`)
+        .join("；");
+    }
+  } catch {
+    return text;
+  }
+  return fallback;
+}
+
+function buildBalancesPayload(balanceInputs) {
+  return Object.fromEntries(Object.entries(balanceInputs).map(([key, value]) => [
+    key,
+    parseAmountInput(value, BALANCE_FIELD_LABELS[key] || key),
+  ]));
+}
+
 function chartPriceDigits(symbol) {
   const normalized = String(symbol || "").toUpperCase();
   return normalized === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalized) ? 3 : 2;
@@ -823,7 +866,16 @@ function LightweightKlineCard({ item }) {
       });
       lastTime = time;
     }
-    return { candles: nextCandles, volumes: nextVolumes };
+    const patchedCandles = patchLatestCandle(nextCandles, item?.latest_price, item?.interval);
+    if (patchedCandles !== nextCandles && nextVolumes.length) {
+      const lastIndex = nextVolumes.length - 1;
+      const lastCandle = patchedCandles[patchedCandles.length - 1];
+      nextVolumes[lastIndex] = {
+        ...nextVolumes[lastIndex],
+        color: lastCandle.close >= lastCandle.open ? "rgba(34, 197, 94, 0.28)" : "rgba(239, 68, 68, 0.28)",
+      };
+    }
+    return { candles: patchedCandles, volumes: nextVolumes };
   }, [item]);
 
   useEffect(() => {
@@ -958,6 +1010,21 @@ function normalizeLightweightTime(value) {
   return value;
 }
 
+function patchLatestCandle(candles = [], latestPrice, interval) {
+  const price = Number(latestPrice);
+  if (!candles.length || !Number.isFinite(price) || price <= 0 || interval === "1d") return candles;
+  const last = candles[candles.length - 1];
+  if (!last) return candles;
+  const next = candles.slice();
+  next[next.length - 1] = {
+    ...last,
+    close: price,
+    high: Math.max(Number(last.high), price),
+    low: Math.min(Number(last.low), price),
+  };
+  return next;
+}
+
 function normalizeLineData(rows = []) {
   const out = [];
   let lastTime = null;
@@ -1006,13 +1073,24 @@ function SingleLightweightChart({ data, viewKey }) {
       out.push({ time, open, high, low, close });
       lastTime = time;
     }
-    return out;
+    return patchLatestCandle(out, data?.latest_price, data?.interval);
   }, [data]);
-  const volumes = useMemo(() => (data?.volumes || []).map((row) => ({
-    time: normalizeLightweightTime(row.time),
-    value: Number(row.value || 0),
-    color: row.color || "rgba(148, 163, 184, 0.24)",
-  })).filter((row) => row.time != null && Number.isFinite(row.value)), [data]);
+  const volumes = useMemo(() => {
+    const volumeRows = (data?.volumes || []).map((row) => ({
+      time: normalizeLightweightTime(row.time),
+      value: Number(row.value || 0),
+      color: row.color || "rgba(148, 163, 184, 0.24)",
+    })).filter((row) => row.time != null && Number.isFinite(row.value));
+    if (!volumeRows.length || !candles.length || data?.interval === "1d") return volumeRows;
+    const lastVolumeIndex = volumeRows.length - 1;
+    const lastCandle = candles[candles.length - 1];
+    if (String(volumeRows[lastVolumeIndex].time) !== String(lastCandle.time)) return volumeRows;
+    volumeRows[lastVolumeIndex] = {
+      ...volumeRows[lastVolumeIndex],
+      color: lastCandle.close >= lastCandle.open ? "rgba(34, 197, 94, 0.28)" : "rgba(239, 68, 68, 0.28)",
+    };
+    return volumeRows;
+  }, [data, candles]);
   const overlays = data?.overlays || {};
   const indicators = data?.indicators || {};
   const isDaily = data?.interval === "1d";
@@ -1655,18 +1733,20 @@ function EditableHoldingsPage({ data, onSaved }) {
     setSavingBalances(true);
     setBalanceMessage("");
     try {
-      const nextBalances = Object.fromEntries(Object.entries(balanceInputs).map(([key, value]) => [key, Number(value || 0)]));
+      const nextBalances = buildBalancesPayload(balanceInputs);
       const response = await fetch(`${API_BASE}/api/balances`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ balances: nextBalances }),
       });
-      if (!response.ok) throw new Error(`balances HTTP ${response.status}`);
+      if (!response.ok) throw new Error(await readApiError(response, `balances HTTP ${response.status}`));
       setBalanceMessage("现金与已变现已保存");
       setEditingBalances(false);
       await onSaved();
     } catch (err) {
-      setBalanceMessage(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setBalanceMessage(message);
+      window.alert(`现金保存失败：${message}`);
     } finally {
       setSavingBalances(false);
     }
@@ -2146,18 +2226,20 @@ function Rebalance({ data, onSaved }) {
     setSavingBalances(true);
     setBalanceMessage("");
     try {
-      const balances = Object.fromEntries(Object.entries(balanceInputs).map(([key, value]) => [key, Number(value || 0)]));
+      const balances = buildBalancesPayload(balanceInputs);
       const response = await fetch(`${API_BASE}/api/balances`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ balances }),
       });
-      if (!response.ok) throw new Error(`balances HTTP ${response.status}`);
+      if (!response.ok) throw new Error(await readApiError(response, `balances HTTP ${response.status}`));
       setBalanceMessage("现金与已变现已保存");
       setEditingBalances(false);
       onSaved().catch(() => {});
     } catch (err) {
-      setBalanceMessage(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setBalanceMessage(message);
+      window.alert(`现金保存失败：${message}`);
     } finally {
       setSavingBalances(false);
     }
