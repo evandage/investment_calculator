@@ -1496,6 +1496,10 @@ function buildSatelliteUniverseDraft(data) {
 function EditableHoldingsPage({ data }) {
   const [holdings, setHoldings] = useState({});
   const [balances, setBalances] = useState({});
+  const realtimeTotalValueCny = (data.holdings || []).reduce(
+    (sum, row) => sum + Math.max(0, Number(row.value_cny || 0)),
+    0,
+  );
 
   function resetDraft() {
     setHoldings(Object.fromEntries(data.holdings.map((row) => [row.symbol, { shares: String(row.shares ?? 0), avg_cost: String(row.avg_cost ?? 0) }])));
@@ -1519,18 +1523,19 @@ function EditableHoldingsPage({ data }) {
         <table className="editableHoldingsTable">
           <thead>
             <tr>
-              <th>标的</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>数量</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE/近5日</th><th>PE区间</th><th>PEG</th><th>PEG区间</th>
+              <th>标的</th><th>实时占比</th><th>数量</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE/近5日</th><th>PE区间</th><th>PEG</th><th>PEG区间</th>
             </tr>
           </thead>
           <tbody>
             {data.holdings.map((row) => (
               <tr key={row.symbol}>
                 <th>{row.label}</th>
+                <td>{realtimeTotalValueCny > 0 ? `${(Number(row.value_cny || 0) / realtimeTotalValueCny * 100).toFixed(2)}%` : "-"}</td>
+                <td>{Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                 <td>{fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
                 <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
                 <td className={tone(row.rebound_pct)}>{row.rebound_pct == null ? "-" : fmtPct(row.rebound_pct)}</td>
-                <td>{Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                 <td>{fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
@@ -2042,7 +2047,7 @@ function Rebalance({ data, onSaved }) {
         <table>
           <thead>
             <tr>
-              <th>标的</th><th>目前占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>实际差值</th><th>净买入</th><th>档位</th><th>估值/追高系数</th><th>说明</th>
+              <th>标的</th><th>月初占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>实际差值</th><th>净买入</th><th>档位</th><th>估值/追高系数</th><th>说明</th>
             </tr>
           </thead>
           <tbody>
@@ -2051,7 +2056,7 @@ function Rebalance({ data, onSaved }) {
                 <React.Fragment key={row.symbol}>
                   <tr>
                     <th>{row.symbol}</th>
-                    <td>{Number(row.current_pct || 0).toFixed(2)}%</td>
+                    <td>{Number(row.month_start_pct ?? row.current_pct ?? 0).toFixed(2)}%</td>
                     <td>{Number(row.target_pct || 0).toFixed(2)}%</td>
                     <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
                     <td className="planCell">

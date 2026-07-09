@@ -1891,6 +1891,8 @@ def build_rebalance_v2(
                 "recent_5d_pct": item.get("recent_5d_pct"),
                 "target_pct": target_pct * 100.0,
                 "current_pct": month_start_cost_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
+                "month_start_pct": month_start_cost_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
+                "current_cost_pct": cost_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym),
                 "valuation_split_factor": split,
