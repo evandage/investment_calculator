@@ -975,7 +975,8 @@ def apply_trade_to_holdings(
         sell_shares = min(shares, old_shares)
         new_shares = max(0.0, old_shares - sell_shares)
         realized = amount - sell_shares * old_cost
-        holdings[sym] = {"shares": new_shares, "avg_cost": old_cost if new_shares > 1e-9 else 0.0}
+        remaining_cost = max(0.0, old_shares * old_cost - amount)
+        holdings[sym] = {"shares": new_shares, "avg_cost": remaining_cost / new_shares if new_shares > 1e-9 else 0.0}
         return holdings, realized
     price = amount / shares
     new_shares = old_shares + shares

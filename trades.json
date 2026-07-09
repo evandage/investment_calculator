@@ -176,7 +176,7 @@
       "cost_basis": 637.83756225,
       "realized_pnl": 27.13243775000001,
       "prev_avg_cost": 655.8741,
-      "new_avg_cost": 655.8741,
+      "new_avg_cost": 643.401136385786,
       "intensity": "normal",
       "created_at": "2026-07-08T21:52:50+08:00"
     },
@@ -190,8 +190,8 @@
       "price": 683.85,
       "cost_basis": 683.85,
       "realized_pnl": 0.0,
-      "prev_avg_cost": 655.8741,
-      "new_avg_cost": 664.684574600825,
+      "prev_avg_cost": 643.401136385786,
+      "new_avg_cost": 656.1397323024597,
       "intensity": "normal",
       "created_at": "2026-07-08T21:54:11+08:00"
     },
