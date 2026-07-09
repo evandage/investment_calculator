@@ -974,8 +974,11 @@ def apply_trade_to_holdings(
             raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
         sell_shares = min(shares, old_shares)
         new_shares = max(0.0, old_shares - sell_shares)
-        realized = amount - sell_shares * old_cost
-        remaining_cost = max(0.0, old_shares * old_cost - amount)
+        cost_basis = max(0.0, float(trade.get("cost_basis", 0.0) or 0.0))
+        if cost_basis <= 0:
+            cost_basis = sell_shares * old_cost
+        realized = amount - cost_basis
+        remaining_cost = max(0.0, old_shares * old_cost - cost_basis)
         holdings[sym] = {"shares": new_shares, "avg_cost": remaining_cost / new_shares if new_shares > 1e-9 else 0.0}
         return holdings, realized
     price = amount / shares
