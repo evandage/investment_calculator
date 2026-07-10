@@ -2809,7 +2809,6 @@ function DashboardPage({ data }) {
       <Summary data={data} />
       <PerformanceChart history={data.performance_history} />
       <DailyHeatmap cards={data.daily_cards} holdings={data.holdings} />
-      <DailyCards cards={data.daily_cards} />
       <Visualizations data={data} />
     </>
   );
