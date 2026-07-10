@@ -908,7 +908,8 @@ h2 {
 .heatmapCanvas {
   position: relative;
   width: 100%;
-  aspect-ratio: 40 / 27;
+  /* Keep the DOM canvas ratio identical to the d3 layout coordinate space. */
+  aspect-ratio: 100 / 78;
   min-height: 502px;
   max-height: 794px;
   margin: 0 auto;
@@ -916,6 +917,96 @@ h2 {
   overflow: hidden;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(112, 215, 255, 0.04));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.heatmapToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.heatmapToolbar button {
+  padding: 4px 9px;
+  border: 1px solid rgba(112, 215, 255, 0.32);
+  border-radius: 5px;
+  background: rgba(31, 77, 117, 0.35);
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.heatmapToolbar button:hover {
+  border-color: rgba(112, 215, 255, 0.65);
+  color: var(--text-main);
+}
+
+.heatmapPanel {
+  position: relative;
+}
+
+.satelliteHoverPanel {
+  position: absolute;
+  z-index: 20;
+  top: 42px;
+  left: 14px;
+  right: 14px;
+  padding: 12px;
+  border: 1px solid rgba(112, 215, 255, 0.42);
+  border-radius: 8px;
+  background: rgba(9, 27, 46, 0.97);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+}
+
+.satelliteHoverPanel > strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-main);
+}
+
+.satelliteMiniCanvas {
+  position: relative;
+  height: 220px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #0d1d31;
+}
+
+.satelliteMiniCell {
+  position: absolute;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  background: var(--mini-bg);
+  border-color: var(--mini-border);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.satelliteMiniCell b {
+  color: var(--text-main);
+}
+
+.satelliteMiniTooltip {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(112, 215, 255, 0.38);
+  border-radius: 6px;
+  background: rgba(19, 43, 70, 0.9);
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.satelliteMiniTooltip b {
+  color: var(--text-main);
 }
 
 .heatCell {
@@ -2620,12 +2711,50 @@ tbody th {
   box-shadow: none;
 }
 
+.heatCell[role="button"] {
+  cursor: pointer;
+}
+
 .heatCell::after {
   display: none;
 }
 
 .heatCell span {
   color: #cbd5e1;
+}
+
+.heatCell span.up {
+  color: var(--green);
+}
+
+.heatCell span.down {
+  color: var(--red);
+}
+
+.heatCell span.flat {
+  color: #cbd5e1;
+}
+
+.heatPnl {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(0.58rem, 0.82vw, 0.78rem);
+  line-height: 1.15;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.heatPnl span {
+  color: inherit;
+  font-size: inherit;
+}
+
+.heatCell.compact .heatPnl {
+  font-size: 0.58rem;
+}
+
+.heatCell.tiny .heatPnl {
+  display: none;
 }
 
 .barTrack {

@@ -284,6 +284,12 @@ def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
         for key in (
             "holding_pnl_cny",
             "holding_cost_cny",
+            "total_pnl_cny",
+            "total_return_basis_cny",
+            "fx_pnl_cny",
+            "fx_rate",
+            "cash_usd",
+            "cash_cny",
             "holding_daily_pnl_cny",
             "holding_daily_basis_cny",
             "usd_return_pct",

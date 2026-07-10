@@ -9,6 +9,8 @@ const API_BASE =
 const WS_BASE = API_BASE.replace(/^http/i, "ws");
 const HEATMAP_LAYOUT_WIDTH = 100;
 const HEATMAP_LAYOUT_HEIGHT = 78;
+const SATELLITE_HOVER_LAYOUT_WIDTH = 100;
+const SATELLITE_HOVER_LAYOUT_HEIGHT = 42;
 const TERMINAL_CHART = {
   yellow: "#facc15",
   cyan: "#22d3ee",
@@ -431,7 +433,7 @@ function DailyCards({ cards }) {
       {cards.map((card) => {
         const regularPct = Number(card.regular_pct ?? 0);
         const extendedPct = Number(card.extended_pct);
-        const hasDistinctExtendedPct = card.extended_pct != null && Math.abs(extendedPct - regularPct) > 0.0001;
+        const hasDistinctExtendedPct = card.symbol !== "001015" && card.extended_pct != null && Math.abs(extendedPct - regularPct) > 0.0001;
         const regularUsd = Number(card.regular_change_usd ?? card.change_usd ?? 0);
         const regularCny = Number(card.regular_change_cny ?? card.change_cny ?? 0);
         const extendedUsd = Number(card.extended_change_usd);
@@ -462,16 +464,61 @@ function DailyCards({ cards }) {
 }
 
 function DailyHeatmap({ cards, holdings }) {
+  const [satelliteHovered, setSatelliteHovered] = useState(false);
+  const [satelliteHoverSymbol, setSatelliteHoverSymbol] = useState(null);
+  const satelliteSymbols = useMemo(
+    () => new Set(["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA"]),
+    [],
+  );
   const holdingsBySymbol = useMemo(
     () => Object.fromEntries((holdings || []).map((row) => [row.symbol, row])),
     [holdings],
   );
   const totalValue = (holdings || []).reduce((sum, row) => sum + Math.max(0, Number(row.value_cny || 0)), 0);
-  const rows = useMemo(() => (cards || []).filter((card) => card.symbol !== "SATELLITE").map((card) => {
+  const satelliteCards = useMemo(
+    () => (cards || []).filter((card) => satelliteSymbols.has(card.symbol)),
+    [cards, satelliteSymbols],
+  );
+  const rows = useMemo(() => {
+    const sourceCards = (cards || []).filter((card) => card.symbol !== "SATELLITE");
+    const displayCards = sourceCards.filter((card) => !satelliteSymbols.has(card.symbol));
+    if (satelliteCards.length) {
+      const satelliteValueCny = satelliteCards.reduce((sum, card) => sum + Math.max(0, Number(holdingsBySymbol[card.symbol]?.value_cny || 0)), 0);
+      const regularUsd = satelliteCards.reduce((sum, card) => sum + Number(card.regular_change_usd ?? card.change_usd ?? 0), 0);
+      const regularCny = satelliteCards.reduce((sum, card) => sum + Number(card.regular_change_cny ?? card.change_cny ?? 0), 0);
+      const extendedUsdValues = satelliteCards.filter((card) => card.extended_change_usd != null);
+      const extendedCnyValues = satelliteCards.filter((card) => card.extended_change_cny != null);
+      const extendedUsd = extendedUsdValues.reduce((sum, card) => sum + Number(card.extended_change_usd || 0), 0);
+      const extendedCny = extendedCnyValues.reduce((sum, card) => sum + Number(card.extended_change_cny || 0), 0);
+      displayCards.push({
+        symbol: "SATELLITE_GROUP",
+        label: "卫星仓位",
+        value_cny: satelliteValueCny,
+        regular_change_usd: regularUsd,
+        regular_change_cny: regularCny,
+        extended_change_usd: extendedUsdValues.length ? extendedUsd : null,
+        extended_change_cny: extendedCnyValues.length ? extendedCny : null,
+        regular_pct: satelliteValueCny > 0 ? regularCny / satelliteValueCny * 100 : 0,
+        extended_pct: satelliteValueCny > 0 && extendedCnyValues.length ? extendedCny / satelliteValueCny * 100 : null,
+        effective_pct: satelliteValueCny > 0 ? (regularCny + (extendedCnyValues.length ? extendedCny : 0)) / satelliteValueCny * 100 : 0,
+      });
+    }
+    return displayCards.map((card) => {
     const holding = holdingsBySymbol[card.symbol] || {};
-    const rawValueCny = Number(holding.value_cny || 0);
+    const rawValueCny = Number(holding.value_cny ?? card.value_cny ?? 0);
     const valueCny = Number.isFinite(rawValueCny) ? Math.max(0, rawValueCny) : 0;
     const assetPct = totalValue > 0 ? (valueCny / totalValue) * 100 : 0;
+    const rawRegularPct = Number(card.regular_pct ?? 0);
+    const regularPct = Number.isFinite(rawRegularPct) ? rawRegularPct : 0;
+    const rawExtendedPct = Number(card.extended_pct);
+    const extendedPct = Number.isFinite(rawExtendedPct) ? rawExtendedPct : null;
+    const hasDistinctExtendedPct = card.symbol !== "001015" && extendedPct != null && Math.abs(extendedPct - regularPct) > 0.0001;
+    const regularUsd = Number(card.regular_change_usd ?? card.change_usd ?? 0);
+    const regularCny = Number(card.regular_change_cny ?? card.change_cny ?? 0);
+    const extendedUsd = Number(card.extended_change_usd);
+    const extendedCny = Number(card.extended_change_cny);
+    const hasDistinctExtendedUsd = card.extended_change_usd != null && Math.abs(extendedUsd - regularUsd) > 0.005;
+    const hasDistinctExtendedCny = card.extended_change_cny != null && Math.abs(extendedCny - regularCny) > 0.005;
     const rawDailyPct = Number(card.effective_pct ?? card.extended_pct ?? card.regular_pct ?? 0);
     const dailyPct = Number.isFinite(rawDailyPct) ? rawDailyPct : 0;
     const magnitude = Math.min(1, Math.abs(dailyPct) / 4);
@@ -481,8 +528,50 @@ function DailyHeatmap({ cards, holdings }) {
       : dailyPct < 0
         ? `linear-gradient(145deg, rgba(127, 29, 29, ${strength}), rgba(42, 24, 37, ${0.82 + magnitude * 0.18}))`
         : "linear-gradient(145deg, #15263d, #10233a)";
-    return { ...card, valueCny, assetPct, dailyPct, bg, magnitude };
-  }), [cards, holdingsBySymbol, totalValue]);
+      return { ...card, valueCny, assetPct, regularPct, extendedPct, hasDistinctExtendedPct, regularUsd, regularCny, extendedUsd, extendedCny, hasDistinctExtendedUsd, hasDistinctExtendedCny, dailyPct, bg, magnitude };
+    });
+  }, [cards, holdingsBySymbol, satelliteCards, satelliteSymbols, totalValue]);
+  const satelliteHoverRects = useMemo(() => {
+    if (!satelliteCards.length) return [];
+    const root = hierarchy({
+      children: satelliteCards.map((card) => ({
+        ...card,
+        layoutValue: Math.max(0, Number(holdingsBySymbol[card.symbol]?.value_cny || 0)),
+      })),
+    })
+      .sum((item) => item.layoutValue || 0)
+      .sort((a, b) => (b.value || 0) - (a.value || 0));
+    treemap()
+      .tile(treemapSquarify.ratio(1))
+      .size([SATELLITE_HOVER_LAYOUT_WIDTH, SATELLITE_HOVER_LAYOUT_HEIGHT])
+      .paddingInner(0.8)
+      .round(false)(root);
+    return root.leaves().map((leaf) => {
+      const card = leaf.data;
+      const regularPct = Number(card.regular_pct || 0);
+      const extendedPct = Number(card.extended_pct);
+      const effectivePct = Number.isFinite(Number(card.effective_pct))
+        ? Number(card.effective_pct)
+        : (Number.isFinite(extendedPct) ? ((1 + regularPct / 100) * (1 + extendedPct / 100) - 1) * 100 : regularPct);
+      const magnitude = Math.min(1, Math.abs(effectivePct) / 4);
+      const strength = 0.18 + magnitude * 0.72;
+      const bg = effectivePct > 0
+        ? `linear-gradient(145deg, rgba(22, 101, 52, ${strength}), rgba(15, 47, 46, ${0.82 + magnitude * 0.18}))`
+        : effectivePct < 0
+          ? `linear-gradient(145deg, rgba(127, 29, 29, ${strength}), rgba(42, 24, 37, ${0.82 + magnitude * 0.18}))`
+          : "linear-gradient(145deg, #15263d, #10233a)";
+      return {
+      ...card,
+      effectivePct,
+      magnitude,
+      bg,
+      x: leaf.x0,
+      y: leaf.y0,
+      width: leaf.x1 - leaf.x0,
+      height: leaf.y1 - leaf.y0,
+      };
+    });
+  }, [holdingsBySymbol, satelliteCards]);
   const minLayoutValue = totalValue > 0 ? totalValue * 0.0025 : 1;
   const rects = useMemo(() => {
     if (!rows.length) return [];
@@ -506,7 +595,50 @@ function DailyHeatmap({ cards, holdings }) {
   }, [rows, minLayoutValue]);
 
   return (
-    <section className="chartPanel heatmapPanel">
+    <section className="chartPanel heatmapPanel" onMouseLeave={() => setSatelliteHovered(false)}>
+      <div className="heatmapToolbar">
+        <span>卫星仓位已合并 · 悬浮查看成员明细</span>
+      </div>
+      {satelliteHovered ? (
+        <div className="satelliteHoverPanel" onMouseEnter={() => setSatelliteHovered(true)}>
+          <strong>卫星仓位明细</strong>
+          <div className="satelliteMiniCanvas">
+            {satelliteHoverRects.map((card) => (
+              <div
+                className="satelliteMiniCell"
+                key={card.symbol}
+                style={{
+                  left: `${card.x / SATELLITE_HOVER_LAYOUT_WIDTH * 100}%`,
+                  top: `${card.y / SATELLITE_HOVER_LAYOUT_HEIGHT * 100}%`,
+                  width: `${card.width / SATELLITE_HOVER_LAYOUT_WIDTH * 100}%`,
+                  height: `${card.height / SATELLITE_HOVER_LAYOUT_HEIGHT * 100}%`,
+                  "--mini-bg": card.bg,
+                  "--mini-border": card.effectivePct > 0 ? `rgba(52, 211, 153, ${0.3 + card.magnitude * 0.45})` : card.effectivePct < 0 ? `rgba(248, 113, 113, ${0.3 + card.magnitude * 0.45})` : "rgba(148, 163, 184, 0.28)",
+                }}
+                onMouseEnter={() => setSatelliteHoverSymbol(card.symbol)}
+                onMouseLeave={() => setSatelliteHoverSymbol(null)}
+                title={`${card.label} · 收盘 ${fmtPct(card.regular_pct)}${card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
+              >
+                <b>{card.label}</b>
+                <span className={tone(card.regular_pct)}>{fmtPct(card.regular_pct)}{card.extended_pct != null ? `（${fmtPct(card.extended_pct)}）` : ""}</span>
+                <span className={tone(card.regular_change_usd ?? card.change_usd)}>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}</span>
+                <span className={tone(card.regular_change_cny ?? card.change_cny)}>{fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
+              </div>
+            ))}
+          </div>
+          {satelliteHoverSymbol ? (() => {
+            const card = satelliteHoverRects.find((item) => item.symbol === satelliteHoverSymbol);
+            if (!card) return null;
+            return (
+              <div className="satelliteMiniTooltip">
+                <b>{card.label}</b>
+                <span>收盘 {fmtPct(card.regular_pct)}{card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 {fmtPct(card.effectivePct)}</span>
+                <span>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")} · {fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
+              </div>
+            );
+          })() : null}
+        </div>
+      ) : null}
       <div className="heatmapCanvas">
         {rects.map((row) => {
           return (
@@ -521,10 +653,23 @@ function DailyHeatmap({ cards, holdings }) {
                 width: `${row.width / HEATMAP_LAYOUT_WIDTH * 100}%`,
                 height: `${row.height / HEATMAP_LAYOUT_HEIGHT * 100}%`,
               }}
-              title={`${row.label} · 资产占比 ${row.assetPct.toFixed(2)}% · 当日 ${fmtPct(row.dailyPct)}`}
+              title={`${row.label} · 资产占比 ${row.assetPct.toFixed(2)}% · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
+              onMouseEnter={row.symbol === "SATELLITE_GROUP" ? () => setSatelliteHovered(true) : undefined}
+              role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
             >
               <div className="heatSymbol">{row.label}</div>
-              <strong className={tone(row.dailyPct)}>{fmtPct(row.dailyPct)}</strong>
+              <strong className={tone(row.regularPct)}>
+                {fmtPct(row.regularPct)}
+                {row.hasDistinctExtendedPct ? <span className={tone(row.extendedPct)}>（{fmtPct(row.extendedPct)}）</span> : null}
+              </strong>
+              <div className={`heatPnl heatPnlUsd ${tone(row.regularUsd)}`}>
+                {fmtMoney(row.regularUsd, "USD")}
+                {row.hasDistinctExtendedUsd ? <span className={tone(row.extendedUsd)}>（{fmtMoney(row.extendedUsd, "USD")}）</span> : null}
+              </div>
+              <div className={`heatPnl heatPnlCny ${tone(row.regularCny)}`}>
+                {fmtMoney(row.regularCny, "CNY")}
+                {row.hasDistinctExtendedCny ? <span className={tone(row.extendedCny)}>（{fmtMoney(row.extendedCny, "CNY")}）</span> : null}
+              </div>
               <span>{row.assetPct.toFixed(1)}%</span>
             </article>
           );
@@ -816,9 +961,12 @@ function PerformanceLightweightChart({ points, series }) {
           <span className={tone(tooltip.point.usd_daily_pct)}>
             美元资产当日 {tooltip.point.usd_daily_pct == null ? "-" : fmtPct(tooltip.point.usd_daily_pct)}
           </span>
-          <span className={tone(tooltip.point.holding_pnl_cny)}>
-            总资产盈亏 {tooltip.point.holding_pnl_cny == null ? "-" : fmtMoney(tooltip.point.holding_pnl_cny, "CNY")}
+          <span className={tone(tooltip.point.total_pnl_cny)}>
+            总资产盈亏 {tooltip.point.total_pnl_cny == null ? "-" : fmtMoney(tooltip.point.total_pnl_cny, "CNY")}
           </span>
+          {tooltip.point.fx_pnl_cny != null ? (
+            <span className={tone(tooltip.point.fx_pnl_cny)}>其中汇率盈亏 {fmtMoney(tooltip.point.fx_pnl_cny, "CNY")}</span>
+          ) : null}
           <span className={tone(tooltip.point.usd_pnl_usd)}>
             美元资产盈亏 {tooltip.point.usd_pnl_usd == null ? "-" : fmtMoney(tooltip.point.usd_pnl_usd, "USD")}
           </span>
@@ -1535,7 +1683,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const fxUnrealizedCny = (usdCost + usdCash) * (fx - avgFx);
   const fxFormula = `(${fmtMoney(usdCost, "USD")} 投资成本 + ${fmtMoney(usdCash, "USD")} 现金) × (${fx.toFixed(4)} - ${avgFx.toFixed(4)}) = ${fmtMoney(fxUnrealizedCny, "CNY")}`;
   const totalUnrealizedCny = investmentUnrealizedCny + fxUnrealizedCny;
-  const totalReturnBasisCny = totalCostCny + usdCash * avgFx;
+  const totalReturnBasisCny = totalCostCny + usdCash * avgFx + Number(balances.cash_cny || 0);
   const pnlSplitTotal = Math.max(1, Math.abs(investmentUnrealizedCny) + Math.abs(fxUnrealizedCny));
   const cashCny = Number(balances.cash_cny || 0) + usdCash * fx;
   const totalRealizedCny = Number(balances.realized_cny || 0) + usdRealized * fx;
