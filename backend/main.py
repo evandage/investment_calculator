@@ -337,7 +337,9 @@ def _build_chart_board_light(
                     df,
                     sym,
                     min_current_bars=12 if key == "5m" else 4,
-                    include_previous_context=True,
+                    # Do not add yesterday's bars while today's extended
+                    # session has only produced a few candles.
+                    include_previous_context=False,
                 )
             else:
                 df, _ = chart_api.slice_regular_intraday_with_context(

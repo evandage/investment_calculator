@@ -620,7 +620,12 @@ function DailyHeatmap({ cards, holdings }) {
                 title={`${card.label} · 收盘 ${fmtPct(card.regular_pct)}${card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
               >
                 <b>{card.label}</b>
-                <span className={tone(card.regular_pct)}>{fmtPct(card.regular_pct)}{card.extended_pct != null ? `（${fmtPct(card.extended_pct)}）` : ""}</span>
+                <span className={tone(card.regular_pct)}>
+                  {fmtPct(card.regular_pct)}
+                  {card.extended_pct != null ? (
+                    <span className={tone(card.extended_pct)}>（{fmtPct(card.extended_pct)}）</span>
+                  ) : null}
+                </span>
                 <span className={tone(card.regular_change_usd ?? card.change_usd)}>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}</span>
                 <span className={tone(card.regular_change_cny ?? card.change_cny)}>{fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
               </div>

@@ -2422,7 +2422,10 @@ def fig_15m_vwap_rsi(
             df,
             symbol,
             min_current_bars=4,
-            include_previous_context=True,
+            # Extended-hours view must stay on the current trading date.
+            # Do not backfill yesterday just because only a few premarket
+            # bars have arrived after the extended session opens.
+            include_previous_context=False,
         )
     else:
         df, _ = slice_regular_intraday_with_context(
@@ -2721,7 +2724,8 @@ def fig_5m_vwap_rsi7(
             df,
             symbol,
             min_current_bars=12,
-            include_previous_context=True,
+            # Extended-hours view must stay on the current trading date.
+            include_previous_context=False,
         )
     else:
         df, _ = slice_regular_intraday_with_context(
