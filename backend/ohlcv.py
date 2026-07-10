@@ -211,7 +211,7 @@ def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[s
                 ctx.close()
         except Exception:
             pass
-    return _merge_realtime_bar(bars, symbol, interval), "futu-subscribe"
+    return _merge_realtime_bar(bars, symbol, interval), "futu-history"
 
 
 def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:

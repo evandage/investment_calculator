@@ -1639,7 +1639,7 @@ function KlinePage({ dashboardData }) {
         ) : null}
       </div>
       {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
-      {data && scope === "single" ? <div className="muted">模板：我的旧版技术看板 · 行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
+      {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} /> : null}

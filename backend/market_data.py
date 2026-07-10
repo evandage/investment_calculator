@@ -57,7 +57,13 @@ def _satellite_symbols() -> tuple[str, ...]:
 
 
 def _futu_subscribe_symbols() -> tuple[str, ...]:
-    return tuple(sym for sym in dict.fromkeys(_usd_symbols()) if sym in app_config.FUTU_US)
+    # 510330.SS is the dashboard's CSI 300 ETF benchmark; include it in the
+    # same QUOTE/K-line subscription so the single-symbol chart can be live.
+    return tuple(
+        sym
+        for sym in dict.fromkeys((*_usd_symbols(), "510330.SS"))
+        if sym in app_config.FUTU_US
+    )
 
 
 def futu_opend_config() -> tuple[str, int]:
