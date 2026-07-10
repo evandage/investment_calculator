@@ -51,8 +51,8 @@ NY_TZ = ZoneInfo("America/New_York")
 PERFORMANCE_WRITE_HOUR = 8
 US_MARKET_CLOSE_MINUTE = 16 * 60
 PERFORMANCE_HISTORY_START_DATE = "2026-07-07"
-PERFORMANCE_CHART_START_DATE = "2026-07-07"
-PERFORMANCE_CHART_BASELINE_DATE = "2026-07-07"
+PERFORMANCE_CHART_START_DATE = "2026-07-08"
+PERFORMANCE_CHART_BASELINE_DATE = "2026-07-08"
 FUND_HISTORY_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -1347,12 +1347,30 @@ def build_performance_history(
         "QQQ": 1.0,
     }
     if rows:
+        baseline_row = next(
+            (row for row in rows if str(row.get("date", "")) == PERFORMANCE_CHART_BASELINE_DATE),
+            {},
+        )
+        baseline_total_pnl_cny = coerce_optional_float(baseline_row.get("total_pnl_cny"))
+        baseline_total_basis_cny = coerce_optional_float(baseline_row.get("total_return_basis_cny"))
+        baseline_total_return_pct = coerce_optional_float(baseline_row.get("portfolio_return_pct")) or 0.0
+        if baseline_total_pnl_cny is not None and baseline_total_basis_cny is not None and baseline_total_basis_cny > 0:
+            baseline_total_return_pct = baseline_total_pnl_cny / baseline_total_basis_cny * 100.0
         baseline_point = {
             "date": PERFORMANCE_CHART_BASELINE_DATE,
-            "portfolio_return_pct": 0.0,
-            "portfolio_daily_pct": 0.0,
-            "usd_return_pct": 0.0,
-            "usd_daily_pct": 0.0,
+            # 总资产和美元资产保留基准日的实际记录；基准指数从该日归零。
+            "portfolio_return_pct": baseline_total_return_pct,
+            "portfolio_daily_pct": coerce_optional_float(baseline_row.get("holding_daily_pnl_pct")) or coerce_optional_float(baseline_row.get("portfolio_daily_pct")) or 0.0,
+            "holding_pnl_cny": coerce_optional_float(baseline_row.get("holding_pnl_cny")),
+            "holding_cost_cny": coerce_optional_float(baseline_row.get("holding_cost_cny")),
+            "total_pnl_cny": baseline_total_pnl_cny,
+            "total_return_basis_cny": baseline_total_basis_cny,
+            "fx_pnl_cny": coerce_optional_float(baseline_row.get("fx_pnl_cny")),
+            "usd_return_pct": coerce_optional_float(baseline_row.get("usd_return_pct")) or 0.0,
+            "usd_daily_pct": coerce_optional_float(baseline_row.get("usd_daily_pct")) or 0.0,
+            "usd_pnl_usd": coerce_optional_float(baseline_row.get("usd_pnl_usd")),
+            "cash_flow_cny": coerce_optional_float(baseline_row.get("cash_flow_cny")) or 0.0,
+            "cash_flow_flag": bool(baseline_row.get("cash_flow_flag")),
             "market_open_symbols": list(benchmark_symbols),
         }
         for sym in benchmark_symbols:
