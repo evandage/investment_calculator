@@ -1118,6 +1118,9 @@ function LightweightKlineCard({ item }) {
       requestPriceAutoscale(candleSeries);
       didFitContentRef.current = true;
     }
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => setPercentAxisTicks(openingPercentAxisTicks(candles, candleSeries)));
+    });
   }, [candles, volumes]);
 
   return (
@@ -1173,6 +1176,44 @@ function patchLatestCandle(candles = [], latestPrice, interval) {
   return next;
 }
 
+function candleDayKey(time) {
+  if (typeof time === "number" && Number.isFinite(time)) {
+    return new Date(time * 1000).toISOString().slice(0, 10);
+  }
+  return String(time || "").slice(0, 10);
+}
+
+function openingPercentRows(candles = []) {
+  if (!candles.length) return [];
+  const latestDay = candleDayKey(candles[candles.length - 1].time);
+  const opening = candles.find((row) => candleDayKey(row.time) === latestDay)?.open;
+  if (!Number.isFinite(opening) || opening <= 0) return [];
+  return candles.map((row) => ({ time: row.time, value: (row.close / opening - 1) * 100 }));
+}
+
+function openingPercentAxisTicks(candles = [], candleSeries) {
+  if (!candles.length || !candleSeries?.priceToCoordinate) return [];
+  const latestDay = candleDayKey(candles[candles.length - 1].time);
+  const opening = candles.find((row) => candleDayKey(row.time) === latestDay)?.open;
+  if (!Number.isFinite(opening) || opening <= 0) return [];
+  const values = candles.flatMap((row) => [Number(row.low), Number(row.high)]).filter(Number.isFinite);
+  if (!values.length) return [];
+  const lowPct = (Math.min(...values) / opening - 1) * 100;
+  const highPct = (Math.max(...values) / opening - 1) * 100;
+  const rawStep = Math.max((highPct - lowPct) / 4, 0.05);
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+  const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
+  const start = Math.floor(lowPct / step) * step;
+  const end = Math.ceil(highPct / step) * step;
+  const ticks = [];
+  for (let pct = start; pct <= end + step * 0.1; pct += step) {
+    const y = candleSeries.priceToCoordinate(opening * (1 + pct / 100));
+    if (y != null && Number.isFinite(y)) ticks.push({ pct, y });
+  }
+  return ticks;
+}
+
 function normalizeLineData(rows = []) {
   const out = [];
   let lastTime = null;
@@ -1206,6 +1247,7 @@ function SingleLightweightChart({ data, viewKey }) {
   const didFitContentRef = useRef(false);
   const volumeProfileRef = useRef([]);
   const [profileBars, setProfileBars] = useState([]);
+  const [percentAxisTicks, setPercentAxisTicks] = useState([]);
   const candles = useMemo(() => {
     const out = [];
     let lastTime = null;
@@ -1223,6 +1265,8 @@ function SingleLightweightChart({ data, viewKey }) {
     }
     return patchLatestCandle(out, data?.latest_price, data?.interval);
   }, [data]);
+  const showOpeningPercentAxis = data?.interval === "5m" || data?.interval === "15m";
+  const percentRows = useMemo(() => (showOpeningPercentAxis ? openingPercentRows(candles) : []), [candles, showOpeningPercentAxis]);
   const volumes = useMemo(() => {
     const volumeRows = (data?.volumes || []).map((row) => ({
       time: normalizeLightweightTime(row.time),
@@ -1326,6 +1370,23 @@ function SingleLightweightChart({ data, viewKey }) {
       priceLineVisible: false,
     }, 0);
     volume.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+    const percent = showOpeningPercentAxis ? chart.addSeries(LineSeries, {
+      // Hidden calibration series: the axis is visible, the line is not.
+      color: "rgba(0, 0, 0, 0)",
+      lineWidth: 1,
+      priceScaleId: "percent",
+      priceFormat: { type: "custom", formatter: (value) => `${Number(value).toFixed(2)}%`, minMove: 0.01 },
+      lastValueVisible: false,
+      priceLineVisible: false,
+    }, 0) : null;
+    if (showOpeningPercentAxis) chart.priceScale("percent").applyOptions({
+      visible: true,
+      position: "right",
+      autoScale: true,
+      minimumWidth: 58,
+      borderColor: "rgba(112, 215, 255, 0.34)",
+      scaleMargins: { top: 0.08, bottom: 0.24 },
+    });
     const avwapUpper = chart.addSeries(LineSeries, { color: "rgba(45, 212, 191, 0.52)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }, 0);
     const avwapLower = chart.addSeries(LineSeries, { color: "rgba(45, 212, 191, 0.52)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }, 0);
     const avwap = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 2, lastValueVisible: false, priceLineVisible: false }, 0);
@@ -1339,7 +1400,7 @@ function SingleLightweightChart({ data, viewKey }) {
     const macdSignal = chart.addSeries(LineSeries, { color: TERMINAL_CHART.coral, lineWidth: 1, title: "Signal" }, 2);
     rsi.createPriceLine({ price: 70, color: "rgba(248, 113, 113, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
     rsi.createPriceLine({ price: 30, color: "rgba(52, 211, 153, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
-    seriesRef.current = { candle, volume, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
+    seriesRef.current = { candle, volume, percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
     chartRef.current = chart;
     const updateProfile = () => {
       const candleSeries = seriesRef.current.candle;
@@ -1367,7 +1428,7 @@ function SingleLightweightChart({ data, viewKey }) {
       priceLinesRef.current = {};
       chart.remove();
     };
-  }, [viewKey, rsiPeriod]);
+  }, [viewKey, rsiPeriod, showOpeningPercentAxis]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -1381,6 +1442,7 @@ function SingleLightweightChart({ data, viewKey }) {
     });
     series.candle.setData(candles);
     series.volume.setData(volumes);
+    if (series.percent) series.percent.setData(percentRows);
     const shouldDrawAvwap = isDaily || !avwapSkewsIntradayScale;
     const shouldDrawAvwapBands = shouldDrawAvwap && data?.avwap_mode === "today_open";
     const avwapUpperRows = shouldDrawAvwapBands ? normalizeLineData(overlays.avwap_upper) : [];
@@ -1442,6 +1504,9 @@ function SingleLightweightChart({ data, viewKey }) {
       requestPriceAutoscale(series.candle);
       didFitContentRef.current = true;
     }
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => setPercentAxisTicks(openingPercentAxisTicks(candles, series.candle)));
+    });
     window.setTimeout(() => {
       const candleSeries = seriesRef.current.candle;
       if (!candleSeries) return;
@@ -1457,7 +1522,7 @@ function SingleLightweightChart({ data, viewKey }) {
       }).filter(Boolean);
       setProfileBars(bars);
     }, 0);
-  }, [candles, volumes, overlays, indicators, data, volumeProfile, isDaily, avwapSkewsIntradayScale]);
+  }, [candles, volumes, percentRows, overlays, indicators, data, volumeProfile, isDaily, showOpeningPercentAxis, avwapSkewsIntradayScale]);
 
   return (
     <div className="singleLwWrap">
@@ -1472,6 +1537,9 @@ function SingleLightweightChart({ data, viewKey }) {
         </div>
       </div>
       <div className="singleLwCanvas" ref={containerRef}>
+        {showOpeningPercentAxis ? <div className="klinePercentAxis singleKlinePercentAxis" aria-label="以当日开盘价为零的涨跌幅坐标轴">
+          {percentAxisTicks.map((tick) => <span key={tick.pct} style={{ top: `${tick.y}px` }}>{fmtPct(tick.pct)}</span>)}
+        </div> : null}
         <div className="singleLwProfile" aria-hidden="true">
           {profileBars.map((bar, index) => (
             <span
