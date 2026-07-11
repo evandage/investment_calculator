@@ -1334,8 +1334,10 @@ def build_performance_history(
         "updated_at": now.isoformat(timespec="seconds"),
     }
     rows_by_date = {row["date"]: row for row in rows}
-    if is_weekday(today):
-        rows_by_date[today] = current
+    # Keep today's asset snapshot on weekends too, so the latest total/USD
+    # returns use the same current state as the summary cards. Closed
+    # benchmarks carry a zero daily return and remain flat.
+    rows_by_date[today] = current
     rows = sorted(
         (row for row in rows_by_date.values() if str(row.get("date", "")) >= PERFORMANCE_CHART_START_DATE),
         key=lambda row: row["date"],
@@ -1504,6 +1506,10 @@ def coerce_optional_float(value: Any) -> float | None:
 
 
 def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_day: str, now: datetime) -> float:
+    # Quote providers commonly retain Friday's change over the weekend. Do not
+    # count that old move again as the current investment day's return.
+    if symbol not in USD_SYMBOLS and not is_weekday(investment_day):
+        return 0.0
     if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() == "closed":
         return 0.0
     if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() not in {"regular", "closed"}:

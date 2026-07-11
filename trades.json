@@ -224,6 +224,36 @@
       "new_avg_cost": 0.0,
       "intensity": "none",
       "created_at": "2026-07-09T09:44:21+08:00"
+    },
+    {
+      "id": "20260711105846-15-TEM",
+      "trade_date": "2026-07-10",
+      "symbol": "TEM",
+      "action": "buy",
+      "amount_usd": 10.0,
+      "shares": 0.1708,
+      "price": 58.548009367681495,
+      "cost_basis": 10.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 54.5,
+      "new_avg_cost": 56.45145357042055,
+      "intensity": "normal",
+      "created_at": "2026-07-11T10:58:46+08:00"
+    },
+    {
+      "id": "20260711110004-16-ISRG",
+      "trade_date": "2026-07-10",
+      "symbol": "ISRG",
+      "action": "buy",
+      "amount_usd": 20.0,
+      "shares": 0.0493,
+      "price": 405.6795131845842,
+      "cost_basis": 20.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 408.94,
+      "new_avg_cost": 408.69220903345155,
+      "intensity": "small",
+      "created_at": "2026-07-11T11:00:04+08:00"
     }
   ]
 }
