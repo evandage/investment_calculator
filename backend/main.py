@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import importlib
 import sys
 import threading
@@ -247,13 +248,23 @@ def _build_global_chart_board_light(
     full_labels = _chart_full_labels()
     symbols = list(labels.keys())
     quotes = get_futu_subscription_quotes()
+    # A single Futu history request can take several seconds when OpenD is
+    # busy. Fetching the board symbols serially made the 9-symbol board exceed
+    # the browser's 30s request deadline (9 × 8s history timeout). Run the
+    # independent symbol requests concurrently and assemble the result in the
+    # stable display order below.
+    def load_bars(sym: str) -> list[dict[str, Any]]:
+        try:
+            return fetch_ohlcv(sym, key, show_extended).get("bars") or []
+        except Exception:
+            return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, max(1, len(symbols)))) as executor:
+        bars_by_symbol = dict(zip(symbols, executor.map(load_bars, symbols)))
+
     charts: list[dict[str, Any]] = []
     for sym in symbols:
-        try:
-            payload = fetch_ohlcv(sym, key, show_extended)
-            bars = payload.get("bars") or []
-        except Exception:
-            bars = []
+        bars = bars_by_symbol.get(sym) or []
         if key == "1d":
             bars = bars[-90:]
         quote = quotes.get(sym) or {}
@@ -705,5 +716,4 @@ async def chart_board_global_light_ws(websocket: WebSocket) -> None:
             await asyncio.sleep(0.25)
     except WebSocketDisconnect:
         return
-
 

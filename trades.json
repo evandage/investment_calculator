@@ -254,6 +254,21 @@
       "new_avg_cost": 408.69220903345155,
       "intensity": "small",
       "created_at": "2026-07-11T11:00:04+08:00"
+    },
+    {
+      "id": "20260713220052-17-TEM",
+      "trade_date": "2026-07-13",
+      "symbol": "TEM",
+      "action": "buy",
+      "amount_usd": 15.0,
+      "shares": 0.2629,
+      "price": 57.055914796500566,
+      "cost_basis": 15.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 56.45145357042055,
+      "new_avg_cost": 56.70892741412832,
+      "intensity": "normal",
+      "created_at": "2026-07-13T22:00:52+08:00"
     }
   ]
 }
