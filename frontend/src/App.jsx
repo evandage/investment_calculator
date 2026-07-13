@@ -438,8 +438,8 @@ function DailyCards({ cards }) {
         const regularCny = Number(card.regular_change_cny ?? card.change_cny ?? 0);
         const extendedUsd = Number(card.extended_change_usd);
         const extendedCny = Number(card.extended_change_cny);
-        const hasDistinctExtendedUsd = card.extended_change_usd != null && Math.abs(extendedUsd - regularUsd) > 0.005;
-        const hasDistinctExtendedCny = card.extended_change_cny != null && Math.abs(extendedCny - regularCny) > 0.005;
+      const hasDistinctExtendedUsd = card.session !== "regular" && card.extended_change_usd != null && Math.abs(extendedUsd - regularUsd) > 0.005;
+      const hasDistinctExtendedCny = card.session !== "regular" && card.extended_change_cny != null && Math.abs(extendedCny - regularCny) > 0.005;
         return (
           <article className={`dailyCard ${card.wide ? "wideCard" : ""}`} key={card.symbol}>
             <div className="cardTitle">{card.label}</div>
@@ -493,6 +493,7 @@ function DailyHeatmap({ cards, holdings }) {
       displayCards.push({
         symbol: "SATELLITE_GROUP",
         label: "卫星仓位",
+        session: satelliteCards.every((card) => card.session === "regular") ? "regular" : "extended",
         value_cny: satelliteValueCny,
         regular_change_usd: regularUsd,
         regular_change_cny: regularCny,
@@ -512,13 +513,13 @@ function DailyHeatmap({ cards, holdings }) {
     const regularPct = Number.isFinite(rawRegularPct) ? rawRegularPct : 0;
     const rawExtendedPct = Number(card.extended_pct);
     const extendedPct = Number.isFinite(rawExtendedPct) ? rawExtendedPct : null;
-    const hasDistinctExtendedPct = card.symbol !== "001015" && extendedPct != null && Math.abs(extendedPct - regularPct) > 0.0001;
+    const hasDistinctExtendedPct = card.session !== "regular" && card.symbol !== "001015" && extendedPct != null && Math.abs(extendedPct - regularPct) > 0.0001;
     const regularUsd = Number(card.regular_change_usd ?? card.change_usd ?? 0);
     const regularCny = Number(card.regular_change_cny ?? card.change_cny ?? 0);
     const extendedUsd = Number(card.extended_change_usd);
     const extendedCny = Number(card.extended_change_cny);
-    const hasDistinctExtendedUsd = card.extended_change_usd != null && Math.abs(extendedUsd - regularUsd) > 0.005;
-    const hasDistinctExtendedCny = card.extended_change_cny != null && Math.abs(extendedCny - regularCny) > 0.005;
+      const hasDistinctExtendedUsd = card.session !== "regular" && card.extended_change_usd != null && Math.abs(extendedUsd - regularUsd) > 0.005;
+      const hasDistinctExtendedCny = card.session !== "regular" && card.extended_change_cny != null && Math.abs(extendedCny - regularCny) > 0.005;
     const rawDailyPct = Number(card.effective_pct ?? card.extended_pct ?? card.regular_pct ?? 0);
     const dailyPct = Number.isFinite(rawDailyPct) ? rawDailyPct : 0;
     const magnitude = Math.min(1, Math.abs(dailyPct) / 4);
@@ -617,12 +618,12 @@ function DailyHeatmap({ cards, holdings }) {
                 }}
                 onMouseEnter={() => setSatelliteHoverSymbol(card.symbol)}
                 onMouseLeave={() => setSatelliteHoverSymbol(null)}
-                title={`${card.label} · 收盘 ${fmtPct(card.regular_pct)}${card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
+                title={`${card.label} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
               >
                 <b>{card.label}</b>
                 <span className={tone(card.regular_pct)}>
                   {fmtPct(card.regular_pct)}
-                  {card.extended_pct != null ? (
+                  {card.session !== "regular" && card.extended_pct != null ? (
                     <span className={tone(card.extended_pct)}>（{fmtPct(card.extended_pct)}）</span>
                   ) : null}
                 </span>
@@ -637,7 +638,7 @@ function DailyHeatmap({ cards, holdings }) {
             return (
               <div className="satelliteMiniTooltip">
                 <b>{card.label}</b>
-                <span>收盘 {fmtPct(card.regular_pct)}{card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 {fmtPct(card.effectivePct)}</span>
+                <span>收盘 {fmtPct(card.regular_pct)}{card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 {fmtPct(card.effectivePct)}</span>
                 <span>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")} · {fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
               </div>
             );

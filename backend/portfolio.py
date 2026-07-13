@@ -1648,6 +1648,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         card = {
                 "symbol": sym,
                 "label": ASSET_META[sym]["label"],
+                "session": quote.get("session", "regular"),
                 "price_line": _quote_price_line(sym, quote),
                 "regular_pct": regular_pct,
                 "summary_pct": summary_pct,
