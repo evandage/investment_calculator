@@ -345,6 +345,97 @@
       "finalized": true,
       "estimated_symbols": [],
       "updated_at": "2026-07-10T08:00:00+08:00"
+    },
+    {
+      "date": "2026-07-13",
+      "portfolio_daily_pct": -1.396738749659621,
+      "portfolio_return_pct": 0.0,
+      "holding_pnl_pct": -0.08769523018365157,
+      "holding_pnl_cny": -62.00261460557522,
+      "holding_cost_cny": 70702.37967986308,
+      "fx_rate": 6.7709,
+      "holding_daily_pnl_pct": -1.396738749659621,
+      "holding_daily_pnl_cny": -1000.6378154887989,
+      "holding_daily_basis_cny": 71641.0148807463,
+      "usd_return_pct": 0.6010764312899771,
+      "usd_pnl_usd": 33.5378040429523,
+      "usd_cost_usd": 5579.623870957048,
+      "usd_value_usd": 5613.161675,
+      "usd_daily_pct": -1.2624572857496699,
+      "usd_daily_pnl_usd": -71.76983200000001,
+      "usd_daily_basis_usd": 5684.931507,
+      "cash_flow_cny": 101.5635,
+      "cash_flow_flag": true,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
+      "benchmark_prices": {
+        "001015": 2.346,
+        "VOO": 688.5,
+        "QQQ": 711.74
+      },
+      "benchmark_daily_pct": {
+        "001015": -1.552664708350815,
+        "VOO": -0.772490127691472,
+        "QQQ": -1.8979752174332565
+      },
+      "market_open_symbols": [
+        "001015",
+        "VOO",
+        "QQQ"
+      ],
+      "symbol_daily_pct": {
+        "VOO": -0.772490127691467,
+        "QQQ": -1.8979752174332516,
+        "ISRG": 0.08358326368062143,
+        "TEM": -3.1177807547827334,
+        "GOOGL": -1.3074640237415354,
+        "MSFT": 1.5294728641911155,
+        "AVGO": -3.980298522389183,
+        "001015": -1.552664708350815
+      },
+      "holdings_snapshot": {
+        "VOO": {
+          "shares": 3.9726,
+          "avg_cost": 667.0912983831868
+        },
+        "QQQ": {
+          "shares": 3.2211000000000003,
+          "avg_cost": 719.2954400670578
+        },
+        "ISRG": {
+          "shares": 0.46740000000000004,
+          "avg_cost": 408.5871480530595
+        },
+        "TEM": {
+          "shares": 0.6172,
+          "avg_cost": 56.70595430978613
+        },
+        "GOOGL": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 363.71
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.81
+        },
+        "AVGO": {
+          "shares": 0.3465,
+          "avg_cost": 421.25
+        },
+        "001015": {
+          "shares": 13910.58,
+          "avg_cost": 2.3667815728747468
+        }
+      },
+      "estimated_symbols": [],
+      "finalized": true,
+      "updated_at": "2026-07-13T08:00:00+08:00",
+      "total_pnl_cny": -980.5115352907623,
+      "total_return_basis_cny": 91242.40360254828,
+      "total_pnl_pct": -1.0746226497516094,
+      "fx_pnl_cny": -918.508920685187,
+      "cash_usd": 2893.78,
+      "cash_cny": 28.019999999999982
     }
   ]
 }
