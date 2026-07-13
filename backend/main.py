@@ -213,6 +213,27 @@ def _timestamp_for_lightweight(value: Any, interval: str = "5m") -> int | str:
         return text
 
 
+def _kline_header_change_pct(
+    quote: dict[str, Any],
+    price: float,
+    interval: str,
+    *,
+    fallback_open: float | None = None,
+) -> float | None:
+    """Return the K-line header percentage versus the previous close.
+
+    The header keeps one denominator across premarket, regular, postmarket,
+    intraday intervals, and daily bars. This also preserves the original
+    behavior for the China ETF benchmark.
+    """
+    # The header price follows the extended quote whenever one is available,
+    # so its percentage must use the matching extended-session return.
+    value = quote.get("extended_change_pct")
+    if value is None:
+        value = quote.get("change_pct")
+    return float(value) if value is not None else None
+
+
 def _build_global_chart_board_light(
     interval: str = "5m",
     show_extended: bool = True,
@@ -238,9 +259,13 @@ def _build_global_chart_board_light(
         quote = quotes.get(sym) or {}
         last_close = float(bars[-1].get("close") or 0.0) if bars else 0.0
         latest_price = float(quote.get("price") or last_close or 0.0)
-        latest_change_pct = quote.get("regular_change_pct", quote.get("change_pct"))
-        if key != "1d" and show_extended and quote.get("extended_change_pct") is not None:
-            latest_change_pct = quote.get("extended_change_pct")
+        fallback_open = float(bars[0].get("open") or 0.0) if bars else None
+        latest_change_pct = _kline_header_change_pct(
+            quote,
+            latest_price,
+            key,
+            fallback_open=fallback_open,
+        )
         candles = [
             {
                 "time": _timestamp_for_lightweight(bar.get("time"), key),
@@ -322,7 +347,7 @@ def _build_chart_board_light(
     user_avg_cost = avg_cost if shares > 0 and avg_cost > 0 else None
     quote = get_futu_subscription_quotes().get(sym) or {}
     latest_price = float(quote.get("price") or 0.0)
-    latest_change_pct = quote.get("change_pct")
+    latest_change_pct = None
     session_open = float(quote.get("open_price") or 0.0)
     previous_close = float(quote.get("prev_close") or 0.0)
     effective_avwap_mode = avwap_mode
@@ -372,6 +397,14 @@ def _build_chart_board_light(
                 "indicators": {},
                 "error": "",
             }
+
+        fallback_open = float(df.iloc[0]["Open"]) if key != "1d" else None
+        latest_change_pct = _kline_header_change_pct(
+            quote,
+            latest_price,
+            key,
+            fallback_open=fallback_open,
+        )
 
         avwap, avwap_upper, avwap_lower, avwap_anchor, avwap_label = chart_api.anchored_vwap_and_bands(
             sym,

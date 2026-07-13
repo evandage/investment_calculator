@@ -323,7 +323,7 @@ function useTableGestureScroll() {
   }, []);
 }
 
-function Header({ data, onRefresh }) {
+function Header({ data }) {
   const market = data?.market;
   return (
     <header className="topbar">
@@ -333,7 +333,7 @@ function Header({ data, onRefresh }) {
           {market ? `行情源 ${market.provider} · ${market.fetched_at}` : "正在连接后端"}
         </div>
       </div>
-      <button className="iconButton" onClick={onRefresh} title="刷新">
+      <button className="iconButton" onClick={() => window.location.reload()} title="刷新网页">
         <RefreshCcw size={18} />
       </button>
     </header>
@@ -2943,7 +2943,7 @@ export default function App() {
   }
   return (
     <main className="appShell">
-      <Header data={data} onRefresh={load} />
+      <Header data={data} />
       <PageNav page={page} setPage={setPage} />
       {page === "dashboard" ? <DashboardPage data={data} /> : null}
       {page === "holdings" ? <HoldingsPage data={data} onSaved={load} /> : null}
