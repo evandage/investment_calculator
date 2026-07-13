@@ -323,6 +323,8 @@ def _build_chart_board_light(
     quote = get_futu_subscription_quotes().get(sym) or {}
     latest_price = float(quote.get("price") or 0.0)
     latest_change_pct = quote.get("change_pct")
+    session_open = float(quote.get("open_price") or 0.0)
+    previous_close = float(quote.get("prev_close") or 0.0)
     effective_avwap_mode = avwap_mode
     if sym in {"VOO", "QQQ", "SGOV", "510330.SS"} and effective_avwap_mode == "earnings":
         effective_avwap_mode = "high_60d"
@@ -346,7 +348,10 @@ def _build_chart_board_light(
                     df,
                     sym,
                     min_current_bars=12 if key == "5m" else 4,
-                    include_previous_context=True,
+                    # Intraday boards should show the active trading day only.
+                    # Adding yesterday's bars at the open makes it look as if
+                    # the board has not refreshed yet.
+                    include_previous_context=False,
                 )
         if df.empty:
             return {
@@ -359,6 +364,8 @@ def _build_chart_board_light(
                 "user_avg_cost": user_avg_cost,
                 "latest_price": latest_price if latest_price > 0 else None,
                 "latest_change_pct": latest_change_pct,
+                "session_open": session_open if session_open > 0 else None,
+                "previous_close": previous_close if previous_close > 0 else None,
                 "candles": [],
                 "volumes": [],
                 "overlays": {},
@@ -443,6 +450,8 @@ def _build_chart_board_light(
             "rsi_period": rsi_period,
             "latest_price": latest_price if latest_price > 0 else None,
             "latest_change_pct": latest_change_pct,
+            "session_open": session_open if session_open > 0 else None,
+            "previous_close": previous_close if previous_close > 0 else None,
             "candles": candles,
             "volumes": volumes,
             "overlays": {

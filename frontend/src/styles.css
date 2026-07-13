@@ -1642,6 +1642,21 @@ h2 {
   white-space: nowrap;
 }
 
+/* Make the percentage scale auditable: show the exact price used as 0%. */
+.klinePercentAxis::before {
+  content: "较昨收";
+}
+
+.klinePercentAxis .klinePercentAxisBase {
+  top: 18px;
+  right: 2px;
+  transform: none;
+  padding: 0;
+  color: rgba(147, 218, 255, 0.72);
+  font-size: 0.62rem;
+  background: transparent;
+}
+
 .lwEmpty {
   position: absolute;
   inset: 0;

@@ -165,6 +165,7 @@ def _price_matches_change_pct(price: float | None, base: float | None, pct: floa
 def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | None:
     last_price = _coerce_float(_row_get(row, "last_price") or _row_get(row, "cur_price") or _row_get(row, "price"))
     prev_close = _coerce_float(_row_get(row, "prev_close_price") or _row_get(row, "prev_close"))
+    open_price = _coerce_float(_row_get(row, "open_price") or _row_get(row, "open"))
     pre_price = _coerce_float(
         _row_get(row, "pre_market_price")
         or _row_get(row, "pre_price")
@@ -207,6 +208,7 @@ def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | N
         "symbol": sym,
         "price": price,
         "prev_close": base,
+        "open_price": open_price if open_price and open_price > 0 else None,
         "regular_price": last_price,
         "change_pct": (price / base - 1.0) * 100.0 if base > 0 else 0.0,
         "regular_change_pct": (last_price / base - 1.0) * 100.0 if base > 0 else 0.0,

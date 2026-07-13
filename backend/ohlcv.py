@@ -128,6 +128,7 @@ def _latest_regular_session_bars(
     symbol: str,
     bars: list[dict[str, Any]],
     min_current_bars: int = 6,
+    include_previous_context: bool = False,
 ) -> list[dict[str, Any]]:
     tz = _market_tz(symbol)
     regular: list[tuple[dict[str, Any], object]] = []
@@ -144,7 +145,7 @@ def _latest_regular_session_bars(
     latest = dates[-1]
     selected = {latest}
     latest_count = sum(1 for _, day in regular if day == latest)
-    if latest_count < max(1, min_current_bars) and len(dates) > 1:
+    if include_previous_context and latest_count < max(1, min_current_bars) and len(dates) > 1:
         selected.add(dates[-2])
     return [bar for bar, day in regular if day in selected]
 
