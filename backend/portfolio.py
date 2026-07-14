@@ -1510,9 +1510,22 @@ def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_
     # count that old move again as the current investment day's return.
     if symbol not in USD_SYMBOLS and not is_weekday(investment_day):
         return 0.0
-    if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() == "closed":
+    if symbol == "001015":
+        # 沪深300在北京时间收盘后冻结，次日 09:00 才切换到新交易日的
+        # 预测/涨跌，避免美股夜盘期间沿用上一交易日数值。
+        current = now.astimezone(TZ_SHANGHAI) if now.tzinfo else now.replace(tzinfo=TZ_SHANGHAI)
+        if current.date().isoformat() != investment_day:
+            return 0.0
+        minutes = current.hour * 60 + current.minute
+        if minutes < 9 * 60 or minutes >= 15 * 60:
+            return 0.0
+    session = str(quote.get("session") or "").lower()
+    # Once the US regular session has closed, today's regular-session result
+    # is finalized. Post-market/overnight quotes belong to the next session's
+    # forecast and must not make the completed day's USD P&L jump around.
+    if symbol in USD_SYMBOLS and session in {"closed", "postmarket", "overnight"}:
         return 0.0
-    if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() not in {"regular", "closed"}:
+    if symbol in USD_SYMBOLS and session not in {"regular", "closed", "postmarket", "overnight"}:
         extended_pct = coerce_optional_float(quote.get("extended_change_pct"))
         if extended_pct is not None:
             return extended_pct
