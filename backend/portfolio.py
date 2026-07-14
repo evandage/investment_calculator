@@ -1520,15 +1520,17 @@ def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_
         if minutes < 9 * 60 or minutes >= 15 * 60:
             return 0.0
     session = str(quote.get("session") or "").lower()
-    # Once the US regular session has closed, today's regular-session result
-    # is finalized. Post-market/overnight quotes belong to the next session's
-    # forecast and must not make the completed day's USD P&L jump around.
-    if symbol in USD_SYMBOLS and session in {"closed", "postmarket", "overnight"}:
-        return 0.0
-    if symbol in USD_SYMBOLS and session not in {"regular", "closed", "postmarket", "overnight"}:
+    # During an extended session, use the regular-session close as the base
+    # price (that close is normalized to 1). The provider's extended return is
+    # already measured against that base, so it represents the current USD P&L
+    # directly; do not compound it with the regular-session return.
+    if symbol in USD_SYMBOLS and session != "regular":
         extended_pct = coerce_optional_float(quote.get("extended_change_pct"))
-        if extended_pct is not None:
+        if extended_pct is not None and session != "closed":
             return extended_pct
+        regular_pct = coerce_optional_float(quote.get("regular_change_pct"))
+        if regular_pct is not None:
+            return regular_pct
     try:
         return float(quote.get("change_pct", 0.0))
     except (TypeError, ValueError):
