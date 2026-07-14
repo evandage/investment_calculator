@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 import re
-from calendar import monthrange
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -46,7 +45,6 @@ BUILD_TARGET_YEAR = 2026
 BUILD_TARGET_MONTH = 10
 _DRAWDOWN_CACHE: dict[str, tuple[dict[str, float | None], float]] = {}
 _DRAWDOWN_CACHE_TTL_SECONDS = 21600
-QQQ_MONTH_END_WINDOW_DAYS = 5
 NY_TZ = ZoneInfo("America/New_York")
 PERFORMANCE_WRITE_HOUR = 8
 US_MARKET_CLOSE_MINUTE = 16 * 60
@@ -139,7 +137,7 @@ def rebalance_rules_payload(
                 "heading": "档位规则",
                 "items": [
                     "VOO：小加 -3% / 1.5x，中加 -7% / 2x，大加 -10% / 3x；近 5 日涨幅偏热时只在备注提示，不额外降低额度。",
-                    "QQQ：月初默认 0.6x，-2% 试探 0.8x，月末补齐 1.0x；-5% 小加 1.5x，-10% 中加 2.5x，-13% 大加 4x。",
+                    "QQQ：与 VOO 使用同一套规则；建仓期小加 -3% / 1.5x、中加 -7% / 2x、大加 -10% / 3x，长期定投期小加 -3% / 1.25x、中加 -7% / 1.75x、大加 -10% / 2.5x。",
                     "PLTR：正常 0.1x，小加 -15% / 0.2x，中加 -25% / 0.3x，大加 -35% / 0.5x；按 60 日历史涨跌位置定档。",
                     "TEM：正常 0.1x，小加 -12% / 0.2x，中加 -20% / 0.3x，大加 -28% / 0.5x；按 60 日历史涨跌位置定档。",
                     "ISRG：正常 0.1x，小加 -15% / 0.2x，中加 -20% / 0.3x，大加 -23% / 0.5x。",
@@ -160,11 +158,13 @@ def normalize_intensity(value: Any) -> str:
         "none": "none",
         "normal": "normal",
         "regular": "normal",
-        "probe": "probe",
-        "dip": "probe",
-        "month_end": "month_end",
-        "month-end": "month_end",
-        "monthend": "month_end",
+        # Legacy QQQ-only tiers are normalized to the closest standard tier
+        # so old monthly records remain readable without creating new tiers.
+        "probe": "small",
+        "dip": "small",
+        "month_end": "medium",
+        "month-end": "medium",
+        "monthend": "medium",
         "small": "small",
         "medium": "medium",
         "large": "large",
@@ -175,8 +175,6 @@ def intensity_rank(value: Any) -> int:
     return {
         "none": 0,
         "normal": 1,
-        "probe": 2,
-        "month_end": 3,
         "small": 4,
         "medium": 5,
         "large": 6,
@@ -185,45 +183,11 @@ def intensity_rank(value: Any) -> int:
 
 def intensity_label(value: Any) -> str:
     intensity = normalize_intensity(value)
-    return {
-        "probe": "QQQ -2%分批",
-        "month_end": "QQQ月底补齐",
-    }.get(intensity, INTENSITY_LABELS.get(intensity, str(intensity)))
-
-
-def is_month_end_window(now: datetime) -> bool:
-    last_day = monthrange(now.year, now.month)[1]
-    return now.day >= max(1, last_day - QQQ_MONTH_END_WINDOW_DAYS + 1)
-
-
-def qqq_build_signal(drawdown_pct: float | None, now: datetime | None = None) -> tuple[float, str, str, str]:
-    if isinstance(drawdown_pct, (int, float)):
-        drawdown = float(drawdown_pct)
-        if drawdown <= -13.0:
-            return 4.0, "QQQ大加", "4x", "large"
-        if drawdown <= -10.0:
-            return 2.5, "QQQ中加", "2.5x", "medium"
-        if drawdown <= -5.0:
-            return 1.5, "QQQ小加", "1.5x", "small"
-        if drawdown <= -2.0:
-            return 0.8, "QQQ -2%分批", "0.8x", "probe"
-    if now is not None and is_month_end_window(now):
-        return 1.0, "QQQ月底补齐", "1.0x", "month_end"
-    return 0.6, "QQQ月初分批", "0.6x", "normal"
+    return INTENSITY_LABELS.get(intensity, str(intensity))
 
 
 def intensity_multiplier(symbol: str, phase: str, intensity: str) -> float:
     intensity = normalize_intensity(intensity)
-    if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
-        return {
-            "none": 0.0,
-            "normal": 0.6,
-            "probe": 0.8,
-            "month_end": 1.0,
-            "small": 1.5,
-            "medium": 2.5,
-            "large": 4.0,
-        }.get(intensity, 0.0)
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     if not rule or intensity == "none":
         return 0.0
@@ -236,8 +200,6 @@ def intensity_multiplier(symbol: str, phase: str, intensity: str) -> float:
 
 
 def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> tuple[float, str, str, str]:
-    if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
-        return qqq_build_signal(drawdown_pct)
     if symbol in {"PLTR", "TEM"}:
         if not isinstance(drawdown_pct, (int, float)):
             return 0.1, "历史波动观察", "正常", "normal"
@@ -286,17 +248,6 @@ def signal_for_intensity(symbol: str, phase: str, intensity: str) -> tuple[float
             "medium": (0.3, f"{symbol} 历史低位中加", "中加", "medium"),
             "large": (0.5, f"{symbol} 历史低位大加", "大加", "large"),
         }.get(intensity, (0.1, "历史波动观察", "正常", "normal"))
-    if symbol == "QQQ" and phase == REBALANCE_PHASE_BUILD:
-        multiplier = intensity_multiplier(symbol, phase, intensity)
-        action, signal = {
-            "normal": ("QQQ月初分批", "0.6x"),
-            "probe": ("QQQ -2%分批", "0.8x"),
-            "month_end": ("QQQ月底补齐", "1.0x"),
-            "small": ("QQQ小加", "1.5x"),
-            "medium": ("QQQ中加", "2.5x"),
-            "large": ("QQQ大加", "4x"),
-        }.get(intensity, ("暂无规则", "暂无规则"))
-        return multiplier, action, signal, intensity
     if not rule or intensity == "none":
         return 0.0, "暂无规则", "暂无规则", "normal"
     if intensity == "normal":
@@ -1934,10 +1885,6 @@ def build_rebalance_v2(
         actual_gap = 0.0 if abs(raw_actual_gap) <= target_tolerance_usd else raw_actual_gap
         drawdown_pct = item.get("drawdown_pct")
         multiplier, action, signal, intensity = signal_for_historical_position(sym, item, phase)
-        if sym == "QQQ" and phase == REBALANCE_PHASE_BUILD and intensity_rank(intensity) < intensity_rank("small"):
-            month_end_multiplier, month_end_action, month_end_signal, month_end_intensity = qqq_build_signal(drawdown_pct, now)
-            if month_end_multiplier > multiplier:
-                multiplier, action, signal, intensity = month_end_multiplier, month_end_action, month_end_signal, month_end_intensity
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
         if not is_satellite and intensity_rank(previous) > intensity_rank(intensity):
             multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)

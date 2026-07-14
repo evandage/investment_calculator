@@ -202,8 +202,6 @@ function tierClass(intensity) {
     small: "tierSmall",
     medium: "tierMedium",
     large: "tierLarge",
-    probe: "tierSmall",
-    month_end: "tierMedium",
   }[String(intensity || "").toLowerCase()] || "tierNone";
 }
 
@@ -211,8 +209,6 @@ function tierLabel(intensity) {
   return {
     none: "-",
     normal: "普通",
-    probe: "QQQ -2%分批",
-    month_end: "QQQ月底补齐",
     small: "小加",
     medium: "中加",
     large: "大加",
@@ -2847,8 +2843,6 @@ function Rebalance({ data, onSaved }) {
                 <label>档位
                   <select className={tierClass(currentInput.intensity || row.intensity)} value={currentInput.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
                     <option value="normal">普通</option>
-                    <option value="probe">QQQ -2%分批</option>
-                    <option value="month_end">QQQ月底补齐</option>
                     <option value="small">小加</option>
                     <option value="medium">中加</option>
                     <option value="large">大加</option>
