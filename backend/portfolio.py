@@ -1758,6 +1758,58 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         today_cash_flow_cny,
     )
 
+    # The dashboard's total-asset daily weighting must represent one completed
+    # trading day.  Do not mix China's already-closed session with live US
+    # quotes before the US regular session has closed; use the latest finalized
+    # history point instead.  That point includes 001015, VOO, and QQQ together.
+    completed_day = completed_performance_day(history_now)
+    latest_completed_point = next(
+        (
+            point
+            for point in reversed(performance_history.get("points") or [])
+            if str(point.get("date") or "") <= completed_day
+        ),
+        None,
+    )
+    completed_weighted_change = coerce_optional_float(
+        (latest_completed_point or {}).get("holding_daily_pnl_cny")
+    )
+    completed_weighted_basis = coerce_optional_float(
+        (latest_completed_point or {}).get("holding_daily_basis_cny")
+    )
+    if completed_weighted_change is not None and completed_weighted_basis and completed_weighted_basis > 0:
+        weighted_daily_change_cny = completed_weighted_change
+        weighted_daily_pct = completed_weighted_change / completed_weighted_basis * 100.0
+
+    # Build the live daily weighting using the user's trading-day definition:
+    # 09:00 A-share open through the next US regular close.  Before the US
+    # regular session opens, use US overnight/premarket data; during 05:00-
+    # 09:00 only that US overnight/premarket component is allowed to move.
+    shanghai_now = history_now.astimezone(TZ_SHANGHAI)
+    overnight_window = 5 <= shanghai_now.hour < 9
+    live_daily_change_cny = 0.0
+    for sym in ALL_SYMBOLS:
+        quote = quotes.get(sym) or {}
+        if sym == "001015":
+            pct = 0.0 if overnight_window else coerce_optional_float(
+                quote.get("regular_change_pct", quote.get("change_pct"))
+            ) or 0.0
+        else:
+            session = str(quote.get("session") or "").lower()
+            if overnight_window:
+                pct = coerce_optional_float(quote.get("extended_change_pct")) or 0.0
+            elif session == "regular":
+                pct = coerce_optional_float(
+                    quote.get("regular_change_pct", quote.get("change_pct"))
+                ) or 0.0
+            else:
+                pct = coerce_optional_float(quote.get("extended_change_pct")) or 0.0
+        live_daily_change_cny += _daily_amount(value_cny_by_symbol.get(sym, 0.0), pct)
+    live_daily_basis_cny = total_value_cny - live_daily_change_cny
+    if live_daily_basis_cny > 0:
+        weighted_daily_change_cny = live_daily_change_cny
+        weighted_daily_pct = live_daily_change_cny / live_daily_basis_cny * 100.0
+
     return {
         "user_id": user_id,
         "storage_mode": storage_mode,
