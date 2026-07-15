@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import time
 import concurrent.futures
 import os
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -17,6 +18,20 @@ _OHLCV_TTL_SECONDS = {"1d": 300, "15m": 45, "5m": 30}
 _TZ_NEW_YORK = ZoneInfo("America/New_York")
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _FUTU_HISTORY_TIMEOUT_SECONDS = float(os.environ.get("FUTU_HISTORY_TIMEOUT_SECONDS", "8"))
+_FUTU_HISTORY_MAX_WORKERS = max(1, int(os.environ.get("FUTU_HISTORY_MAX_WORKERS", "3")))
+_FUTU_HISTORY_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=_FUTU_HISTORY_MAX_WORKERS,
+    thread_name_prefix="futu-history",
+)
+_FUTU_HISTORY_LOCK = threading.Lock()
+_FUTU_HISTORY_INFLIGHT: dict[
+    tuple[str, Interval],
+    concurrent.futures.Future[tuple[list[dict[str, Any]], str]],
+] = {}
+_FUTU_HISTORY_RESULTS: dict[
+    tuple[str, Interval],
+    tuple[tuple[list[dict[str, Any]], str], float],
+] = {}
 
 
 def _market_tz(symbol: str) -> ZoneInfo:
@@ -215,16 +230,46 @@ def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[s
     return _merge_realtime_bar(bars, symbol, interval), "futu-history"
 
 
-def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(_fetch_futu_ohlcv_sync, symbol, interval)
+def _remember_futu_history_result(
+    key: tuple[str, Interval],
+    future: concurrent.futures.Future[tuple[list[dict[str, Any]], str]],
+) -> None:
     try:
-        return future.result(timeout=_FUTU_HISTORY_TIMEOUT_SECONDS)
+        result = future.result()
+    except Exception as exc:
+        result = ([], f"futu_failed: {exc}")
+    with _FUTU_HISTORY_LOCK:
+        if _FUTU_HISTORY_INFLIGHT.get(key) is future:
+            _FUTU_HISTORY_INFLIGHT.pop(key, None)
+        _FUTU_HISTORY_RESULTS[key] = (result, time.time())
+
+
+def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
+    key = (symbol, interval)
+    now = time.time()
+    created = False
+    with _FUTU_HISTORY_LOCK:
+        cached = _FUTU_HISTORY_RESULTS.get(key)
+        if cached and now - cached[1] < _OHLCV_TTL_SECONDS[interval]:
+            result = cached[0]
+            return ([dict(bar) for bar in result[0]], result[1])
+        future = _FUTU_HISTORY_INFLIGHT.get(key)
+        if future is None:
+            future = _FUTU_HISTORY_EXECUTOR.submit(_fetch_futu_ohlcv_sync, symbol, interval)
+            _FUTU_HISTORY_INFLIGHT[key] = future
+            created = True
+    if created:
+        future.add_done_callback(lambda done, request_key=key: _remember_futu_history_result(request_key, done))
+    try:
+        result = future.result(timeout=_FUTU_HISTORY_TIMEOUT_SECONDS)
     except concurrent.futures.TimeoutError:
-        future.cancel()
+        # The SDK call cannot be force-cancelled safely. Keep the shared future
+        # alive so refreshes reuse it instead of creating more OpenD sockets.
         return [], "futu_timeout"
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+    except Exception as exc:
+        return [], f"futu_failed: {exc}"
+    _remember_futu_history_result(key, future)
+    return ([dict(bar) for bar in result[0]], result[1])
 
 
 def _fetch_tencent_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:

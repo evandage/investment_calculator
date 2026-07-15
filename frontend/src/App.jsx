@@ -1197,9 +1197,6 @@ function LightweightKlineCard({ item, displayRange, onOpenSymbol }) {
       requestPriceAutoscale(candleSeries);
       didFitContentRef.current = true;
     }
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => setPercentAxisTicks(openingPercentAxisTicks(candles, candleSeries)));
-    });
   }, [candles, volumes]);
 
   function openSymbol() {

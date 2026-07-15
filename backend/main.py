@@ -259,7 +259,10 @@ def _build_global_chart_board_light(
         except Exception:
             return []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, max(1, len(symbols)))) as executor:
+    # OpenD history queries are local socket requests and become much slower
+    # when too many contexts are opened together. Keep this aligned with the
+    # bounded history executor in backend.ohlcv.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, max(1, len(symbols)))) as executor:
         bars_by_symbol = dict(zip(symbols, executor.map(load_bars, symbols)))
 
     charts: list[dict[str, Any]] = []
@@ -650,6 +653,7 @@ async def quotes_ws(websocket: WebSocket) -> None:
         return
 
 
+
 def _light_revision_snapshot(symbols: list[str], interval: str) -> dict[str, tuple[int, int]]:
     return {
         symbol: (get_futu_kline_revision(symbol, interval), get_futu_quote_revision(symbol))
@@ -719,4 +723,3 @@ async def chart_board_global_light_ws(websocket: WebSocket) -> None:
             await asyncio.sleep(0.25)
     except WebSocketDisconnect:
         return
-

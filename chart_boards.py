@@ -38,7 +38,6 @@ _TENCENT_HEADERS = {
     "Referer": "https://finance.qq.com/",
 }
 _HTTP_TIMEOUT = (3, 12)
-_FUTU_HISTORY_TIMEOUT_SECONDS = float(os.environ.get("FUTU_HISTORY_TIMEOUT_SECONDS", "8"))
 _ROOT_DIR = Path(__file__).resolve().parent
 _SOURCE_CACHE_TTL_SECONDS = {"1d": 300.0, "15m": 45.0, "5m": 30.0}
 _SOURCE_CACHE: dict[tuple[str, str, str], tuple[pd.DataFrame, str, float]] = {}
@@ -916,15 +915,7 @@ def _fetch_from_source(
         try:
             from backend.ohlcv import _fetch_futu_ohlcv
 
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(_fetch_futu_ohlcv, symbol, interval)
-            try:
-                bars, futu_reason = future.result(timeout=_FUTU_HISTORY_TIMEOUT_SECONDS + 1.0)
-            except concurrent.futures.TimeoutError:
-                future.cancel()
-                bars, futu_reason = [], "futu_timeout"
-            finally:
-                executor.shutdown(wait=False, cancel_futures=True)
+            bars, futu_reason = _fetch_futu_ohlcv(symbol, interval)
             if bars:
                 futu_df = pd.DataFrame(bars).rename(
                     columns={
