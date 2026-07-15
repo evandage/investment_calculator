@@ -1806,6 +1806,28 @@ h2 {
   box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
 }
 
+.singleLwProfileBar.poc:hover::after {
+  content: attr(data-poc-label);
+  position: absolute;
+  z-index: 12;
+  right: calc(100% + 7px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: max-content;
+  max-width: 230px;
+  padding: 6px 8px;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 6px;
+  background: rgba(22, 20, 13, 0.96);
+  color: #fde68a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.25;
+  white-space: pre-line;
+  pointer-events: none;
+}
+
 .errorInline {
   color: var(--red);
   margin: 8px 0;
@@ -3114,6 +3136,382 @@ tbody tr:hover th {
   color: #5eead4;
 }
 
+.klineGuideButton {
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 46px;
+  padding: 0 14px;
+  border-color: rgba(56, 189, 248, 0.42);
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgba(17, 55, 83, 0.9), rgba(8, 28, 47, 0.92));
+  color: #bae6fd;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.klineGuideButton:hover:not(:disabled) {
+  border-color: rgba(94, 234, 212, 0.65);
+  color: #ecfeff;
+}
+
+.klineAnalysisLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.klineAnalysisLayout.withoutInsight {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.technicalInsightPanel {
+  height: 820px;
+  min-height: 620px;
+  margin-top: 12px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(34, 211, 238, 0.09), transparent 34%),
+    linear-gradient(180deg, #10233a, #091827);
+  box-shadow: 0 16px 34px rgba(4, 13, 30, 0.22);
+  color: #e5f2ff;
+}
+
+.insightTitle,
+.insightSectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.insightTitle > div {
+  display: grid;
+  gap: 3px;
+}
+
+.insightTitle span {
+  color: #38bdf8;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.insightTitle h3 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 16px;
+}
+
+.insightTitle > svg {
+  color: #5eead4;
+}
+
+.insightScore {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-left: 3px solid #f59e0b;
+  border-radius: 8px;
+  background: rgba(2, 12, 23, 0.38);
+}
+
+.insightScore.strong { border-left-color: #34d399; }
+.insightScore.weak { border-left-color: #fb7185; }
+
+.insightScore > div {
+  min-width: 82px;
+  font-variant-numeric: tabular-nums;
+}
+
+.insightScore strong {
+  color: #f8fafc;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.insightScore > div span {
+  color: #71869d;
+  font-size: 12px;
+}
+
+.insightScore p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.insightScore p b { font-size: 13px; }
+.insightScore p small { color: #8aa0b7; }
+
+.insightSummary {
+  margin: 10px 0 0;
+  color: #a9bdd1;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.insightSection {
+  margin-top: 16px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.insightSectionTitle > span {
+  color: #dcecff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.insightSectionTitle > small { color: #71869d; }
+
+.repairChecks {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.repairChecks > span {
+  display: grid;
+  grid-template-columns: 15px 1fr auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 25px;
+  color: #8499ae;
+  font-size: 11px;
+}
+
+.repairChecks > span.met { color: #bcebdc; }
+.repairChecks > span.met svg { color: #34d399; }
+.repairChecks > span.unmet svg { color: #fb7185; }
+.repairChecks > span b { color: #647b92; font-size: 10px; }
+
+.levelList {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.levelList > div {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(71, 107, 139, 0.33);
+  border-radius: 7px;
+  background: rgba(6, 19, 34, 0.48);
+}
+
+.levelList > div > span {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.levelList p { display: grid; gap: 2px; margin: 0; min-width: 0; }
+.levelList p b { overflow: hidden; color: #dcecff; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.levelList p small { color: #7890a8; font-size: 9px; }
+.levelList > div > strong { color: #f8fafc; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.insightMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 14px;
+}
+
+.insightMetrics span {
+  display: grid;
+  gap: 3px;
+  padding: 7px 5px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.06);
+  text-align: center;
+}
+
+.insightMetrics small { color: #71869d; font-size: 9px; }
+.insightMetrics b { color: #cce9ff; font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.insightDisclaimer {
+  margin: 12px 0 0;
+  color: #5f7489;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.cheatSheetBackdrop { z-index: 80; backdrop-filter: blur(8px); }
+
+.cheatSheetModal {
+  width: min(980px, 96vw);
+  max-height: min(820px, 92vh);
+  padding: 20px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #10233a, #091827);
+}
+
+.cheatSheetHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cheatSheetHeader > div { display: grid; gap: 4px; }
+.cheatSheetHeader span { color: #38bdf8; font-size: 10px; font-weight: 800; letter-spacing: 0.14em; }
+.cheatSheetHeader h2 { margin: 0; color: #f8fafc; font-size: 22px; }
+.cheatSheetHeader .iconButton { width: 34px; height: 34px; padding: 0; border-radius: 7px; }
+
+.cheatSheetFlow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 9px;
+  background: rgba(2, 12, 23, 0.42);
+}
+
+.cheatSheetFlow > span { color: #dcecff; font-size: 12px; line-height: 1.5; }
+.cheatSheetFlow b { color: #5eead4; margin-right: 4px; }
+.cheatSheetFlow small { color: #7890a8; }
+.cheatSheetFlow i { color: #41627f; font-style: normal; }
+
+.cheatSheetGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.cheatSheetGrid article {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid rgba(71, 107, 139, 0.35);
+  border-radius: 9px;
+  background: rgba(8, 25, 43, 0.66);
+}
+
+.cheatSheetGrid h3 { margin: 0 0 9px; color: #7dd3fc; font-size: 13px; }
+.cheatSheetGrid p { display: grid; grid-template-columns: 82px 1fr; gap: 7px; margin: 6px 0; font-size: 11px; line-height: 1.45; }
+.cheatSheetGrid p b { color: #e5f2ff; }
+.cheatSheetGrid p span { color: #91a7bd; }
+.cheatSheetGrid em { display: block; margin-top: 9px; color: #5eead4; font-size: 10px; font-style: normal; line-height: 1.5; }
+
+.cheatSheetAssetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.assetPlaybook {
+  overflow: hidden;
+  border: 1px solid rgba(71, 107, 139, 0.45);
+  border-radius: 10px;
+  background: rgba(6, 19, 34, 0.68);
+}
+
+.assetPlaybook > header {
+  padding: 13px 14px 12px;
+  border-bottom: 1px solid rgba(71, 107, 139, 0.32);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), transparent 58%);
+}
+
+.stockPlaybook > header {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.13), transparent 58%);
+}
+
+.assetPlaybook > header > span {
+  color: #38bdf8;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+}
+
+.stockPlaybook > header > span { color: #5eead4; }
+.assetPlaybook h3 { margin: 4px 0 3px; color: #f1f5f9; font-size: 15px; }
+.assetPlaybook header p { margin: 0; color: #8299b0; font-size: 10px; line-height: 1.5; }
+
+.assetPlaybook > section {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(71, 107, 139, 0.22);
+}
+
+.assetPlaybook > section > b {
+  display: block;
+  margin-bottom: 6px;
+  color: #7dd3fc;
+  font-size: 11px;
+}
+
+.stockPlaybook > section > b { color: #6ee7b7; }
+
+.assetPlaybook section p {
+  display: grid;
+  grid-template-columns: 94px 1fr;
+  gap: 7px;
+  margin: 5px 0;
+  font-size: 10px;
+  line-height: 1.42;
+}
+
+.assetPlaybook section strong { color: #dcecff; }
+.assetPlaybook section span { color: #849bb1; }
+
+.assetPlaybook > footer {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(56, 189, 248, 0.055);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.stockPlaybook > footer { background: rgba(45, 212, 191, 0.045); }
+.assetPlaybook footer b { color: #f8fafc; }
+.assetPlaybook footer span { color: #a9c0d5; }
+
+.cheatSheetCommonGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.cheatSheetCommonGrid article {
+  padding: 12px;
+  border: 1px solid rgba(71, 107, 139, 0.35);
+  border-radius: 9px;
+  background: rgba(8, 25, 43, 0.62);
+}
+
+.cheatSheetCommonGrid h3 { margin: 0 0 8px; color: #c4b5fd; font-size: 12px; }
+.cheatSheetCommonGrid p { display: grid; grid-template-columns: 68px 1fr; gap: 6px; margin: 5px 0; font-size: 10px; line-height: 1.42; }
+.cheatSheetCommonGrid p b { color: #e5f2ff; }
+.cheatSheetCommonGrid p span { color: #8299b0; }
+.cheatSheetCommonGrid em { display: block; margin-top: 8px; color: #5eead4; font-size: 9px; font-style: normal; line-height: 1.5; }
+
 @media (max-width: 760px) {
   .klineToolbar {
     justify-content: flex-start;
@@ -3137,5 +3535,13 @@ tbody tr:hover th {
   .klineAvwapControl {
     min-width: 174px;
   }
+
+  .klineAnalysisLayout { grid-template-columns: minmax(0, 1fr); }
+  .technicalInsightPanel { height: auto; min-height: 0; }
+  .cheatSheetGrid { grid-template-columns: 1fr; }
+  .cheatSheetFlow { grid-template-columns: 1fr; }
+  .cheatSheetFlow i { display: none; }
+  .cheatSheetAssetGrid,
+  .cheatSheetCommonGrid { grid-template-columns: 1fr; }
 }
 

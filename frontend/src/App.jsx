@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { BaselineSeries, CandlestickSeries, createChart, HistogramSeries, LineSeries } from "lightweight-charts";
-import { Activity, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
+import { Activity, BookOpen, Check, CircleAlert, Gauge, Plus, RefreshCcw, Save, Trash2, X } from "lucide-react";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -1425,6 +1426,208 @@ function calculateVisibleVolumeProfile(candles = [], volumes = [], logicalRange 
   }).filter((row) => row.volume > 0);
 }
 
+function latestLineValue(rows = []) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const value = Number(rows[index]?.value);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function lineIsRising(rows = [], lookback = 5) {
+  const values = rows.map((row) => Number(row?.value)).filter(Number.isFinite);
+  if (values.length < 2) return null;
+  const current = values[values.length - 1];
+  const previous = values[Math.max(0, values.length - 1 - lookback)];
+  return current > previous;
+}
+
+function profileValueArea(profile = [], targetShare = 0.7) {
+  if (!profile.length) return { vah: null, val: null };
+  const total = profile.reduce((sum, row) => sum + Number(row.volume || 0), 0);
+  const pocIndex = profile.findIndex((row) => row.isPoc);
+  if (!(total > 0) || pocIndex < 0) return { vah: null, val: null };
+  let lowIndex = pocIndex;
+  let highIndex = pocIndex;
+  let covered = Number(profile[pocIndex].volume || 0);
+  while (covered / total < targetShare && (lowIndex > 0 || highIndex < profile.length - 1)) {
+    const below = lowIndex > 0 ? Number(profile[lowIndex - 1].volume || 0) : -1;
+    const above = highIndex < profile.length - 1 ? Number(profile[highIndex + 1].volume || 0) : -1;
+    if (above >= below) {
+      highIndex += 1;
+      covered += Math.max(0, above);
+    } else {
+      lowIndex -= 1;
+      covered += Math.max(0, below);
+    }
+  }
+  return { val: profile[lowIndex]?.low ?? null, vah: profile[highIndex]?.high ?? null };
+}
+
+function mergeTechnicalLevels(levels = [], referencePrice = 0) {
+  const tolerance = Math.max(referencePrice * 0.008, 0.01);
+  const sorted = levels.filter((row) => Number.isFinite(row.price) && row.price > 0).sort((a, b) => a.price - b.price);
+  const merged = [];
+  sorted.forEach((level) => {
+    const previous = merged[merged.length - 1];
+    if (previous && Math.abs(previous.price - level.price) <= tolerance) {
+      const weight = previous.weight + level.weight;
+      previous.price = (previous.price * previous.weight + level.price * level.weight) / weight;
+      previous.weight = weight;
+      previous.labels.push(level.label);
+    } else {
+      merged.push({ ...level, labels: [level.label] });
+    }
+  });
+  return merged;
+}
+
+function buildTechnicalSnapshot(data, displayRange, visibleProfile = null) {
+  if (!data?.candles?.length || data.interval !== "1d") return null;
+  const candles = data.candles;
+  const startIndex = klineDisplayStartIndex(candles, displayRange, displayRange === "earnings" ? data.earnings_anchor : "");
+  const profile = visibleProfile?.length
+    ? visibleProfile
+    : calculateVisibleVolumeProfile(candles, data.volumes || [], { from: startIndex, to: candles.length - 1 }, 24);
+  const poc = profile.find((row) => row.isPoc)?.price ?? null;
+  const { vah, val } = profileValueArea(profile);
+  const price = Number(data.latest_price || candles[candles.length - 1]?.close);
+  const ema20 = latestLineValue(data.overlays?.ema20);
+  const ma50 = latestLineValue(data.overlays?.ma50);
+  const ma200 = latestLineValue(data.overlays?.ma200);
+  const avwap = Number.isFinite(Number(data.avwap_value)) ? Number(data.avwap_value) : null;
+  const rsi = latestLineValue(data.indicators?.rsi);
+  const slopes = {
+    ema20: lineIsRising(data.overlays?.ema20),
+    ma50: lineIsRising(data.overlays?.ma50, 10),
+    ma200: lineIsRising(data.overlays?.ma200, 20),
+  };
+
+  const checks = [
+    { label: "价格站上 EMA20", met: Number.isFinite(ema20) && price > ema20, points: 1 },
+    { label: "EMA20 拐头向上", met: slopes.ema20 === true, points: 1 },
+    { label: "价格站上 AVWAP", met: Number.isFinite(avwap) && price > avwap, points: 2 },
+    { label: "回到 Value Area", met: Number.isFinite(val) && Number.isFinite(vah) && price >= val && price <= vah, points: 1 },
+    { label: "价格站上 POC", met: Number.isFinite(poc) && price > poc, points: 2 },
+    { label: "MA50 方向向上", met: slopes.ma50 === true, points: 1 },
+    { label: "价格站上 MA200", met: Number.isFinite(ma200) && price > ma200, points: 2 },
+  ].filter((item) => item.met !== null);
+  const repairScore = checks.reduce((sum, item) => sum + (item.met ? item.points : 0), 0);
+  const maxRepairScore = checks.reduce((sum, item) => sum + item.points, 0) || 10;
+  const score = Math.round((repairScore / maxRepairScore) * 100) / 10;
+
+  const hvnRows = profile.filter((row, index) => {
+    const previous = Number(profile[index - 1]?.volume || 0);
+    const next = Number(profile[index + 1]?.volume || 0);
+    return row.pct >= 0.55 && row.volume >= previous && row.volume >= next && !row.isPoc;
+  });
+  const levels = mergeTechnicalLevels([
+    { label: "EMA20", price: ema20, weight: 1 },
+    { label: "MA50", price: ma50, weight: 1.25 },
+    { label: "MA200", price: ma200, weight: 1.75 },
+    { label: data.avwap_label || "AVWAP", price: avwap, weight: 1.8 },
+    { label: "POC", price: poc, weight: 2.2 },
+    { label: "VAH", price: vah, weight: 1.1 },
+    { label: "VAL", price: val, weight: 1.1 },
+    ...hvnRows.map((row) => ({ label: "HVN", price: row.price, weight: 1.6 })),
+  ], price).map((level) => ({
+    ...level,
+    distancePct: price > 0 ? (level.price / price - 1) * 100 : 0,
+    strength: Math.min(5, Math.max(1, Math.round(level.weight))),
+  }));
+  const supports = levels.filter((row) => row.price <= price).sort((a, b) => b.price - a.price).slice(0, 4);
+  const resistances = levels.filter((row) => row.price > price).sort((a, b) => a.price - b.price).slice(0, 3);
+  let state = "破位观察";
+  let toneName = "weak";
+  let summary = "趋势尚未修复，优先观察能否收复关键成本线。";
+  if (score >= 7.5) {
+    state = "多头趋势";
+    toneName = "strong";
+    summary = "多数趋势与成本条件占优，可按支撑层级管理仓位。";
+  } else if (score >= 4) {
+    state = "修复进行中";
+    toneName = "neutral";
+    summary = "部分条件已经修复，仍需关键价位确认，避免把反弹当反转。";
+  }
+  return { price, ema20, ma50, ma200, avwap, rsi, poc, vah, val, score, checks, supports, resistances, state, toneName, summary };
+}
+
+function TechnicalCheatSheetModal({ onClose }) {
+  useEffect(() => {
+    const handleKeyDown = (event) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+  return createPortal((
+    <div className="modalBackdrop cheatSheetBackdrop" role="presentation" onClick={onClose}>
+      <div className="modalPanel cheatSheetModal" role="dialog" aria-modal="true" aria-labelledby="cheat-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="cheatSheetHeader">
+          <div><span>30 秒看盘模板</span><h2 id="cheat-sheet-title">技术分析 Cheat Sheet</h2></div>
+          <button className="iconButton" type="button" onClick={onClose} aria-label="关闭"><X size={18} /></button>
+        </div>
+        <div className="cheatSheetAssetGrid">
+          <article className="assetPlaybook etfPlaybook">
+            <header><span>ETF PLAYBOOK</span><h3>ETF · VOO / QQQ / 沪深300</h3><p>技术面权重更高，重点判断长期趋势与资金成本。</p></header>
+            <section><b>01 · 长期趋势检查</b><p><strong>MA200</strong><span>价格在上方且均线向上</span></p><p><strong>VP250</strong><span>看一年 POC / HVN / Value Area</span></p><p><strong>结论</strong><span>Price &gt; MA200 + POC，长期结构健康</span></p></section>
+            <section><b>02 · 中期趋势检查</b><p><strong>AVWAP 年初</strong><span>全年资金平均成本 · 默认</span></p><p><strong>Swing H/L</strong><span>本轮压力成本 / 反转成本</span></p><p><strong>MA50</strong><span>方向向上，价格最好在其上方</span></p></section>
+            <section><b>03 · 节奏与买点</b><p><strong>EMA20</strong><span>趋势加仓与短期节奏</span></p><p><strong>RSI14</strong><span>只做情绪过滤，不单独抄底</span></p><p><strong>优先级</strong><span>EMA20 → MA50 → HVN/POC → MA200</span></p></section>
+            <footer><b>30 秒流程</b><span>MA200 → VP250 → 年初 AVWAP → MA50 → EMA20</span></footer>
+          </article>
+          <article className="assetPlaybook stockPlaybook">
+            <header><span>STOCK PLAYBOOK</span><h3>个股 · ISRG / TEM / PLTR</h3><p>基本面优先，技术面用于确认资金是否接受新估值。</p></header>
+            <section><b>01 · 长期趋势检查</b><p><strong>基本面</strong><span>财报、Guidance、增长逻辑先过关</span></p><p><strong>MA200</strong><span>长期牛熊分界与风险边界</span></p><p><strong>VP250</strong><span>一年长期 POC / HVN 成本</span></p></section>
+            <section><b>02 · 中期趋势检查</b><p><strong>财报 AVWAP</strong><span>财报后平均成本 · 默认</span></p><p><strong>Gap AVWAP</strong><span>重大消息后的重新定价成本</span></p><p><strong>Swing H/L</strong><span>套牢压力 / 反转资金成本</span></p><p><strong>MA50</strong><span>中期趋势是否重新向上</span></p></section>
+            <section><b>03 · 节奏与买点</b><p><strong>财报 VP</strong><span>看近期 POC / HVN；同时对照 VP250</span></p><p><strong>EMA20</strong><span>短期节奏，不等于真正底部</span></p><p><strong>优先级</strong><span>EMA20 → MA50 → 财报VP → VP250 → MA200</span></p></section>
+            <footer><b>30 秒流程</b><span>基本面 → 财报 AVWAP → 财报 VP → VP250 → EMA20</span></footer>
+          </article>
+        </div>
+        <div className="cheatSheetCommonGrid">
+          <article><h3>Volume Profile 口径</h3><p><b>POC</b><span>成交量最大的价格点</span></p><p><b>HVN</b><span>成交密集区域</span></p><p><b>VAH / VAL</b><span>70% 价值区上下边界</span></p><em>视窗切换后，VP 与智能面板同步重算。</em></article>
+          <article><h3>趋势修复 Checklist</h3><p><b>+1</b><span>站回 EMA20；EMA20 向上</span></p><p><b>+2</b><span>站回 AVWAP；突破 POC</span></p><p><b>确认</b><span>回到 Value Area；MA50向上；放量突破</span></p><em>开始修复不等于反转完成，优先等待回踩确认。</em></article>
+          <article><h3>共振与纪律</h3><p><b>强支撑</b><span>POC + HVN + AVWAP 重合</span></p><p><b>破位后</b><span>原支撑会转为压力，不急于猜底</span></p><p><b>仓位</b><span>ETF可按趋势分层；个股先看财报是否证伪</span></p><em>MA 看趋势，AVWAP 看成本，VP 看筹码。</em></article>
+        </div>
+      </div>
+    </div>
+  ), document.body);
+}
+
+function TechnicalInsightPanel({ data, displayRange, visibleProfile }) {
+  const snapshot = useMemo(() => buildTechnicalSnapshot(data, displayRange, visibleProfile), [data, displayRange, visibleProfile]);
+  if (!snapshot) return null;
+  const rangeLabel = displayRange === "250" ? "250根 · 一年" : displayRange === "125" ? "125根 · 半年" : displayRange === "60" ? "60根 · 季度" : displayRange === "earnings" ? "财报日起" : "当前波段";
+  const levelRows = snapshot.supports.length ? snapshot.supports : snapshot.resistances;
+  const levelTitle = snapshot.supports.length ? "下一支撑" : "上方压力";
+  return (
+    <aside className="technicalInsightPanel" aria-label="智能技术分析">
+      <div className="insightTitle"><div><span>SMART ANALYSIS</span><h3>{data.symbol} 技术状态</h3></div><Gauge size={20} /></div>
+      <div className={`insightScore ${snapshot.toneName}`}>
+        <div><strong>{snapshot.score.toFixed(1)}</strong><span>/ 10</span></div>
+        <p><b>{snapshot.state}</b><small>{rangeLabel}</small></p>
+      </div>
+      <p className="insightSummary">{snapshot.summary}</p>
+      <div className="insightSection">
+        <div className="insightSectionTitle"><span>修复检查</span><small>{snapshot.checks.filter((item) => item.met).length}/{snapshot.checks.length}</small></div>
+        <div className="repairChecks">
+          {snapshot.checks.map((item) => <span className={item.met ? "met" : "unmet"} key={item.label}>{item.met ? <Check size={13} /> : <CircleAlert size={13} />}{item.label}<b>+{item.points}</b></span>)}
+        </div>
+      </div>
+      <div className="insightSection">
+        <div className="insightSectionTitle"><span>{levelTitle}</span><small>当前 {fmtChartPrice(snapshot.price, data.symbol)}</small></div>
+        <div className="levelList">
+          {levelRows.map((level, index) => <div key={`${level.price}-${index}`}><span>{index + 1}</span><p><b>{level.labels.join(" + ")}</b><small>{level.distancePct.toFixed(1)}% · {"★".repeat(level.strength)}</small></p><strong>{fmtChartPrice(level.price, data.symbol)}</strong></div>)}
+          {!levelRows.length ? <p className="muted">当前视窗暂无可用支撑。</p> : null}
+        </div>
+      </div>
+      <div className="insightMetrics">
+        <span><small>POC</small><b>{fmtChartPrice(snapshot.poc, data.symbol)}</b></span>
+        <span><small>AVWAP</small><b>{fmtChartPrice(snapshot.avwap, data.symbol)}</b></span>
+        <span><small>RSI14</small><b>{Number.isFinite(snapshot.rsi) ? snapshot.rsi.toFixed(1) : "-"}</b></span>
+      </div>
+      <p className="insightDisclaimer">规则化技术读数，仅用于辅助判断；成长股仍需结合财报与指引。</p>
+    </aside>
+  );
+}
+
 function requestPriceAutoscale(series) {
   if (!series?.priceScale) return;
   window.requestAnimationFrame(() => {
@@ -1436,7 +1639,7 @@ function requestPriceAutoscale(series) {
   });
 }
 
-function SingleLightweightChart({ data, viewKey, displayRange }) {
+function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileChange }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
@@ -1446,10 +1649,14 @@ function SingleLightweightChart({ data, viewKey, displayRange }) {
   const candlesRef = useRef([]);
   const volumesRef = useRef([]);
   const profileUpdaterRef = useRef(null);
+  const visibleProfileCallbackRef = useRef(onVisibleProfileChange);
   const [profileBars, setProfileBars] = useState([]);
   const [profilePoc, setProfilePoc] = useState(null);
   const [candleTooltip, setCandleTooltip] = useState({ visible: false });
   const [percentAxisTicks, setPercentAxisTicks] = useState([]);
+  useEffect(() => {
+    visibleProfileCallbackRef.current = onVisibleProfileChange;
+  }, [onVisibleProfileChange]);
   const rawCandles = useMemo(() => {
     const out = [];
     let lastTime = null;
@@ -1638,6 +1845,7 @@ function SingleLightweightChart({ data, viewKey, displayRange }) {
       const profile = calculateVisibleVolumeProfile(candlesRef.current, volumesRef.current, logicalRange, 24);
       const poc = profile.find((row) => row.isPoc);
       setProfilePoc(poc?.price ?? null);
+      visibleProfileCallbackRef.current?.({ profile, viewKey });
       const bars = profile.map((row) => {
         const yLow = candleSeries.priceToCoordinate(row.low);
         const yHigh = candleSeries.priceToCoordinate(row.high);
@@ -1802,7 +2010,8 @@ function SingleLightweightChart({ data, viewKey, displayRange }) {
               className={`singleLwProfileBar ${bar.isPoc ? "poc" : ""}`}
               key={`${index}-${bar.top}`}
               style={{ top: `${bar.top}px`, height: `${bar.height}px`, width: bar.width }}
-              title={`价格箱 ${fmtChartPrice(bar.low, data?.symbol)} – ${fmtChartPrice(bar.high, data?.symbol)}\n成交量 ${Number(bar.volume || 0).toLocaleString()} · 峰值占比 ${(Number(bar.pct || 0) * 100).toFixed(1)}%${bar.isPoc ? " · POC" : ""}`}
+              data-poc-label={bar.isPoc ? `价格箱 ${fmtChartPrice(bar.low, data?.symbol)} – ${fmtChartPrice(bar.high, data?.symbol)}\n成交量 ${Number(bar.volume || 0).toLocaleString()} · 峰值占比 ${(Number(bar.pct || 0) * 100).toFixed(1)}% · POC ${fmtChartPrice(profilePoc, data?.symbol)}` : undefined}
+              title={bar.isPoc ? undefined : `价格箱 ${fmtChartPrice(bar.low, data?.symbol)} – ${fmtChartPrice(bar.high, data?.symbol)}\n成交量 ${Number(bar.volume || 0).toLocaleString()} · 峰值占比 ${(Number(bar.pct || 0) * 100).toFixed(1)}%`}
             />
           ))}
         </div>
@@ -1816,7 +2025,7 @@ function KlinePage({ dashboardData }) {
   const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState("VOO");
   const [interval, setInterval] = useState("1d");
-  const [avwapMode, setAvwapMode] = useState("none");
+  const [avwapMode, setAvwapMode] = useState("year_start");
   const [displayRange, setDisplayRange] = useState("60");
   const [showExtended, setShowExtended] = useState(false);
   const [data, setData] = useState(null);
@@ -1824,6 +2033,8 @@ function KlinePage({ dashboardData }) {
   const [error, setError] = useState("");
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [globalColumns, setGlobalColumns] = useState(globalKlineColumns);
+  const [showCheatSheet, setShowCheatSheet] = useState(false);
+  const [visibleProfileState, setVisibleProfileState] = useState(null);
   const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
   const loadRequestRef = useRef(0);
   const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
@@ -1929,6 +2140,10 @@ function KlinePage({ dashboardData }) {
     if (displayRange === "earnings" && (scope !== "single" || isEtf)) setDisplayRange("60");
   }, [displayRange, scope, isEtf]);
 
+  useEffect(() => {
+    if (!isEtf && avwapMode === "year_start") setAvwapMode("earnings");
+  }, [isEtf, avwapMode]);
+
   const avwapSelectValue = interval === "1d" && avwapMode === "today_open"
     ? (isEtf ? "high_60d" : "earnings")
     : (isEtf && avwapMode === "earnings" ? "high_60d" : avwapMode);
@@ -1937,13 +2152,25 @@ function KlinePage({ dashboardData }) {
     setDisplayRange(nextRange);
   }
 
+  function changeKlineSymbol(nextSymbol) {
+    setSymbol(nextSymbol);
+    setAvwapMode(["VOO", "QQQ", "SGOV", "510330.SS"].includes(nextSymbol) ? "year_start" : "earnings");
+  }
+
+  const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.avwap_mode || avwapMode}-${displayRange}`;
+  const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
+
   return (
     <section className="chartPanel technicalPanel">
       <div className="toolbarRow klineToolbar">
         <div className="klineControlGroup">
           <label className="klineControl">
             <span>看板</span>
-            <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="看板模式">
+            <select value={scope} onChange={(event) => {
+              const nextScope = event.target.value;
+              setScope(nextScope);
+              if (nextScope === "single") setAvwapMode(isEtf ? "year_start" : "earnings");
+            }} aria-label="看板模式">
               <option value="global">全局看板</option>
               <option value="single">单标的</option>
             </select>
@@ -1958,7 +2185,7 @@ function KlinePage({ dashboardData }) {
           </label>
           {scope === "single" ? <label className="klineControl klineSymbolControl">
             <span>标的</span>
-            <select value={symbol} onChange={(event) => setSymbol(event.target.value)} aria-label="标的">
+            <select value={symbol} onChange={(event) => changeKlineSymbol(event.target.value)} aria-label="标的">
               {[...(dashboardData?.holdings || [])
                 .filter((row) => row.currency === "USD" && row.symbol !== "SGOV")
                 .map((row) => row.symbol)
@@ -1984,11 +2211,11 @@ function KlinePage({ dashboardData }) {
           <label className={`klineControl klineAvwapControl ${avwapSelectValue !== "none" ? "isActive" : ""}`}>
             <span>AVWAP 锚点</span>
             <select value={avwapSelectValue} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
-              <option value="none">无</option>
               {!isEtf ? <option value="earnings">最近财报日</option> : null}
-              <option value="high_60d">最近 60 日历史高点</option>
-              <option value="selloff_60d">最近 60 日大跌低点</option>
-              <option value="rally_60d">最近 60 日大涨日</option>
+              {isEtf ? <option value="year_start">年初</option> : null}
+              {!isEtf ? <option value="gap_60d">最近 Gap 日</option> : null}
+              <option value="high_60d">最近 Swing High</option>
+              <option value="low_60d">最近 Swing Low</option>
               {interval !== "1d" ? <option value="today_open">今日开盘</option> : null}
             </select>
           </label>
@@ -2002,6 +2229,7 @@ function KlinePage({ dashboardData }) {
             </label>
           ) : null}
         </div> : null}
+        <button className="klineGuideButton" type="button" onClick={() => setShowCheatSheet(true)}><BookOpen size={16} />指标模板</button>
       </div>
       {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
       {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
@@ -2009,8 +2237,12 @@ function KlinePage({ dashboardData }) {
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} /> : null}
       {scope === "single" && data?.candles ? (
-        <SingleLightweightChart data={data} displayRange={displayRange} viewKey={`${data.symbol}-${data.interval}-${data.show_extended}-${data.avwap_mode}-${displayRange}`} />
+        <div className={`klineAnalysisLayout ${interval !== "1d" ? "withoutInsight" : ""}`}>
+          <SingleLightweightChart data={data} displayRange={displayRange} viewKey={singleViewKey} onVisibleProfileChange={setVisibleProfileState} />
+          {interval === "1d" ? <TechnicalInsightPanel data={data} displayRange={displayRange} visibleProfile={activeVisibleProfile} /> : null}
+        </div>
       ) : null}
+      {showCheatSheet ? <TechnicalCheatSheetModal onClose={() => setShowCheatSheet(false)} /> : null}
     </section>
   );
 }

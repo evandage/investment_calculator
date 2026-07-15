@@ -63,7 +63,10 @@ _ETF_SYMBOLS = {"VOO", "QQQ", "SGOV"}
 AVWAP_MODE_LABELS = {
     "none": "无",
     "earnings": "最近财报日",
-    "high_60d": "最近60日历史高点",
+    "year_start": "年初",
+    "high_60d": "最近 Swing High",
+    "low_60d": "最近 Swing Low",
+    "gap_60d": "最近 Gap 日",
     "selloff_60d": "最近60日大跌低点",
     "rally_60d": "最近60日大涨日",
     "today_open": "今日开盘",
@@ -1871,6 +1874,13 @@ def _avwap_anchor_date(
     if normalized_mode == "today_open":
         return current_day, AVWAP_MODE_LABELS[normalized_mode]
 
+    if normalized_mode == "year_start":
+        year_start = pd.Timestamp(year=current_day.year, month=1, day=1)
+        daily_dates = pd.DatetimeIndex([_naive_day(value) for value in daily.index]) if not daily.empty else pd.DatetimeIndex([])
+        current_year_dates = daily_dates[(daily_dates >= year_start) & (daily_dates <= current_day)]
+        anchor = _naive_day(current_year_dates.min()) if len(current_year_dates) else year_start
+        return anchor, AVWAP_MODE_LABELS[normalized_mode]
+
     recent = daily.tail(60)
     if recent.empty:
         return current_day, AVWAP_MODE_LABELS["today_open"]
@@ -1886,6 +1896,18 @@ def _avwap_anchor_date(
 
     if normalized_mode == "high_60d":
         anchor = _naive_day(recent["High"].astype(float).idxmax())
+    elif normalized_mode == "low_60d":
+        anchor = _naive_day(recent["Low"].astype(float).idxmin())
+    elif normalized_mode == "gap_60d":
+        previous_close = daily["Close"].astype(float).shift(1).reindex(recent.index)
+        gap_pct = (recent["Open"].astype(float) / previous_close - 1.0).replace([np.inf, -np.inf], np.nan).dropna()
+        significant_gaps = gap_pct[gap_pct.abs() >= 0.02]
+        if not significant_gaps.empty:
+            anchor = _naive_day(significant_gaps.index[-1])
+        elif not gap_pct.empty:
+            anchor = _naive_day(gap_pct.abs().idxmax())
+        else:
+            anchor = _naive_day(recent.index[0])
     else:
         daily_returns = recent["Close"].astype(float).pct_change()
         valid_returns = daily_returns.dropna()
