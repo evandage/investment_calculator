@@ -1311,6 +1311,81 @@ function normalizeLineData(rows = []) {
   return out;
 }
 
+function calculateVisibleVolumeProfile(candles = [], volumes = [], logicalRange = null, bins = 24) {
+  if (!candles.length || bins <= 0) return [];
+  const from = logicalRange && Number.isFinite(Number(logicalRange.from))
+    ? Math.max(0, Math.floor(Number(logicalRange.from)))
+    : 0;
+  const to = logicalRange && Number.isFinite(Number(logicalRange.to))
+    ? Math.min(candles.length - 1, Math.ceil(Number(logicalRange.to)))
+    : candles.length - 1;
+  if (to < from) return [];
+
+  const volumeByTime = new Map(volumes.map((row) => [String(row.time), Math.max(0, Number(row.value || 0))]));
+  const source = candles.slice(from, to + 1);
+  const lows = source.map((row) => Number(row.low)).filter(Number.isFinite);
+  const highs = source.map((row) => Number(row.high)).filter(Number.isFinite);
+  if (!lows.length || !highs.length) return [];
+  const rangeLow = Math.min(...lows);
+  const rangeHigh = Math.max(...highs);
+
+  if (!(rangeHigh > rangeLow)) {
+    const volume = source.reduce((sum, row) => sum + (volumeByTime.get(String(row.time)) || 0), 0);
+    if (volume <= 0) return [];
+    const halfStep = Math.max(Math.abs(rangeLow) * 0.0005, 0.0001);
+    return [{ low: rangeLow - halfStep, high: rangeHigh + halfStep, price: rangeLow, volume, pct: 1, isPoc: true }];
+  }
+
+  const step = (rangeHigh - rangeLow) / bins;
+  const totals = Array.from({ length: bins }, () => 0);
+  for (const row of source) {
+    const amount = volumeByTime.get(String(row.time)) || 0;
+    if (amount <= 0) continue;
+    const rawLow = Number(row.low);
+    const rawHigh = Number(row.high);
+    if (!Number.isFinite(rawLow) || !Number.isFinite(rawHigh)) continue;
+    const barLow = Math.min(rawLow, rawHigh);
+    const barHigh = Math.max(rawLow, rawHigh);
+    if (barHigh > barLow) {
+      const firstBin = Math.max(0, Math.min(bins - 1, Math.floor((barLow - rangeLow) / step)));
+      const lastBin = Math.max(0, Math.min(bins - 1, Math.floor((barHigh - rangeLow) / step)));
+      const overlaps = [];
+      let overlapSum = 0;
+      for (let index = firstBin; index <= lastBin; index += 1) {
+        const low = rangeLow + index * step;
+        const high = low + step;
+        const overlap = Math.max(0, Math.min(high, barHigh) - Math.max(low, barLow));
+        overlaps.push([index, overlap]);
+        overlapSum += overlap;
+      }
+      if (overlapSum > 0) {
+        overlaps.forEach(([index, overlap]) => { totals[index] += amount * overlap / overlapSum; });
+        continue;
+      }
+    }
+    const close = Number(row.close);
+    const reference = Number.isFinite(close) ? close : barLow;
+    const index = Math.max(0, Math.min(bins - 1, Math.floor((reference - rangeLow) / step)));
+    totals[index] += amount;
+  }
+
+  const maxVolume = Math.max(...totals);
+  if (!(maxVolume > 0)) return [];
+  const pocIndex = totals.indexOf(maxVolume);
+  return totals.map((volume, index) => {
+    const low = rangeLow + index * step;
+    const high = low + step;
+    return {
+      low,
+      high,
+      price: (low + high) / 2,
+      volume,
+      pct: volume / maxVolume,
+      isPoc: index === pocIndex,
+    };
+  }).filter((row) => row.volume > 0);
+}
+
 function requestPriceAutoscale(series) {
   if (!series?.priceScale) return;
   window.requestAnimationFrame(() => {
@@ -1329,8 +1404,12 @@ function SingleLightweightChart({ data, viewKey }) {
   const priceLinesRef = useRef({});
   const didFitContentRef = useRef(false);
   const dataRangeRef = useRef({ first: null, last: null, length: 0 });
-  const volumeProfileRef = useRef([]);
+  const candlesRef = useRef([]);
+  const volumesRef = useRef([]);
+  const profileUpdaterRef = useRef(null);
   const [profileBars, setProfileBars] = useState([]);
+  const [profilePoc, setProfilePoc] = useState(null);
+  const [candleTooltip, setCandleTooltip] = useState({ visible: false });
   const [percentAxisTicks, setPercentAxisTicks] = useState([]);
   const candles = useMemo(() => {
     const out = [];
@@ -1390,18 +1469,6 @@ function SingleLightweightChart({ data, viewKey }) {
   const avwapText = Number.isFinite(avwapValue)
     ? `${data?.avwap_label || "AVWAP"} ${fmtChartPrice(avwapValue, data?.symbol)}${avwapSkewsIntradayScale ? "（未绘制）" : ""}`
     : (data?.avwap_label || "AVWAP");
-  const volumeProfile = useMemo(() => (data?.volume_profile || [])
-    .map((row) => ({
-      low: Number(row.low),
-      high: Number(row.high),
-      pct: Math.max(0, Math.min(1, Number(row.pct || 0))),
-    }))
-    .filter((row) => Number.isFinite(row.low) && Number.isFinite(row.high) && row.pct > 0), [data]);
-
-  useEffect(() => {
-    volumeProfileRef.current = volumeProfile;
-  }, [volumeProfile]);
-
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
@@ -1487,34 +1554,79 @@ function SingleLightweightChart({ data, viewKey }) {
     const macdHist = chart.addSeries(HistogramSeries, { color: "rgba(148, 163, 184, 0.35)", priceLineVisible: false, lastValueVisible: false }, 2);
     const macd = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 1, title: "MACD" }, 2);
     const macdSignal = chart.addSeries(LineSeries, { color: TERMINAL_CHART.coral, lineWidth: 1, title: "Signal" }, 2);
+    [percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macd, macdSignal]
+      .filter(Boolean)
+      .forEach((lineSeries) => lineSeries.applyOptions({ crosshairMarkerVisible: false }));
     rsi.createPriceLine({ price: 70, color: "rgba(248, 113, 113, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
     rsi.createPriceLine({ price: 30, color: "rgba(52, 211, 153, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
     seriesRef.current = { candle, volume, percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
     chartRef.current = chart;
-    const updateProfile = () => {
+    const handleCrosshairMove = (param) => {
+      const point = param?.point;
+      const candleRow = param?.seriesData?.get(candle);
+      if (!point || !candleRow || point.x < 0 || point.y < 0 || point.x > container.clientWidth || point.y > container.clientHeight) {
+        setCandleTooltip((current) => current.visible ? { visible: false } : current);
+        return;
+      }
+      const open = Number(candleRow.open);
+      const high = Number(candleRow.high);
+      const low = Number(candleRow.low);
+      const close = Number(candleRow.close);
+      const volumeRow = param.seriesData.get(volume);
+      const tooltipWidth = 216;
+      const tooltipHeight = 154;
+      setCandleTooltip({
+        visible: true,
+        left: Math.max(8, Math.min(container.clientWidth - tooltipWidth - 8, point.x + 14)),
+        top: Math.max(8, Math.min(container.clientHeight - tooltipHeight - 8, point.y + 14)),
+        time: formatLightweightChartTime(param.time),
+        open,
+        high,
+        low,
+        close,
+        change: close - open,
+        changePct: open > 0 ? (close / open - 1) * 100 : 0,
+        amplitudePct: low > 0 ? (high / low - 1) * 100 : 0,
+        volume: Number(volumeRow?.value || 0),
+      });
+    };
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+    const updateProfile = (logicalRange = null) => {
       const candleSeries = seriesRef.current.candle;
       if (!candleSeries) return;
-      const bars = volumeProfileRef.current.map((row) => {
+      const profile = calculateVisibleVolumeProfile(candlesRef.current, volumesRef.current, logicalRange, 24);
+      const poc = profile.find((row) => row.isPoc);
+      setProfilePoc(poc?.price ?? null);
+      const bars = profile.map((row) => {
         const yLow = candleSeries.priceToCoordinate(row.low);
         const yHigh = candleSeries.priceToCoordinate(row.high);
         if (yLow == null || yHigh == null) return null;
         return {
           top: Math.min(yLow, yHigh),
           height: Math.max(2, Math.abs(yLow - yHigh)),
-          width: `${Math.max(5, row.pct * 100)}%`,
+          width: `${Math.max(0.5, row.pct * 100)}%`,
+          low: row.low,
+          high: row.high,
+          volume: row.volume,
+          pct: row.pct,
+          isPoc: row.isPoc,
         };
       }).filter(Boolean);
       setProfileBars(bars);
     };
-    chart.timeScale().subscribeVisibleTimeRangeChange(updateProfile);
-    const handleVisibleRangeChange = () => requestPriceAutoscale(candle);
+    profileUpdaterRef.current = updateProfile;
+    const handleVisibleRangeChange = (logicalRange) => {
+      requestPriceAutoscale(candle);
+      window.requestAnimationFrame(() => updateProfile(logicalRange));
+    };
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     return () => {
-      chart.timeScale().unsubscribeVisibleTimeRangeChange(updateProfile);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       chartRef.current = null;
       seriesRef.current = {};
       priceLinesRef.current = {};
+      profileUpdaterRef.current = null;
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
       chart.remove();
     };
   }, [viewKey, rsiPeriod, showOpeningPercentAxis]);
@@ -1532,6 +1644,8 @@ function SingleLightweightChart({ data, viewKey }) {
       nextRange.last !== previousRange.last ||
       Math.abs(nextRange.length - previousRange.length) > 8;
     dataRangeRef.current = nextRange;
+    candlesRef.current = candles;
+    volumesRef.current = volumes;
     series.candle.applyOptions({
       borderVisible: true,
       wickVisible: true,
@@ -1606,31 +1720,20 @@ function SingleLightweightChart({ data, viewKey }) {
       didFitContentRef.current = true;
     }
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => setPercentAxisTicks(openingPercentAxisTicks(candles, series.candle, previousClose)));
+      window.requestAnimationFrame(() => {
+        setPercentAxisTicks(openingPercentAxisTicks(candles, series.candle, previousClose));
+        const logicalRange = chart.timeScale().getVisibleLogicalRange();
+        profileUpdaterRef.current?.(logicalRange);
+      });
     });
-    window.setTimeout(() => {
-      const candleSeries = seriesRef.current.candle;
-      if (!candleSeries) return;
-      const bars = volumeProfileRef.current.map((row) => {
-        const yLow = candleSeries.priceToCoordinate(row.low);
-        const yHigh = candleSeries.priceToCoordinate(row.high);
-        if (yLow == null || yHigh == null) return null;
-        return {
-          top: Math.min(yLow, yHigh),
-          height: Math.max(2, Math.abs(yLow - yHigh)),
-          width: `${Math.max(5, row.pct * 100)}%`,
-        };
-      }).filter(Boolean);
-      setProfileBars(bars);
-    }, 0);
-  }, [candles, volumes, percentRows, overlays, indicators, data, volumeProfile, isDaily, showOpeningPercentAxis, avwapSkewsIntradayScale, previousClose]);
+  }, [candles, volumes, percentRows, overlays, indicators, data, isDaily, showOpeningPercentAxis, avwapSkewsIntradayScale, previousClose]);
 
   return (
     <div className="singleLwWrap">
       <div className="singleLwHeader">
         <div>
           <strong>{data?.symbol}</strong>
-          <span>{data?.label} · {data?.interval} · {avwapText}{data?.avwap_anchor ? ` · 锚点 ${data.avwap_anchor}` : ""}</span>
+          <span>{data?.label} · {data?.interval} · {avwapText}{data?.avwap_anchor ? ` · 锚点 ${data.avwap_anchor}` : ""}{Number.isFinite(profilePoc) ? ` · 可见区间 POC ${fmtChartPrice(profilePoc, data?.symbol)}` : ""}</span>
         </div>
         <div className={tone(data?.latest_change_pct)}>
           <strong>{fmtChartPrice(data?.latest_price, data?.symbol)}</strong>
@@ -1638,16 +1741,26 @@ function SingleLightweightChart({ data, viewKey }) {
         </div>
       </div>
       <div className="singleLwCanvas" ref={containerRef}>
+        {candleTooltip.visible ? (
+          <div className="klineCandleTooltip" style={{ left: `${candleTooltip.left}px`, top: `${candleTooltip.top}px` }}>
+            <strong>{candleTooltip.time || "-"}</strong>
+            <div><span>开</span><b>{fmtChartPrice(candleTooltip.open, data?.symbol)}</b><span>高</span><b>{fmtChartPrice(candleTooltip.high, data?.symbol)}</b></div>
+            <div><span>低</span><b>{fmtChartPrice(candleTooltip.low, data?.symbol)}</b><span>收</span><b>{fmtChartPrice(candleTooltip.close, data?.symbol)}</b></div>
+            <div><span>涨跌</span><b className={tone(candleTooltip.change)}>{candleTooltip.change >= 0 ? "+" : ""}{fmtChartPrice(candleTooltip.change, data?.symbol)} · {fmtPct(candleTooltip.changePct)}</b></div>
+            <div><span>振幅</span><b>{Number(candleTooltip.amplitudePct || 0).toFixed(2)}%</b><span>量</span><b>{Number(candleTooltip.volume || 0).toLocaleString()}</b></div>
+          </div>
+        ) : null}
         {showOpeningPercentAxis ? <div className="klinePercentAxis singleKlinePercentAxis" aria-label="以当日开盘价为零的涨跌幅坐标轴">
           {Number.isFinite(percentReference) && percentReference > 0 ? <span className="klinePercentAxisBase">昨收 {fmtChartPrice(percentReference, data?.symbol)}</span> : null}
           {percentAxisTicks.map((tick) => <span key={tick.pct} style={{ top: `${tick.y}px` }}>{fmtPct(tick.pct)}</span>)}
         </div> : null}
-        <div className="singleLwProfile" aria-hidden="true">
+        <div className="singleLwProfile" aria-label="可见区间成交量价格分布">
           {profileBars.map((bar, index) => (
             <span
-              className="singleLwProfileBar"
+              className={`singleLwProfileBar ${bar.isPoc ? "poc" : ""}`}
               key={`${index}-${bar.top}`}
               style={{ top: `${bar.top}px`, height: `${bar.height}px`, width: bar.width }}
+              title={`价格箱 ${fmtChartPrice(bar.low, data?.symbol)} – ${fmtChartPrice(bar.high, data?.symbol)}\n成交量 ${Number(bar.volume || 0).toLocaleString()} · 峰值占比 ${(Number(bar.pct || 0) * 100).toFixed(1)}%${bar.isPoc ? " · POC" : ""}`}
             />
           ))}
         </div>

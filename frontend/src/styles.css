@@ -1733,6 +1733,48 @@ h2 {
   height: calc(100% - 48px);
 }
 
+.klineCandleTooltip {
+  position: absolute;
+  z-index: 8;
+  width: 216px;
+  padding: 9px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.38);
+  border-radius: 9px;
+  background: rgba(8, 22, 39, 0.94);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+  color: var(--text-main);
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.klineCandleTooltip > strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-soft);
+}
+
+.klineCandleTooltip > div {
+  display: grid;
+  grid-template-columns: 28px minmax(54px, 1fr) 28px minmax(54px, 1fr);
+  gap: 3px 6px;
+  align-items: baseline;
+}
+
+.klineCandleTooltip > div > span {
+  color: var(--text-muted);
+}
+
+.klineCandleTooltip > div > b {
+  font-weight: 650;
+  text-align: right;
+}
+
+.klineCandleTooltip > div:nth-of-type(3) b {
+  grid-column: 2 / 5;
+}
+
 .singleKlinePercentAxis {
   right: 184px;
 }
@@ -1750,11 +1792,18 @@ h2 {
 .singleLwProfileBar {
   position: absolute;
   right: 0;
-  min-width: 5px;
+  min-width: 1px;
   max-width: 100%;
   border-radius: 999px 0 0 999px;
   background: linear-gradient(90deg, rgba(56, 189, 248, 0.08), rgba(56, 189, 248, 0.38));
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.08);
+  pointer-events: auto;
+  cursor: help;
+}
+
+.singleLwProfileBar.poc {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.72));
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
 }
 
 .errorInline {

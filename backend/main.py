@@ -432,12 +432,10 @@ def _build_chart_board_light(
             avwap_value = float(avwap_clean.iloc[-1]) if not avwap_clean.empty else None
         except Exception:
             avwap_value = None
+        # Keep the API profile consistent with the candles returned to the
+        # client.  When extended hours are enabled, those bars must also be
+        # represented in the profile.
         profile_source = df
-        if key != "1d":
-            regular_mask = chart_api._regular_us_session_mask(df.index)
-            profile_source = df.loc[regular_mask].copy()
-            if profile_source.empty:
-                profile_source = df
         vp_price, vp_vol, vp_low, vp_high, _ = chart_api._volume_profile_by_price(profile_source, bins=24)
         max_profile_volume = float(vp_vol.max()) if not vp_vol.empty else 0.0
         volume_profile = [
