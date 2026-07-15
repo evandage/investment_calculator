@@ -1056,7 +1056,7 @@ function PerformanceLightweightChart({ points, series }) {
     </div>
   );
 }
-function LightweightKlineCard({ item, displayRange }) {
+function LightweightKlineCard({ item, displayRange, onOpenSymbol }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
@@ -1202,8 +1202,21 @@ function LightweightKlineCard({ item, displayRange }) {
     });
   }, [candles, volumes]);
 
+  function openSymbol() {
+    onOpenSymbol?.(item.symbol);
+  }
+
   return (
-    <article className="lwChartCard">
+    <article
+      className={`lwChartCard ${onOpenSymbol ? "isClickable" : ""}`}
+      role={onOpenSymbol ? "button" : undefined}
+      tabIndex={onOpenSymbol ? 0 : undefined}
+      aria-label={onOpenSymbol ? `打开 ${item.symbol} 个股看板` : undefined}
+      onClick={onOpenSymbol ? openSymbol : undefined}
+      onKeyDown={onOpenSymbol ? (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openSymbol(); }
+      } : undefined}
+    >
       <div className="lwChartHeader">
         <div>
           <strong>{item.symbol}</strong>
@@ -1221,12 +1234,12 @@ function LightweightKlineCard({ item, displayRange }) {
   );
 }
 
-function GlobalLightweightBoard({ data, viewKey, displayRange }) {
+function GlobalLightweightBoard({ data, viewKey, displayRange, onOpenSymbol }) {
   const columns = Math.min(5, Math.max(1, Number(data?.columns || 1)));
   const charts = data?.charts || [];
   return (
     <div className="lwChartGrid" style={{ "--lw-cols": columns }}>
-      {charts.map((item) => <LightweightKlineCard item={item} displayRange={displayRange} key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
+      {charts.map((item) => <LightweightKlineCard item={item} displayRange={displayRange} onOpenSymbol={onOpenSymbol} key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
     </div>
   );
 }
@@ -2157,6 +2170,12 @@ function KlinePage({ dashboardData }) {
     setAvwapMode(["VOO", "QQQ", "SGOV", "510330.SS"].includes(nextSymbol) ? "year_start" : "earnings");
   }
 
+  function openSingleSymbolFromGlobal(nextSymbol) {
+    setScope("single");
+    setDisplayRange("60");
+    changeKlineSymbol(nextSymbol);
+  }
+
   const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.avwap_mode || avwapMode}-${displayRange}`;
   const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
 
@@ -2235,7 +2254,7 @@ function KlinePage({ dashboardData }) {
       {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
-      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} /> : null}
+      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
       {scope === "single" && data?.candles ? (
         <div className={`klineAnalysisLayout ${interval !== "1d" ? "withoutInsight" : ""}`}>
           <SingleLightweightChart data={data} displayRange={displayRange} viewKey={singleViewKey} onVisibleProfileChange={setVisibleProfileState} />
