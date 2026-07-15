@@ -2986,3 +2986,156 @@ tbody tr:hover th {
   box-shadow: 0 28px 76px rgba(0, 0, 0, 0.45);
 }
 
+/* Professional chart-terminal controls */
+.klineToolbar {
+  position: relative;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px;
+  margin: 8px 0 10px;
+  border: 1px solid rgba(71, 107, 139, 0.55);
+  border-radius: 9px;
+  background: linear-gradient(180deg, #0d2035 0%, #091827 100%);
+  box-shadow: inset 0 1px 0 rgba(125, 211, 252, 0.08), 0 8px 22px rgba(0, 0, 0, 0.16);
+}
+
+.klineToolbar::before {
+  content: "";
+  position: absolute;
+  inset: 0 12px auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.4), transparent);
+  pointer-events: none;
+}
+
+.klineControlGroup {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  min-width: 0;
+}
+
+.klineAnalysisControls {
+  padding-left: 8px;
+  border-left: 1px solid rgba(71, 107, 139, 0.42);
+}
+
+.klineControl {
+  position: relative;
+  display: block;
+  flex: 0 1 138px;
+  min-width: 112px;
+  height: 46px;
+  border: 1px solid rgba(71, 107, 139, 0.5);
+  border-radius: 6px;
+  background: rgba(5, 15, 27, 0.62);
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.klineControl:hover {
+  border-color: rgba(100, 154, 196, 0.75);
+  background: rgba(13, 36, 58, 0.88);
+}
+
+.klineControl:focus-within {
+  border-color: rgba(56, 189, 248, 0.82);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.13), inset 0 -2px 0 rgba(56, 189, 248, 0.45);
+}
+
+.klineControl > span {
+  position: absolute;
+  z-index: 1;
+  top: 5px;
+  left: 10px;
+  color: #71869d;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.klineToolbar .klineControl select {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 17px 28px 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  outline: 0;
+  appearance: none;
+  background: transparent;
+  color: #e5f2ff;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.klineControl::after {
+  content: "⌄";
+  position: absolute;
+  right: 9px;
+  top: 17px;
+  color: #6f8ba4;
+  font-size: 14px;
+  line-height: 1;
+  pointer-events: none;
+  transition: color 150ms ease, transform 150ms ease;
+}
+
+.klineControl:focus-within::after {
+  color: #38bdf8;
+  transform: translateY(1px);
+}
+
+.klineSymbolControl {
+  min-width: 142px;
+}
+
+.klineRangeControl {
+  min-width: 178px;
+}
+
+.klineAvwapControl {
+  min-width: 190px;
+}
+
+.klineAvwapControl.isActive {
+  border-color: rgba(45, 212, 191, 0.58);
+  background: linear-gradient(180deg, rgba(13, 56, 64, 0.66), rgba(5, 25, 34, 0.74));
+  box-shadow: inset 0 -2px 0 rgba(45, 212, 191, 0.34);
+}
+
+.klineAvwapControl.isActive > span,
+.klineAvwapControl.isActive::after {
+  color: #5eead4;
+}
+
+@media (max-width: 760px) {
+  .klineToolbar {
+    justify-content: flex-start;
+    padding: 5px;
+  }
+
+  .klineControlGroup {
+    flex: 0 0 auto;
+  }
+
+  .klineAnalysisControls {
+    padding-left: 6px;
+  }
+
+  .klineControl {
+    flex: 0 0 126px;
+    min-width: 126px;
+  }
+
+  .klineRangeControl,
+  .klineAvwapControl {
+    min-width: 174px;
+  }
+}
+

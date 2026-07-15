@@ -61,9 +61,11 @@ _EARNINGS_DATE_TTL_SECONDS = 6 * 60 * 60
 _ETF_SYMBOLS = {"VOO", "QQQ", "SGOV"}
 
 AVWAP_MODE_LABELS = {
+    "none": "无",
     "earnings": "最近财报日",
     "high_60d": "最近60日历史高点",
     "selloff_60d": "最近60日大跌低点",
+    "rally_60d": "最近60日大涨日",
     "today_open": "今日开盘",
 }
 
@@ -1853,6 +1855,11 @@ def _latest_earnings_date(symbol: str) -> pd.Timestamp | None:
     return result
 
 
+def latest_earnings_anchor(symbol: str) -> pd.Timestamp | None:
+    """Return the cached latest earnings date for chart display-range anchoring."""
+    return _latest_earnings_date(str(symbol or "").upper())
+
+
 def _avwap_anchor_date(
     symbol: str,
     daily: pd.DataFrame,
@@ -1883,7 +1890,7 @@ def _avwap_anchor_date(
         daily_returns = recent["Close"].astype(float).pct_change()
         valid_returns = daily_returns.dropna()
         anchor = (
-            _naive_day(valid_returns.idxmin())
+            _naive_day(valid_returns.idxmax() if normalized_mode == "rally_60d" else valid_returns.idxmin())
             if not valid_returns.empty
             else _naive_day(recent.index[0])
         )
@@ -1901,6 +1908,10 @@ def anchored_vwap_and_bands(
     if intraday.empty:
         empty = pd.Series(dtype=float)
         return empty, empty, empty, pd.Timestamp.now().normalize(), AVWAP_MODE_LABELS["today_open"]
+
+    if mode == "none":
+        empty = pd.Series(np.nan, index=intraday.index, dtype=float)
+        return empty, empty.copy(), empty.copy(), _naive_day(intraday.index[-1]), AVWAP_MODE_LABELS["none"]
 
     daily = fetch_ohlcv(symbol, "1d", "5y", cache_only=cache_only)
     anchor_date, label = _avwap_anchor_date(symbol, daily, intraday, mode)

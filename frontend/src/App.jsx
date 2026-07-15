@@ -1055,7 +1055,7 @@ function PerformanceLightweightChart({ points, series }) {
     </div>
   );
 }
-function LightweightKlineCard({ item }) {
+function LightweightKlineCard({ item, displayRange }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
@@ -1096,7 +1096,7 @@ function LightweightKlineCard({ item }) {
       };
     }
     return { candles: patchedCandles, volumes: nextVolumes };
-  }, [item]);
+  }, [item, displayRange]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1192,7 +1192,7 @@ function LightweightKlineCard({ item }) {
       chart.timeScale().scrollToRealTime();
     }
     if (!didFitContentRef.current && candles.length) {
-      chart.timeScale().fitContent();
+      applyKlineDisplayRange(chart, candles, item?.interval === "1d" ? displayRange : "all");
       requestPriceAutoscale(candleSeries);
       didFitContentRef.current = true;
     }
@@ -1220,12 +1220,12 @@ function LightweightKlineCard({ item }) {
   );
 }
 
-function GlobalLightweightBoard({ data, viewKey }) {
+function GlobalLightweightBoard({ data, viewKey, displayRange }) {
   const columns = Math.min(5, Math.max(1, Number(data?.columns || 1)));
   const charts = data?.charts || [];
   return (
     <div className="lwChartGrid" style={{ "--lw-cols": columns }}>
-      {charts.map((item) => <LightweightKlineCard item={item} key={`${item.symbol}-${viewKey}`} />)}
+      {charts.map((item) => <LightweightKlineCard item={item} displayRange={displayRange} key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
     </div>
   );
 }
@@ -1259,6 +1259,45 @@ function candleDayKey(time) {
     return new Date(time * 1000).toISOString().slice(0, 10);
   }
   return String(time || "").slice(0, 10);
+}
+
+function klineDisplayStartIndex(candles = [], mode = "250", anchorDate = "") {
+  if (!candles.length) return 0;
+  let startIndex = 0;
+  const count = Number(mode);
+  if (Number.isFinite(count) && count > 0) {
+    startIndex = Math.max(0, candles.length - count);
+  } else if (anchorDate) {
+    const normalizedAnchor = String(anchorDate).slice(0, 10);
+    const found = candles.findIndex((row) => candleDayKey(row.time) >= normalizedAnchor);
+    startIndex = found >= 0 ? found : 0;
+  } else if (mode === "selloff_60d" || mode === "rally_60d") {
+    const recentStart = Math.max(0, candles.length - 60);
+    let selectedIndex = recentStart;
+    let selectedReturn = mode === "selloff_60d" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+    for (let index = recentStart + 1; index < candles.length; index += 1) {
+      const previousClose = Number(candles[index - 1]?.close);
+      const close = Number(candles[index]?.close);
+      if (!(previousClose > 0) || !Number.isFinite(close)) continue;
+      const dailyReturn = close / previousClose - 1;
+      if ((mode === "selloff_60d" && dailyReturn < selectedReturn) || (mode === "rally_60d" && dailyReturn > selectedReturn)) {
+        selectedReturn = dailyReturn;
+        selectedIndex = index;
+      }
+    }
+    startIndex = selectedIndex;
+  }
+  return startIndex;
+}
+
+function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = "") {
+  if (!chart || !candles.length) return;
+  const startIndex = klineDisplayStartIndex(candles, mode, anchorDate);
+  if (startIndex <= 0) {
+    chart.timeScale().fitContent();
+    return;
+  }
+  chart.timeScale().setVisibleLogicalRange({ from: startIndex, to: candles.length - 1 });
 }
 
 function percentReferencePrice(candles = [], referencePrice) {
@@ -1397,7 +1436,7 @@ function requestPriceAutoscale(series) {
   });
 }
 
-function SingleLightweightChart({ data, viewKey }) {
+function SingleLightweightChart({ data, viewKey, displayRange }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
@@ -1411,7 +1450,7 @@ function SingleLightweightChart({ data, viewKey }) {
   const [profilePoc, setProfilePoc] = useState(null);
   const [candleTooltip, setCandleTooltip] = useState({ visible: false });
   const [percentAxisTicks, setPercentAxisTicks] = useState([]);
-  const candles = useMemo(() => {
+  const rawCandles = useMemo(() => {
     const out = [];
     let lastTime = null;
     for (const raw of data?.candles || []) {
@@ -1428,6 +1467,24 @@ function SingleLightweightChart({ data, viewKey }) {
     }
     return patchLatestCandle(out, data?.latest_price, data?.interval);
   }, [data]);
+  const rawVolumes = useMemo(() => {
+    const volumeRows = (data?.volumes || []).map((row) => ({
+      time: normalizeLightweightTime(row.time),
+      value: Number(row.value || 0),
+      color: row.color || "rgba(148, 163, 184, 0.24)",
+    })).filter((row) => row.time != null && Number.isFinite(row.value));
+    if (!volumeRows.length || !rawCandles.length || data?.interval === "1d") return volumeRows;
+    const lastVolumeIndex = volumeRows.length - 1;
+    const lastCandle = rawCandles[rawCandles.length - 1];
+    if (String(volumeRows[lastVolumeIndex].time) !== String(lastCandle.time)) return volumeRows;
+    volumeRows[lastVolumeIndex] = {
+      ...volumeRows[lastVolumeIndex],
+      color: lastCandle.close >= lastCandle.open ? "rgba(34, 197, 94, 0.28)" : "rgba(239, 68, 68, 0.28)",
+    };
+    return volumeRows;
+  }, [data, rawCandles]);
+  const candles = rawCandles;
+  const volumes = rawVolumes;
   const showOpeningPercentAxis = data?.interval === "5m" || data?.interval === "15m";
   const previousClose = Number(data?.previous_close);
   const percentReference = useMemo(() => percentReferencePrice(candles, previousClose), [candles, previousClose]);
@@ -1435,22 +1492,6 @@ function SingleLightweightChart({ data, viewKey }) {
     () => (showOpeningPercentAxis ? openingPercentRows(candles, previousClose) : []),
     [candles, previousClose, showOpeningPercentAxis],
   );
-  const volumes = useMemo(() => {
-    const volumeRows = (data?.volumes || []).map((row) => ({
-      time: normalizeLightweightTime(row.time),
-      value: Number(row.value || 0),
-      color: row.color || "rgba(148, 163, 184, 0.24)",
-    })).filter((row) => row.time != null && Number.isFinite(row.value));
-    if (!volumeRows.length || !candles.length || data?.interval === "1d") return volumeRows;
-    const lastVolumeIndex = volumeRows.length - 1;
-    const lastCandle = candles[candles.length - 1];
-    if (String(volumeRows[lastVolumeIndex].time) !== String(lastCandle.time)) return volumeRows;
-    volumeRows[lastVolumeIndex] = {
-      ...volumeRows[lastVolumeIndex],
-      color: lastCandle.close >= lastCandle.open ? "rgba(34, 197, 94, 0.28)" : "rgba(239, 68, 68, 0.28)",
-    };
-    return volumeRows;
-  }, [data, candles]);
   const overlays = data?.overlays || {};
   const indicators = data?.indicators || {};
   const isDaily = data?.interval === "1d";
@@ -1711,11 +1752,12 @@ function SingleLightweightChart({ data, viewKey }) {
       });
     }
     if (!didFitContentRef.current && candles.length) {
-      if (isDaily && candles.length > 100) {
-        chart.timeScale().setVisibleLogicalRange({ from: candles.length - 100, to: candles.length + 14 });
-      } else {
-        chart.timeScale().fitContent();
-      }
+      applyKlineDisplayRange(
+        chart,
+        candles,
+        data?.interval === "1d" ? displayRange : "all",
+        data?.interval === "1d" && displayRange === "earnings" ? data?.earnings_anchor : "",
+      );
       requestPriceAutoscale(series.candle);
       didFitContentRef.current = true;
     }
@@ -1726,7 +1768,7 @@ function SingleLightweightChart({ data, viewKey }) {
         profileUpdaterRef.current?.(logicalRange);
       });
     });
-  }, [candles, volumes, percentRows, overlays, indicators, data, isDaily, showOpeningPercentAxis, avwapSkewsIntradayScale, previousClose]);
+  }, [candles, volumes, percentRows, overlays, indicators, data, isDaily, showOpeningPercentAxis, avwapSkewsIntradayScale, previousClose, displayRange, viewKey]);
 
   return (
     <div className="singleLwWrap">
@@ -1774,13 +1816,15 @@ function KlinePage({ dashboardData }) {
   const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState("VOO");
   const [interval, setInterval] = useState("1d");
-  const [avwapMode, setAvwapMode] = useState("today_open");
+  const [avwapMode, setAvwapMode] = useState("none");
+  const [displayRange, setDisplayRange] = useState("60");
   const [showExtended, setShowExtended] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [globalColumns, setGlobalColumns] = useState(globalKlineColumns);
+  const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
   const loadRequestRef = useRef(0);
   const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
@@ -1881,53 +1925,91 @@ function KlinePage({ dashboardData }) {
     return undefined;
   }, [scope, symbol, interval, avwapMode, showExtended]);
 
-  const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
+  useEffect(() => {
+    if (displayRange === "earnings" && (scope !== "single" || isEtf)) setDisplayRange("60");
+  }, [displayRange, scope, isEtf]);
+
   const avwapSelectValue = interval === "1d" && avwapMode === "today_open"
     ? (isEtf ? "high_60d" : "earnings")
     : (isEtf && avwapMode === "earnings" ? "high_60d" : avwapMode);
 
+  function changeDisplayRange(nextRange) {
+    setDisplayRange(nextRange);
+  }
+
   return (
     <section className="chartPanel technicalPanel">
-      <div className="toolbarRow">
-        <div className="segmented toolbarBlock">
-          <button className={scope === "global" ? "active" : ""} onClick={() => setScope("global")}>全局看板</button>
-          <button className={scope === "single" ? "active" : ""} onClick={() => setScope("single")}>单标的</button>
+      <div className="toolbarRow klineToolbar">
+        <div className="klineControlGroup">
+          <label className="klineControl">
+            <span>看板</span>
+            <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="看板模式">
+              <option value="global">全局看板</option>
+              <option value="single">单标的</option>
+            </select>
+          </label>
+          <label className="klineControl">
+            <span>周期</span>
+            <select value={interval} onChange={(event) => setInterval(event.target.value)} aria-label="K线周期">
+              <option value="1d">日线</option>
+              <option value="15m">15 min</option>
+              <option value="5m">5 min</option>
+            </select>
+          </label>
+          {scope === "single" ? <label className="klineControl klineSymbolControl">
+            <span>标的</span>
+            <select value={symbol} onChange={(event) => setSymbol(event.target.value)} aria-label="标的">
+              {[...(dashboardData?.holdings || [])
+                .filter((row) => row.currency === "USD" && row.symbol !== "SGOV")
+                .map((row) => row.symbol)
+                , "510330.SS"]
+                .map((item) => <option key={item} value={item}>{item === "510330.SS" ? "510330 沪深300ETF" : item}</option>)}
+            </select>
+          </label> : null}
         </div>
-        <div className="segmented toolbarBlock">
-          {[["1d", "日线"], ["15m", "15min"], ["5m", "5min"]].map(([value, label]) => (
-            <button className={interval === value ? "active" : ""} key={value} onClick={() => setInterval(value)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        {scope === "single" ? <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
-          {[...(dashboardData?.holdings || [])
-            .filter((row) => row.currency === "USD" && row.symbol !== "SGOV")
-            .map((row) => row.symbol)
-            , "510330.SS"]
-            .map((item) => <option key={item} value={item}>{item === "510330.SS" ? "510330 沪深300ETF" : item}</option>)}
-        </select> : null}
-        {scope === "single" ? (
-          <select value={avwapSelectValue} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
-            {!isEtf ? <option value="earnings">AVWAP：最近财报日</option> : null}
-            <option value="high_60d">AVWAP：最近60日历史高点</option>
-            <option value="selloff_60d">AVWAP：最近60日大跌低点</option>
-            {interval !== "1d" ? <option value="today_open">AVWAP：今日开盘</option> : null}
-          </select>
-        ) : null}
-        {interval !== "1d" ? (
-          <button className={showExtended ? "active" : ""} onClick={() => setShowExtended((value) => !value)}>
-            扩展盘：{showExtended ? "显示" : "隐藏"}
-          </button>
-        ) : null}
+        {scope === "single" ? <div className="klineControlGroup klineAnalysisControls">
+          {interval === "1d" ? (
+            <label className="klineControl klineRangeControl">
+              <span>日 K 视窗</span>
+              <select value={displayRange} onChange={(event) => changeDisplayRange(event.target.value)} aria-label="日K视窗">
+                <option value="60">最近 60 根</option>
+                <option value="250">最近 250 根 · 一年</option>
+                <option value="125">最近 125 根 · 半年</option>
+                <option value="selloff_60d">最近一次大跌起</option>
+                <option value="rally_60d">最近一次大涨起</option>
+                {!isEtf ? <option value="earnings">最近财报日起</option> : null}
+              </select>
+            </label>
+          ) : null}
+          <label className={`klineControl klineAvwapControl ${avwapSelectValue !== "none" ? "isActive" : ""}`}>
+            <span>AVWAP 锚点</span>
+            <select value={avwapSelectValue} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
+              <option value="none">无</option>
+              {!isEtf ? <option value="earnings">最近财报日</option> : null}
+              <option value="high_60d">最近 60 日历史高点</option>
+              <option value="selloff_60d">最近 60 日大跌低点</option>
+              <option value="rally_60d">最近 60 日大涨日</option>
+              {interval !== "1d" ? <option value="today_open">今日开盘</option> : null}
+            </select>
+          </label>
+          {interval !== "1d" ? (
+            <label className="klineControl">
+              <span>交易时段</span>
+              <select value={showExtended ? "extended" : "regular"} onChange={(event) => setShowExtended(event.target.value === "extended")} aria-label="交易时段">
+                <option value="regular">仅常规盘</option>
+                <option value="extended">含扩展盘</option>
+              </select>
+            </label>
+          ) : null}
+        </div> : null}
       </div>
       {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
-      {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_label ? ` · AVWAP：${data.avwap_label}（锚点 ${data.avwap_anchor}）` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
+      {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
-      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} /> : null}
+      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} /> : null}
       {scope === "single" && data?.candles ? (
-        <SingleLightweightChart data={data} viewKey={`${data.symbol}-${data.interval}-${data.show_extended}-${data.avwap_mode}`} />
+        <SingleLightweightChart data={data} displayRange={displayRange} viewKey={`${data.symbol}-${data.interval}-${data.show_extended}-${data.avwap_mode}-${displayRange}`} />
       ) : null}
     </section>
   );

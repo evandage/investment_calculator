@@ -265,8 +265,6 @@ def _build_global_chart_board_light(
     charts: list[dict[str, Any]] = []
     for sym in symbols:
         bars = bars_by_symbol.get(sym) or []
-        if key == "1d":
-            bars = bars[-90:]
         quote = quotes.get(sym) or {}
         last_close = float(bars[-1].get("close") or 0.0) if bars else 0.0
         latest_price = float(quote.get("price") or last_close or 0.0)
@@ -417,6 +415,12 @@ def _build_chart_board_light(
             fallback_open=fallback_open,
         )
 
+        earnings_anchor = None
+        if key == "1d" and sym not in {"VOO", "QQQ", "SGOV", "510330.SS"}:
+            earnings_date = chart_api.latest_earnings_anchor(sym)
+            if earnings_date is not None:
+                earnings_anchor = earnings_date.strftime("%Y-%m-%d")
+
         avwap, avwap_upper, avwap_lower, avwap_anchor, avwap_label = chart_api.anchored_vwap_and_bands(
             sym,
             df,
@@ -487,7 +491,8 @@ def _build_chart_board_light(
             "user_avg_cost": user_avg_cost,
             "avwap_mode": effective_avwap_mode,
             "avwap_label": avwap_label,
-            "avwap_anchor": avwap_anchor.strftime("%Y-%m-%d"),
+            "avwap_anchor": None if effective_avwap_mode == "none" else avwap_anchor.strftime("%Y-%m-%d"),
+            "earnings_anchor": earnings_anchor,
             "avwap_value": avwap_value,
             "rsi_period": rsi_period,
             "latest_price": latest_price if latest_price > 0 else None,
