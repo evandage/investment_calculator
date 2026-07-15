@@ -2248,6 +2248,17 @@ function KlinePage({ dashboardData }) {
             </label>
           ) : null}
         </div> : null}
+        {scope === "global" && interval !== "1d" ? (
+          <div className="klineControlGroup klineAnalysisControls">
+            <label className="klineControl">
+              <span>交易时段</span>
+              <select value={showExtended ? "extended" : "regular"} onChange={(event) => setShowExtended(event.target.value === "extended")} aria-label="交易时段">
+                <option value="regular">仅常规盘</option>
+                <option value="extended">含扩展盘</option>
+              </select>
+            </label>
+          </div>
+        ) : null}
         <button className="klineGuideButton" type="button" onClick={() => setShowCheatSheet(true)}><BookOpen size={16} />指标模板</button>
       </div>
       {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
