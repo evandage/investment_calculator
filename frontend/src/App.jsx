@@ -175,6 +175,19 @@ function tradeCostDelta(trade) {
   return next - prev;
 }
 
+function fmtCurrentPrice(value, currency = "USD") {
+  const price = Number(value);
+  if (!Number.isFinite(price) || price <= 0) return "-";
+  return fmtMoney(price, currency, currency === "USD" ? 2 : 4);
+}
+
+function tradeCostTone(trade) {
+  const delta = tradeCostDelta(trade);
+  if (delta < 0) return "up";
+  if (delta > 0) return "down";
+  return "flat";
+}
+
 function fmtAvgCostChangeTitle(trade, currency = "USD") {
   const prev = Number(trade?.prev_avg_cost || 0);
   const next = Number(trade?.new_avg_cost || 0);
@@ -208,12 +221,20 @@ function tierClass(intensity) {
 function tierLabel(intensity) {
   return {
     none: "-",
-    normal: "普通",
+    normal: "正常",
     small: "小加",
     medium: "中加",
     large: "大加",
     sell: "卖出",
   }[String(intensity || "none").toLowerCase()] || String(intensity || "-");
+}
+
+function rebalanceTierLabel(row) {
+  const label = tierLabel(row.intensity);
+  if (String(row.intensity || "").toLowerCase() === "sell") return label;
+  const share = Number(row.signal_multiplier || 0);
+  const formatted = share.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
+  return `${label} ${formatted}x`;
 }
 
 function globalKlineColumns(width = window.innerWidth) {
@@ -246,6 +267,23 @@ function valuationLabel(row) {
   return row.forward_pe ? row.forward_pe.toFixed(2) : "-";
 }
 
+function valuationTooltip(row) {
+  if (row.symbol === "VOO" || row.symbol === "QQQ") {
+    return `近5日涨跌：${row.recent_5d_pct == null ? "-" : fmtPct(row.recent_5d_pct)}`;
+  }
+  if (row.symbol === "TEM") {
+    const ps = Number(row.forward_ps ?? row.ps);
+    return `PS：${Number.isFinite(ps) ? ps.toFixed(2) : "-"}\nPS区间：${row.ps_band || "-"}`;
+  }
+  const pe = Number(row.forward_pe);
+  return [
+    `Forward PE：${Number.isFinite(pe) ? pe.toFixed(2) : "-"}`,
+    `PE区间：${row.pe_band || "-"}`,
+    `PEG：${pegLabel(row)}`,
+    `PEG区间：${row.peg_band || "-"}`,
+  ].join("\n");
+}
+
 function pegLabel(row) {
   const peg = Number(row.peg);
   return Number.isFinite(peg) && peg > 0 ? peg.toFixed(2) : "-";
@@ -260,6 +298,17 @@ function pegTone(row) {
   if (peg > high) return "down";
   if (peg < low) return "up";
   return "";
+}
+
+function valuationBandTone(value, bandText) {
+  const num = Number(value);
+  const match = String(bandText || "").match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$/);
+  if (!Number.isFinite(num) || !match) return "flat";
+  const low = Number(match[1]);
+  const high = Number(match[2]);
+  if (num > high) return "down";
+  if (num < low) return "up";
+  return "flat";
 }
 
 function useDashboard() {
@@ -525,7 +574,25 @@ function DailyHeatmap({ cards, holdings }) {
       : dailyPct < 0
         ? `linear-gradient(145deg, rgba(127, 29, 29, ${strength}), rgba(42, 24, 37, ${0.82 + magnitude * 0.18}))`
         : "linear-gradient(145deg, #15263d, #10233a)";
-      return { ...card, valueCny, assetPct, regularPct, extendedPct, hasDistinctExtendedPct, regularUsd, regularCny, extendedUsd, extendedCny, hasDistinctExtendedUsd, hasDistinctExtendedCny, dailyPct, bg, magnitude };
+      return {
+        ...card,
+        valueCny,
+        assetPct,
+        currentPrice: holding.price,
+        currency: holding.currency || card.currency || "USD",
+        regularPct,
+        extendedPct,
+        hasDistinctExtendedPct,
+        regularUsd,
+        regularCny,
+        extendedUsd,
+        extendedCny,
+        hasDistinctExtendedUsd,
+        hasDistinctExtendedCny,
+        dailyPct,
+        bg,
+        magnitude,
+      };
     });
   }, [cards, holdingsBySymbol, satelliteCards, satelliteSymbols, totalValue]);
   const satelliteHoverRects = useMemo(() => {
@@ -533,6 +600,8 @@ function DailyHeatmap({ cards, holdings }) {
     const root = hierarchy({
       children: satelliteCards.map((card) => ({
         ...card,
+        currentPrice: holdingsBySymbol[card.symbol]?.price,
+        currency: holdingsBySymbol[card.symbol]?.currency || "USD",
         layoutValue: Math.max(0, Number(holdingsBySymbol[card.symbol]?.value_cny || 0)),
       })),
     })
@@ -614,7 +683,7 @@ function DailyHeatmap({ cards, holdings }) {
                 }}
                 onMouseEnter={() => setSatelliteHoverSymbol(card.symbol)}
                 onMouseLeave={() => setSatelliteHoverSymbol(null)}
-                title={`${card.label} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
+                title={`${card.label} · 当前价 ${fmtCurrentPrice(card.currentPrice, card.currency)} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
               >
                 <b>{card.label}</b>
                 <span className={tone(card.regular_pct)}>
@@ -634,6 +703,7 @@ function DailyHeatmap({ cards, holdings }) {
             return (
               <div className="satelliteMiniTooltip">
                 <b>{card.label}</b>
+                <span>当前价 {fmtCurrentPrice(card.currentPrice, card.currency)}</span>
                 <span>收盘 {fmtPct(card.regular_pct)}{card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 {fmtPct(card.effectivePct)}</span>
                 <span>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")} · {fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
               </div>
@@ -655,7 +725,7 @@ function DailyHeatmap({ cards, holdings }) {
                 width: `${row.width / HEATMAP_LAYOUT_WIDTH * 100}%`,
                 height: `${row.height / HEATMAP_LAYOUT_HEIGHT * 100}%`,
               }}
-              title={`${row.label} · 资产占比 ${row.assetPct.toFixed(2)}% · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
+              title={`${row.label} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 当前价 ${fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
               onMouseEnter={row.symbol === "SATELLITE_GROUP" ? () => setSatelliteHovered(true) : undefined}
               role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
             >
@@ -2045,7 +2115,7 @@ function EditableHoldingsPage({ data, onSaved }) {
         <table className="editableHoldingsTable">
           <thead>
             <tr>
-              <th>标的</th><th>实时占比</th><th>数量</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>成本</th><th>市值</th><th>盈亏</th><th>Forward PE/近5日</th><th>PE区间</th><th>PEG</th><th>PEG区间</th>
+              <th>标的</th><th>实时占比</th><th>数量</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>成本</th><th>市值</th><th>盈亏</th>
             </tr>
           </thead>
           <tbody>
@@ -2061,10 +2131,6 @@ function EditableHoldingsPage({ data, onSaved }) {
                 <td>{fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
-                <td className={peTone(row)}>{valuationLabel(row)}</td>
-                <td>{row.ps_band && row.ps_band !== "-" ? row.ps_band : (row.pe_band || "-")}</td>
-                <td className={pegTone(row)}>{pegLabel(row)}</td>
-                <td>{row.peg_band || "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -2163,6 +2229,16 @@ function EditableHoldingsPage({ data, onSaved }) {
 function Rebalance({ data, onSaved }) {
   const rows = data.rebalance.rows;
   const suggestionRows = useMemo(() => rows.filter((row) => row.symbol !== "001015"), [rows]);
+  const realtimePctBySymbol = useMemo(() => {
+    const total = (data.holdings || []).reduce(
+      (sum, row) => sum + Math.max(0, Number(row.value_cny || 0)),
+      0,
+    );
+    return Object.fromEntries((data.holdings || []).map((row) => [
+      row.symbol,
+      total > 0 ? Number(row.value_cny || 0) / total * 100 : 0,
+    ]));
+  }, [data.holdings]);
   const tradeRows = useMemo(() => {
     const bySymbol = new Map((data.holdings || []).map((row) => [row.symbol, { ...row, intensity: "normal", suggested_buy_usd: 0 }]));
     rows.forEach((row) => {
@@ -2556,6 +2632,9 @@ function Rebalance({ data, onSaved }) {
         </span>
         <button className="toolButton compactTool" onClick={() => setRulesOpen(true)}>规则</button>
       </div>
+      <div className="muted rebalanceFormulaBanner">
+        共同分母：{data.rebalance.planned_total_formula || `USD ${fmtMoney(data.rebalance.planned_total_usd, "USD")}`} · VOO/QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率
+      </div>
       {budgetOpen ? (
         <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
           if (shouldCloseFromBackdropClick(event)) setBudgetOpen(false);
@@ -2649,44 +2728,27 @@ function Rebalance({ data, onSaved }) {
       ) : null}
       <div className="tableWrap">
         <table className="rebalanceTable">
-          <colgroup>
-            <col className="colSymbol" />
-            <col className="colPct" />
-            <col className="colPct" />
-            <col className="colPct" />
-            <col className="colMoney" />
-            <col className="colMoney" />
-            <col className="colMoney" />
-            <col className="colTier" />
-            <col className="colFactor" />
-            <col className="colNote" />
-            <col className="colFormula" />
-          </colgroup>
           <thead>
             <tr>
-              <th>标的</th><th>月初占比</th><th>目标占比</th><th>60日回撤</th><th>计划应买</th><th>实际差值</th><th>净买入</th><th>档位</th><th>估值/追高系数</th><th>说明</th><th>计算过程</th>
+              <th>标的</th><th>档位</th><th>实际差值</th><th>计划应买</th><th>该月净买入</th><th>60日回撤</th><th>估值系数</th>
             </tr>
           </thead>
           <tbody>
             {suggestionRows.map((row) => {
               return (
                 <React.Fragment key={row.symbol}>
-                  <tr>
+                  <tr className={Number(row.buy_difference_usd || 0) <= 0 ? "inactiveRebalanceRow" : ""}>
                     <th>{row.symbol}</th>
-                    <td>{Number(row.month_start_pct ?? row.current_pct ?? 0).toFixed(2)}%</td>
-                    <td>{Number(row.target_pct || 0).toFixed(2)}%</td>
-                    <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
-                    <td className="planCell">
-                      <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
-                    </td>
-                    <td className="planCell">
+                    <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{rebalanceTierLabel(row)}</span></td>
+                    <td className="planCell hasDetailTooltip" title={`当前占比：${Number(realtimePctBySymbol[row.symbol] || 0).toFixed(2)}%\n目标占比：${Number(row.target_pct || 0).toFixed(2)}%`}>
                       <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</div>
                     </td>
+                    <td className="planCell hasDetailTooltip" title={row.planned_buy_formula || "-"}>
+                      <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
+                    </td>
                     <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
-                    <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{row.signal || row.intensity}</span></td>
-                    <td className={Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
-                    <td className="note">{row.note}</td>
-                    <td className="formulaCell">{row.planned_buy_formula || "-"}</td>
+                    <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
+                    <td className={`${Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"} hasDetailTooltip`} title={valuationTooltip(row)}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
                   </tr>
                 </React.Fragment>
               );
@@ -2725,7 +2787,7 @@ function Rebalance({ data, onSaved }) {
                   <td className={tone(trade.close_effect)} title={trade.close_price ? `当日收盘 ${fmtMoney(trade.close_price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}` : ""}>
                     {fmtTradeCloseEffect(trade, currencyBySymbol[trade.symbol] || "USD")}
                   </td>
-                  <td className={tone(tradeCostDelta(trade))} title={fmtAvgCostChangeTitle(trade, currencyBySymbol[trade.symbol] || "USD")}>
+                  <td className={tradeCostTone(trade)} title={fmtAvgCostChangeTitle(trade, currencyBySymbol[trade.symbol] || "USD")}>
                     {fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}
                   </td>
                   <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{tierLabel(trade.intensity)}</span></td>

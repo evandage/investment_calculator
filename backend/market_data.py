@@ -890,8 +890,16 @@ def fetch_valuation_metrics(symbols: tuple[str, ...] | None = None) -> dict[str,
                 ctx.close()
         except Exception:
             pass
-    _VALUATION_METRICS_CACHE = {sym: dict(metrics) for sym, metrics in out.items()}
-    _FORWARD_PE_CACHE_AT = now
+    # Do not poison the long-lived valuation cache with a transient empty
+    # response from OpenD.  A brief connection/query failure should be retried
+    # on the next dashboard refresh instead of showing blank Forward PE for
+    # the entire cache window.
+    if out:
+        _VALUATION_METRICS_CACHE = {sym: dict(metrics) for sym, metrics in out.items()}
+        _FORWARD_PE_CACHE_AT = now
+    else:
+        _VALUATION_METRICS_CACHE = None
+        _FORWARD_PE_CACHE_AT = 0.0
     return out
 
 

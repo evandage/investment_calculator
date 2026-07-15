@@ -1807,17 +1807,18 @@ table {
 }
 
 .rebalanceTable {
-  min-width: 1780px;
-  table-layout: fixed;
+  min-width: 980px;
 }
 
-.rebalanceTable .colSymbol { width: 76px; }
-.rebalanceTable .colPct { width: 92px; }
-.rebalanceTable .colMoney { width: 112px; }
-.rebalanceTable .colTier { width: 104px; }
-.rebalanceTable .colFactor { width: 120px; }
-.rebalanceTable .colFormula { width: 420px; }
-.rebalanceTable .colNote { width: 440px; }
+.rebalanceTable tbody tr.inactiveRebalanceRow > th,
+.rebalanceTable tbody tr.inactiveRebalanceRow > td {
+  opacity: 0.46;
+  filter: saturate(0.35);
+}
+
+.rebalanceTable .hasDetailTooltip {
+  cursor: help;
+}
 
 th,
 td {

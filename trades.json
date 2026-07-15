@@ -269,6 +269,21 @@
       "new_avg_cost": 56.70892741412832,
       "intensity": "normal",
       "created_at": "2026-07-13T22:00:52+08:00"
+    },
+    {
+      "id": "20260715103348-18-ISRG",
+      "trade_date": "2026-07-14",
+      "symbol": "ISRG",
+      "action": "buy",
+      "amount_usd": 10.0,
+      "shares": 0.0256,
+      "price": 390.625,
+      "cost_basis": 10.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 408.69220903345155,
+      "new_avg_cost": 408.0062820702952,
+      "intensity": "medium",
+      "created_at": "2026-07-15T10:33:48+08:00"
     }
   ]
 }

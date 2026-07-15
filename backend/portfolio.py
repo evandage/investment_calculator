@@ -43,6 +43,7 @@ from .storage import (
 
 BUILD_TARGET_YEAR = 2026
 BUILD_TARGET_MONTH = 10
+MIDTERM_ELECTION_DATE = date(2026, 11, 3)
 _DRAWDOWN_CACHE: dict[str, tuple[dict[str, float | None], float]] = {}
 _DRAWDOWN_CACHE_TTL_SECONDS = 21600
 NY_TZ = ZoneInfo("America/New_York")
@@ -127,7 +128,7 @@ def rebalance_rules_payload(
                 "heading": "建议金额",
                 "items": [
                     "成本缺口按月初成本口径计算，即目标金额减去当前成本扣除本月已买后的金额。",
-                    "VOO/QQQ 再按剩余月份和档位倍率计算本轮计划应买。",
+                    "VOO/QQQ 按剩余月份折算为每周基准，再乘档位倍率计算本轮计划应买；个股按目标金额 × 0.1 × 档位倍率计算一手。",
                     f"卫星股以10月底目标金额为 1x；{zero_target_note}",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股主要看 Forward PE，PLTR/TEM 用 60 日历史涨跌位置定档，VOO 仍按回撤触发档位，近 5 日涨幅偏热时只做备注提示。",
                     "建议买入总额受 USD 现金与 SGOV 安全线以上可释放额度限制；可动用资金不足时按比例缩放计划应买。",
@@ -302,20 +303,30 @@ def fx_conversion_summary(records: list[dict[str, Any]], fallback_fx: float) -> 
 def valuation_split_for_row(symbol: str, item: dict[str, Any]) -> tuple[float, str]:
     fpe = item.get("forward_pe")
     band = PE_BANDS.get(symbol)
-    if symbol in SATELLITE_SYMBOLS and isinstance(fpe, (int, float)) and band and fpe > band[1]:
-        return 0.5, "Forward PE 高于合理区间，建议执行时分批，估值/追高系数 0.50。"
+    peg = item.get("peg")
+    peg_band = PEG_BANDS.get(symbol)
+    if symbol in SATELLITE_SYMBOLS:
+        ps = item.get("forward_ps") or item.get("ps")
+        ps_band = PS_BANDS.get(symbol)
+        high_fpe = symbol not in PS_BANDS and isinstance(fpe, (int, float)) and band and fpe > band[1]
+        high_ps = symbol in PS_BANDS and isinstance(ps, (int, float)) and ps_band and ps > ps_band[1]
+        high_peg = isinstance(peg, (int, float)) and peg_band and peg > peg_band[1]
+        if high_fpe or high_ps or high_peg:
+            signals = []
+            if high_fpe:
+                signals.append("Forward PE")
+            if high_ps:
+                signals.append("PS")
+            if high_peg:
+                signals.append("PEG")
+            return 0.5, f"{' / '.join(signals)} 高于合理区间，估值系数 0.50。"
 
     recent_5d = item.get("recent_5d_pct")
-    if symbol == "VOO" and isinstance(recent_5d, (int, float)):
-        if recent_5d >= 3.0:
-            return 1.0, f"VOO 近 5 个交易日涨幅 {recent_5d:.2f}%，短期涨得较多；档位仍按 normal，不做额度限制。"
-        if recent_5d >= 2.0:
-            return 1.0, f"VOO 近 5 个交易日涨幅 {recent_5d:.2f}%，短期略热；档位仍按 normal，不做额度限制。"
-    if symbol == "QQQ" and isinstance(recent_5d, (int, float)):
+    if symbol in {"VOO", "QQQ"} and isinstance(recent_5d, (int, float)):
         if recent_5d >= 4.0:
-            return 0.5, f"QQQ 近 5 个交易日涨幅 {recent_5d:.2f}%，短期偏热，建议分批，估值/追高系数 0.50。"
+            return 0.5, f"{symbol} 近 5 个交易日涨幅 {recent_5d:.2f}%，短期偏热，估值系数 0.50。"
         if recent_5d >= 3.0:
-            return 0.75, f"QQQ 近 5 个交易日涨幅 {recent_5d:.2f}%，本轮稍微分批，估值/追高系数 0.75。"
+            return 0.75, f"{symbol} 近 5 个交易日涨幅 {recent_5d:.2f}%，本轮稍微分批，估值系数 0.75。"
     return 1.0, ""
 
 
@@ -1858,6 +1869,8 @@ def build_rebalance_v2(
     build_months: int | None = None,
 ) -> dict[str, Any]:
     now = datetime.now(TZ_SHANGHAI)
+    days_until_midterm = max(0, (MIDTERM_ELECTION_DATE - now.date()).days)
+    weeks_until_midterm = max(1, (days_until_midterm + 6) // 7)
     build_month_count = int(build_months or default_build_months(now))
     future_cash_months = max(0, build_month_count - 1)
     month_key = now.strftime("%Y-%m")
@@ -1930,7 +1943,8 @@ def build_rebalance_v2(
         month_start_cost_usd = max(0.0, cost_usd - bought_cost + sold_cost)
         target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         target_usd = target_pct * planned_total_usd
-        raw_gap = target_usd - month_start_cost_usd
+        planning_cost_usd = cost_usd if is_satellite else month_start_cost_usd
+        raw_gap = target_usd - planning_cost_usd
         target_tolerance_usd = max(5.0, target_usd * 0.01)
         gap = 0.0 if abs(raw_gap) <= target_tolerance_usd else raw_gap
         raw_actual_gap = target_usd - cost_usd
@@ -1946,31 +1960,32 @@ def build_rebalance_v2(
             has_large_trigger = True
 
         if is_satellite:
-            base_budget = max(0.0, target_usd)
-            tier_plan = base_budget * float(multiplier)
+            tier_multiplier = float(multiplier) / 0.1 if float(multiplier) > 0 else 0.0
+            base_budget = max(0.0, target_usd) * 0.1
+            tier_plan = base_budget * tier_multiplier
             gap_capped_plan = min(max(0.0, gap), tier_plan)
             planned = gap_capped_plan
             planned_formula_parts = [
-                planned_total_formula,
                 f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
-                f"月初成本 {_fmt_usd_compact(month_start_cost_usd)} = 当前成本 {_fmt_usd_compact(cost_usd)} - 本月买入成本 {_fmt_usd_compact(bought_cost)} + 本月卖出释放成本 {_fmt_usd_compact(sold_cost)}",
-                f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 月初成本 {_fmt_usd_compact(month_start_cost_usd)}",
-                f"实际差值 {_fmt_usd_compact(actual_gap)} = 目标 {_fmt_usd_compact(target_usd)} - 当前成本 {_fmt_usd_compact(cost_usd)}",
-                f"当前市值 {_fmt_usd_compact(current_usd)} 仅作行情参考",
-                f"档位计划 {_fmt_usd_compact(tier_plan)} = 目标 {_fmt_usd_compact(base_budget)} x {float(multiplier):.2f}x",
+                f"一手 {_fmt_usd_compact(tier_plan)} = 目标金额 {_fmt_usd_compact(target_usd)} x 0.1 x 档位倍率 {tier_multiplier:.0f}x",
                 f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 档位计划)",
             ]
         else:
-            base_budget = max(0.0, gap) / max(1, build_month_count)
+            weekly_core = sym in {"VOO", "QQQ"}
+            cadence_periods = weeks_until_midterm if weekly_core else build_month_count
+            base_budget = max(0.0, gap) / max(1, cadence_periods)
             planned = min(max(0.0, gap), base_budget * multiplier)
             planned_formula_parts = [
-                planned_total_formula,
                 f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
                 f"月初成本 {_fmt_usd_compact(month_start_cost_usd)} = 当前成本 {_fmt_usd_compact(cost_usd)} - 本月买入成本 {_fmt_usd_compact(bought_cost)} + 本月卖出释放成本 {_fmt_usd_compact(sold_cost)}",
                 f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 月初成本 {_fmt_usd_compact(month_start_cost_usd)}",
                 f"实际差值 {_fmt_usd_compact(actual_gap)} = 目标 {_fmt_usd_compact(target_usd)} - 当前成本 {_fmt_usd_compact(cost_usd)}",
-                f"月度基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {build_month_count}月",
-                f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 月度基准 x {float(multiplier):.2f}x)",
+                (
+                    f"每周基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {weeks_until_midterm}周（至 {MIDTERM_ELECTION_DATE.isoformat()} 中期选举）"
+                    if weekly_core
+                    else f"月度基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {build_month_count}月"
+                ),
+                f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, {'每周' if weekly_core else '月度'}基准 x {float(multiplier):.2f}x)",
             ]
         planned_formula = "；".join(planned_formula_parts)
 
@@ -2062,11 +2077,16 @@ def build_rebalance_v2(
                 "drawdown_pct": drawdown_pct,
                 "recent_5d_pct": item.get("recent_5d_pct"),
                 "target_pct": target_pct * 100.0,
-                "current_pct": month_start_cost_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
+                "current_pct": current_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "month_start_pct": month_start_cost_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "current_cost_pct": cost_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym),
+                "forward_ps": item.get("forward_ps"),
+                "ps": item.get("ps"),
+                "ps_band": ps_band_text(sym) if sym in PS_BANDS else None,
+                "peg": item.get("peg"),
+                "peg_band": peg_band_text(sym),
                 "valuation_split_factor": split,
                 "note": " ".join(note_parts),
             }
@@ -2120,6 +2140,7 @@ def build_rebalance_v2(
     remaining_deployable_usd = deployable_pool_usd
     raw_total = sum(float(row["raw_suggested_buy_usd"]) for row in rows)
     monthly_budget_usd = min(deployable_pool_usd, full_rebalance_need_usd) / max(1, build_month_count)
+    weekly_budget_usd = min(deployable_pool_usd, full_rebalance_need_usd) / max(1, weeks_until_midterm)
     remaining_reference_budget_usd = monthly_budget_usd
     suggested_run_budget_usd = min(remaining_deployable_usd, raw_total)
     strategy_budget_usd = suggested_run_budget_usd
@@ -2149,10 +2170,13 @@ def build_rebalance_v2(
         "base_planned_total_usd": planned_total_usd,
         "build_target": f"{BUILD_TARGET_YEAR}-{BUILD_TARGET_MONTH:02d}",
         "build_months": build_month_count,
+        "weeks_until_midterm": weeks_until_midterm,
+        "midterm_election_date": MIDTERM_ELECTION_DATE.isoformat(),
         "future_cash_months": future_cash_months,
         "deployable_pool_usd": deployable_pool_usd,
         "remaining_deployable_usd": remaining_deployable_usd,
         "monthly_budget_usd": monthly_budget_usd,
+        "weekly_budget_usd": weekly_budget_usd,
         "remaining_reference_budget_usd": remaining_reference_budget_usd,
         "strategy_budget_usd": strategy_budget_usd,
         "suggestion_scale": scale,
@@ -2160,6 +2184,7 @@ def build_rebalance_v2(
         "sgov_available_usd": sgov_available_usd,
         "sgov_large_trigger_enabled": has_large_trigger,
         "planned_total_usd": planned_total_usd,
+        "planned_total_formula": planned_total_formula,
         "rules": rebalance_rules_payload(build_month_count, future_cash_months, planned_new_cash_usd, future_cash_total_usd),
         "usage": usage,
         "rows": rows,
@@ -2226,6 +2251,8 @@ def build_rebalance(
                 "current_pct": current_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "forward_pe": fpe,
                 "pe_band": pe_band_text(sym),
+                "peg": item.get("peg"),
+                "peg_band": peg_band_text(sym),
                 "note": "Forward PE 偏高，建议分批买入。" if split < 1.0 else "按当前规则执行。",
             }
         )
