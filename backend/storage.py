@@ -8,6 +8,7 @@ from .config import (
     ALL_SYMBOLS,
     ASSET_META,
     BALANCES_FILE,
+    CLOSED_SATELLITE_PNL_FILE,
     DEFAULT_SATELLITE_TARGET_PCTS,
     FALLBACK_PRICES,
     HOLDINGS_FILE,
@@ -117,6 +118,35 @@ def load_satellite_targets() -> dict[str, float]:
 
 def save_satellite_targets(targets: dict[str, float]) -> None:
     _write_json(SATELLITE_TARGETS_FILE, normalize_satellite_targets(targets))
+
+
+def normalize_closed_satellite_pnl(raw: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for raw_symbol, item in raw.items():
+        symbol = str(raw_symbol or "").strip().upper()
+        if not symbol or not isinstance(item, dict):
+            continue
+        try:
+            pnl_usd = float(item.get("pnl_usd", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            continue
+        out[symbol] = {
+            "symbol": symbol,
+            "label": str(item.get("label") or symbol),
+            "pnl_usd": pnl_usd,
+            "closed_at": str(item.get("closed_at") or ""),
+        }
+    return out
+
+
+def load_closed_satellite_pnl() -> dict[str, dict[str, Any]]:
+    return normalize_closed_satellite_pnl(_read_json(CLOSED_SATELLITE_PNL_FILE, {}))
+
+
+def save_closed_satellite_pnl(rows: dict[str, dict[str, Any]]) -> None:
+    _write_json(CLOSED_SATELLITE_PNL_FILE, normalize_closed_satellite_pnl(rows))
 
 
 def load_user_state(_: str = "evan") -> tuple[dict[str, dict[str, float]], dict[str, float], str]:

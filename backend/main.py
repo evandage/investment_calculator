@@ -37,7 +37,17 @@ from .portfolio import (
     save_rebalance_budget,
     start_performance_history_scheduler,
 )
-from .storage import load_balances, load_holdings, load_satellite_targets, save_balances, save_holdings, save_satellite_targets
+from .storage import (
+    load_balances,
+    load_closed_satellite_pnl,
+    load_holdings,
+    load_satellite_targets,
+    load_trade_records,
+    save_balances,
+    save_closed_satellite_pnl,
+    save_holdings,
+    save_satellite_targets,
+)
 
 TZ_SHANGHAI = config_module.TZ_SHANGHAI
 
@@ -579,7 +589,40 @@ def satellite_universe() -> dict[str, Any]:
 
 @app.put("/api/satellite-universe")
 def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, Any]:
-    items = config_module.save_satellite_universe_config([item.model_dump() for item in payload.items])
+    previous_items = config_module.load_satellite_universe_config()
+    previous_symbols = {item["symbol"] for item in previous_items}
+    requested_items = [item.model_dump() for item in payload.items]
+    requested_symbols = {str(item.get("symbol") or "").strip().upper() for item in requested_items}
+    removed_symbols = previous_symbols - requested_symbols
+    if removed_symbols:
+        holdings_before = load_holdings()
+        trade_records = load_trade_records()
+        archived_rows = load_closed_satellite_pnl()
+        needs_quotes = any(float((holdings_before.get(sym) or {}).get("shares", 0.0) or 0.0) > 0 for sym in removed_symbols)
+        quotes = (fetch_quotes().get("quotes") or {}) if needs_quotes else {}
+        closed_at = datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds")
+        for sym in removed_symbols:
+            realized_pnl = sum(
+                float(record.get("realized_pnl", 0.0) or 0.0)
+                for record in trade_records
+                if record.get("symbol") == sym and record.get("action") == "sell"
+            )
+            holding = holdings_before.get(sym) or {}
+            shares = float(holding.get("shares", 0.0) or 0.0)
+            avg_cost = float(holding.get("avg_cost", 0.0) or 0.0)
+            price = float((quotes.get(sym) or {}).get("price", 0.0) or 0.0)
+            remaining_pnl = shares * (price - avg_cost) if shares > 0 and price > 0 else 0.0
+            archived_pnl = realized_pnl + remaining_pnl
+            if abs(archived_pnl) > 1e-9 or sym not in archived_rows:
+                archived_rows[sym] = {
+                    "symbol": sym,
+                    "label": next((item.get("label") or sym for item in previous_items if item["symbol"] == sym), sym),
+                    "pnl_usd": archived_pnl,
+                    "closed_at": closed_at,
+                }
+        save_closed_satellite_pnl(archived_rows)
+
+    items = config_module.save_satellite_universe_config(requested_items)
     _refresh_satellite_runtime_config()
     save_holdings(load_holdings())
     save_satellite_targets({item["symbol"]: float(item.get("target_pct") or 0.0) for item in items})
@@ -592,6 +635,7 @@ def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, An
         "items": items,
         "holdings": load_holdings(),
         "targets": load_satellite_targets(),
+        "archived_pnl": load_closed_satellite_pnl(),
     }
 
 

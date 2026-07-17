@@ -11,6 +11,7 @@ BALANCES_FILE = ROOT_DIR / "balances.json"
 MONTHLY_USAGE_FILE = ROOT_DIR / "monthly_budget_usage.json"
 SATELLITE_TARGETS_FILE = ROOT_DIR / "satellite_targets.json"
 SATELLITE_UNIVERSE_FILE = ROOT_DIR / "satellite_universe.json"
+CLOSED_SATELLITE_PNL_FILE = ROOT_DIR / "closed_satellite_pnl.json"
 PORTFOLIO_HISTORY_FILE = ROOT_DIR / "portfolio_history.json"
 TRADE_RECORDS_FILE = ROOT_DIR / "trades.json"
 FX_CONVERSION_RECORDS_FILE = ROOT_DIR / "fx_conversions.json"
@@ -256,21 +257,25 @@ REBALANCE_PHASE_DCA = "长期定投期"
 
 REBALANCE_RULES = {
     REBALANCE_PHASE_BUILD: {
-        "VOO": {"normal": (1.0, "正常建仓", "每月机械定投", "normal"), "bands": [(-10.0, 3.0, "大加", "3x", "large"), (-7.0, 2.0, "中加", "2x", "medium"), (-3.0, 1.5, "小加", "1.5x", "small")]},
-        "QQQ": {"normal": (1.0, "正常建仓", "每月机械定投", "normal"), "bands": [(-10.0, 3.0, "大加", "3x", "large"), (-7.0, 2.0, "中加", "2x", "medium"), (-3.0, 1.5, "小加", "1.5x", "small")]},
-        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-23.0, 0.5, "大加", "大加", "large"), (-20.0, 0.3, "中加", "中加", "medium"), (-15.0, 0.2, "小加", "小加", "small")]},
-        "GOOGL": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-24.0, 0.5, "大加", "大加", "large"), (-19.0, 0.3, "中加", "中加", "medium"), (-11.0, 0.2, "小加", "小加", "small")]},
-        "MSFT": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-22.0, 0.5, "大加", "大加", "large"), (-18.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
-        "AVGO": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-22.0, 0.3, "中加", "中加", "medium"), (-15.0, 0.2, "小加", "小加", "small")]},
+        "VOO": {"normal": (1.0, "正常建仓", "1x", "normal"), "bands": [(-13.0, 4.0, "大加", "4x", "large"), (-6.5, 2.5, "中加", "2.5x", "medium"), (-2.5, 1.5, "小加", "1.5x", "small")]},
+        "QQQ": {"normal": (1.0, "正常建仓", "1x", "normal"), "bands": [(-16.5, 3.0, "大加", "3x", "large"), (-9.0, 2.0, "中加", "2x", "medium"), (-4.0, 1.25, "小加", "1.25x", "small")]},
+        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-21.0, 0.5, "大加", "大加", "large"), (-16.0, 0.3, "中加", "中加", "medium"), (-8.5, 0.2, "小加", "小加", "small")]},
+        "TEM": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-52.5, 0.5, "大加", "大加", "large"), (-40.5, 0.3, "中加", "中加", "medium"), (-31.0, 0.2, "小加", "小加", "small")]},
+        "PLTR": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-40.5, 0.5, "大加", "大加", "large"), (-31.0, 0.3, "中加", "中加", "medium"), (-20.5, 0.2, "小加", "小加", "small")]},
+        "GOOGL": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-20.0, 0.5, "大加", "大加", "large"), (-14.0, 0.3, "中加", "中加", "medium"), (-6.5, 0.2, "小加", "小加", "small")]},
+        "MSFT": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-18.5, 0.5, "大加", "大加", "large"), (-11.5, 0.3, "中加", "中加", "medium"), (-5.5, 0.2, "小加", "小加", "small")]},
+        "AVGO": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-22.0, 0.5, "大加", "大加", "large"), (-14.5, 0.3, "中加", "中加", "medium"), (-8.0, 0.2, "小加", "小加", "small")]},
         "NVDA": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-21.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
     },
     REBALANCE_PHASE_DCA: {
-        "VOO": {"normal": (1.0, "正常定投", "正常", "normal"), "bands": [(-10.0, 2.5, "大加", "2.5x", "large"), (-7.0, 1.75, "明显加仓", "1.75x", "medium"), (-3.0, 1.25, "多买一点", "1.25x", "small")]},
-        "QQQ": {"normal": (1.0, "正常定投", "正常", "normal"), "bands": [(-10.0, 2.5, "大加", "2.5x", "large"), (-7.0, 1.75, "明显加仓", "1.75x", "medium"), (-3.0, 1.25, "多买一点", "1.25x", "small")]},
-        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-23.0, 0.5, "大加", "大加", "large"), (-20.0, 0.3, "中加", "中加", "medium"), (-15.0, 0.2, "小加", "小加", "small")]},
-        "GOOGL": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-24.0, 0.5, "大加", "大加", "large"), (-19.0, 0.3, "中加", "中加", "medium"), (-11.0, 0.2, "小加", "小加", "small")]},
-        "MSFT": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-22.0, 0.5, "大加", "大加", "large"), (-18.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
-        "AVGO": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-22.0, 0.3, "中加", "中加", "medium"), (-15.0, 0.2, "小加", "小加", "small")]},
+        "VOO": {"normal": (1.0, "正常定投", "1x", "normal"), "bands": [(-13.0, 4.0, "大加", "4x", "large"), (-6.5, 2.5, "中加", "2.5x", "medium"), (-2.5, 1.5, "小加", "1.5x", "small")]},
+        "QQQ": {"normal": (1.0, "正常定投", "1x", "normal"), "bands": [(-16.5, 3.0, "大加", "3x", "large"), (-9.0, 2.0, "中加", "2x", "medium"), (-4.0, 1.25, "小加", "1.25x", "small")]},
+        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-21.0, 0.5, "大加", "大加", "large"), (-16.0, 0.3, "中加", "中加", "medium"), (-8.5, 0.2, "小加", "小加", "small")]},
+        "TEM": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-52.5, 0.5, "大加", "大加", "large"), (-40.5, 0.3, "中加", "中加", "medium"), (-31.0, 0.2, "小加", "小加", "small")]},
+        "PLTR": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-40.5, 0.5, "大加", "大加", "large"), (-31.0, 0.3, "中加", "中加", "medium"), (-20.5, 0.2, "小加", "小加", "small")]},
+        "GOOGL": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-20.0, 0.5, "大加", "大加", "large"), (-14.0, 0.3, "中加", "中加", "medium"), (-6.5, 0.2, "小加", "小加", "small")]},
+        "MSFT": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-18.5, 0.5, "大加", "大加", "large"), (-11.5, 0.3, "中加", "中加", "medium"), (-5.5, 0.2, "小加", "小加", "small")]},
+        "AVGO": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-22.0, 0.5, "大加", "大加", "large"), (-14.5, 0.3, "中加", "中加", "medium"), (-8.0, 0.2, "小加", "小加", "small")]},
         "NVDA": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-21.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
     },
 }

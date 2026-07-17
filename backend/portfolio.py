@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 import re
 from datetime import date, datetime, timedelta
@@ -27,6 +28,7 @@ from .config import (
 )
 from .market_data import fetch_quotes
 from .storage import (
+    load_closed_satellite_pnl,
     load_monthly_usage,
     load_fx_conversion_records,
     load_portfolio_history,
@@ -130,22 +132,22 @@ def rebalance_rules_payload(
                     "成本缺口按月初成本口径计算，即目标金额减去当前成本扣除本月已买后的金额。",
                     "VOO/QQQ 按剩余月份折算为每周基准，再乘档位倍率计算本轮计划应买；个股按目标金额 × 0.1 × 档位倍率计算一手。",
                     f"卫星股以10月底目标金额为 1x；{zero_target_note}",
-                    "估值/追高系数不改变计划应买金额，只影响本轮建议买入；卫星股主要看 Forward PE，PLTR/TEM 用 60 日历史涨跌位置定档，VOO 仍按回撤触发档位，近 5 日涨幅偏热时只做备注提示。",
+                    "估值/追高系数不改变计划应买金额，只影响本轮建议买入；全部标的统一按近 60 个交易日高点回撤定档，近 5 日涨幅偏热时只做备注提示。",
                     "建议买入总额受 USD 现金与 SGOV 安全线以上可释放额度限制；可动用资金不足时按比例缩放计划应买。",
                 ],
             },
             {
                 "heading": "档位规则",
                 "items": [
-                    "VOO：小加 -3% / 1.5x，中加 -7% / 2x，大加 -10% / 3x；近 5 日涨幅偏热时只在备注提示，不额外降低额度。",
-                    "QQQ：与 VOO 使用同一套规则；建仓期小加 -3% / 1.5x、中加 -7% / 2x、大加 -10% / 3x，长期定投期小加 -3% / 1.25x、中加 -7% / 1.75x、大加 -10% / 2.5x。",
-                    "PLTR：正常 0.1x，小加 -15% / 0.2x，中加 -25% / 0.3x，大加 -35% / 0.5x；按 60 日历史涨跌位置定档。",
-                    "TEM：正常 0.1x，小加 -12% / 0.2x，中加 -20% / 0.3x，大加 -28% / 0.5x；按 60 日历史涨跌位置定档。",
-                    "ISRG：正常 0.1x，小加 -15% / 0.2x，中加 -20% / 0.3x，大加 -23% / 0.5x。",
-                    "GOOGL：正常 0.1x，小加 -11% / 0.2x，中加 -19% / 0.3x，大加 -24% / 0.5x。",
-                    "MSFT：正常 0.1x，小加 -12% / 0.2x，中加 -18% / 0.3x，大加 -22% / 0.5x。",
-                    "AVGO：正常 0.1x，小加 -15% / 0.2x，中加 -22% / 0.3x，大加 -25% / 0.5x。",
-                    "NVDA：正常 0.1x，小加 -12% / 0.2x，中加 -21% / 0.3x，大加 -25% / 0.5x。",
+                    "档位取全历史60日回撤的65% / 85% / 95%分位数；仅以上月末波动状态乘0.95 / 1.00 / 1.05，并在单次回撤周期内冻结。",
+                    "VOO：正常 1x，小加 -2.5% / 1.5x，中加 -6.5% / 2.5x，大加 -13% / 4x。",
+                    "QQQ：正常 1x，小加 -4% / 1.25x，中加 -9% / 2x，大加 -16.5% / 3x。",
+                    "ISRG：正常 0.1x，小加 -8.5% / 0.2x，中加 -16% / 0.3x，大加 -21% / 0.5x。",
+                    "TEM：正常 0.1x，小加 -31% / 0.2x，中加 -40.5% / 0.3x，大加 -52.5% / 0.5x；历史不足3年，低置信度。",
+                    "PLTR：正常 0.1x，小加 -20.5% / 0.2x，中加 -31% / 0.3x，大加 -40.5% / 0.5x。",
+                    "GOOGL：正常 0.1x，小加 -6.5% / 0.2x，中加 -14% / 0.3x，大加 -20% / 0.5x。",
+                    "MSFT：正常 0.1x，小加 -5.5% / 0.2x，中加 -11.5% / 0.3x，大加 -18.5% / 0.5x。",
+                    "AVGO：正常 0.1x，小加 -8% / 0.2x，中加 -14.5% / 0.3x，大加 -22% / 0.5x。",
                 ],
             },
         ],
@@ -201,18 +203,6 @@ def intensity_multiplier(symbol: str, phase: str, intensity: str) -> float:
 
 
 def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> tuple[float, str, str, str]:
-    if symbol in {"PLTR", "TEM"}:
-        if not isinstance(drawdown_pct, (int, float)):
-            return 0.1, "历史波动观察", "正常", "normal"
-        drawdown = float(drawdown_pct)
-        if symbol == "PLTR":
-            bands = [(-35.0, 0.5, "PLTR 历史低位大加", "大加", "large"), (-25.0, 0.3, "PLTR 历史低位中加", "中加", "medium"), (-15.0, 0.2, "PLTR 历史低位小加", "小加", "small")]
-        else:
-            bands = [(-28.0, 0.5, "TEM 历史低位大加", "大加", "large"), (-20.0, 0.3, "TEM 历史低位中加", "中加", "medium"), (-12.0, 0.2, "TEM 历史低位小加", "小加", "small")]
-        for threshold, multiplier, action, signal, intensity in bands:
-            if drawdown <= threshold:
-                return multiplier, action, signal, intensity
-        return 0.1, "历史波动观察", "正常", "normal"
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     if not rule:
         return 0.0, "暂无规则", "暂无规则", "normal"
@@ -226,29 +216,12 @@ def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> 
 
 
 def signal_for_historical_position(symbol: str, item: dict[str, Any], phase: str) -> tuple[float, str, str, str]:
-    if symbol not in {"PLTR", "TEM"}:
-        return signal_for_drawdown(symbol, item.get("drawdown_pct"), phase)
-    recent_5d = item.get("recent_5d_pct")
-    if isinstance(recent_5d, (int, float)):
-        if float(recent_5d) >= 15.0:
-            return 0.1, f"{symbol} 短期大涨观察", "normal", "normal"
-        if float(recent_5d) >= 8.0:
-            multiplier, action, signal, intensity = signal_for_drawdown(symbol, item.get("drawdown_pct"), phase)
-            if intensity_rank(intensity) > intensity_rank("small"):
-                return 0.2, f"{symbol} 涨后仅小加观察", "small", "small"
-            return multiplier, action, signal, intensity
     return signal_for_drawdown(symbol, item.get("drawdown_pct"), phase)
 
 
 def signal_for_intensity(symbol: str, phase: str, intensity: str) -> tuple[float, str, str, str]:
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     intensity = normalize_intensity(intensity)
-    if symbol in {"PLTR", "TEM"}:
-        return {
-            "small": (0.2, f"{symbol} 历史低位小加", "小加", "small"),
-            "medium": (0.3, f"{symbol} 历史低位中加", "中加", "medium"),
-            "large": (0.5, f"{symbol} 历史低位大加", "大加", "large"),
-        }.get(intensity, (0.1, "历史波动观察", "正常", "normal"))
     if not rule or intensity == "none":
         return 0.0, "暂无规则", "暂无规则", "normal"
     if intensity == "normal":
@@ -485,6 +458,20 @@ def build_visualizations(
                     "currency": "CNY",
                 }
             )
+    for sym, archived in load_closed_satellite_pnl().items():
+        if sym in SATELLITE_SYMBOLS:
+            continue
+        pnl_usd = float(archived.get("pnl_usd", 0.0) or 0.0)
+        satellite_pnl_rank.append(
+            {
+                "symbol": sym,
+                "label": f"{archived.get('label') or sym}*",
+                "pnl": pnl_usd,
+                "pnl_cny": pnl_usd * fx,
+                "currency": "USD",
+                "archived": True,
+            }
+        )
     pnl_rank.append(
         {
             "symbol": "SATELLITE",
@@ -667,6 +654,29 @@ def fetch_fund_close_history(symbol: str) -> dict[str, float]:
                 continue
             if price > 0:
                 prices[day] = price
+    # The legacy F10DataApi endpoint may return only `var apidata=`. The
+    # fund page's own net-worth series contains the same official daily NAVs
+    # and also supplements a legacy response that has not published its newest
+    # rows yet.
+    try:
+        response = requests.get(
+            f"https://fund.eastmoney.com/pingzhongdata/{code}.js",
+            headers=FUND_HISTORY_HEADERS,
+            timeout=(5, 20),
+        )
+        response.encoding = "utf-8"
+        match = re.search(r"var\s+Data_netWorthTrend\s*=\s*(\[.*?\]);", response.text, flags=re.S)
+        trend = json.loads(match.group(1)) if match else []
+    except (requests.RequestException, json.JSONDecodeError, TypeError, ValueError):
+        trend = []
+    for item in trend:
+        try:
+            day = datetime.fromtimestamp(float(item["x"]) / 1000.0, TZ_SHANGHAI).date().isoformat()
+            price = float(item["y"])
+        except (KeyError, TypeError, ValueError, OSError):
+            continue
+        if price > 0:
+            prices[day] = price
     return prices
 
 
@@ -1066,6 +1076,38 @@ def ensure_completed_performance_history(
     usd_cost_fx = float(fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx)
     symbols = set(holdings) | {str(trade.get("symbol", "")).upper() for trade in trades} | {"001015", "VOO", "QQQ"}
     histories = fetch_close_histories(symbols)
+    repaired_market_history = False
+    for row in rows:
+        day = str(row.get("date") or "")[:10]
+        if not day:
+            continue
+        available_symbols = market_union_open_symbols(day, histories)
+        recorded_symbols = set(row.get("market_open_symbols") or [])
+        benchmark_prices = dict(row.get("benchmark_prices") or {})
+        benchmark_daily_pct = dict(row.get("benchmark_daily_pct") or {})
+        needs_repair = any(
+            sym not in benchmark_prices
+            or sym not in benchmark_daily_pct
+            or (sym not in recorded_symbols and coerce_optional_float(benchmark_daily_pct.get(sym)) == 0.0)
+            for sym in available_symbols
+        )
+        if not needs_repair:
+            continue
+
+        for sym in available_symbols:
+            price = close_on(histories.get(sym, {}), day)
+            daily_pct = completed_daily_pct_for_symbol(sym, day, histories)
+            if price is not None:
+                benchmark_prices[sym] = price
+            if daily_pct is not None:
+                benchmark_daily_pct[sym] = daily_pct
+        row["benchmark_prices"] = benchmark_prices
+        row["benchmark_daily_pct"] = benchmark_daily_pct
+        row["market_open_symbols"] = sorted(recorded_symbols | set(available_symbols))
+        repaired_market_history = True
+    if repaired_market_history:
+        save_portfolio_history(user_id, sorted(rows, key=lambda row: row["date"]))
+
     backfilled = False
     for row in rows:
         if row.get("usd_return_pct") is not None or not row.get("holdings_snapshot"):
@@ -1127,9 +1169,10 @@ def ensure_completed_performance_history(
             True,
         )
         benchmark_daily_pct = {
-            sym: (daily_pct if daily_pct is not None else 0.0)
+            sym: daily_pct
             for sym in ("001015", "VOO", "QQQ")
             for daily_pct in [completed_daily_pct_for_symbol(sym, day, histories)]
+            if daily_pct is not None
         }
         benchmark_prices = {
             sym: price
