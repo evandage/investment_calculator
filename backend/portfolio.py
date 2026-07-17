@@ -2180,7 +2180,8 @@ def build_rebalance_v2(
         confirmed_signal = episode_payload.get("confirmed_signal") or {}
         threshold_snapshot = episode_payload.get("threshold_snapshot") or {}
         monthly_threshold_snapshot = episode_payload.get("current_month_threshold_snapshot") or threshold_snapshot
-        validation_warnings = list(monthly_threshold_snapshot.get("warnings") or [])
+        validation = monthly_threshold_snapshot.get("validation") or {}
+        validation_alerts = list(validation.get("alerts") or [])
         confirmed_tier = str(confirmed_signal.get("tier") or "normal")
         multiplier, action, signal, intensity = signal_for_intensity(sym, phase, confirmed_tier)
         rebalance_rule = REBALANCE_RULES.get(phase, {}).get(sym, {})
@@ -2297,9 +2298,13 @@ def build_rebalance_v2(
                 "threshold_snapshot": threshold_snapshot,
                 "monthly_threshold_snapshot": monthly_threshold_snapshot,
                 "walk_forward_warning": {
-                    "active": bool(validation_warnings),
-                    "count": len(validation_warnings),
-                    "messages": validation_warnings,
+                    "active": validation.get("status") == "attention" and bool(validation_alerts),
+                    "status": validation.get("status") or "ok",
+                    "count": len(validation_alerts),
+                    "messages": validation_alerts,
+                    "review_message": validation.get("review_message"),
+                    "diagnostic_count": int(validation.get("diagnostic_count") or 0),
+                    "diagnostics": list(validation.get("diagnostics") or []),
                     "statistics": monthly_threshold_snapshot.get("walk_forward") or {},
                     "policy": monthly_threshold_snapshot.get("validation_policy") or "warning_only",
                 },

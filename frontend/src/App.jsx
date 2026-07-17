@@ -1340,6 +1340,16 @@ function formatThresholdSet(thresholds) {
   return `${value("small")} / ${value("medium")} / ${value("large")}`;
 }
 
+function formatStatisticPct(value, digits = 1) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number.toFixed(digits)}%` : "-";
+}
+
+function formatStatisticRate(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(0)}%` : "-";
+}
+
 function percentReferencePrice(candles = [], referencePrice) {
   if (!candles.length) return null;
   const suppliedReference = Number(referencePrice);
@@ -2772,6 +2782,7 @@ function Rebalance({ data, onSaved }) {
   const [activeTradeSymbol, setActiveTradeSymbol] = useState("");
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [statisticsOpen, setStatisticsOpen] = useState(false);
   const [universeOpen, setUniverseOpen] = useState(false);
   const [fxConversionOpen, setFxConversionOpen] = useState(false);
   const [inputs, setInputs] = useState({});
@@ -3156,8 +3167,76 @@ function Rebalance({ data, onSaved }) {
       {data.rebalance.monthly_recalculation ? (
         <div className={`monthlyRecalculationStatus ${data.rebalance.monthly_recalculation.status || ""}`}>
           月度档位：{data.rebalance.monthly_recalculation.effective_month} · {data.rebalance.monthly_recalculation.status === "success" ? "已重算" : "等待重算"}
-          {data.rebalance.monthly_recalculation.warning_count ? ` · 统计警告 ${data.rebalance.monthly_recalculation.warning_count}` : ""}
-          <small>固定分位数 65% / 85% / 95%，Walk-forward 仅预警</small>
+          {data.rebalance.monthly_recalculation.attention_symbol_count ? ` · 需关注 ${data.rebalance.monthly_recalculation.attention_symbol_count}个标的` : " · 无需关注"}
+          {data.rebalance.monthly_recalculation.review_symbol_count ? ` · 复核 ${data.rebalance.monthly_recalculation.review_symbol_count}个` : ""}
+          <small>固定分位数 65% / 85% / 95% · {Number(data.rebalance.monthly_recalculation.diagnostic_count || 0)}项统计诊断已折叠</small>
+          <button className="statisticsDetailButton" onClick={() => setStatisticsOpen(true)}>统计详情</button>
+        </div>
+      ) : null}
+      {statisticsOpen ? (
+        <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
+          if (shouldCloseFromBackdropClick(event)) setStatisticsOpen(false);
+        }}>
+          <div className="modalPanel statisticsModal" role="dialog" aria-modal="true" aria-labelledby="statistics-detail-title" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <div>
+                <h2 id="statistics-detail-title">回撤档位统计详情</h2>
+                <div className="muted">月度快照 {data.rebalance.monthly_recalculation?.effective_month || "-"} · 验证结果只用于提示，不会自动修改 65% / 85% / 95% 分位数</div>
+              </div>
+              <button onClick={() => setStatisticsOpen(false)}>关闭</button>
+            </div>
+            <div className="statisticsTickerList">
+              {suggestionRows.map((row) => {
+                const warning = row.walk_forward_warning || {};
+                const snapshot = row.monthly_threshold_snapshot || {};
+                const walkForward = warning.statistics || {};
+                const tierStatistics = walkForward.statistics || {};
+                const frequencies = walkForward.annual_frequency || {};
+                const diagnostics = warning.diagnostics || [];
+                const status = warning.status || "ok";
+                const statusLabel = status === "review" ? "复核" : status === "attention" ? "需关注" : "正常";
+                return (
+                  <section className="statisticsTickerCard" key={`statistics-${row.symbol}`}>
+                    <div className="statisticsTickerHeader">
+                      <strong>{row.symbol}</strong>
+                      <span className={`statisticsStatus ${status}`}>{statusLabel}</span>
+                      <span className="muted">执行档位 {formatThresholdSet(snapshot.thresholds_pct)}</span>
+                      <span className="muted">样本 {Number(snapshot.history_days || 0)} 日</span>
+                    </div>
+                    {warning.review_message ? <div className="statisticsReviewMessage">{warning.review_message}</div> : null}
+                    {(warning.messages || []).length ? (
+                      <ul className="statisticsAlerts">{warning.messages.map((message) => <li key={message}>{message}</li>)}</ul>
+                    ) : null}
+                    <div className="statisticsTableWrap">
+                      <table className="statisticsTierTable">
+                        <thead><tr><th>档位</th><th>年均触发</th><th>样本</th><th>60日中位收益</th><th>120日中位收益</th><th>120日胜率</th><th>后续MAE</th></tr></thead>
+                        <tbody>
+                          {[['small', '小加'], ['medium', '中加'], ['large', '大加']].map(([key, label]) => {
+                            const stat = tierStatistics[key] || {};
+                            return (
+                              <tr key={key}>
+                                <th>{label}</th>
+                                <td>{Number.isFinite(Number(frequencies[key])) ? `${Number(frequencies[key]).toFixed(2)}次/年` : "-"}</td>
+                                <td>{Number(stat.sample_count || 0)}</td>
+                                <td>{formatStatisticPct(stat.forward_return_median_pct?.["60"])}</td>
+                                <td>{formatStatisticPct(stat.forward_return_median_pct?.["120"])}</td>
+                                <td>{formatStatisticRate(stat.forward_return_win_rate?.["120"])}</td>
+                                <td>{formatStatisticPct(stat.mae_120d_median_pct)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <details className="statisticsDiagnostics">
+                      <summary>查看统计诊断（{Number(warning.diagnostic_count || diagnostics.length)}项）</summary>
+                      {diagnostics.length ? <ul>{diagnostics.map((message, index) => <li key={`${row.symbol}-diagnostic-${index}`}>{message}</li>)}</ul> : <p className="muted">无折叠诊断</p>}
+                    </details>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
         </div>
       ) : null}
       {budgetOpen ? (
@@ -3276,7 +3355,7 @@ function Rebalance({ data, onSaved }) {
                             className="walkForwardWarning"
                             title={(row.walk_forward_warning.messages || []).join("\n")}
                           >
-                            统计警告 {Number(row.walk_forward_warning.count || 0)}
+                            统计提醒{Number(row.walk_forward_warning.count || 0) > 1 ? ` ${Number(row.walk_forward_warning.count)}` : ""}
                           </span>
                         ) : null}
                       </div>

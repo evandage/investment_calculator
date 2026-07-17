@@ -45,6 +45,53 @@ def _threshold_ci_pct(values: list[list[float]]) -> dict[str, list[float]]:
     return output
 
 
+def build_validation_summary(result: dict[str, Any]) -> dict[str, Any]:
+    """Promote only decision-relevant validation failures to the main UI."""
+    diagnostics = list(dict.fromkeys(result.get("warnings") or []))
+    mode = str(result.get("execution_mode") or "automatic")
+    if mode == "manual_review_only":
+        return {
+            "status": "review",
+            "alerts": [],
+            "review_message": "历史与同行样本不足，继续人工复核",
+            "diagnostics": diagnostics,
+            "diagnostic_count": len(diagnostics),
+        }
+
+    statistics = (result.get("walk_forward") or {}).get("statistics") or {}
+    alerts: list[str] = []
+    insufficient_tiers: list[str] = []
+    tier_labels = {"small": "小加", "medium": "中加", "large": "大加"}
+    for tier in TIER_NAMES:
+        stats = statistics.get(tier) or {}
+        sample_count = int(stats.get("sample_count") or 0)
+        # A rare large tier is expected to have few observations, but fewer
+        # than three independent events cannot support an outcome judgment.
+        if sample_count < 3:
+            insufficient_tiers.append(tier_labels[tier])
+            continue
+        medians = stats.get("forward_return_median_pct") or {}
+        median_60 = medians.get("60")
+        median_120 = medians.get("120")
+        if median_60 is not None and median_120 is not None and float(median_60) < 0 and float(median_120) < 0:
+            alerts.append(
+                f"{tier_labels[tier]}触发后60日和120日中位收益均为负"
+            )
+        ci_120 = (stats.get("forward_return_ci90_pct") or {}).get("120") or [None, None]
+        if len(ci_120) == 2 and ci_120[1] is not None and float(ci_120[1]) < 0:
+            alerts.append(f"{tier_labels[tier]}触发后120日收益90%区间整体低于0")
+    if insufficient_tiers:
+        alerts.insert(0, f"{'、'.join(insufficient_tiers)}独立触发样本不足3个")
+    alerts = list(dict.fromkeys(alerts))
+    return {
+        "status": "attention" if alerts else "ok",
+        "alerts": alerts,
+        "review_message": None,
+        "diagnostics": diagnostics,
+        "diagnostic_count": len(diagnostics),
+    }
+
+
 def calculate_monthly_results(
     as_of: date,
     *,
@@ -100,6 +147,7 @@ def install_monthly_results(
                 "confidence_by_tier": result.get("confidence_by_tier") or {},
                 "walk_forward": result.get("walk_forward") or {},
                 "warnings": list(dict.fromkeys(result.get("warnings") or [])),
+                "validation": build_validation_summary(result),
                 "execution_overrides": result.get("execution_overrides") or {},
                 "calculation_kind": "monthly_auto",
                 "validation_policy": "warning_only",
@@ -152,14 +200,21 @@ def run_monthly_recalculation(
                 results=results,
                 created_at=current.isoformat(timespec="seconds"),
             )
-            warning_count = sum(len(result.get("warnings") or []) for result in results)
+            validations = [build_validation_summary(result) for result in results]
+            attention_symbol_count = sum(item.get("status") == "attention" for item in validations)
+            review_symbol_count = sum(item.get("status") == "review" for item in validations)
+            alert_count = sum(len(item.get("alerts") or []) for item in validations)
+            diagnostic_count = sum(int(item.get("diagnostic_count") or 0) for item in validations)
             run = {
                 "effective_month": effective_month,
                 "as_of_date": as_of.isoformat(),
                 "status": "success",
                 "completed_at": datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds"),
                 "symbols": [result.get("ticker") for result in results],
-                "warning_count": warning_count,
+                "warning_count": alert_count,
+                "attention_symbol_count": attention_symbol_count,
+                "review_symbol_count": review_symbol_count,
+                "diagnostic_count": diagnostic_count,
                 "quantiles": list(MONTHLY_QUANTILES),
                 "validation_policy": "warning_only",
             }

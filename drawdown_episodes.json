@@ -106,7 +106,7 @@
         "symbol": "VOO",
         "phase": "建仓期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -3.5,
@@ -349,6 +349,21 @@
           "medium档年均独立触发1.75次，不在目标0.8-1.5次内",
           "large档年均独立触发0.63次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发5.00次，不在目标2-4次内",
+            "medium档年均独立触发1.75次，不在目标0.8-1.5次内",
+            "large档年均独立触发0.63次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 7
+        },
         "execution_overrides": {
           "small": 0.035
         },
@@ -360,7 +375,7 @@
         "symbol": "VOO",
         "phase": "长期定投期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -3.5,
@@ -603,6 +618,21 @@
           "medium档年均独立触发1.75次，不在目标0.8-1.5次内",
           "large档年均独立触发0.63次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发5.00次，不在目标2-4次内",
+            "medium档年均独立触发1.75次，不在目标0.8-1.5次内",
+            "large档年均独立触发0.63次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 7
+        },
         "execution_overrides": {
           "small": 0.035
         },
@@ -614,7 +644,7 @@
         "symbol": "QQQ",
         "phase": "建仓期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -3.5,
@@ -850,6 +880,21 @@
           "medium档年均独立触发1.63次，不在目标0.8-1.5次内",
           "large档年均独立触发0.88次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发4.00次，不在目标2-4次内",
+            "medium档年均独立触发1.63次，不在目标0.8-1.5次内",
+            "large档年均独立触发0.88次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 7
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -859,7 +904,7 @@
         "symbol": "QQQ",
         "phase": "长期定投期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -3.5,
@@ -1095,6 +1140,21 @@
           "medium档年均独立触发1.63次，不在目标0.8-1.5次内",
           "large档年均独立触发0.88次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发4.00次，不在目标2-4次内",
+            "medium档年均独立触发1.63次，不在目标0.8-1.5次内",
+            "large档年均独立触发0.88次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 7
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -1104,7 +1164,7 @@
         "symbol": "ISRG",
         "phase": "建仓期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -8.5,
@@ -1326,6 +1386,19 @@
           "small档触发后60日中位收益为-2.19%",
           "large档120日收益90%置信区间跨越0，方向不稳定"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档年均独立触发0.88次，不在目标0.25-0.5次内",
+            "small档触发后60日中位收益为-2.19%",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 5
+        },
         "execution_overrides": {
           "large": 0.25
         },
@@ -1337,7 +1410,7 @@
         "symbol": "ISRG",
         "phase": "长期定投期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -8.5,
@@ -1559,6 +1632,19 @@
           "small档触发后60日中位收益为-2.19%",
           "large档120日收益90%置信区间跨越0，方向不稳定"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档年均独立触发0.88次，不在目标0.25-0.5次内",
+            "small档触发后60日中位收益为-2.19%",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 5
+        },
         "execution_overrides": {
           "large": 0.25
         },
@@ -1570,7 +1656,7 @@
         "symbol": "TEM",
         "phase": "建仓期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "manual_review_only",
         "thresholds_pct": {},
         "base_quantile_thresholds_pct": {
@@ -1734,6 +1820,23 @@
           "medium档walk-forward独立样本仅0个，结果置信度低",
           "large档walk-forward独立样本仅0个，结果置信度低"
         ],
+        "validation": {
+          "status": "review",
+          "alerts": [],
+          "review_message": "历史与同行样本不足，继续人工复核",
+          "diagnostics": [
+            "历史不足3年，未配置同行组；各档置信度下调为low",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档没有足够walk-forward测试期",
+            "medium档没有足够walk-forward测试期",
+            "large档没有足够walk-forward测试期",
+            "small档walk-forward独立样本仅0个，结果置信度低",
+            "medium档walk-forward独立样本仅0个，结果置信度低",
+            "large档walk-forward独立样本仅0个，结果置信度低"
+          ],
+          "diagnostic_count": 9
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -1743,7 +1846,7 @@
         "symbol": "TEM",
         "phase": "长期定投期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "manual_review_only",
         "thresholds_pct": {},
         "base_quantile_thresholds_pct": {
@@ -1907,6 +2010,23 @@
           "medium档walk-forward独立样本仅0个，结果置信度低",
           "large档walk-forward独立样本仅0个，结果置信度低"
         ],
+        "validation": {
+          "status": "review",
+          "alerts": [],
+          "review_message": "历史与同行样本不足，继续人工复核",
+          "diagnostics": [
+            "历史不足3年，未配置同行组；各档置信度下调为low",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档没有足够walk-forward测试期",
+            "medium档没有足够walk-forward测试期",
+            "large档没有足够walk-forward测试期",
+            "small档walk-forward独立样本仅0个，结果置信度低",
+            "medium档walk-forward独立样本仅0个，结果置信度低",
+            "large档walk-forward独立样本仅0个，结果置信度低"
+          ],
+          "diagnostic_count": 9
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -1916,7 +2036,7 @@
         "symbol": "PLTR",
         "phase": "建仓期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -20.5,
@@ -2101,6 +2221,23 @@
           "medium档walk-forward独立样本仅2个，结果置信度低",
           "large档walk-forward独立样本仅0个，结果置信度低"
         ],
+        "validation": {
+          "status": "attention",
+          "alerts": [
+            "中加、大加独立触发样本不足3个"
+          ],
+          "review_message": null,
+          "diagnostics": [
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发1.34次，不在目标2-4次内",
+            "medium档年均独立触发0.53次，不在目标0.8-1.5次内",
+            "large档年均独立触发0.00次，不在目标0.25-0.5次内",
+            "small档120日收益90%置信区间跨越0，方向不稳定",
+            "medium档walk-forward独立样本仅2个，结果置信度低",
+            "large档walk-forward独立样本仅0个，结果置信度低"
+          ],
+          "diagnostic_count": 7
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -2110,7 +2247,7 @@
         "symbol": "PLTR",
         "phase": "长期定投期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -20.5,
@@ -2295,6 +2432,23 @@
           "medium档walk-forward独立样本仅2个，结果置信度低",
           "large档walk-forward独立样本仅0个，结果置信度低"
         ],
+        "validation": {
+          "status": "attention",
+          "alerts": [
+            "中加、大加独立触发样本不足3个"
+          ],
+          "review_message": null,
+          "diagnostics": [
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发1.34次，不在目标2-4次内",
+            "medium档年均独立触发0.53次，不在目标0.8-1.5次内",
+            "large档年均独立触发0.00次，不在目标0.25-0.5次内",
+            "small档120日收益90%置信区间跨越0，方向不稳定",
+            "medium档walk-forward独立样本仅2个，结果置信度低",
+            "large档walk-forward独立样本仅0个，结果置信度低"
+          ],
+          "diagnostic_count": 7
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -2304,7 +2458,7 @@
         "symbol": "GOOGL",
         "phase": "建仓期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -6.0,
@@ -2532,6 +2686,18 @@
           "medium档年均独立触发1.50次，不在目标0.8-1.5次内",
           "large档年均独立触发1.13次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "medium档年均独立触发1.50次，不在目标0.8-1.5次内",
+            "large档年均独立触发1.13次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 4
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -2541,7 +2707,7 @@
         "symbol": "GOOGL",
         "phase": "长期定投期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -6.0,
@@ -2769,6 +2935,18 @@
           "medium档年均独立触发1.50次，不在目标0.8-1.5次内",
           "large档年均独立触发1.13次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "medium档年均独立触发1.50次，不在目标0.8-1.5次内",
+            "large档年均独立触发1.13次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 4
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -2778,7 +2956,7 @@
         "symbol": "MSFT",
         "phase": "建仓期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -5.5,
@@ -3028,6 +3206,21 @@
           "medium档年均独立触发2.13次，不在目标0.8-1.5次内",
           "large档年均独立触发1.13次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发5.00次，不在目标2-4次内",
+            "medium档年均独立触发2.13次，不在目标0.8-1.5次内",
+            "large档年均独立触发1.13次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 7
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -3037,7 +3230,7 @@
         "symbol": "MSFT",
         "phase": "长期定投期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -5.5,
@@ -3287,6 +3480,21 @@
           "medium档年均独立触发2.13次，不在目标0.8-1.5次内",
           "large档年均独立触发1.13次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发5.00次，不在目标2-4次内",
+            "medium档年均独立触发2.13次，不在目标0.8-1.5次内",
+            "large档年均独立触发1.13次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 7
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -3296,7 +3504,7 @@
         "symbol": "AVGO",
         "phase": "建仓期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -7.0,
@@ -3529,6 +3737,19 @@
           "medium档年均独立触发1.75次，不在目标0.8-1.5次内",
           "large档年均独立触发1.00次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "medium档年均独立触发1.75次，不在目标0.8-1.5次内",
+            "large档年均独立触发1.00次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 5
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -3538,7 +3759,7 @@
         "symbol": "AVGO",
         "phase": "长期定投期",
         "effective_month": "2026-07",
-        "created_at": "2026-07-17T15:33:13+08:00",
+        "created_at": "2026-07-17T16:00:19+08:00",
         "mode": "automatic",
         "thresholds_pct": {
           "small": -7.0,
@@ -3771,6 +3992,19 @@
           "medium档年均独立触发1.75次，不在目标0.8-1.5次内",
           "large档年均独立触发1.00次，不在目标0.25-0.5次内"
         ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "medium档年均独立触发1.75次，不在目标0.8-1.5次内",
+            "large档年均独立触发1.00次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 5
+        },
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
@@ -3799,7 +4033,7 @@
         "effective_month": "2026-07",
         "as_of_date": "2026-06-30",
         "status": "success",
-        "completed_at": "2026-07-17T15:33:20+08:00",
+        "completed_at": "2026-07-17T16:00:26+08:00",
         "symbols": [
           "VOO",
           "QQQ",
@@ -3810,7 +4044,10 @@
           "MSFT",
           "AVGO"
         ],
-        "warning_count": 51,
+        "warning_count": 1,
+        "attention_symbol_count": 1,
+        "review_symbol_count": 1,
+        "diagnostic_count": 51,
         "quantiles": [
           0.65,
           0.85,
@@ -4016,6 +4253,6 @@
         "end_reason": null
       }
     },
-    "updated_at": "2026-07-17T15:33:20+08:00"
+    "updated_at": "2026-07-17T16:00:26+08:00"
   }
 }

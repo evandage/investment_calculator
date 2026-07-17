@@ -10,7 +10,7 @@ import pandas as pd
 from analysis.drawdown_thresholds import walk_forward_outcome_statistics
 from backend.config import TZ_SHANGHAI
 from backend.drawdown_episodes import ensure_threshold_snapshot
-from backend.drawdown_recalculation import install_monthly_results, run_monthly_recalculation
+from backend.drawdown_recalculation import build_validation_summary, install_monthly_results, run_monthly_recalculation
 
 
 def sample_result(symbol: str = "VOO") -> dict:
@@ -35,6 +35,25 @@ def sample_result(symbol: str = "VOO") -> dict:
 
 
 class MonthlyRecalculationTests(unittest.TestCase):
+    def test_raw_diagnostics_do_not_become_main_table_alerts(self):
+        result = sample_result()
+        result["walk_forward"]["statistics"] = {
+            tier: {
+                "sample_count": 5,
+                "forward_return_median_pct": {"60": 3.0, "120": 8.0},
+                "forward_return_ci90_pct": {"120": [-4.0, 15.0]},
+            }
+            for tier in ("small", "medium", "large")
+        }
+        result["warnings"] = [
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+        ]
+        validation = build_validation_summary(result)
+        self.assertEqual(validation["status"], "ok")
+        self.assertEqual(validation["alerts"], [])
+        self.assertEqual(validation["diagnostic_count"], 2)
+
     def test_walk_forward_statistics_include_returns_mae_and_confidence_intervals(self):
         close = pd.Series([100.0 + index for index in range(150)])
         stats = walk_forward_outcome_statistics(close, [5, 10], seed=7)
