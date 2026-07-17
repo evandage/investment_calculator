@@ -757,6 +757,11 @@ def fetch_fund_quote(code: str) -> dict[str, Any] | None:
         "regular_price": price,
         "change_pct": change_pct,
         "regular_change_pct": change_pct,
+        # Keep the provider timestamp with the quote.  Around the A-share open
+        # Eastmoney can still return the previous trading day's last estimate;
+        # consumers need this field to avoid treating that stale move as today.
+        "quote_date": str(obj.get("gztime") or obj.get("jzrq") or "")[:10],
+        "quote_time": str(obj.get("gztime") or ""),
         "extended_price": None,
         "extended_change_pct": None,
         "session": "regular",

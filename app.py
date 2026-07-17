@@ -1827,8 +1827,24 @@ def _fetch_fund_price_change(code: str) -> tuple[float, float, str] | None:
     """基金展示口径：交易中用估算；收盘后当日净值未披露前继续用估算。"""
     current = datetime.now(_TZ_SHANGHAI)
     today = current.strftime("%Y-%m-%d")
+    minutes = current.hour * 60 + current.minute
     nav = _fetch_fund_nav_price_change(code)
     estimate = _fetch_fund_estimated_price_change(code)
+
+    # The portfolio trading day rolls at 09:00, while the fund estimate often
+    # does not update until several minutes later.  During that gap keep the
+    # latest confirmed price for valuation, but never carry yesterday's daily
+    # return into today's P&L/weighted return.
+    if current.weekday() < 5 and minutes >= 9 * 60:
+        if estimate is not None and estimate[2].startswith(today):
+            return estimate[0], estimate[1], "东财基金估算"
+        if nav is not None and nav[2] >= today:
+            return nav[0], nav[1], f"东财确认净值({nav[2]})"
+        if nav is not None:
+            return nav[0], 0.0, "等待今日基金估值"
+        if estimate is not None:
+            return estimate[0], 0.0, "等待今日基金估值"
+        return None
 
     if _is_cn_market_open(current):
         if estimate is not None:

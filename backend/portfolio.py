@@ -1467,6 +1467,14 @@ def coerce_optional_float(value: Any) -> float | None:
     return out
 
 
+def fund_daily_pct_for_day(quote: dict[str, Any], investment_day: str) -> float:
+    """Return a fund estimate only when the provider says it is for this day."""
+    quote_day = str(quote.get("quote_date") or quote.get("quote_time") or "")[:10]
+    if quote_day != investment_day:
+        return 0.0
+    return coerce_optional_float(quote.get("regular_change_pct", quote.get("change_pct"))) or 0.0
+
+
 def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_day: str, now: datetime) -> float:
     # Quote providers commonly retain Friday's change over the weekend. Do not
     # count that old move again as the current investment day's return.
@@ -1481,6 +1489,7 @@ def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_
         minutes = current.hour * 60 + current.minute
         if minutes < 9 * 60 or minutes >= 15 * 60:
             return 0.0
+        return fund_daily_pct_for_day(quote, investment_day)
     session = str(quote.get("session") or "").lower()
     # During an extended session, use the regular-session close as the base
     # price (that close is normalized to 1). The provider's extended return is
@@ -1612,7 +1621,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         regular_value_cny = regular_value * fx if currency == "USD" else regular_value
         current_value = shares * float(quote.get("price") or regular_price or 0.0)
         current_value_cny = current_value * fx if currency == "USD" else current_value
-        regular_pct = float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
+        regular_pct = (
+            fund_daily_pct_for_day(quote, history_day)
+            if sym == "001015"
+            else float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
+        )
         summary_pct = history_daily_pct_for_symbol(sym, quote, history_day, datetime.now(TZ_SHANGHAI))
         regular_change_cny = _daily_amount(regular_value_cny, regular_pct)
         change_cny = _daily_amount(current_value_cny, summary_pct)
@@ -1802,9 +1815,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     for sym in ALL_SYMBOLS:
         quote = quotes.get(sym) or {}
         if sym == "001015":
-            pct = 0.0 if overnight_window else coerce_optional_float(
-                quote.get("regular_change_pct", quote.get("change_pct"))
-            ) or 0.0
+            pct = 0.0 if overnight_window else fund_daily_pct_for_day(quote, history_day)
         else:
             session = str(quote.get("session") or "").lower()
             if overnight_window:
