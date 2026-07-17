@@ -409,6 +409,38 @@ function PageNav({ page, setPage }) {
   );
 }
 
+function SummaryBreakdownTooltip({ title, rows, currency, total, showContribution = false }) {
+  const sortedRows = [...(rows || [])]
+    .filter((row) => Math.abs(Number(row.amount || 0)) > 0.000001)
+    .sort((left, right) => Math.abs(Number(right.amount || 0)) - Math.abs(Number(left.amount || 0)));
+  return (
+    <div className="summaryBreakdownTooltip" role="tooltip">
+      <div className="summaryBreakdownHeader">
+        <b>{title}</b>
+        <small>按绝对值排序</small>
+      </div>
+      <div className={`summaryBreakdownColumns ${showContribution ? "withContribution" : ""}`}>
+        <span>标的</span><span>金额</span>{showContribution ? <span>贡献</span> : <span>盈亏比例</span>}
+      </div>
+      <div className="summaryBreakdownRows">
+        {sortedRows.length ? sortedRows.map((row, index) => (
+          <div className={`summaryBreakdownRow ${showContribution ? "withContribution" : ""}`} key={`${title}-${row.symbol}-${index}`}>
+            <span>{row.symbol}</span>
+            <strong className={tone(row.amount)}>{fmtMoney(row.amount, currency)}</strong>
+            {showContribution
+              ? <em className={tone(row.contributionPct)}>{fmtPct(row.contributionPct)}</em>
+              : <em className={tone(row.pct)}>{row.pct == null ? "" : fmtPct(row.pct)}</em>}
+          </div>
+        )) : <div className="summaryBreakdownEmpty">暂无明细</div>}
+      </div>
+      <div className="summaryBreakdownTotal">
+        <span>合计</span>
+        <strong className={tone(total)}>{fmtMoney(total, currency)}</strong>
+      </div>
+    </div>
+  );
+}
+
 function Summary({ data }) {
   const summary = data.summary;
   const fx = Number(summary.fx || 0);
@@ -432,6 +464,37 @@ function Summary({ data }) {
         (total, row) => total + dailyAmount(row.value_cny, row.effective_daily_pct),
         0,
       );
+  const usdHoldingPnlDetails = usdRows.map((row) => ({
+    symbol: row.symbol,
+    amount: Number(row.pnl || 0),
+    pct: Number(row.pnl_pct || 0),
+  }));
+  const totalHoldingPnlDetails = (data.holdings || []).map((row) => ({
+    symbol: row.symbol,
+    amount: Number(row.pnl_cny || 0),
+    pct: Number(row.pnl_pct || 0),
+  }));
+  if (Math.abs(Number(summary.usd_cash_fx_pnl_cny || 0)) > 0.000001) {
+    totalHoldingPnlDetails.push({ symbol: "美元现金汇兑", amount: Number(summary.usd_cash_fx_pnl_cny), pct: null });
+  }
+  const usdDailyDetails = usdRows.map((row) => ({
+    symbol: row.symbol,
+    amount: dailyAmount(row.value, row.effective_daily_pct),
+    pct: Number(row.effective_daily_pct || 0),
+  }));
+  const usdDailyBasis = usdHoldingValue - usdDailyChange;
+  usdDailyDetails.forEach((row) => {
+    row.contributionPct = usdDailyBasis > 0 ? Number(row.amount || 0) / usdDailyBasis * 100 : 0;
+  });
+  const totalDailyDetails = (data.holdings || []).map((row) => ({
+    symbol: row.symbol,
+    amount: dailyAmount(row.value_cny, row.effective_daily_pct),
+    pct: Number(row.effective_daily_pct || 0),
+  }));
+  const totalDailyBasis = Number(summary.total_value_cny || 0) - weightedDailyChangeCny;
+  totalDailyDetails.forEach((row) => {
+    row.contributionPct = totalDailyBasis > 0 ? Number(row.amount || 0) / totalDailyBasis * 100 : 0;
+  });
   return (
     <section className="summaryGrid">
       <div className="summaryRowLabel">美元资产</div>
@@ -439,17 +502,19 @@ function Summary({ data }) {
         <span>资产规模</span>
         <strong>{fmtMoney(usdTotalAssets, "USD")}</strong>
       </div>
-      <div className="summaryItem">
+      <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
         <span>持仓盈亏</span>
         <strong className={tone(usdPnl)}>
           {fmtMoney(usdPnl, "USD")} · {fmtPct(usdPnlPct)}
         </strong>
+        <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} />
       </div>
-      <div className="summaryItem">
+      <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
         <span>当日加权</span>
         <strong className={tone(usdDailyChange)}>
           {fmtMoney(usdDailyChange, "USD")} · {fmtPct(usdDailyPct)}
         </strong>
+        <SummaryBreakdownTooltip title="美元当日盈亏明细" rows={usdDailyDetails} currency="USD" total={usdDailyChange} showContribution />
       </div>
       <div className="summaryItem fxSummaryItem">
         <span>汇率</span>
@@ -461,17 +526,19 @@ function Summary({ data }) {
         <span>资产规模</span>
         <strong>{fmtMoney(summary.total_assets_cny, "CNY")}</strong>
       </div>
-      <div className="summaryItem">
+      <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
         <span>持仓盈亏</span>
         <strong className={tone(summary.total_pnl_cny)}>
           {fmtMoney(summary.total_pnl_cny, "CNY")} · {fmtPct(summary.total_pnl_pct)}
         </strong>
+        <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} />
       </div>
-      <div className="summaryItem">
+      <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
         <span>当日加权</span>
         <strong className={tone(weightedDailyChangeCny)}>
           {fmtMoney(weightedDailyChangeCny, "CNY")} · {fmtPct(summary.weighted_daily_pct)}
         </strong>
+        <SummaryBreakdownTooltip title="总资产当日盈亏明细" rows={totalDailyDetails} currency="CNY" total={weightedDailyChangeCny} showContribution />
       </div>
     </section>
   );

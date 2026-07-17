@@ -420,6 +420,136 @@ h2 {
   color: var(--text-soft);
 }
 
+.summaryItem.hasSummaryBreakdown {
+  cursor: help;
+}
+
+.summaryItem.hasSummaryBreakdown:hover,
+.summaryItem.hasSummaryBreakdown:focus,
+.summaryItem.hasSummaryBreakdown:focus-within {
+  z-index: 40;
+  overflow: visible;
+  outline: none;
+}
+
+.summaryBreakdownTooltip {
+  position: absolute;
+  z-index: 80;
+  left: 50%;
+  top: calc(100% + 9px);
+  width: min(350px, calc(100vw - 32px));
+  padding: 11px 12px;
+  border: 1px solid rgba(112, 215, 255, 0.34);
+  border-radius: 12px;
+  background: rgba(5, 18, 34, 0.97);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+  color: var(--text-main);
+  text-align: left;
+}
+
+.summaryItem.hasSummaryBreakdown:hover .summaryBreakdownTooltip,
+.summaryItem.hasSummaryBreakdown:focus .summaryBreakdownTooltip,
+.summaryItem.hasSummaryBreakdown:focus-within .summaryBreakdownTooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.summaryBreakdownHeader,
+.summaryBreakdownColumns,
+.summaryBreakdownRow,
+.summaryBreakdownTotal {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.summaryBreakdownColumns {
+  min-height: 25px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.summaryBreakdownColumns > span:first-child {
+  text-align: left;
+}
+
+.summaryBreakdownColumns.withContribution,
+.summaryBreakdownRow.withContribution {
+  grid-template-columns: minmax(90px, 1fr) auto 56px;
+}
+
+.summaryBreakdownHeader {
+  grid-template-columns: 1fr auto;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(122, 156, 187, 0.22);
+}
+
+.summaryBreakdownHeader small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.summaryBreakdownRows {
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.summaryBreakdownRow {
+  min-height: 29px;
+  border-bottom: 1px solid rgba(122, 156, 187, 0.1);
+  font-size: 12px;
+}
+
+.summaryBreakdownRow > span {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summaryBreakdownRow strong {
+  font-size: 12px;
+  text-align: right;
+}
+
+.summaryBreakdownRow em {
+  min-width: 54px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  text-align: right;
+}
+
+.summaryBreakdownTotal {
+  grid-template-columns: 1fr auto;
+  padding-top: 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.summaryBreakdownTotal strong {
+  font-size: 13px;
+}
+
+.summaryBreakdownEmpty {
+  padding: 12px 0 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 .fxSummaryItem {
   grid-column: 5;
   grid-row: 1 / span 2;
