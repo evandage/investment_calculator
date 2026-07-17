@@ -1789,14 +1789,14 @@ h2 {
 }
 
 .singleKlinePercentAxis {
-  right: 184px;
+  right: calc(62px + 15%);
 }
 
 .singleLwProfile {
   position: absolute;
   top: 0;
   right: 62px;
-  width: 118px;
+  width: 15%;
   height: 56%;
   z-index: 4;
   pointer-events: none;

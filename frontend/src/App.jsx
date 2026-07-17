@@ -1301,14 +1301,20 @@ function klineDisplayStartIndex(candles = [], mode = "250", anchorDate = "") {
   return startIndex;
 }
 
-function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = "") {
+const SINGLE_PROFILE_WIDTH_RATIO = 0.15;
+
+function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = "", rightPaddingRatio = 0) {
   if (!chart || !candles.length) return;
   const startIndex = klineDisplayStartIndex(candles, mode, anchorDate);
-  if (startIndex <= 0) {
+  const clampedRatio = Math.max(0, Math.min(0.4, Number(rightPaddingRatio) || 0));
+  if (clampedRatio <= 0 && startIndex <= 0) {
     chart.timeScale().fitContent();
     return;
   }
-  chart.timeScale().setVisibleLogicalRange({ from: startIndex, to: candles.length - 1 });
+  const visibleDataBars = Math.max(1, candles.length - startIndex);
+  const rightOffsetBars = Math.ceil(visibleDataBars * clampedRatio / Math.max(0.01, 1 - clampedRatio));
+  chart.timeScale().applyOptions({ rightOffset: rightOffsetBars });
+  chart.timeScale().setVisibleLogicalRange({ from: startIndex, to: candles.length - 1 + rightOffsetBars });
 }
 
 function percentReferencePrice(candles = [], referencePrice) {
@@ -1755,7 +1761,7 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
         borderColor: "rgba(148, 163, 184, 0.22)",
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 4,
+        rightOffset: 0,
         barSpacing: 8,
         tickMarkFormatter: formatLightweightChartTime,
       },
@@ -1975,6 +1981,7 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
         candles,
         data?.interval === "1d" ? displayRange : "all",
         data?.interval === "1d" && displayRange === "earnings" ? data?.earnings_anchor : "",
+        SINGLE_PROFILE_WIDTH_RATIO,
       );
       requestPriceAutoscale(series.candle);
       didFitContentRef.current = true;
