@@ -314,6 +314,21 @@
       "new_avg_cost": 129.50879533678759,
       "intensity": "normal",
       "created_at": "2026-07-17T22:12:08+08:00"
+    },
+    {
+      "id": "20260717223640-21-QQQ",
+      "trade_date": "2026-07-17",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 50.0,
+      "shares": 0.0718,
+      "price": 696.3788300835654,
+      "cost_basis": 50.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 721.67,
+      "new_avg_cost": 720.8503628977656,
+      "intensity": "small",
+      "created_at": "2026-07-17T22:36:40+08:00"
     }
   ]
 }
