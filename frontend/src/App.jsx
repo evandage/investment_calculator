@@ -693,8 +693,18 @@ function DailyHeatmap({ cards, holdings }) {
                     <span className={tone(card.extended_pct)}>（{fmtPct(card.extended_pct)}）</span>
                   ) : null}
                 </span>
-                <span className={tone(card.regular_change_usd ?? card.change_usd)}>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}</span>
-                <span className={tone(card.regular_change_cny ?? card.change_cny)}>{fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
+                <span className={tone(card.regular_change_usd ?? card.change_usd)}>
+                  {fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}
+                  {card.session !== "regular" && card.extended_change_usd != null ? (
+                    <span className={tone(card.extended_change_usd)}>（{fmtMoney(card.extended_change_usd, "USD")}）</span>
+                  ) : null}
+                </span>
+                <span className={tone(card.regular_change_cny ?? card.change_cny)}>
+                  {fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}
+                  {card.session !== "regular" && card.extended_change_cny != null ? (
+                    <span className={tone(card.extended_change_cny)}>（{fmtMoney(card.extended_change_cny, "CNY")}）</span>
+                  ) : null}
+                </span>
               </div>
             ))}
           </div>
