@@ -9,6 +9,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 HOLDINGS_FILE = ROOT_DIR / "holdings.json"
 BALANCES_FILE = ROOT_DIR / "balances.json"
 MONTHLY_USAGE_FILE = ROOT_DIR / "monthly_budget_usage.json"
+DRAWDOWN_EPISODES_FILE = ROOT_DIR / "drawdown_episodes.json"
 SATELLITE_TARGETS_FILE = ROOT_DIR / "satellite_targets.json"
 SATELLITE_UNIVERSE_FILE = ROOT_DIR / "satellite_universe.json"
 CLOSED_SATELLITE_PNL_FILE = ROOT_DIR / "closed_satellite_pnl.json"
@@ -255,12 +256,25 @@ FUND_CODES = {"001015": "001015"}
 REBALANCE_PHASE_BUILD = "建仓期"
 REBALANCE_PHASE_DCA = "长期定投期"
 
+TEM_TIER_DIAGNOSTICS = {
+    "mode": "manual_review_only",
+    "self_thresholds_pct": {"small": -31.0, "medium": -40.5, "large": -52.5},
+    "peer_group": [],
+    "peer_thresholds_pct": None,
+    "shrunk_thresholds_pct": None,
+    "history_days": 522,
+    "effective_drawdown_days": 463,
+    "independent_drawdown_cycles": 4,
+    "as_of_date": "2026-07-16",
+    "reason": "未配置经确认的可靠同行组；自身上市历史短且独立回撤周期不足，不自动控制买入。",
+}
+
 REBALANCE_RULES = {
     REBALANCE_PHASE_BUILD: {
-        "VOO": {"normal": (1.0, "正常建仓", "1x", "normal"), "bands": [(-13.0, 4.0, "大加", "4x", "large"), (-6.5, 2.5, "中加", "2.5x", "medium"), (-2.5, 1.5, "小加", "1.5x", "small")]},
+        "VOO": {"normal": (1.0, "正常建仓", "1x", "normal"), "bands": [(-13.0, 4.0, "大加", "4x", "large"), (-6.5, 2.5, "中加", "2.5x", "medium"), (-3.5, 1.5, "小加", "1.5x", "small")]},
         "QQQ": {"normal": (1.0, "正常建仓", "1x", "normal"), "bands": [(-16.5, 3.0, "大加", "3x", "large"), (-9.0, 2.0, "中加", "2x", "medium"), (-4.0, 1.25, "小加", "1.25x", "small")]},
-        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-21.0, 0.5, "大加", "大加", "large"), (-16.0, 0.3, "中加", "中加", "medium"), (-8.5, 0.2, "小加", "小加", "small")]},
-        "TEM": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-52.5, 0.5, "大加", "大加", "large"), (-40.5, 0.3, "中加", "中加", "medium"), (-31.0, 0.2, "小加", "小加", "small")]},
+        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-16.0, 0.3, "中加", "中加", "medium"), (-8.5, 0.2, "小加", "小加", "small")]},
+        "TEM": {"mode": "manual_review_only", "diagnostics": TEM_TIER_DIAGNOSTICS, "normal": (0.0, "复核", "复核", "manual_review_only"), "bands": []},
         "PLTR": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-40.5, 0.5, "大加", "大加", "large"), (-31.0, 0.3, "中加", "中加", "medium"), (-20.5, 0.2, "小加", "小加", "small")]},
         "GOOGL": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-20.0, 0.5, "大加", "大加", "large"), (-14.0, 0.3, "中加", "中加", "medium"), (-6.5, 0.2, "小加", "小加", "small")]},
         "MSFT": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-18.5, 0.5, "大加", "大加", "large"), (-11.5, 0.3, "中加", "中加", "medium"), (-5.5, 0.2, "小加", "小加", "small")]},
@@ -268,10 +282,10 @@ REBALANCE_RULES = {
         "NVDA": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-21.0, 0.3, "中加", "中加", "medium"), (-12.0, 0.2, "小加", "小加", "small")]},
     },
     REBALANCE_PHASE_DCA: {
-        "VOO": {"normal": (1.0, "正常定投", "1x", "normal"), "bands": [(-13.0, 4.0, "大加", "4x", "large"), (-6.5, 2.5, "中加", "2.5x", "medium"), (-2.5, 1.5, "小加", "1.5x", "small")]},
+        "VOO": {"normal": (1.0, "正常定投", "1x", "normal"), "bands": [(-13.0, 4.0, "大加", "4x", "large"), (-6.5, 2.5, "中加", "2.5x", "medium"), (-3.5, 1.5, "小加", "1.5x", "small")]},
         "QQQ": {"normal": (1.0, "正常定投", "1x", "normal"), "bands": [(-16.5, 3.0, "大加", "3x", "large"), (-9.0, 2.0, "中加", "2x", "medium"), (-4.0, 1.25, "小加", "1.25x", "small")]},
-        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-21.0, 0.5, "大加", "大加", "large"), (-16.0, 0.3, "中加", "中加", "medium"), (-8.5, 0.2, "小加", "小加", "small")]},
-        "TEM": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-52.5, 0.5, "大加", "大加", "large"), (-40.5, 0.3, "中加", "中加", "medium"), (-31.0, 0.2, "小加", "小加", "small")]},
+        "ISRG": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-25.0, 0.5, "大加", "大加", "large"), (-16.0, 0.3, "中加", "中加", "medium"), (-8.5, 0.2, "小加", "小加", "small")]},
+        "TEM": {"mode": "manual_review_only", "diagnostics": TEM_TIER_DIAGNOSTICS, "normal": (0.0, "复核", "复核", "manual_review_only"), "bands": []},
         "PLTR": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-40.5, 0.5, "大加", "大加", "large"), (-31.0, 0.3, "中加", "中加", "medium"), (-20.5, 0.2, "小加", "小加", "small")]},
         "GOOGL": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-20.0, 0.5, "大加", "大加", "large"), (-14.0, 0.3, "中加", "中加", "medium"), (-6.5, 0.2, "小加", "小加", "small")]},
         "MSFT": {"normal": (0.1, "正常", "正常", "normal"), "bands": [(-18.5, 0.5, "大加", "大加", "large"), (-11.5, 0.3, "中加", "中加", "medium"), (-5.5, 0.2, "小加", "小加", "small")]},
@@ -280,5 +294,5 @@ REBALANCE_RULES = {
     },
 }
 
-INTENSITY_ORDER = {"none": 0, "normal": 1, "small": 2, "medium": 3, "large": 4}
-INTENSITY_LABELS = {"none": "未买", "normal": "普通/正常", "small": "小加/试探", "medium": "中加", "large": "大加"}
+INTENSITY_ORDER = {"none": 0, "manual_review_only": 0, "normal": 1, "small": 2, "medium": 3, "large": 4}
+INTENSITY_LABELS = {"none": "未买", "manual_review_only": "人工复核", "normal": "普通/正常", "small": "小加/试探", "medium": "中加", "large": "大加"}

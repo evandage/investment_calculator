@@ -3,11 +3,18 @@ from __future__ import annotations
 import json
 import time
 import re
+import threading
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import requests
+
+from .drawdown_episodes import (
+    advance_episode_on_close,
+    ensure_threshold_snapshot,
+    intraday_warning,
+)
 
 from .config import (
     ALL_SYMBOLS,
@@ -29,6 +36,7 @@ from .config import (
 from .market_data import fetch_quotes
 from .storage import (
     load_closed_satellite_pnl,
+    load_drawdown_episode_store,
     load_monthly_usage,
     load_fx_conversion_records,
     load_portfolio_history,
@@ -36,6 +44,7 @@ from .storage import (
     load_satellite_targets,
     load_user_state,
     save_monthly_usage,
+    save_drawdown_episode_store,
     save_fx_conversion_records,
     save_portfolio_history,
     save_trade_records,
@@ -46,8 +55,9 @@ from .storage import (
 BUILD_TARGET_YEAR = 2026
 BUILD_TARGET_MONTH = 10
 MIDTERM_ELECTION_DATE = date(2026, 11, 3)
-_DRAWDOWN_CACHE: dict[str, tuple[dict[str, float | None], float]] = {}
-_DRAWDOWN_CACHE_TTL_SECONDS = 21600
+_DRAWDOWN_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
+_DRAWDOWN_CACHE_TTL_SECONDS = 300
+_EPISODE_STATE_LOCK = threading.Lock()
 NY_TZ = ZoneInfo("America/New_York")
 PERFORMANCE_WRITE_HOUR = 8
 US_MARKET_CLOSE_MINUTE = 16 * 60
@@ -139,11 +149,13 @@ def rebalance_rules_payload(
             {
                 "heading": "档位规则",
                 "items": [
-                    "档位取全历史60日回撤的65% / 85% / 95%分位数；仅以上月末波动状态乘0.95 / 1.00 / 1.05，并在单次回撤周期内冻结。",
-                    "VOO：正常 1x，小加 -2.5% / 1.5x，中加 -6.5% / 2.5x，大加 -13% / 4x。",
+                    "盘中价格只产生预警；只有最新完整交易日收盘价可以正式触发档位。同一回撤周期每档只确认一次。",
+                    "回撤周期开始时绑定当月档位快照；周期内冻结。月末生成的新快照只供下一个回撤周期使用。",
+                    "基础档位取全历史60日回撤的65% / 85% / 95%分位数；仅以上月末波动状态乘0.95 / 1.00 / 1.05，并在单次回撤周期内冻结。执行层再按独立触发频率校准档位名称。",
+                    "VOO：正常 1x，小加 -3.5% / 1.5x，中加 -6.5% / 2.5x，大加 -13% / 4x。",
                     "QQQ：正常 1x，小加 -4% / 1.25x，中加 -9% / 2x，大加 -16.5% / 3x。",
-                    "ISRG：正常 0.1x，小加 -8.5% / 0.2x，中加 -16% / 0.3x，大加 -21% / 0.5x。",
-                    "TEM：正常 0.1x，小加 -31% / 0.2x，中加 -40.5% / 0.3x，大加 -52.5% / 0.5x；历史不足3年，低置信度。",
+                    "ISRG：正常 0.1x，小加 -8.5% / 0.2x，中加 -16% / 0.3x，大加 -25% / 0.5x；-25%过去10年独立触发4次，约2.5年一次。",
+                    "TEM：复核；自身样本档位 -31% / -40.5% / -52.5% 仅供观察。同行组未确认，同行与收缩后最终档位为空，不自动控制买入。",
                     "PLTR：正常 0.1x，小加 -20.5% / 0.2x，中加 -31% / 0.3x，大加 -40.5% / 0.5x。",
                     "GOOGL：正常 0.1x，小加 -6.5% / 0.2x，中加 -14% / 0.3x，大加 -20% / 0.5x。",
                     "MSFT：正常 0.1x，小加 -5.5% / 0.2x，中加 -11.5% / 0.3x，大加 -18.5% / 0.5x。",
@@ -159,6 +171,7 @@ def normalize_intensity(value: Any) -> str:
     return {
         "": "none",
         "none": "none",
+        "manual_review_only": "manual_review_only",
         "normal": "normal",
         "regular": "normal",
         # Legacy QQQ-only tiers are normalized to the closest standard tier
@@ -206,6 +219,8 @@ def signal_for_drawdown(symbol: str, drawdown_pct: float | None, phase: str) -> 
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     if not rule:
         return 0.0, "暂无规则", "暂无规则", "normal"
+    if rule.get("mode") == "manual_review_only":
+        return 0.0, "复核", "复核", "manual_review_only"
     normal = rule["normal"]
     if not isinstance(drawdown_pct, (int, float)):
         return float(normal[0]), str(normal[1]), str(normal[2]), str(normal[3])
@@ -222,6 +237,8 @@ def signal_for_historical_position(symbol: str, item: dict[str, Any], phase: str
 def signal_for_intensity(symbol: str, phase: str, intensity: str) -> tuple[float, str, str, str]:
     rule = REBALANCE_RULES.get(phase, {}).get(symbol)
     intensity = normalize_intensity(intensity)
+    if rule and rule.get("mode") == "manual_review_only":
+        return 0.0, "复核", "复核", "manual_review_only"
     if not rule or intensity == "none":
         return 0.0, "暂无规则", "暂无规则", "normal"
     if intensity == "normal":
@@ -318,38 +335,83 @@ def historical_probability_note(symbol: str, item: dict[str, Any], intensity: st
         parts.append(f"较60日低点反弹 {float(rebound):+.2f}%")
     if not parts:
         return f"{symbol} 暂无足够历史波动数据，按 normal 观察。"
+    if normalize_intensity(intensity) == "manual_review_only":
+        return f"{symbol} 仅展示历史位置，不自动定档（{'；'.join(parts)}）。"
     label = INTENSITY_LABELS.get(normalize_intensity(intensity), "normal")
     return f"{symbol} 按历史涨跌位置定档：{label}（{'；'.join(parts)}）。"
 
 
-def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[str, float | None]:
+def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[str, Any]:
     now = time.time()
+    completed_day = completed_performance_day()
     cached = _DRAWDOWN_CACHE.get(symbol)
-    if cached and now - cached[1] < _DRAWDOWN_CACHE_TTL_SECONDS:
+    if (
+        cached
+        and now - cached[1] < _DRAWDOWN_CACHE_TTL_SECONDS
+        and cached[0].get("expected_completed_day") == completed_day
+    ):
         metrics = dict(cached[0])
     else:
-        metrics = {"drawdown_pct": None, "rebound_pct": None, "recent_5d_pct": None, "peak": None, "trough": None, "prev_5d": None}
+        metrics = {
+            "drawdown_pct": None,
+            "confirmed_drawdown_pct": None,
+            "intraday_drawdown_pct": None,
+            "rebound_pct": None,
+            "recent_5d_pct": None,
+            "peak": None,
+            "trough": None,
+            "prev_5d": None,
+            "confirmed_close_date": None,
+            "confirmed_close_price": None,
+            "expected_completed_day": completed_day,
+        }
         try:
             from .ohlcv import fetch_ohlcv
 
             payload = fetch_ohlcv(symbol, "1d")
             bars = payload.get("bars") if isinstance(payload, dict) else []
-            closes = [float(bar.get("close")) for bar in (bars or [])[-60:] if isinstance(bar, dict) and float(bar.get("close") or 0) > 0]
+            completed_bars = [
+                bar
+                for bar in (bars or [])
+                if isinstance(bar, dict)
+                and str(bar.get("time") or "") <= completed_day
+                and float(bar.get("close") or 0) > 0
+            ][-60:]
+            closes = [float(bar.get("close")) for bar in completed_bars]
             if closes:
                 peak = max(closes)
                 trough = min(closes)
                 last = closes[-1]
                 prev_5d = closes[-6] if len(closes) >= 6 else None
+                confirmed_date = str(completed_bars[-1].get("time") or "")
+                confirmed_drawdown = (last / peak - 1.0) * 100.0 if peak > 0 else None
                 metrics = {
-                    "drawdown_pct": (last / peak - 1.0) * 100.0 if peak > 0 else None,
+                    "drawdown_pct": confirmed_drawdown,
+                    "confirmed_drawdown_pct": confirmed_drawdown,
+                    "intraday_drawdown_pct": confirmed_drawdown,
                     "rebound_pct": (last / trough - 1.0) * 100.0 if trough > 0 else None,
                     "recent_5d_pct": (last / prev_5d - 1.0) * 100.0 if prev_5d and prev_5d > 0 else None,
                     "peak": peak,
                     "trough": trough,
                     "prev_5d": prev_5d,
+                    "confirmed_close_date": confirmed_date,
+                    "confirmed_close_price": last,
+                    "expected_completed_day": completed_day,
                 }
         except Exception:
-            metrics = {"drawdown_pct": None, "rebound_pct": None, "recent_5d_pct": None, "peak": None, "trough": None, "prev_5d": None}
+            metrics = {
+                "drawdown_pct": None,
+                "confirmed_drawdown_pct": None,
+                "intraday_drawdown_pct": None,
+                "rebound_pct": None,
+                "recent_5d_pct": None,
+                "peak": None,
+                "trough": None,
+                "prev_5d": None,
+                "confirmed_close_date": None,
+                "confirmed_close_price": None,
+                "expected_completed_day": completed_day,
+            }
         if metrics.get("peak") and metrics.get("trough"):
             _DRAWDOWN_CACHE[symbol] = (dict(metrics), now)
 
@@ -357,12 +419,14 @@ def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[s
     peak = metrics.get("peak")
     trough = metrics.get("trough")
     if price > 0 and isinstance(peak, (int, float)) and peak > 0:
-        metrics["drawdown_pct"] = (price / float(peak) - 1.0) * 100.0
+        preview_peak = max(float(peak), price)
+        metrics["intraday_drawdown_pct"] = (price / preview_peak - 1.0) * 100.0
     if price > 0 and isinstance(trough, (int, float)) and trough > 0:
         metrics["rebound_pct"] = (price / float(trough) - 1.0) * 100.0
     prev_5d = metrics.get("prev_5d")
     if price > 0 and isinstance(prev_5d, (int, float)) and prev_5d > 0:
         metrics["recent_5d_pct"] = (price / float(prev_5d) - 1.0) * 100.0
+    metrics["intraday_price"] = price if price > 0 else None
     return metrics
 
 
@@ -1278,9 +1342,20 @@ def build_performance_history(
     benchmark_prices = {}
     benchmark_daily_pct: dict[str, float] = {}
     estimated_symbols: list[str] = []
+    # CSI300 has its own completion clock. Once Beijing reaches 15:00, use
+    # the completed daily bar directly, even though the US benchmark day is
+    # still open and the portfolio history row remains provisional.
+    benchmark_histories = fetch_close_histories(benchmark_symbols)
     for sym in benchmark_symbols:
         if not is_history_quote_usable(quotes.get(sym)):
             continue
+        if sym == "001015" and is_china_daily_close_ready(today, now):
+            close_price = close_on(benchmark_histories.get(sym, {}), today)
+            close_daily_pct = completed_daily_pct_for_symbol(sym, today, benchmark_histories)
+            if close_price is not None and close_daily_pct is not None:
+                benchmark_prices[sym] = close_price
+                benchmark_daily_pct[sym] = close_daily_pct
+                continue
         if is_symbol_daily_history_estimated(sym, today, now, quotes.get(sym)):
             estimated_symbols.append(sym)
         try:
@@ -1468,6 +1543,8 @@ def is_symbol_daily_history_estimated(
     if symbol in USD_SYMBOLS:
         return not is_us_daily_history_ready(symbol, investment_day, now)
     if symbol == "001015":
+        if is_china_daily_close_ready(investment_day, now):
+            return False
         source = str((quote or {}).get("source") or "")
         return "估算" in source or "估值" in source
     return False
@@ -1520,13 +1597,13 @@ def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_
     if symbol not in USD_SYMBOLS and not is_weekday(investment_day):
         return 0.0
     if symbol == "001015":
-        # 沪深300在北京时间收盘后冻结，次日 09:00 才切换到新交易日的
-        # 预测/涨跌，避免美股夜盘期间沿用上一交易日数值。
+        # 沪深300按北京时间交易日计算：09:00 后可显示当日估算，
+        # 15:00 收盘后继续沿用当天最终报价，直到次日 09:00 切换。
         current = now.astimezone(TZ_SHANGHAI) if now.tzinfo else now.replace(tzinfo=TZ_SHANGHAI)
         if current.date().isoformat() != investment_day:
             return 0.0
         minutes = current.hour * 60 + current.minute
-        if minutes < 9 * 60 or minutes >= 15 * 60:
+        if minutes < 9 * 60:
             return 0.0
         return fund_daily_pct_for_day(quote, investment_day)
     session = str(quote.get("session") or "").lower()
@@ -1545,6 +1622,17 @@ def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_
         return float(quote.get("change_pct", 0.0))
     except (TypeError, ValueError):
         return 0.0
+
+
+def is_china_daily_close_ready(investment_day: str, now: datetime | None = None) -> bool:
+    """Whether the A-share daily benchmark can be confirmed for this date."""
+    current = now or datetime.now(TZ_SHANGHAI)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=TZ_SHANGHAI)
+    current = current.astimezone(TZ_SHANGHAI)
+    if current.date().isoformat() != str(investment_day)[:10] or current.weekday() >= 5:
+        return False
+    return current.hour * 60 + current.minute >= 15 * 60
 
 
 def daily_pct_for_current_history_quote(symbol: str, investment_day: str, now: datetime, quote: dict[str, Any]) -> float:
@@ -1636,6 +1724,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "effective_daily_pct": history_daily_pct_for_symbol(sym, quote, history_day, datetime.now(TZ_SHANGHAI)),
                 "extended_pct": quote.get("extended_change_pct"),
                 "drawdown_pct": sixty_day.get("drawdown_pct"),
+                "confirmed_drawdown_pct": sixty_day.get("confirmed_drawdown_pct"),
+                "intraday_drawdown_pct": sixty_day.get("intraday_drawdown_pct"),
+                "confirmed_close_date": sixty_day.get("confirmed_close_date"),
+                "confirmed_close_price": sixty_day.get("confirmed_close_price"),
+                "intraday_price": sixty_day.get("intraday_price"),
                 "rebound_pct": sixty_day.get("rebound_pct"),
                 "recent_5d_pct": sixty_day.get("recent_5d_pct"),
                 "forward_pe": fpe,
@@ -1917,6 +2010,73 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     }
 
 
+def evaluate_drawdown_episode_signals(
+    user_id: str,
+    holding_rows: list[dict[str, Any]],
+    *,
+    phase: str,
+    month_key: str,
+    now: datetime,
+) -> dict[str, dict[str, Any]]:
+    output: dict[str, dict[str, Any]] = {}
+    created_at = now.isoformat(timespec="seconds")
+    with _EPISODE_STATE_LOCK:
+        store = load_drawdown_episode_store(user_id)
+        snapshots = store.setdefault("threshold_snapshots", {})
+        episodes = store.setdefault("episodes", {})
+        changed = False
+        for item in holding_rows:
+            symbol = str(item.get("symbol") or "").upper()
+            rule = REBALANCE_RULES.get(phase, {}).get(symbol)
+            if not rule:
+                continue
+            current_snapshot, snapshot_created = ensure_threshold_snapshot(
+                store,
+                symbol=symbol,
+                phase=phase,
+                month_key=month_key,
+                rule=rule,
+                created_at=created_at,
+            )
+            changed = changed or snapshot_created
+            previous_state = episodes.get(symbol)
+            next_state, confirmed, state_changed = advance_episode_on_close(
+                symbol=symbol,
+                state=previous_state if isinstance(previous_state, dict) else None,
+                current_snapshot=current_snapshot,
+                snapshots=snapshots,
+                confirmed_close_date=item.get("confirmed_close_date"),
+                confirmed_close_price=item.get("confirmed_close_price"),
+                confirmed_drawdown_pct=item.get("confirmed_drawdown_pct"),
+            )
+            episodes[symbol] = next_state
+            changed = changed or state_changed or previous_state is None
+            bound_snapshot_id = next_state.get("threshold_snapshot_id")
+            bound_snapshot = snapshots.get(bound_snapshot_id) if bound_snapshot_id else current_snapshot
+            if not isinstance(bound_snapshot, dict):
+                bound_snapshot = current_snapshot
+            warning = intraday_warning(
+                symbol=symbol,
+                intraday_drawdown_pct=item.get("intraday_drawdown_pct"),
+                current_price=item.get("intraday_price"),
+                session=str(item.get("session") or "unknown"),
+                state=next_state,
+                current_snapshot=current_snapshot,
+                snapshots=snapshots,
+                as_of=created_at,
+            )
+            output[symbol] = {
+                "intraday_warning": warning,
+                "confirmed_signal": confirmed,
+                "episode_state": next_state,
+                "threshold_snapshot": bound_snapshot,
+                "current_month_threshold_snapshot": current_snapshot,
+            }
+        if changed:
+            save_drawdown_episode_store(user_id, store)
+    return output
+
+
 def build_rebalance_v2(
     user_id: str,
     holding_rows: list[dict[str, Any]],
@@ -1985,6 +2145,13 @@ def build_rebalance_v2(
     )
     planned_sgov_target_usd = sgov_target_pct * planned_total_usd
     sgov_excess_usd = max(0.0, sgov_current_usd - planned_sgov_target_usd)
+    episode_signals = evaluate_drawdown_episode_signals(
+        user_id,
+        holding_rows,
+        phase=phase,
+        month_key=month_key,
+        now=now,
+    )
     rows: list[dict[str, Any]] = []
     full_rebalance_need_usd = 0.0
     has_large_trigger = False
@@ -2008,12 +2175,18 @@ def build_rebalance_v2(
         gap = 0.0 if abs(raw_gap) <= target_tolerance_usd else raw_gap
         raw_actual_gap = target_usd - cost_usd
         actual_gap = 0.0 if abs(raw_actual_gap) <= target_tolerance_usd else raw_actual_gap
-        drawdown_pct = item.get("drawdown_pct")
-        multiplier, action, signal, intensity = signal_for_historical_position(sym, item, phase)
+        drawdown_pct = item.get("confirmed_drawdown_pct", item.get("drawdown_pct"))
+        episode_payload = episode_signals.get(sym, {})
+        confirmed_signal = episode_payload.get("confirmed_signal") or {}
+        threshold_snapshot = episode_payload.get("threshold_snapshot") or {}
+        monthly_threshold_snapshot = episode_payload.get("current_month_threshold_snapshot") or threshold_snapshot
+        validation_warnings = list(monthly_threshold_snapshot.get("warnings") or [])
+        confirmed_tier = str(confirmed_signal.get("tier") or "normal")
+        multiplier, action, signal, intensity = signal_for_intensity(sym, phase, confirmed_tier)
+        rebalance_rule = REBALANCE_RULES.get(phase, {}).get(sym, {})
+        review_mode = rebalance_rule.get("mode")
+        tier_diagnostics = rebalance_rule.get("diagnostics")
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
-        if not is_satellite and intensity_rank(previous) > intensity_rank(intensity):
-            multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
-            action = f"保持本月已确认{INTENSITY_LABELS.get(previous, '已买')}档"
 
         if normalize_intensity(intensity) == "large":
             has_large_trigger = True
@@ -2069,7 +2242,12 @@ def build_rebalance_v2(
             action = "暂不买入"
 
         note_parts: list[str] = []
-        if raw_suggested > 0:
+        if review_mode == "manual_review_only":
+            raw_suggested = 0.0
+            suggested_cap = 0.0
+            action = "复核"
+            note_parts.append("未配置经确认的可靠同行组；自身短历史档位仅供观察，系统不会自动建议买入。")
+        elif raw_suggested > 0:
             note_parts.append(
                 f"卫星股以10月底目标金额为 1x，当前按 {float(multiplier):.1f}x 计算，并取不超过实时缺口。"
                 if is_satellite
@@ -2111,6 +2289,20 @@ def build_rebalance_v2(
                 "action": action,
                 "signal": signal,
                 "intensity": intensity,
+                "review_mode": review_mode,
+                "tier_diagnostics": tier_diagnostics,
+                "intraday_warning": episode_payload.get("intraday_warning"),
+                "confirmed_signal": episode_payload.get("confirmed_signal"),
+                "episode_state": episode_payload.get("episode_state"),
+                "threshold_snapshot": threshold_snapshot,
+                "monthly_threshold_snapshot": monthly_threshold_snapshot,
+                "walk_forward_warning": {
+                    "active": bool(validation_warnings),
+                    "count": len(validation_warnings),
+                    "messages": validation_warnings,
+                    "statistics": monthly_threshold_snapshot.get("walk_forward") or {},
+                    "policy": monthly_threshold_snapshot.get("validation_policy") or "warning_only",
+                },
                 "planned_buy_usd": raw_planned,
                 "raw_planned_buy_usd": raw_planned,
                 "planned_buy_formula": planned_formula,
@@ -2134,6 +2326,9 @@ def build_rebalance_v2(
                 "month_sold_cost_usd": sold_cost,
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
+                "intraday_drawdown_pct": item.get("intraday_drawdown_pct"),
+                "confirmed_close_date": item.get("confirmed_close_date"),
+                "confirmed_close_price": item.get("confirmed_close_price"),
                 "recent_5d_pct": item.get("recent_5d_pct"),
                 "target_pct": target_pct * 100.0,
                 "current_pct": current_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
@@ -2220,6 +2415,8 @@ def build_rebalance_v2(
         row["suggested_buy_shares"] = row["suggested_buy_usd"] / price if price > 0 else 0.0
         row["suggested_sell_shares"] = float(row.get("suggested_sell_usd") or 0.0) / price if price > 0 else float(row.get("suggested_sell_shares") or 0.0)
     strategy_budget_usd = sum(float(row["suggested_buy_usd"]) for row in rows)
+    episode_store = load_drawdown_episode_store(user_id)
+    monthly_recalculation = (episode_store.get("monthly_recalculations") or {}).get(month_key)
 
     return {
         "month_key": month_key,
@@ -2245,7 +2442,12 @@ def build_rebalance_v2(
         "planned_total_usd": planned_total_usd,
         "planned_total_formula": planned_total_formula,
         "rules": rebalance_rules_payload(build_month_count, future_cash_months, planned_new_cash_usd, future_cash_total_usd),
+        "monthly_recalculation": monthly_recalculation,
         "usage": usage,
+        "intraday_warning": {symbol: payload.get("intraday_warning") for symbol, payload in episode_signals.items()},
+        "confirmed_signal": {symbol: payload.get("confirmed_signal") for symbol, payload in episode_signals.items()},
+        "episode_state": {symbol: payload.get("episode_state") for symbol, payload in episode_signals.items()},
+        "threshold_snapshot": {symbol: payload.get("threshold_snapshot") for symbol, payload in episode_signals.items()},
         "rows": rows,
     }
 
@@ -2285,9 +2487,6 @@ def build_rebalance(
         gap = target_usd - planning_current
         multiplier, action, signal, intensity = signal_for_historical_position(sym, item, phase)
         previous = normalize_intensity(bought_intensities.get(sym, "none"))
-        if not is_satellite and intensity_rank(previous) > intensity_rank(intensity):
-            multiplier, action, signal, intensity = signal_for_intensity(sym, phase, previous)
-            action = f"维持本月已确认{INTENSITY_LABELS.get(previous, '已买')}档"
         base_budget = max(0.0, target_usd) if is_satellite else max(0.0, gap) / max(1, build_months)
         planned = base_budget * multiplier if is_satellite else min(max(0.0, gap), base_budget * multiplier)
         fpe = item.get("forward_pe")

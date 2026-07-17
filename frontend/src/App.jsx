@@ -213,6 +213,7 @@ function tone(value) {
 
 function tierClass(intensity) {
   return {
+    manual_review_only: "tierManual",
     normal: "tierNormal",
     small: "tierSmall",
     medium: "tierMedium",
@@ -227,6 +228,7 @@ function tierLabel(intensity) {
     small: "小加",
     medium: "中加",
     large: "大加",
+    manual_review_only: "人工复核",
     sell: "卖出",
   }[String(intensity || "none").toLowerCase()] || String(intensity || "-");
 }
@@ -234,6 +236,7 @@ function tierLabel(intensity) {
 function rebalanceTierLabel(row) {
   const label = tierLabel(row.intensity);
   if (String(row.intensity || "").toLowerCase() === "sell") return label;
+  if (String(row.intensity || "").toLowerCase() === "manual_review_only") return label;
   const share = Number(row.signal_multiplier || 0);
   const formatted = share.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
   return `${label} ${formatted}x`;
@@ -1326,6 +1329,15 @@ function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = 
   const rightOffsetBars = Math.ceil(visibleDataBars * clampedRatio / Math.max(0.01, 1 - clampedRatio));
   chart.timeScale().applyOptions({ rightOffset: rightOffsetBars });
   chart.timeScale().setVisibleLogicalRange({ from: startIndex, to: candles.length - 1 + rightOffsetBars });
+}
+
+function formatThresholdSet(thresholds) {
+  if (!thresholds) return "未配置";
+  const value = (key) => {
+    const number = Number(thresholds[key]);
+    return Number.isFinite(number) ? `${number}%` : "-";
+  };
+  return `${value("small")} / ${value("medium")} / ${value("large")}`;
 }
 
 function percentReferencePrice(candles = [], referencePrice) {
@@ -3141,6 +3153,13 @@ function Rebalance({ data, onSaved }) {
       <div className="muted rebalanceFormulaBanner">
         共同分母：{data.rebalance.planned_total_formula || `USD ${fmtMoney(data.rebalance.planned_total_usd, "USD")}`} · VOO/QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率
       </div>
+      {data.rebalance.monthly_recalculation ? (
+        <div className={`monthlyRecalculationStatus ${data.rebalance.monthly_recalculation.status || ""}`}>
+          月度档位：{data.rebalance.monthly_recalculation.effective_month} · {data.rebalance.monthly_recalculation.status === "success" ? "已重算" : "等待重算"}
+          {data.rebalance.monthly_recalculation.warning_count ? ` · 统计警告 ${data.rebalance.monthly_recalculation.warning_count}` : ""}
+          <small>固定分位数 65% / 85% / 95%，Walk-forward 仅预警</small>
+        </div>
+      ) : null}
       {budgetOpen ? (
         <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
           if (shouldCloseFromBackdropClick(event)) setBudgetOpen(false);
@@ -3241,11 +3260,27 @@ function Rebalance({ data, onSaved }) {
           </thead>
           <tbody>
             {suggestionRows.map((row) => {
+              const diagnostics = row.tier_diagnostics || null;
               return (
                 <React.Fragment key={row.symbol}>
                   <tr className={Number(row.buy_difference_usd || 0) <= 0 ? "inactiveRebalanceRow" : ""}>
                     <th>{row.symbol}</th>
-                    <td><span className={`tierBadge ${tierClass(row.intensity)}`}>{rebalanceTierLabel(row)}</span></td>
+                    <td>
+                      <div className="tierSignalStack">
+                        <span className={`tierBadge ${tierClass(row.intensity)}`}>{rebalanceTierLabel(row)}</span>
+                        {row.intraday_warning?.active ? (
+                          <span className="intradayTierWarning">盘中预警：{tierLabel(row.intraday_warning.tier)}</span>
+                        ) : null}
+                        {row.walk_forward_warning?.active ? (
+                          <span
+                            className="walkForwardWarning"
+                            title={(row.walk_forward_warning.messages || []).join("\n")}
+                          >
+                            统计警告 {Number(row.walk_forward_warning.count || 0)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="planCell hasDetailTooltip" title={`当前占比：${Number(realtimePctBySymbol[row.symbol] || 0).toFixed(2)}%\n目标占比：${Number(row.target_pct || 0).toFixed(2)}%`}>
                       <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</div>
                     </td>
@@ -3253,9 +3288,27 @@ function Rebalance({ data, onSaved }) {
                       <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
                     </td>
                     <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
-                    <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
+                    <td className={`${tone(row.drawdown_pct)} hasDetailTooltip`} title={`正式确认：${row.confirmed_close_date || "-"}\n盘中回撤：${row.intraday_drawdown_pct == null ? "-" : fmtPct(row.intraday_drawdown_pct)}`}>
+                      <div>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</div>
+                      {row.intraday_warning?.active ? <small className="intradayDrawdown">盘中 {fmtPct(row.intraday_drawdown_pct)}</small> : null}
+                    </td>
                     <td className={`${Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"} hasDetailTooltip`} title={valuationTooltip(row)}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
                   </tr>
+                  {row.review_mode === "manual_review_only" && diagnostics ? (
+                    <tr className="manualReviewDetailRow">
+                      <td colSpan="7">
+                        <div className="manualReviewDetail">
+                          <strong>复核</strong>
+                          <span>自身样本档位：{formatThresholdSet(diagnostics.self_thresholds_pct)}</span>
+                          <span>同行档位：{formatThresholdSet(diagnostics.peer_thresholds_pct)}</span>
+                          <span>收缩后最终档位：{formatThresholdSet(diagnostics.shrunk_thresholds_pct)}</span>
+                          <span>有效历史：{Number(diagnostics.history_days || 0)}日（可计算回撤 {Number(diagnostics.effective_drawdown_days || 0)}日）</span>
+                          <span>独立回撤周期：{Number(diagnostics.independent_drawdown_cycles || 0)}个</span>
+                          <span className="manualReviewReason">{diagnostics.reason}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
                 </React.Fragment>
               );
             })}
@@ -3414,6 +3467,7 @@ function Rebalance({ data, onSaved }) {
                     <option value="small">小加</option>
                     <option value="medium">中加</option>
                     <option value="large">大加</option>
+                    {row.review_mode === "manual_review_only" ? <option value="manual_review_only">复核</option> : null}
                   </select>
                 </label>
                 <label>成交金额

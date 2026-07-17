@@ -10,6 +10,7 @@ from .config import (
     BALANCES_FILE,
     CLOSED_SATELLITE_PNL_FILE,
     DEFAULT_SATELLITE_TARGET_PCTS,
+    DRAWDOWN_EPISODES_FILE,
     FALLBACK_PRICES,
     HOLDINGS_FILE,
     FX_CONVERSION_RECORDS_FILE,
@@ -281,6 +282,39 @@ def save_monthly_usage(
     }
     store[user_key] = user_store
     _write_json(MONTHLY_USAGE_FILE, store)
+
+
+def load_drawdown_episode_store(user_id: str = "evan") -> dict[str, Any]:
+    raw = _read_json(DRAWDOWN_EPISODES_FILE, {})
+    user_key = str(user_id or "local").strip() or "local"
+    user_state = raw.get(user_key, {}) if isinstance(raw, dict) else {}
+    if not isinstance(user_state, dict):
+        user_state = {}
+    snapshots = user_state.get("threshold_snapshots", {})
+    preferred = user_state.get("preferred_threshold_snapshots", {})
+    recalculations = user_state.get("monthly_recalculations", {})
+    episodes = user_state.get("episodes", {})
+    return {
+        "threshold_snapshots": dict(snapshots) if isinstance(snapshots, dict) else {},
+        "preferred_threshold_snapshots": dict(preferred) if isinstance(preferred, dict) else {},
+        "monthly_recalculations": dict(recalculations) if isinstance(recalculations, dict) else {},
+        "episodes": dict(episodes) if isinstance(episodes, dict) else {},
+        "updated_at": str(user_state.get("updated_at") or ""),
+    }
+
+
+def save_drawdown_episode_store(user_id: str, state: dict[str, Any]) -> None:
+    raw = _read_json(DRAWDOWN_EPISODES_FILE, {})
+    store = raw if isinstance(raw, dict) else {}
+    user_key = str(user_id or "local").strip() or "local"
+    store[user_key] = {
+        "threshold_snapshots": dict(state.get("threshold_snapshots") or {}),
+        "preferred_threshold_snapshots": dict(state.get("preferred_threshold_snapshots") or {}),
+        "monthly_recalculations": dict(state.get("monthly_recalculations") or {}),
+        "episodes": dict(state.get("episodes") or {}),
+        "updated_at": datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds"),
+    }
+    _write_json(DRAWDOWN_EPISODES_FILE, store)
 
 
 def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:

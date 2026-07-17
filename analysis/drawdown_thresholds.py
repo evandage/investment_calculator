@@ -23,6 +23,11 @@ FREQUENCY_TARGETS = {
     "medium": (0.8, 1.5),
     "large": (0.25, 0.5),
 }
+EXECUTION_OVERRIDES = {
+    "VOO": {"small": 0.035},
+    "ISRG": {"large": 0.25},
+}
+MANUAL_REVIEW_ONLY = {"TEM"}
 
 
 @dataclass(frozen=True)
@@ -147,6 +152,28 @@ def clean_thresholds(values: np.ndarray) -> np.ndarray:
     return cleaned
 
 
+def count_independent_episodes(dd60: pd.Series, small_threshold: float) -> int:
+    active = False
+    recovery_days = 0
+    count = 0
+    for dd in dd60.to_numpy():
+        if not np.isfinite(dd):
+            continue
+        if active:
+            if dd <= 1e-12:
+                active = False
+                recovery_days = 0
+            else:
+                recovery_days = recovery_days + 1 if dd < small_threshold / 2 else 0
+                if recovery_days >= 10:
+                    active = False
+                    recovery_days = 0
+        if not active and dd >= small_threshold:
+            active = True
+            count += 1
+    return count
+
+
 def threshold_snapshot(
     dd60: np.ndarray,
     vol_rank: np.ndarray,
@@ -171,10 +198,12 @@ def walk_forward_frequency(
     dd60: pd.Series,
     vol_rank: np.ndarray,
     config: Config,
+    close: pd.Series | None = None,
 ) -> dict[str, Any]:
     values = dd60.to_numpy()
     index = dd60.index
     events: dict[str, list[str]] = {name: [] for name in TIER_NAMES}
+    event_positions: dict[str, list[int]] = {name: [] for name in TIER_NAMES}
     episode_active = False
     frozen: np.ndarray | None = None
     triggered = [False, False, False]
@@ -214,6 +243,7 @@ def walk_forward_frequency(
                 frozen = current_thresholds.copy()
                 triggered = [True, False, False]
                 events["small"].append(index[pos].date().isoformat())
+                event_positions["small"].append(pos)
                 last_trigger_position = pos
             continue
 
@@ -226,6 +256,7 @@ def walk_forward_frequency(
             if not triggered[tier_idx] and dd >= frozen[tier_idx]:
                 triggered[tier_idx] = True
                 events[TIER_NAMES[tier_idx]].append(index[pos].date().isoformat())
+                event_positions[TIER_NAMES[tier_idx]].append(pos)
                 last_trigger_position = pos
                 break
 
@@ -237,12 +268,91 @@ def walk_forward_frequency(
     annual_frequency = {
         name: (len(dates) / years if years > 0 else None) for name, dates in events.items()
     }
+    statistics = {
+        name: walk_forward_outcome_statistics(
+            close,
+            event_positions[name],
+            seed=config.random_seed + tier_idx * 1000,
+        )
+        for tier_idx, name in enumerate(TIER_NAMES)
+    }
     return {
         "test_start": index[first_test_position].date().isoformat() if first_test_position is not None else None,
         "test_years": years,
         "events": events,
         "event_counts": {name: len(dates) for name, dates in events.items()},
         "annual_frequency": annual_frequency,
+        "statistics": statistics,
+    }
+
+
+def walk_forward_outcome_statistics(
+    close: pd.Series | None,
+    positions: list[int],
+    *,
+    seed: int,
+) -> dict[str, Any]:
+    windows = (20, 60, 120)
+    empty = {
+        "sample_count": 0,
+        "forward_return_median_pct": {str(window): None for window in windows},
+        "forward_return_win_rate": {str(window): None for window in windows},
+        "forward_return_ci90_pct": {str(window): [None, None] for window in windows},
+        "mae_120d_median_pct": None,
+        "mae_120d_ci90_pct": [None, None],
+    }
+    if close is None or not positions:
+        return empty
+
+    rng = np.random.default_rng(seed)
+    returns: dict[int, list[float]] = {window: [] for window in windows}
+    mae_values: list[float] = []
+    values = close.to_numpy(dtype=float)
+    for pos in positions:
+        trigger_price = values[pos]
+        if not np.isfinite(trigger_price) or trigger_price <= 0:
+            continue
+        for window in windows:
+            future_pos = pos + window
+            if future_pos < len(values) and np.isfinite(values[future_pos]):
+                returns[window].append((values[future_pos] / trigger_price - 1.0) * 100.0)
+        end_pos = min(pos + 120, len(values) - 1)
+        if end_pos > pos:
+            future_path = values[pos + 1 : end_pos + 1]
+            future_path = future_path[np.isfinite(future_path)]
+            if future_path.size:
+                mae_values.append((float(np.min(future_path)) / trigger_price - 1.0) * 100.0)
+
+    def summarize(samples: list[float]) -> tuple[float | None, float | None, list[float | None]]:
+        if not samples:
+            return None, None, [None, None]
+        array = np.asarray(samples, dtype=float)
+        median = float(np.median(array))
+        win_rate = float(np.mean(array > 0))
+        if len(array) == 1:
+            return median, win_rate, [median, median]
+        draws = np.empty(2000, dtype=float)
+        for rep in range(len(draws)):
+            draws[rep] = np.median(rng.choice(array, size=len(array), replace=True))
+        return median, win_rate, [float(np.quantile(draws, 0.05)), float(np.quantile(draws, 0.95))]
+
+    medians: dict[str, float | None] = {}
+    win_rates: dict[str, float | None] = {}
+    cis: dict[str, list[float | None]] = {}
+    for window in windows:
+        median, win_rate, ci = summarize(returns[window])
+        medians[str(window)] = median
+        win_rates[str(window)] = win_rate
+        cis[str(window)] = ci
+    mae_median, _unused, mae_ci = summarize(mae_values)
+    return {
+        "sample_count": len(positions),
+        "forward_sample_count": {str(window): len(returns[window]) for window in windows},
+        "forward_return_median_pct": medians,
+        "forward_return_win_rate": win_rates,
+        "forward_return_ci90_pct": cis,
+        "mae_120d_median_pct": mae_median,
+        "mae_120d_ci90_pct": mae_ci,
     }
 
 
@@ -300,6 +410,25 @@ def frequency_warnings(walk_forward: dict[str, Any]) -> list[str]:
     return warnings
 
 
+def outcome_warnings(walk_forward: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    statistics = walk_forward.get("statistics") or {}
+    for name in TIER_NAMES:
+        stats = statistics.get(name) or {}
+        sample_count = int(stats.get("sample_count") or 0)
+        if sample_count < 5:
+            warnings.append(f"{name}档walk-forward独立样本仅{sample_count}个，结果置信度低")
+        medians = stats.get("forward_return_median_pct") or {}
+        for window in (60, 120):
+            value = medians.get(str(window))
+            if value is not None and float(value) < 0:
+                warnings.append(f"{name}档触发后{window}日中位收益为{float(value):.2f}%")
+        ci = (stats.get("forward_return_ci90_pct") or {}).get("120") or [None, None]
+        if len(ci) == 2 and ci[0] is not None and ci[1] is not None and float(ci[0]) <= 0 <= float(ci[1]):
+            warnings.append(f"{name}档120日收益90%置信区间跨越0，方向不稳定")
+    return warnings
+
+
 def analyze_ticker(ticker: str, close: pd.Series, config: Config, seed_offset: int) -> dict[str, Any]:
     peak60 = close.rolling(config.drawdown_window, min_periods=config.drawdown_window).max()
     dd60 = 1 - close / peak60
@@ -319,13 +448,19 @@ def analyze_ticker(ticker: str, close: pd.Series, config: Config, seed_offset: i
     boot_median = np.median(bootstrap, axis=0)
     ci_low = np.quantile(bootstrap, 0.05, axis=0)
     ci_high = np.quantile(bootstrap, 0.95, axis=0)
-    thresholds = clean_thresholds(boot_median)
+    base_thresholds = clean_thresholds(boot_median)
+    thresholds = base_thresholds.copy()
+    applied_overrides = EXECUTION_OVERRIDES.get(ticker, {})
+    for tier_name, value in applied_overrides.items():
+        thresholds[TIER_NAMES.index(tier_name)] = float(value)
+    execution_mode = "manual_review_only" if ticker in MANUAL_REVIEW_ONLY else "automatic"
 
-    walk_forward = walk_forward_frequency(dd60, vol_rank, config)
+    walk_forward = walk_forward_frequency(dd60, vol_rank, config, close)
     confidences, warnings = tier_confidences(
         len(close), boot_median, ci_low, ci_high, walk_forward["event_counts"]
     )
     warnings.extend(frequency_warnings(walk_forward))
+    warnings.extend(outcome_warnings(walk_forward))
     if thresholds[0] < 0.03:
         warnings.append("小加档浅于3%")
     if thresholds[2] > 0.60:
@@ -348,7 +483,15 @@ def analyze_ticker(ticker: str, close: pd.Series, config: Config, seed_offset: i
         "vol_multiplier": multiplier,
         "raw_estimate": point_estimate.tolist(),
         "bootstrap_median": boot_median.tolist(),
-        "thresholds": thresholds.tolist(),
+        "execution_mode": execution_mode,
+        "self_thresholds": base_thresholds.tolist(),
+        "peer_group": [],
+        "peer_thresholds": None,
+        "shrunk_thresholds": None,
+        "independent_drawdown_cycles": count_independent_episodes(dd60, float(base_thresholds[0])),
+        "base_thresholds": base_thresholds.tolist(),
+        "thresholds": None if execution_mode == "manual_review_only" else thresholds.tolist(),
+        "execution_overrides": applied_overrides,
         "ci90": np.column_stack([ci_low, ci_high]).tolist(),
         "confidence_by_tier": confidences,
         "walk_forward": walk_forward,
@@ -384,6 +527,11 @@ def main() -> None:
             "bootstrap": f"moving block bootstrap, block=20, reps={config.bootstrap_reps}, CI=90%",
             "cleaning": "round to 0.5 percentage point; medium>=small+3pp; large>=medium+5pp",
             "frequency_targets_per_year": FREQUENCY_TARGETS,
+            "execution_overrides": {
+                "VOO.small": "3.5% user-selected execution floor",
+                "ISRG.large": "25%; shallowest tested 0.5pp tier meeting the 2-4 year independent-event target",
+                "TEM": "manual_review_only until a user-approved reliable peer group exists",
+            },
         },
         "results": results,
     }

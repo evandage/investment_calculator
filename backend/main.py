@@ -48,6 +48,7 @@ from .storage import (
     save_holdings,
     save_satellite_targets,
 )
+from .drawdown_recalculation import start_monthly_drawdown_scheduler
 
 TZ_SHANGHAI = config_module.TZ_SHANGHAI
 
@@ -171,6 +172,7 @@ def root() -> dict[str, str]:
 def startup() -> None:
     threading.Thread(target=start_futu_quote_subscription, daemon=True).start()
     threading.Thread(target=start_performance_history_scheduler, daemon=True).start()
+    threading.Thread(target=start_monthly_drawdown_scheduler, daemon=True).start()
 
 
 @app.on_event("shutdown")
