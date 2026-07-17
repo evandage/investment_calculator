@@ -3079,12 +3079,12 @@ def _render_chart_board() -> None:
     _interval_keys = [_interval_display_map[x] for x in _interval_pick] or ["1d"]
     _avwap_mode_labels = {}
     if _chart_yf not in {"VOO", "QQQ", "SGOV"}:
-        _avwap_mode_labels["最近财报日"] = "earnings"
+        _avwap_mode_labels["最近财报反应日"] = "earnings"
     _avwap_mode_labels.update(
         {
+            "今日开盘": "today_open",
             "最近60日历史高点": "high_60d",
             "最近60日大跌低点": "selloff_60d",
-            "今日开盘": "today_open",
         }
     )
     _avwap_pick = st.sidebar.selectbox(
@@ -4463,4 +4463,3 @@ with st.expander("再平衡模块", expanded=False):
                         if total_execution_usd > float(balances_for_view.get("cash_usd", 0.0)):
                             st.warning("本次买入金额超过当前现金，已将现金扣到 0；如果动用了 SGOV，请手动更新 SGOV/现金。")
                         st.rerun()
-

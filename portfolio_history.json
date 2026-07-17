@@ -602,13 +602,20 @@
     },
     {
       "date": "2026-07-16",
-      "portfolio_daily_pct": -1.0747770879416612,
       "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": -1.0747770879416612,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
       "holding_pnl_pct": 0.2852551604732761,
+      "holding_daily_pnl_pct": -1.0747770879416612,
       "holding_pnl_cny": 107.83713108008669,
       "holding_cost_cny": 37803.744164056705,
+      "total_pnl_cny": -875.916999411468,
+      "total_return_basis_cny": 91242.40360254828,
+      "fx_pnl_cny": -983.7541304915547,
       "fx_rate": 6.7632,
-      "holding_daily_pnl_pct": -1.0747770879416612,
+      "cash_usd": 2883.78,
+      "cash_cny": 28.019999999999982,
       "holding_daily_pnl_cny": -411.8919093048003,
       "holding_daily_basis_cny": 38323.4732044416,
       "usd_return_pct": 0.2852551604732968,
@@ -618,10 +625,8 @@
       "usd_daily_pct": -1.0747770879416614,
       "usd_daily_pnl_usd": -60.90192650000005,
       "usd_daily_basis_usd": 5666.470488,
-      "cash_flow_cny": 0,
+      "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
-      "total_assets_cny": 0.0,
-      "total_cost_cny": 0.0,
       "benchmark_prices": {
         "VOO": 689.76,
         "QQQ": 705.55,
@@ -632,10 +637,6 @@
         "VOO": -0.5823003747477573,
         "QQQ": -1.6983866023908445
       },
-      "market_open_symbols": [
-        "VOO",
-        "QQQ"
-      ],
       "symbol_daily_pct": {
         "VOO": -0.5823003747477606,
         "QQQ": -1.6983866023908456,
@@ -679,15 +680,9 @@
           "avg_cost": 2.3667815728747468
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
-      "updated_at": "2026-07-16T08:00:00+08:00",
-      "total_pnl_cny": -875.916999411468,
-      "total_return_basis_cny": 91242.40360254828,
-      "total_pnl_pct": -0.9599889577952819,
-      "fx_pnl_cny": -983.7541304915547,
-      "cash_usd": 2883.78,
-      "cash_cny": 28.019999999999982
+      "estimated_symbols": [],
+      "updated_at": "2026-07-16T08:00:00+08:00"
     }
   ]
 }

@@ -1710,7 +1710,7 @@ function TechnicalCheatSheetModal({ onClose }) {
 function TechnicalInsightPanel({ data, displayRange, visibleProfile }) {
   const snapshot = useMemo(() => buildTechnicalSnapshot(data, displayRange, visibleProfile), [data, displayRange, visibleProfile]);
   if (!snapshot) return null;
-  const rangeLabel = displayRange === "250" ? "250根 · 一年" : displayRange === "125" ? "125根 · 半年" : displayRange === "60" ? "60根 · 季度" : displayRange === "earnings" ? "财报日起" : "当前波段";
+  const rangeLabel = displayRange === "250" ? "250根 · 一年" : displayRange === "125" ? "125根 · 半年" : displayRange === "60" ? "60根 · 季度" : displayRange === "earnings" ? "财报反应日起" : "当前波段";
   const levelRows = snapshot.supports.length ? snapshot.supports : snapshot.resistances;
   const levelTitle = snapshot.supports.length ? "下一支撑" : "上方压力";
   return (
@@ -2140,12 +2140,20 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
 
 let klinePageMemory = {};
 
+function defaultKlineAvwapMode(interval, symbol) {
+  if (interval === "5m" || interval === "15m") return "today_open";
+  return ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol) ? "year_start" : "earnings";
+}
+
 function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
   const [scope, setScope] = useState(() => restoredState.scope === "single" ? "single" : "global");
   const [symbol, setSymbol] = useState(() => String(restoredState.symbol || "VOO"));
   const [interval, setInterval] = useState(() => String(restoredState.interval || "1d"));
-  const [avwapMode, setAvwapMode] = useState(() => String(restoredState.avwapMode || "year_start"));
+  const [avwapMode, setAvwapMode] = useState(() => String(
+    restoredState.avwapMode
+      || defaultKlineAvwapMode(String(restoredState.interval || "1d"), String(restoredState.symbol || "VOO"))
+  ));
   const [displayRange, setDisplayRange] = useState(() => String(restoredState.displayRange || "60"));
   const [showExtended, setShowExtended] = useState(() => Boolean(restoredState.showExtended));
   const [data, setData] = useState(null);
@@ -2288,7 +2296,12 @@ function KlinePage({ dashboardData }) {
 
   function changeKlineSymbol(nextSymbol) {
     setSymbol(nextSymbol);
-    setAvwapMode(["VOO", "QQQ", "SGOV", "510330.SS"].includes(nextSymbol) ? "year_start" : "earnings");
+    setAvwapMode(defaultKlineAvwapMode(interval, nextSymbol));
+  }
+
+  function changeKlineInterval(nextInterval) {
+    setInterval(nextInterval);
+    setAvwapMode(defaultKlineAvwapMode(nextInterval, symbol));
   }
 
   function openSingleSymbolFromGlobal(nextSymbol) {
@@ -2309,7 +2322,7 @@ function KlinePage({ dashboardData }) {
             <select value={scope} onChange={(event) => {
               const nextScope = event.target.value;
               setScope(nextScope);
-              if (nextScope === "single") setAvwapMode(isEtf ? "year_start" : "earnings");
+              if (nextScope === "single") setAvwapMode(defaultKlineAvwapMode(interval, symbol));
             }} aria-label="看板模式">
               <option value="global">全局看板</option>
               <option value="single">单标的</option>
@@ -2317,7 +2330,7 @@ function KlinePage({ dashboardData }) {
           </label>
           <label className="klineControl">
             <span>周期</span>
-            <select value={interval} onChange={(event) => setInterval(event.target.value)} aria-label="K线周期">
+            <select value={interval} onChange={(event) => changeKlineInterval(event.target.value)} aria-label="K线周期">
               <option value="1d">日线</option>
               <option value="15m">15 min</option>
               <option value="5m">5 min</option>
@@ -2344,14 +2357,14 @@ function KlinePage({ dashboardData }) {
                 <option value="125">最近 125 根 · 半年</option>
                 <option value="selloff_60d">最近一次大跌起</option>
                 <option value="rally_60d">最近一次大涨起</option>
-                {!isEtf ? <option value="earnings">最近财报日起</option> : null}
+                {!isEtf ? <option value="earnings">最近财报反应日起</option> : null}
               </select>
             </label>
           ) : null}
           <label className={`klineControl klineAvwapControl ${avwapSelectValue !== "none" ? "isActive" : ""}`}>
             <span>AVWAP 锚点</span>
             <select value={avwapSelectValue} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
-              {!isEtf ? <option value="earnings">最近财报日</option> : null}
+              {!isEtf ? <option value="earnings">最近财报反应日</option> : null}
               <option value="year_start">年初</option>
               {!isEtf ? <option value="gap_60d">最近 Gap 日</option> : null}
               <option value="high_60d">最近 Swing High</option>

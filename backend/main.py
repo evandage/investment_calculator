@@ -247,6 +247,12 @@ def _kline_header_change_pct(
     return float(value) if value is not None else None
 
 
+def _default_avwap_mode(interval: str, symbol: str) -> str:
+    if interval in {"5m", "15m"}:
+        return "today_open"
+    return "year_start" if symbol in {"VOO", "QQQ", "SGOV", "510330.SS"} else "earnings"
+
+
 def _build_global_chart_board_light(
     interval: str = "5m",
     show_extended: bool = True,
@@ -355,7 +361,7 @@ def _series_for_lightweight(series: Any, interval: str) -> list[dict[str, Any]]:
 def _build_chart_board_light(
     symbol: str = "VOO",
     interval: str = "5m",
-    avwap_mode: str = "earnings",
+    avwap_mode: str | None = None,
     show_extended: bool = True,
 ) -> dict[str, Any]:
     sym = str(symbol or "VOO").upper()
@@ -374,7 +380,7 @@ def _build_chart_board_light(
     latest_change_pct = None
     session_open = float(quote.get("open_price") or 0.0)
     previous_close = float(quote.get("prev_close") or 0.0)
-    effective_avwap_mode = avwap_mode
+    effective_avwap_mode = avwap_mode or _default_avwap_mode(key, sym)
     if sym in {"VOO", "QQQ", "SGOV", "510330.SS"} and effective_avwap_mode == "earnings":
         effective_avwap_mode = "high_60d"
 
@@ -541,7 +547,7 @@ def _build_chart_board_light(
 def chart_board_light(
     symbol: str = "VOO",
     interval: str = "5m",
-    avwap_mode: str = "earnings",
+    avwap_mode: str | None = None,
     show_extended: bool = True,
 ) -> dict[str, Any]:
     return _build_chart_board_light(symbol, interval, avwap_mode, show_extended)
@@ -712,7 +718,7 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
     await websocket.accept()
     symbol = str(websocket.query_params.get("symbol", "VOO")).upper()
     interval = str(websocket.query_params.get("interval", "5m"))
-    avwap_mode = str(websocket.query_params.get("avwap_mode", "earnings"))
+    avwap_mode = str(websocket.query_params.get("avwap_mode") or _default_avwap_mode(interval, symbol))
     show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
     if symbol not in _chart_labels():
         symbol = "VOO"

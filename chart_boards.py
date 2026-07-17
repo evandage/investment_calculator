@@ -61,7 +61,7 @@ _ETF_SYMBOLS = {"VOO", "QQQ", "SGOV"}
 
 AVWAP_MODE_LABELS = {
     "none": "无",
-    "earnings": "最近财报日",
+    "earnings": "最近财报反应日",
     "year_start": "年初",
     "high_60d": "最近 Swing High",
     "low_60d": "最近 Swing Low",
@@ -1811,6 +1811,72 @@ def vwap_and_bands(df: pd.DataFrame, n_std: float = 1.0) -> tuple[pd.Series, pd.
     )
 
 
+def _earnings_reaction_date_from_history(
+    data: pd.DataFrame,
+    as_of: pd.Timestamp,
+) -> pd.Timestamp | None:
+    """Return the latest completed earnings reaction trading day.
+
+    Futu distinguishes the announcement date from the trading session that
+    prices the news.  For an after-hours release these are different dates;
+    using the announcement date would incorrectly include the full session
+    before the earnings release in AVWAP.
+    """
+    if data is None or data.empty or "pub_trading_day_str" not in data.columns:
+        return None
+
+    frame = data.copy()
+    empty_values = pd.Series(pd.NaT, index=frame.index, dtype="datetime64[ns]")
+    empty_numbers = pd.Series(np.nan, index=frame.index, dtype=float)
+    frame["_release_day"] = pd.to_datetime(frame["pub_trading_day_str"], errors="coerce").dt.normalize()
+    reaction_values = frame["trading_day_str"] if "trading_day_str" in frame.columns else empty_values
+    release_times = frame["pub_time_str"] if "pub_time_str" in frame.columns else empty_values
+    pub_types = frame["pub_type"] if "pub_type" in frame.columns else empty_numbers
+    frame["_reaction_day"] = pd.to_datetime(reaction_values, errors="coerce").dt.normalize()
+    frame["_release_time"] = pd.to_datetime(release_times, errors="coerce")
+    frame["_pub_type"] = pd.to_numeric(pub_types, errors="coerce")
+    frame = frame.dropna(subset=["_release_day"])
+    if frame.empty:
+        return None
+
+    as_of_ts = pd.Timestamp(as_of)
+    if as_of_ts.tzinfo is not None:
+        as_of_ts = as_of_ts.tz_localize(None)
+    as_of_day = as_of_ts.normalize()
+
+    # The API repeats earnings metadata for each schedule row. One row per
+    # release is sufficient, and keeping the first preserves its reaction day.
+    frame = frame.sort_values(["_release_day", "_release_time"], na_position="last")
+    frame = frame.drop_duplicates(subset=["_release_day"], keep="first")
+    known_time = frame["_release_time"].notna() & (
+        frame["_release_time"].dt.normalize() == frame["_release_day"]
+    )
+    published = (frame["_release_day"] < as_of_day) | (
+        (frame["_release_day"] == as_of_day)
+        & (~known_time | (frame["_release_time"] <= as_of_ts))
+    )
+    frame = frame.loc[published].copy()
+    if frame.empty:
+        return None
+
+    # Fallback for older records without trading_day_str: premarket/in-session
+    # reacts the same day; after-hours reacts on the next business day. The
+    # normal path always uses Futu's actual trading day, which handles holidays.
+    missing_reaction = frame["_reaction_day"].isna()
+    after_hours = frame["_pub_type"] == 2
+    frame.loc[missing_reaction & ~after_hours, "_reaction_day"] = frame.loc[
+        missing_reaction & ~after_hours, "_release_day"
+    ]
+    frame.loc[missing_reaction & after_hours, "_reaction_day"] = frame.loc[
+        missing_reaction & after_hours, "_release_day"
+    ] + pd.offsets.BDay(1)
+    frame = frame.loc[frame["_reaction_day"].notna() & (frame["_reaction_day"] <= as_of_day)]
+    if frame.empty:
+        return None
+    latest = frame.sort_values(["_release_day", "_reaction_day"]).iloc[-1]
+    return pd.Timestamp(latest["_reaction_day"]).normalize()
+
+
 def _latest_earnings_date(symbol: str) -> pd.Timestamp | None:
     cached = _EARNINGS_DATE_CACHE.get(symbol)
     now = time.time()
@@ -1830,12 +1896,8 @@ def _latest_earnings_date(symbol: str) -> pd.Timestamp | None:
             ctx = OpenQuoteContext(host=host, port=port)
             ret, data = ctx.get_financials_earnings_price_history(code)
             if ret == RET_OK and data is not None and not data.empty:
-                values = pd.to_datetime(data.get("pub_trading_day_str"), errors="coerce").dropna()
-                if not values.empty:
-                    today = pd.Timestamp.now(tz=_market_tz(symbol)).tz_localize(None).normalize()
-                    past = values[values <= today]
-                    if not past.empty:
-                        result = pd.Timestamp(past.max()).normalize()
+                market_now = pd.Timestamp.now(tz=_market_tz(symbol)).tz_localize(None)
+                result = _earnings_reaction_date_from_history(data, market_now)
     except Exception:
         result = None
     finally:

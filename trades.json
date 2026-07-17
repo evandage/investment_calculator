@@ -284,6 +284,36 @@
       "new_avg_cost": 408.0062820702952,
       "intensity": "medium",
       "created_at": "2026-07-15T10:33:48+08:00"
+    },
+    {
+      "id": "20260717221136-19-TEM",
+      "trade_date": "2026-07-17",
+      "symbol": "TEM",
+      "action": "buy",
+      "amount_usd": 36.0,
+      "shares": 0.691,
+      "price": 52.09840810419682,
+      "cost_basis": 36.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 56.70892741412832,
+      "new_avg_cost": 54.27362024155328,
+      "intensity": "manual_review_only",
+      "created_at": "2026-07-17T22:11:36+08:00"
+    },
+    {
+      "id": "20260717221208-20-PLTR",
+      "trade_date": "2026-07-17",
+      "symbol": "PLTR",
+      "action": "buy",
+      "amount_usd": 15.0,
+      "shares": 0.1147,
+      "price": 130.77593722755014,
+      "cost_basis": 15.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 128.76,
+      "new_avg_cost": 129.50879533678759,
+      "intensity": "normal",
+      "created_at": "2026-07-17T22:12:08+08:00"
     }
   ]
 }
