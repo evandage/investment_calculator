@@ -1744,6 +1744,9 @@ h2 {
   position: relative;
   width: 100%;
   height: calc(100% - 48px);
+  --single-profile-width: 15%;
+  --single-profile-label-gutter: 5%;
+  --single-price-axis-width: 62px;
 }
 
 .klineCandleTooltip {
@@ -1789,14 +1792,14 @@ h2 {
 }
 
 .singleKlinePercentAxis {
-  right: calc(62px + 15%);
+  right: calc(var(--single-price-axis-width) + var(--single-profile-width) + var(--single-profile-label-gutter));
 }
 
 .singleLwProfile {
   position: absolute;
   top: 0;
-  right: 62px;
-  width: 15%;
+  right: calc(var(--single-price-axis-width) + var(--single-profile-label-gutter));
+  width: var(--single-profile-width);
   height: 56%;
   z-index: 4;
   pointer-events: none;
@@ -1808,15 +1811,17 @@ h2 {
   min-width: 1px;
   max-width: 100%;
   border-radius: 999px 0 0 999px;
-  background: linear-gradient(90deg, rgba(56, 189, 248, 0.08), rgba(56, 189, 248, 0.38));
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.08);
+  border-right: 2px solid rgba(125, 226, 255, 0.96);
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.18), rgba(56, 189, 248, 0.76));
+  box-shadow: 0 0 9px rgba(56, 189, 248, 0.28);
   pointer-events: auto;
   cursor: help;
 }
 
 .singleLwProfileBar.poc {
-  background: linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.72));
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+  border-right-color: rgba(255, 225, 128, 1);
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.28), rgba(251, 191, 36, 0.94));
+  box-shadow: 0 0 13px rgba(245, 158, 11, 0.48);
 }
 
 .singleLwProfileBar.poc:hover::after {

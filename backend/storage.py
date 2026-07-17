@@ -70,6 +70,7 @@ def default_balances() -> dict[str, float]:
         "cash_cny": 0.0,
         "realized_usd": 0.0,
         "realized_cny": 0.0,
+        "voo_dividend_usd": 0.0,
         "sgov_dividend_usd": 0.0,
     }
 
@@ -83,7 +84,7 @@ def normalize_balances(raw: Any) -> dict[str, float]:
             value = float(raw.get(key, out[key]))
         except (TypeError, ValueError):
             value = out[key]
-        out[key] = max(0.0, value) if key.startswith("cash_") or key == "sgov_dividend_usd" else value
+        out[key] = max(0.0, value) if key.startswith("cash_") or key.endswith("_dividend_usd") else value
     return out
 
 

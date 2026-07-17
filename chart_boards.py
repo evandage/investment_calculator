@@ -881,7 +881,7 @@ def _fetch_from_source(
     provider = get_market_provider()
     cache_key = (provider, symbol, interval)
     cached = _SOURCE_CACHE.get(cache_key)
-    if cached and time.time() - cached[2] < _SOURCE_CACHE_TTL_SECONDS.get(interval, 30.0):
+    if provider != "futu" and cached and time.time() - cached[2] < _SOURCE_CACHE_TTL_SECONDS.get(interval, 30.0):
         return cached[0].copy(), cached[1]
 
     def _store_source(df: pd.DataFrame, source: str) -> tuple[pd.DataFrame, str]:

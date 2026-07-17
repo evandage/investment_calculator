@@ -2275,6 +2275,7 @@ def _default_balances() -> dict[str, float]:
         "cash_cny": 0.0,
         "realized_usd": 0.0,
         "realized_cny": 0.0,
+        "voo_dividend_usd": 0.0,
         "sgov_dividend_usd": 0.0,
     }
 
@@ -2304,6 +2305,10 @@ def _load_balances() -> dict[str, float]:
     except (TypeError, ValueError):
         out["realized_cny"] = 0.0
     try:
+        out["voo_dividend_usd"] = max(0.0, float(data.get("voo_dividend_usd", 0.0)))
+    except (TypeError, ValueError):
+        out["voo_dividend_usd"] = 0.0
+    try:
         out["sgov_dividend_usd"] = float(data.get("sgov_dividend_usd", 0.0))
     except (TypeError, ValueError):
         out["sgov_dividend_usd"] = 0.0
@@ -2323,6 +2328,7 @@ def _save_balances(balances: dict[str, float]) -> None:
     payload["cash_cny"] = float(max(0.0, balances.get("cash_cny", 0.0)))
     payload["realized_usd"] = float(balances.get("realized_usd", 0.0))
     payload["realized_cny"] = float(balances.get("realized_cny", 0.0))
+    payload["voo_dividend_usd"] = float(max(0.0, balances.get("voo_dividend_usd", 0.0)))
     payload["sgov_dividend_usd"] = float(balances.get("sgov_dividend_usd", 0.0))
     _BALANCE_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
@@ -2538,6 +2544,10 @@ def _normalize_balances(raw: Any) -> dict[str, float]:
         balances["realized_cny"] = float(raw.get("realized_cny", 0.0))
     except (TypeError, ValueError):
         balances["realized_cny"] = 0.0
+    try:
+        balances["voo_dividend_usd"] = max(0.0, float(raw.get("voo_dividend_usd", 0.0)))
+    except (TypeError, ValueError):
+        balances["voo_dividend_usd"] = 0.0
     try:
         balances["sgov_dividend_usd"] = float(raw.get("sgov_dividend_usd", 0.0))
     except (TypeError, ValueError):
@@ -2974,6 +2984,14 @@ def _render_holdings_editor() -> None:
                 key="edit_balance_sgov_dividend_usd",
                 help="用于修正 SGOV 月度派息除权导致的价格型浮盈亏误差；填写已收到但希望归因到 SGOV 的分红金额。",
             )
+            balances_for_view["voo_dividend_usd"] = st.number_input(
+                "VOO 已收分红（USD）",
+                min_value=0.0,
+                value=float(balances_for_view.get("voo_dividend_usd", 0.0)),
+                step=0.01,
+                key="edit_balance_voo_dividend_usd",
+                help="填写已收到且希望计入 VOO 总回报的累计分红金额；不改变 VOO 市值或现金余额。",
+            )
             balances_for_view["realized_cny"] = st.number_input(
                 "已变现浮盈亏人民币（CNY）",
                 value=float(balances_for_view.get("realized_cny", 0.0)),
@@ -3194,6 +3212,7 @@ forward_pe_by_symbol = {
 }
 drawdown_pct_by_symbol: dict[str, float | None] = {}
 rebound_pct_by_symbol: dict[str, float | None] = {}
+voo_dividend_usd = float(balances_for_view.get("voo_dividend_usd", 0.0))
 sgov_dividend_usd = float(balances_for_view.get("sgov_dividend_usd", 0.0))
 for sym, meta in _ASSET_META.items():
     shares = float(holdings[sym]["shares"])
@@ -3201,7 +3220,7 @@ for sym, meta in _ASSET_META.items():
     current = float(prices_now[sym])
     cost = shares * avg_cost
     value = shares * current
-    dividend_native = sgov_dividend_usd if sym == "SGOV" else 0.0
+    dividend_native = voo_dividend_usd if sym == "VOO" else sgov_dividend_usd if sym == "SGOV" else 0.0
     pnl = value - cost + dividend_native
     pnl_pct = (pnl / cost * 100) if cost > 0 else 0.0
 
@@ -3783,7 +3802,7 @@ usd_position_value_usd = sum(
     float(holdings[sym]["shares"]) * float(prices_now.get(sym, 0.0))
     for sym in usd_symbols
 )
-usd_unrealized_pnl_usd = usd_position_value_usd - usd_cost_usd + sgov_dividend_usd
+usd_unrealized_pnl_usd = usd_position_value_usd - usd_cost_usd + voo_dividend_usd + sgov_dividend_usd
 usd_unrealized_return_pct = (usd_unrealized_pnl_usd / usd_cost_usd * 100.0) if usd_cost_usd > 0 else 0.0
 usd_unrealized_asset_pct = (usd_unrealized_pnl_usd / usd_total_usd * 100.0) if usd_total_usd > 0 else 0.0
 total_realized_cny = realized_usd * fx + realized_cny

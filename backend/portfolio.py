@@ -476,10 +476,6 @@ def build_visualizations(
         elif sym in ("VOO", "QQQ", "SGOV", "001015"):
             pnl_cny = float(row["pnl_cny"])
             pnl_usd = float(row["pnl"]) if row["currency"] == "USD" else (pnl_cny / fx if fx > 0 else 0.0)
-            if sym == "SGOV":
-                sgov_dividend_usd = float(balances.get("sgov_dividend_usd", 0.0))
-                pnl_usd += sgov_dividend_usd
-                pnl_cny += sgov_dividend_usd * fx
             pnl_rank.append(
                 {
                     "symbol": sym,
@@ -1560,8 +1556,13 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         cost = shares * avg_cost
         value_cny = value * fx if meta["currency"] == "USD" else value
         cost_cny = cost * usd_cost_fx if meta["currency"] == "USD" else cost
-        pnl = value - cost
-        pnl_cny = value_cny - cost_cny
+        dividend_usd = (
+            float(balances.get("voo_dividend_usd", 0.0))
+            if sym == "VOO"
+            else float(balances.get("sgov_dividend_usd", 0.0)) if sym == "SGOV" else 0.0
+        )
+        pnl = value - cost + dividend_usd
+        pnl_cny = value_cny - cost_cny + dividend_usd * fx
         total_value_cny += value_cny
         total_cost_cny += cost_cny
         value_cny_by_symbol[sym] = value_cny
@@ -1586,6 +1587,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "value_cny": value_cny,
                 "pnl": pnl,
                 "pnl_cny": pnl_cny,
+                "attributed_dividend_usd": dividend_usd,
                 "pnl_pct": pnl / cost * 100.0 if cost > 0 else 0.0,
                 "daily_pct": float(quote.get("regular_change_pct", quote.get("change_pct", 0.0))),
                 "effective_daily_pct": history_daily_pct_for_symbol(sym, quote, history_day, datetime.now(TZ_SHANGHAI)),
@@ -1727,7 +1729,10 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         float(holdings[s].get("shares", 0.0) or 0.0) * float(holdings[s].get("avg_cost", 0.0) or 0.0)
         for s in USD_SYMBOLS
     )
-    usd_pnl_usd = usd_value_usd - usd_cost_usd
+    attributed_dividend_usd = float(balances.get("voo_dividend_usd", 0.0)) + float(
+        balances.get("sgov_dividend_usd", 0.0)
+    )
+    usd_pnl_usd = usd_value_usd - usd_cost_usd + attributed_dividend_usd
     usd_return_pct = usd_pnl_usd / usd_cost_usd * 100.0 if usd_cost_usd > 0 else 0.0
     usd_daily_pnl_usd = sum(
         _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, history_daily_pct_for_symbol(s, quotes[s], history_day, history_now))
@@ -1739,7 +1744,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         if usd_value_usd - usd_daily_pnl_usd > 0
         else 0.0
     )
-    holding_pnl_cny = total_value_cny - total_cost_cny
+    holding_pnl_cny = sum(float(row.get("pnl_cny", 0.0)) for row in rows)
     usd_cash_fx_pnl_cny = cash_usd * (fx - usd_cost_fx)
     total_pnl_cny = holding_pnl_cny + usd_cash_fx_pnl_cny
     total_return_basis_cny = total_cost_cny + cash_usd * usd_cost_fx + cash_cny

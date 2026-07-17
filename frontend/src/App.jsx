@@ -99,6 +99,7 @@ const BALANCE_FIELD_LABELS = {
   cash_cny: "CNY 现金",
   realized_usd: "USD 已变现",
   realized_cny: "CNY 已变现",
+  voo_dividend_usd: "VOO 累计分红",
   sgov_dividend_usd: "SGOV 股息",
 };
 
@@ -1311,7 +1312,7 @@ function klineDisplayStartIndex(candles = [], mode = "250", anchorDate = "") {
   return startIndex;
 }
 
-const SINGLE_PROFILE_WIDTH_RATIO = 0.15;
+const SINGLE_PROFILE_WIDTH_RATIO = 0.2;
 
 function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = "", rightPaddingRatio = 0) {
   if (!chart || !candles.length) return;
@@ -2048,22 +2049,38 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
   );
 }
 
+let klinePageMemory = {};
+
 function KlinePage({ dashboardData }) {
-  const [scope, setScope] = useState("global");
-  const [symbol, setSymbol] = useState("VOO");
-  const [interval, setInterval] = useState("1d");
-  const [avwapMode, setAvwapMode] = useState("year_start");
-  const [displayRange, setDisplayRange] = useState("60");
-  const [showExtended, setShowExtended] = useState(false);
+  const restoredState = useMemo(() => klinePageMemory, []);
+  const [scope, setScope] = useState(() => restoredState.scope === "single" ? "single" : "global");
+  const [symbol, setSymbol] = useState(() => String(restoredState.symbol || "VOO"));
+  const [interval, setInterval] = useState(() => String(restoredState.interval || "1d"));
+  const [avwapMode, setAvwapMode] = useState(() => String(restoredState.avwapMode || "year_start"));
+  const [displayRange, setDisplayRange] = useState(() => String(restoredState.displayRange || "60"));
+  const [showExtended, setShowExtended] = useState(() => Boolean(restoredState.showExtended));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [realtimeError, setRealtimeError] = useState("");
   const [realtimeConnected, setRealtimeConnected] = useState(false);
-  const [globalColumns, setGlobalColumns] = useState(globalKlineColumns);
+  const [globalColumns, setGlobalColumns] = useState(() => Number(restoredState.globalColumns) || globalKlineColumns());
   const [showCheatSheet, setShowCheatSheet] = useState(false);
   const [visibleProfileState, setVisibleProfileState] = useState(null);
   const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
   const loadRequestRef = useRef(0);
+
+  useEffect(() => {
+    klinePageMemory = {
+      scope,
+      symbol,
+      interval,
+      avwapMode,
+      displayRange,
+      showExtended,
+      globalColumns,
+    };
+  }, [scope, symbol, interval, avwapMode, displayRange, showExtended, globalColumns]);
   const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
@@ -2111,8 +2128,10 @@ function KlinePage({ dashboardData }) {
   useEffect(() => {
     if (interval === "1d") {
       setRealtimeConnected(false);
+      setRealtimeError("");
       return undefined;
     }
+    setRealtimeError("");
     const isEtfSymbol = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
     let effectiveAvwapMode = avwapMode;
     if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
@@ -2125,18 +2144,21 @@ function KlinePage({ dashboardData }) {
     const signature = requestSignature;
     const socket = new WebSocket(`${WS_BASE}/ws/${endpoint}?${qs.toString()}`);
     socket.onopen = () => {
-      if (requestSignatureRef.current === signature) setRealtimeConnected(true);
+      if (requestSignatureRef.current === signature) {
+        setRealtimeConnected(true);
+        setRealtimeError("");
+      }
     };
     socket.onmessage = (event) => {
       if (requestSignatureRef.current !== signature) return;
       try {
         setData(JSON.parse(event.data));
       } catch {
-        setError("K线推送数据解析失败");
+        setRealtimeError("K线推送数据解析失败");
       }
     };
     socket.onerror = () => {
-      if (requestSignatureRef.current === signature) setError("K线实时订阅连接失败");
+      if (requestSignatureRef.current === signature) setRealtimeError("实时订阅连接失败，当前显示已加载的 K 线");
     };
     socket.onclose = () => {
       if (requestSignatureRef.current === signature) setRealtimeConnected(false);
@@ -2166,10 +2188,6 @@ function KlinePage({ dashboardData }) {
   useEffect(() => {
     if (displayRange === "earnings" && (scope !== "single" || isEtf)) setDisplayRange("60");
   }, [displayRange, scope, isEtf]);
-
-  useEffect(() => {
-    if (!isEtf && avwapMode === "year_start") setAvwapMode("earnings");
-  }, [isEtf, avwapMode]);
 
   const avwapSelectValue = interval === "1d" && avwapMode === "today_open"
     ? (isEtf ? "high_60d" : "earnings")
@@ -2245,7 +2263,7 @@ function KlinePage({ dashboardData }) {
             <span>AVWAP 锚点</span>
             <select value={avwapSelectValue} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
               {!isEtf ? <option value="earnings">最近财报日</option> : null}
-              {isEtf ? <option value="year_start">年初</option> : null}
+              <option value="year_start">年初</option>
               {!isEtf ? <option value="gap_60d">最近 Gap 日</option> : null}
               <option value="high_60d">最近 Swing High</option>
               <option value="low_60d">最近 Swing Low</option>
@@ -2279,6 +2297,7 @@ function KlinePage({ dashboardData }) {
       {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
+      {realtimeError && !(error || data?.error) ? <div className="muted">{realtimeError}</div> : null}
       {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
       {scope === "single" && data?.candles ? (
         <div className={`klineAnalysisLayout ${interval !== "1d" ? "withoutInsight" : ""}`}>
@@ -2308,9 +2327,10 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const usdRows = rows.filter((row) => row.currency === "USD");
   const usdCost = usdRows.reduce((sum, row) => sum + row.cost, 0);
   const usdValue = usdRows.reduce((sum, row) => sum + row.value, 0);
-  const usdUnrealized = usdValue - usdCost;
+  const attributedDividendUsd = Number(balances.voo_dividend_usd || 0) + Number(balances.sgov_dividend_usd || 0);
+  const usdUnrealized = usdValue - usdCost + attributedDividendUsd;
   const usdCash = Number(balances.cash_usd || 0);
-  const usdRealized = Number(balances.realized_usd || 0) + Number(balances.sgov_dividend_usd || 0);
+  const usdRealized = Number(balances.realized_usd || 0);
   const usdTotal = usdValue + usdCash;
   const usdReturn = usdCost ? (usdUnrealized / usdCost) * 100 : 0;
   const cnyInvestmentUnrealized = rows
@@ -2434,6 +2454,7 @@ function buildSatelliteUniverseDraft(data) {
 }
 
 function EditableHoldingsPage({ data, onSaved }) {
+  const backdropPointerStartedOnSelf = useRef(false);
   const [holdings, setHoldings] = useState({});
   const [balances, setBalances] = useState({});
   const [budgetOpen, setBudgetOpen] = useState(false);
@@ -2458,6 +2479,7 @@ function EditableHoldingsPage({ data, onSaved }) {
       cash_cny: String(data.balances?.cash_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
+      voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
   }
@@ -2477,6 +2499,7 @@ function EditableHoldingsPage({ data, onSaved }) {
       cash_cny: String(data.balances?.cash_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
+      voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
   }
@@ -2491,6 +2514,16 @@ function EditableHoldingsPage({ data, onSaved }) {
 
   function updateBalance(key, value) {
     setBalanceInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function trackBackdropPointerDown(event) {
+    backdropPointerStartedOnSelf.current = event.target === event.currentTarget;
+  }
+
+  function shouldCloseFromBackdropClick(event) {
+    const shouldClose = backdropPointerStartedOnSelf.current && event.target === event.currentTarget;
+    backdropPointerStartedOnSelf.current = false;
+    return shouldClose;
   }
 
   function updateUniverse(index, key, value) {
@@ -2630,8 +2663,8 @@ function EditableHoldingsPage({ data, onSaved }) {
         </div>
       ) : null}
       {editingBalances ? (
-        <div className="modalBackdrop" role="presentation" onClick={(event) => {
-          if (event.target === event.currentTarget) {
+        <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
+          if (shouldCloseFromBackdropClick(event)) {
             resetBalanceDraft();
             setEditingBalances(false);
           }
@@ -2649,7 +2682,8 @@ function EditableHoldingsPage({ data, onSaved }) {
               <label><span>CNY 现金</span><input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>USD 已变现</span><input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
-              <label className="balanceWide"><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>VOO 累计分红</span><input value={balanceInputs.voo_dividend_usd ?? ""} onChange={(event) => updateBalance("voo_dividend_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
             <div className="actions">
               <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>
@@ -2785,6 +2819,7 @@ function Rebalance({ data, onSaved }) {
       cash_cny: String(data.balances?.cash_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
+      voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
   }
@@ -3421,7 +3456,8 @@ function Rebalance({ data, onSaved }) {
               <label><span>CNY 现金</span><input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>USD 已变现</span><input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
-              <label className="balanceWide"><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>VOO 累计分红</span><input value={balanceInputs.voo_dividend_usd ?? ""} onChange={(event) => updateBalance("voo_dividend_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
             <div className="actions">
               <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>

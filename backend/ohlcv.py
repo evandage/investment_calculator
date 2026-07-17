@@ -248,11 +248,15 @@ def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, A
     key = (symbol, interval)
     now = time.time()
     created = False
+
+    def _with_realtime(result: tuple[list[dict[str, Any]], str]) -> tuple[list[dict[str, Any]], str]:
+        bars, source = result
+        return _merge_realtime_bar([dict(bar) for bar in bars], symbol, interval), source
+
     with _FUTU_HISTORY_LOCK:
         cached = _FUTU_HISTORY_RESULTS.get(key)
         if cached and now - cached[1] < _OHLCV_TTL_SECONDS[interval]:
-            result = cached[0]
-            return ([dict(bar) for bar in result[0]], result[1])
+            return _with_realtime(cached[0])
         future = _FUTU_HISTORY_INFLIGHT.get(key)
         if future is None:
             future = _FUTU_HISTORY_EXECUTOR.submit(_fetch_futu_ohlcv_sync, symbol, interval)
@@ -269,7 +273,7 @@ def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, A
     except Exception as exc:
         return [], f"futu_failed: {exc}"
     _remember_futu_history_result(key, future)
-    return ([dict(bar) for bar in result[0]], result[1])
+    return _with_realtime(result)
 
 
 def _fetch_tencent_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
