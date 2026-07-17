@@ -82,6 +82,38 @@ def _ts_to_lightweight(
     return int(ts.timestamp())
 
 
+def _futu_ts_to_lightweight(
+    value: Any,
+    interval: Interval,
+    symbol: str,
+) -> int | str | None:
+    """Convert Futu's end-labelled intraday K-line time to a bar start.
+
+    Futu labels a 5-minute bar covering 09:30-09:35 as 09:35.  Lightweight
+    Charts treats the timestamp as the candle position, so passing it through
+    unchanged makes the active candle appear to sit in the future.  At the
+    China-market open OpenD can also briefly expose an auction placeholder at
+    exactly 09:30 (and similarly at the 13:00 reopen); it is superseded by the
+    first real interval bar and must not become a second candle.
+    """
+    try:
+        ts = datetime.fromisoformat(str(value).replace(" ", "T"))
+    except ValueError:
+        return None
+    if interval == "1d":
+        return ts.date().isoformat()
+
+    code = FUTU_US.get(symbol, "")
+    if code.startswith(("SH.", "SZ.")) and (ts.hour, ts.minute) in {(9, 30), (13, 0)}:
+        return None
+
+    minutes = 15 if interval == "15m" else 5
+    ts -= timedelta(minutes=minutes)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=_market_tz(symbol))
+    return int(ts.timestamp())
+
+
 def _clean_bar(row: dict[str, Any]) -> dict[str, Any] | None:
     try:
         return {
@@ -104,7 +136,7 @@ def _merge_realtime_bar(
     pushed = get_futu_subscription_kline(symbol, interval)
     if not pushed:
         return bars
-    ts = _ts_to_lightweight(pushed.get("time_key"), interval, source_tz=_market_tz(symbol))
+    ts = _futu_ts_to_lightweight(pushed.get("time_key"), interval, symbol)
     if ts is None:
         return bars
     realtime = _clean_bar({**pushed, "time": ts})
@@ -198,11 +230,7 @@ def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[s
                 return [], "futu_empty"
             for i in range(len(data)):
                 item = data.iloc[i] if hasattr(data, "iloc") else data[i]
-                ts = _ts_to_lightweight(
-                    _row_value(item, "time_key"),
-                    interval,
-                    source_tz=_market_tz(symbol),
-                )
+                ts = _futu_ts_to_lightweight(_row_value(item, "time_key"), interval, symbol)
                 if ts is None:
                     continue
                 bar = _clean_bar(
