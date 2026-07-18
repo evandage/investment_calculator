@@ -4068,8 +4068,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-16",
-        "last_confirmed_drawdown_pct": -0.8750407524341419,
+        "last_processed_close_date": "2026-07-17",
+        "last_confirmed_drawdown_pct": -1.8143823838119522,
         "last_confirmed_signal": null,
         "ended_at": null,
         "end_reason": null
@@ -4087,8 +4087,8 @@
           "small": "2026-07-16"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-16",
-        "last_confirmed_drawdown_pct": -5.286232072234354,
+        "last_processed_close_date": "2026-07-17",
+        "last_confirmed_drawdown_pct": -6.5232507144617475,
         "last_confirmed_signal": {
           "id": "QQQ:2026-07-16:QQQ:建仓期:2026-07:small",
           "symbol": "QQQ",
@@ -4109,22 +4109,23 @@
         "threshold_snapshot_id": "ISRG:建仓期:2026-07",
         "small_triggered": true,
         "medium_triggered": true,
-        "large_triggered": false,
+        "large_triggered": true,
         "trigger_date": "2026-07-16",
         "trigger_dates": {
           "small": "2026-07-16",
-          "medium": "2026-07-16"
+          "medium": "2026-07-16",
+          "large": "2026-07-17"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-16",
-        "last_confirmed_drawdown_pct": -16.80865142053679,
+        "last_processed_close_date": "2026-07-17",
+        "last_confirmed_drawdown_pct": -28.25979074479964,
         "last_confirmed_signal": {
-          "id": "ISRG:2026-07-16:ISRG:建仓期:2026-07:medium",
+          "id": "ISRG:2026-07-16:ISRG:建仓期:2026-07:large",
           "symbol": "ISRG",
-          "tier": "medium",
-          "trigger_date": "2026-07-16",
-          "close_price": 402.33,
-          "drawdown_pct": -16.80865142053679,
+          "tier": "large",
+          "trigger_date": "2026-07-17",
+          "close_price": 346.95,
+          "drawdown_pct": -28.25979074479964,
           "threshold_snapshot_id": "ISRG:建仓期:2026-07",
           "confirmed": true
         },
@@ -4142,8 +4143,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-16",
-        "last_confirmed_drawdown_pct": -13.003246753246744,
+        "last_processed_close_date": "2026-07-17",
+        "last_confirmed_drawdown_pct": -14.77272727272727,
         "last_confirmed_signal": null,
         "ended_at": null,
         "end_reason": null
@@ -4159,8 +4160,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-16",
-        "last_confirmed_drawdown_pct": -16.314970432617493,
+        "last_processed_close_date": "2026-07-17",
+        "last_confirmed_drawdown_pct": -17.572362278244647,
         "last_confirmed_signal": null,
         "ended_at": null,
         "end_reason": null
@@ -4178,8 +4179,8 @@
           "small": "2026-07-16"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-16",
-        "last_confirmed_drawdown_pct": -11.909063802730447,
+        "last_processed_close_date": "2026-07-17",
+        "last_confirmed_drawdown_pct": -13.713330001433189,
         "last_confirmed_signal": {
           "id": "GOOGL:2026-07-16:GOOGL:建仓期:2026-07:small",
           "symbol": "GOOGL",
@@ -4207,8 +4208,8 @@
           "medium": "2026-07-16"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-16",
-        "last_confirmed_drawdown_pct": -12.902805524190041,
+        "last_processed_close_date": "2026-07-17",
+        "last_confirmed_drawdown_pct": -14.333796577781632,
         "last_confirmed_signal": {
           "id": "MSFT:2026-07-16:MSFT:建仓期:2026-07:medium",
           "symbol": "MSFT",
@@ -4237,8 +4238,8 @@
           "large": "2026-07-16"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-16",
-        "last_confirmed_drawdown_pct": -22.120848789371262,
+        "last_processed_close_date": "2026-07-17",
+        "last_confirmed_drawdown_pct": -22.778074367754442,
         "last_confirmed_signal": {
           "id": "AVGO:2026-07-16:AVGO:建仓期:2026-07:large",
           "symbol": "AVGO",
@@ -4253,6 +4254,6 @@
         "end_reason": null
       }
     },
-    "updated_at": "2026-07-17T22:22:52+08:00"
+    "updated_at": "2026-07-18T04:00:35+08:00"
   }
 }
