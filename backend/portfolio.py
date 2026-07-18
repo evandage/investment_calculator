@@ -1624,6 +1624,34 @@ def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_
         return 0.0
 
 
+def carried_completed_daily_pct(
+    symbol: str,
+    quote: dict[str, Any],
+    completed_row: dict[str, Any] | None,
+) -> float:
+    """Return the last completed session move for closed-day display only."""
+    row = completed_row or {}
+    symbol_pcts = row.get("symbol_daily_pct") or {}
+    benchmark_pcts = row.get("benchmark_daily_pct") or {}
+    for values in (symbol_pcts, benchmark_pcts):
+        if isinstance(values, dict):
+            pct = coerce_optional_float(values.get(symbol))
+            if pct is not None:
+                return pct
+
+    pct = coerce_optional_float(quote.get("regular_change_pct", quote.get("change_pct")))
+    if pct is not None and abs(pct) > 1e-12:
+        return pct
+    try:
+        price = float(quote.get("regular_price") or quote.get("price") or 0.0)
+        prev_close = float(quote.get("prev_close") or 0.0)
+    except (TypeError, ValueError):
+        return pct or 0.0
+    if price > 0 and prev_close > 0:
+        return (price / prev_close - 1.0) * 100.0
+    return pct or 0.0
+
+
 def is_china_daily_close_ready(investment_day: str, now: datetime | None = None) -> bool:
     """Whether the A-share daily benchmark can be confirmed for this date."""
     current = now or datetime.now(TZ_SHANGHAI)
@@ -1651,8 +1679,16 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     fx_conversion_stats = fx_conversion_summary(fx_conversions, fx)
     usd_cost_fx = float(fx_conversion_stats["avg_rate"] or fx)
     raw_holdings = holdings
-    history_day = performance_history_date()
+    history_now = datetime.now(TZ_SHANGHAI)
+    history_day = performance_history_date(history_now)
     finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
+    completed_day = completed_performance_day(history_now)
+    latest_completed_row = max(
+        (row for row in finalized_rows if str(row.get("date") or "") <= completed_day),
+        key=lambda row: str(row.get("date") or ""),
+        default=None,
+    )
+    carry_completed_daily = not is_weekday(history_day)
     trades = load_trade_records(user_id)
     holdings = raw_holdings
     for sym in ALL_SYMBOLS:
@@ -1721,7 +1757,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "attributed_dividend_usd": dividend_usd,
                 "pnl_pct": pnl / cost * 100.0 if cost > 0 else 0.0,
                 "daily_pct": float(quote.get("regular_change_pct", quote.get("change_pct", 0.0))),
-                "effective_daily_pct": history_daily_pct_for_symbol(sym, quote, history_day, datetime.now(TZ_SHANGHAI)),
+                "effective_daily_pct": (
+                    carried_completed_daily_pct(sym, quote, latest_completed_row)
+                    if carry_completed_daily
+                    else history_daily_pct_for_symbol(sym, quote, history_day, history_now)
+                ),
                 "extended_pct": quote.get("extended_change_pct"),
                 "drawdown_pct": sixty_day.get("drawdown_pct"),
                 "confirmed_drawdown_pct": sixty_day.get("confirmed_drawdown_pct"),
@@ -1760,15 +1800,27 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         current_value = shares * float(quote.get("price") or regular_price or 0.0)
         current_value_cny = current_value * fx if currency == "USD" else current_value
         regular_pct = (
-            fund_daily_pct_for_day(quote, history_day)
-            if sym == "001015"
-            else float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
+            carried_completed_daily_pct(sym, quote, latest_completed_row)
+            if carry_completed_daily
+            else (
+                fund_daily_pct_for_day(quote, history_day)
+                if sym == "001015"
+                else float(quote.get("regular_change_pct", quote.get("change_pct", 0.0)))
+            )
         )
-        summary_pct = history_daily_pct_for_symbol(sym, quote, history_day, datetime.now(TZ_SHANGHAI))
+        summary_pct = (
+            regular_pct
+            if carry_completed_daily
+            else history_daily_pct_for_symbol(sym, quote, history_day, history_now)
+        )
         regular_change_cny = _daily_amount(regular_value_cny, regular_pct)
         change_cny = _daily_amount(current_value_cny, summary_pct)
-        extended_pct = quote.get("extended_change_pct") if quote.get("session") != "regular" else None
-        effective_pct = treemap_daily_pct(quote, regular_pct)
+        extended_pct = (
+            None
+            if carry_completed_daily
+            else quote.get("extended_change_pct") if quote.get("session") != "regular" else None
+        )
+        effective_pct = regular_pct if carry_completed_daily else treemap_daily_pct(quote, regular_pct)
         extended_change_cny = None
         if isinstance(extended_pct, (int, float)):
             extended_change = regular_value * (float(extended_pct) / 100.0)
@@ -1845,11 +1897,15 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     }
     daily_cards.insert(2, satellite_card)
 
-    history_now = datetime.now(TZ_SHANGHAI)
+    def accounting_daily_pct(sym: str) -> float:
+        if carry_completed_daily:
+            return 0.0
+        return history_daily_pct_for_symbol(sym, quotes[sym], history_day, history_now)
+
     history_weighted_daily_pct = (
         sum(
             (value_cny_by_symbol[s] / total_value_cny)
-            * history_daily_pct_for_symbol(s, quotes[s], history_day, history_now)
+            * accounting_daily_pct(s)
             for s in ALL_SYMBOLS
         )
         if total_value_cny > 0
@@ -1857,7 +1913,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     )
     weighted_daily_pct = history_weighted_daily_pct
     weighted_daily_change_cny = sum(
-        _daily_amount(value_cny_by_symbol.get(s, 0.0), history_daily_pct_for_symbol(s, quotes[s], history_day, history_now))
+        _daily_amount(value_cny_by_symbol.get(s, 0.0), accounting_daily_pct(s))
         for s in ALL_SYMBOLS
     )
     usd_value_usd = sum(value_cny_by_symbol.get(s, 0.0) / fx for s in USD_SYMBOLS) if fx > 0 else 0.0
@@ -1871,7 +1927,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     usd_pnl_usd = usd_value_usd - usd_cost_usd + attributed_dividend_usd
     usd_return_pct = usd_pnl_usd / usd_cost_usd * 100.0 if usd_cost_usd > 0 else 0.0
     usd_daily_pnl_usd = sum(
-        _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, history_daily_pct_for_symbol(s, quotes[s], history_day, history_now))
+        _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, accounting_daily_pct(s))
         for s in USD_SYMBOLS
     )
     usd_daily_basis_usd = usd_value_usd
@@ -1927,7 +1983,6 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     # trading day.  Do not mix China's already-closed session with live US
     # quotes before the US regular session has closed; use the latest finalized
     # history point instead.  That point includes 001015, VOO, and QQQ together.
-    completed_day = completed_performance_day(history_now)
     latest_completed_point = next(
         (
             point
@@ -1969,7 +2024,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 pct = coerce_optional_float(quote.get("extended_change_pct")) or 0.0
         live_daily_change_cny += _daily_amount(value_cny_by_symbol.get(sym, 0.0), pct)
     live_daily_basis_cny = total_value_cny - live_daily_change_cny
-    if live_daily_basis_cny > 0:
+    if not carry_completed_daily and live_daily_basis_cny > 0:
         weighted_daily_change_cny = live_daily_change_cny
         weighted_daily_pct = live_daily_change_cny / live_daily_basis_cny * 100.0
 
@@ -1998,6 +2053,12 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "weighted_daily_pct": weighted_daily_pct,
             "weighted_daily_change_cny": weighted_daily_change_cny,
             "weighted_daily_change_usd": weighted_daily_change_cny / fx if fx > 0 else 0.0,
+            "daily_as_of": (
+                str((latest_completed_row or {}).get("date") or completed_day)
+                if carry_completed_daily
+                else history_day
+            ),
+            "daily_carried_forward": carry_completed_daily,
         },
         "daily_cards": daily_cards,
         "visualizations": build_visualizations(current_rows, balances, value_cny_by_symbol, fx),

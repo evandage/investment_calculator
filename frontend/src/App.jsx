@@ -443,6 +443,9 @@ function SummaryBreakdownTooltip({ title, rows, currency, total, showContributio
 
 function Summary({ data }) {
   const summary = data.summary;
+  const dailyAsOfLabel = summary.daily_carried_forward && summary.daily_as_of
+    ? ` · 截至 ${String(summary.daily_as_of).slice(5).replace("-", "/")}`
+    : "";
   const fx = Number(summary.fx || 0);
   const usdRows = (data.holdings || []).filter((row) => row.currency === "USD");
   const usdHoldingValue = usdRows.reduce((sum, row) => sum + Number(row.value || 0), 0);
@@ -510,7 +513,7 @@ function Summary({ data }) {
         <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} />
       </div>
       <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
-        <span>当日加权</span>
+        <span>当日加权{dailyAsOfLabel}</span>
         <strong className={tone(usdDailyChange)}>
           {fmtMoney(usdDailyChange, "USD")} · {fmtPct(usdDailyPct)}
         </strong>
@@ -534,7 +537,7 @@ function Summary({ data }) {
         <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} />
       </div>
       <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
-        <span>当日加权</span>
+        <span>当日加权{dailyAsOfLabel}</span>
         <strong className={tone(weightedDailyChangeCny)}>
           {fmtMoney(weightedDailyChangeCny, "CNY")} · {fmtPct(summary.weighted_daily_pct)}
         </strong>
@@ -580,7 +583,7 @@ function DailyCards({ cards }) {
   );
 }
 
-function DailyHeatmap({ cards, holdings }) {
+function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
   const [satelliteHovered, setSatelliteHovered] = useState(false);
   const [satelliteHoverSymbol, setSatelliteHoverSymbol] = useState(null);
   const satelliteSymbols = useMemo(
@@ -735,7 +738,10 @@ function DailyHeatmap({ cards, holdings }) {
   return (
     <section className="chartPanel heatmapPanel" onMouseLeave={() => setSatelliteHovered(false)}>
       <div className="heatmapToolbar">
-        <span>卫星仓位已合并 · 悬浮查看成员明细</span>
+        <span>
+          卫星仓位已合并 · 悬浮查看成员明细
+          {dailyCarriedForward && dailyAsOf ? ` · 涨跌截至 ${String(dailyAsOf).slice(5).replace("-", "/")}` : ""}
+        </span>
       </div>
       {satelliteHovered ? (
         <div className="satelliteHoverPanel" onMouseEnter={() => setSatelliteHovered(true)}>
@@ -3688,7 +3694,12 @@ function DashboardPage({ data }) {
     <>
       <Summary data={data} />
       <PerformanceChart history={data.performance_history} />
-      <DailyHeatmap cards={data.daily_cards} holdings={data.holdings} />
+      <DailyHeatmap
+        cards={data.daily_cards}
+        holdings={data.holdings}
+        dailyAsOf={data.summary?.daily_as_of}
+        dailyCarriedForward={data.summary?.daily_carried_forward}
+      />
       <Visualizations data={data} />
     </>
   );

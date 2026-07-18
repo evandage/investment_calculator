@@ -63,6 +63,37 @@ class ConfirmedCloseMetricTests(unittest.TestCase):
         )
         self.assertFalse(portfolio.is_symbol_daily_history_estimated("001015", "2026-07-17", after_close, quote))
 
+    def test_closed_day_display_carries_latest_completed_symbol_return(self):
+        completed_row = {
+            "date": "2026-07-17",
+            "symbol_daily_pct": {"VOO": -0.95, "001015": -3.28},
+            "benchmark_daily_pct": {"QQQ": -1.31},
+        }
+        stale_quote = {
+            "price": 101.0,
+            "prev_close": 100.0,
+            "regular_change_pct": 0.0,
+        }
+        self.assertAlmostEqual(
+            portfolio.carried_completed_daily_pct("VOO", stale_quote, completed_row),
+            -0.95,
+        )
+        self.assertAlmostEqual(
+            portfolio.carried_completed_daily_pct("QQQ", stale_quote, completed_row),
+            -1.31,
+        )
+
+    def test_closed_day_display_can_reconstruct_unstored_symbol_return(self):
+        quote = {
+            "regular_price": 98.0,
+            "prev_close": 100.0,
+            "regular_change_pct": 0.0,
+        }
+        self.assertAlmostEqual(
+            portfolio.carried_completed_daily_pct("SGOV", quote, None),
+            -2.0,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
