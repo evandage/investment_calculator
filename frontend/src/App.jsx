@@ -631,8 +631,8 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
     const assetPct = totalValue > 0 ? (valueCny / totalValue) * 100 : 0;
     const rawRegularPct = Number(card.regular_pct ?? 0);
     const regularPct = Number.isFinite(rawRegularPct) ? rawRegularPct : 0;
-    const rawExtendedPct = Number(card.extended_pct);
-    const extendedPct = Number.isFinite(rawExtendedPct) ? rawExtendedPct : null;
+    const rawExtendedPct = card.extended_pct == null ? null : Number(card.extended_pct);
+    const extendedPct = rawExtendedPct != null && Number.isFinite(rawExtendedPct) ? rawExtendedPct : null;
     const hasDistinctExtendedPct = card.session !== "regular" && card.symbol !== "001015" && extendedPct != null && Math.abs(extendedPct - regularPct) > 0.0001;
     const regularUsd = Number(card.regular_change_usd ?? card.change_usd ?? 0);
     const regularCny = Number(card.regular_change_cny ?? card.change_cny ?? 0);
@@ -690,10 +690,10 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
     return root.leaves().map((leaf) => {
       const card = leaf.data;
       const regularPct = Number(card.regular_pct || 0);
-      const extendedPct = Number(card.extended_pct);
+      const extendedPct = card.extended_pct == null ? null : Number(card.extended_pct);
       const effectivePct = Number.isFinite(Number(card.effective_pct))
         ? Number(card.effective_pct)
-        : (Number.isFinite(extendedPct) ? ((1 + regularPct / 100) * (1 + extendedPct / 100) - 1) * 100 : regularPct);
+        : (extendedPct != null && Number.isFinite(extendedPct) ? ((1 + regularPct / 100) * (1 + extendedPct / 100) - 1) * 100 : regularPct);
       const magnitude = Math.min(1, Math.abs(effectivePct) / 4);
       const strength = 0.18 + magnitude * 0.72;
       const bg = effectivePct > 0

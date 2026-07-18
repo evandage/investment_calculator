@@ -46,6 +46,7 @@ _FUTU_SUB_KLINE_REVISIONS: dict[tuple[str, str], int] = {}
 _FUTU_SUB_KLINE_ERROR = ""
 _FUTU_SUB_TICKER_ERROR = ""
 NY_TZ = ZoneInfo("America/New_York")
+_EXTENDED_US_SESSIONS = frozenset({"premarket", "postmarket", "overnight"})
 
 
 def _usd_symbols() -> tuple[str, ...]:
@@ -219,6 +220,53 @@ def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | N
     }
 
 
+def _merge_futu_subscription_quote(
+    previous: dict[str, Any] | None,
+    incoming: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep a valid extended quote across sparse QUOTE pushes in one session."""
+    merged = dict(incoming)
+    prior = previous or {}
+    session = str(merged.get("session") or "").lower()
+    prior_session = str(prior.get("session") or "").lower()
+    if (
+        session in _EXTENDED_US_SESSIONS
+        and session == prior_session
+        and _coerce_float(merged.get("extended_price")) is None
+    ):
+        prior_extended_price = _coerce_float(prior.get("extended_price"))
+        if prior_extended_price and prior_extended_price > 0:
+            merged["extended_price"] = prior_extended_price
+            merged["extended_change_pct"] = _coerce_float(prior.get("extended_change_pct"))
+            merged["price"] = prior_extended_price
+            prev_close = _coerce_float(merged.get("prev_close"))
+            if prev_close and prev_close > 0:
+                merged["change_pct"] = (prior_extended_price / prev_close - 1.0) * 100.0
+    return merged
+
+
+def _apply_futu_ticker_price(quote: dict[str, Any], sym: str, price: float) -> dict[str, Any]:
+    """Apply a trade tick using regular/extended-session field semantics."""
+    updated = dict(quote)
+    updated["symbol"] = sym
+    updated["price"] = price
+    session = str(updated.get("session") or "").lower()
+    prev_close = _coerce_float(updated.get("prev_close"))
+    if prev_close and prev_close > 0:
+        updated["change_pct"] = (price / prev_close - 1.0) * 100.0
+    if session in _EXTENDED_US_SESSIONS:
+        regular_price = _coerce_float(updated.get("regular_price"))
+        updated["extended_price"] = price
+        updated["extended_change_pct"] = _pct_from_base(price, regular_price)
+    elif session == "regular":
+        updated["regular_price"] = price
+        updated["regular_change_pct"] = _pct_from_base(price, prev_close) or 0.0
+        updated["extended_price"] = None
+        updated["extended_change_pct"] = None
+    updated["source"] = "Futu OpenD 逐笔订阅"
+    return updated
+
+
 def _update_futu_subscription_quotes(data: Any) -> None:
     code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
     now = time.time()
@@ -236,7 +284,7 @@ def _update_futu_subscription_quotes(data: Any) -> None:
         return
     with _FUTU_SUB_LOCK:
         for sym, quote in next_quotes.items():
-            _FUTU_SUB_QUOTES[sym] = quote
+            _FUTU_SUB_QUOTES[sym] = _merge_futu_subscription_quote(_FUTU_SUB_QUOTES.get(sym), quote)
             _FUTU_SUB_UPDATED_AT[sym] = now
             _FUTU_SUB_QUOTE_REVISIONS[sym] = _FUTU_SUB_QUOTE_REVISIONS.get(sym, 0) + 1
 
@@ -274,13 +322,7 @@ def _update_futu_subscription_tickers(data: Any) -> None:
             price = _coerce_float(_row_get(row, "price"))
             if not sym or not price or price <= 0:
                 continue
-            quote = dict(_FUTU_SUB_QUOTES.get(sym) or {})
-            quote["symbol"] = sym
-            quote["price"] = price
-            prev_close = _coerce_float(quote.get("prev_close"))
-            if prev_close and prev_close > 0:
-                quote["change_pct"] = (price / prev_close - 1.0) * 100.0
-            quote["source"] = "Futu OpenD 逐笔订阅"
+            quote = _apply_futu_ticker_price(_FUTU_SUB_QUOTES.get(sym) or {}, sym, price)
             _FUTU_SUB_QUOTES[sym] = quote
             _FUTU_SUB_UPDATED_AT[sym] = now
             _FUTU_SUB_QUOTE_REVISIONS[sym] = _FUTU_SUB_QUOTE_REVISIONS.get(sym, 0) + 1
