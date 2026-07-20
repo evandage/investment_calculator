@@ -196,13 +196,18 @@ def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | N
             extended_price, extended_change_pct = after_price, after_change_pct
     elif session == "postmarket":
         extended_price, extended_change_pct = after_price, after_change_pct
+    elif session == "closed":
+        # Freeze the last post-market print while the market is closed. Futu's
+        # overnight fields describe the session before the regular close, so
+        # the post-market print is the latest completed extended-hours quote.
+        extended_price, extended_change_pct = after_price, after_change_pct
     if not last_price or last_price <= 0:
         return None
     base = prev_close if prev_close and prev_close > 0 else last_price
-    price = extended_price if session != "regular" and session != "closed" and extended_price and extended_price > 0 else last_price
+    price = extended_price if session != "regular" and extended_price and extended_price > 0 else last_price
     if session not in {"regular", "closed"} and extended_change_pct is None:
         extended_change_pct = _pct_from_base(extended_price, last_price)
-    if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9 or session == "closed":
+    if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9:
         extended_price = None
         extended_change_pct = None
     return {
@@ -230,8 +235,8 @@ def _merge_futu_subscription_quote(
     session = str(merged.get("session") or "").lower()
     prior_session = str(prior.get("session") or "").lower()
     if (
-        session in _EXTENDED_US_SESSIONS
-        and session == prior_session
+        session in (*_EXTENDED_US_SESSIONS, "closed")
+        and (session == prior_session or session == "closed")
         and _coerce_float(merged.get("extended_price")) is None
     ):
         prior_extended_price = _coerce_float(prior.get("extended_price"))
@@ -254,7 +259,7 @@ def _apply_futu_ticker_price(quote: dict[str, Any], sym: str, price: float) -> d
     prev_close = _coerce_float(updated.get("prev_close"))
     if prev_close and prev_close > 0:
         updated["change_pct"] = (price / prev_close - 1.0) * 100.0
-    if session in _EXTENDED_US_SESSIONS:
+    if session in (*_EXTENDED_US_SESSIONS, "closed"):
         regular_price = _coerce_float(updated.get("regular_price"))
         updated["extended_price"] = price
         updated["extended_change_pct"] = _pct_from_base(price, regular_price)
@@ -652,13 +657,15 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
                     extended_price, extended_change_pct = after_price, after_change_pct
             elif session == "postmarket":
                 extended_price, extended_change_pct = after_price, after_change_pct
+            elif session == "closed":
+                extended_price, extended_change_pct = after_price, after_change_pct
             if not last_price or last_price <= 0:
                 continue
             base = prev_close if prev_close and prev_close > 0 else last_price
-            price = extended_price if session != "regular" and session != "closed" and extended_price and extended_price > 0 else last_price
+            price = extended_price if session != "regular" and extended_price and extended_price > 0 else last_price
             if session not in {"regular", "closed"} and extended_change_pct is None:
                 extended_change_pct = _pct_from_base(extended_price, last_price)
-            if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9 or session == "closed":
+            if not extended_price or extended_price <= 0 or abs(extended_price - last_price) <= 1e-9:
                 extended_price = None
                 extended_change_pct = None
             out[sym] = {

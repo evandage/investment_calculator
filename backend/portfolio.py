@@ -473,7 +473,7 @@ def _quote_price_line(symbol: str, quote: dict[str, Any]) -> str:
 
 def treemap_daily_pct(quote: dict[str, Any], regular_pct: float) -> float:
     extended_pct = coerce_optional_float(quote.get("extended_change_pct"))
-    if extended_pct is None or str(quote.get("session") or "").lower() in {"regular", "closed"}:
+    if extended_pct is None or str(quote.get("session") or "").lower() == "regular":
         return regular_pct
     # 拓展盘涨跌幅以收盘价为基准；复利相乘后才是当前价格相对昨日收盘的完整变动。
     return ((1.0 + regular_pct / 100.0) * (1.0 + extended_pct / 100.0) - 1.0) * 100.0
@@ -1652,6 +1652,32 @@ def carried_completed_daily_pct(
     return pct or 0.0
 
 
+def closed_display_regular_pct(
+    symbol: str,
+    quote: dict[str, Any],
+    completed_row: dict[str, Any] | None,
+) -> float:
+    """Return the latest valid regular-session move for closed display."""
+    if symbol in USD_SYMBOLS:
+        regular_pct = coerce_optional_float(
+            quote.get("regular_change_pct", quote.get("change_pct"))
+        )
+        source = str(quote.get("source") or "").lower()
+        if regular_pct is not None and "fallback" not in source:
+            return regular_pct
+    return carried_completed_daily_pct(symbol, quote, completed_row)
+
+
+def closed_display_daily_pct(
+    symbol: str,
+    quote: dict[str, Any],
+    completed_row: dict[str, Any] | None,
+) -> float:
+    """Return the latest frozen regular + extended move for closed display."""
+    regular_pct = closed_display_regular_pct(symbol, quote, completed_row)
+    return treemap_daily_pct(quote, regular_pct) if symbol in USD_SYMBOLS else regular_pct
+
+
 def is_china_daily_close_ready(investment_day: str, now: datetime | None = None) -> bool:
     """Whether the A-share daily benchmark can be confirmed for this date."""
     current = now or datetime.now(TZ_SHANGHAI)
@@ -1758,7 +1784,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "pnl_pct": pnl / cost * 100.0 if cost > 0 else 0.0,
                 "daily_pct": float(quote.get("regular_change_pct", quote.get("change_pct", 0.0))),
                 "effective_daily_pct": (
-                    carried_completed_daily_pct(sym, quote, latest_completed_row)
+                    closed_display_daily_pct(sym, quote, latest_completed_row)
                     if carry_completed_daily
                     else history_daily_pct_for_symbol(sym, quote, history_day, history_now)
                 ),
@@ -1800,7 +1826,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         current_value = shares * float(quote.get("price") or regular_price or 0.0)
         current_value_cny = current_value * fx if currency == "USD" else current_value
         regular_pct = (
-            carried_completed_daily_pct(sym, quote, latest_completed_row)
+            closed_display_regular_pct(sym, quote, latest_completed_row)
             if carry_completed_daily
             else (
                 fund_daily_pct_for_day(quote, history_day)
@@ -1816,11 +1842,9 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         regular_change_cny = _daily_amount(regular_value_cny, regular_pct)
         change_cny = _daily_amount(current_value_cny, summary_pct)
         extended_pct = (
-            None
-            if carry_completed_daily
-            else quote.get("extended_change_pct") if quote.get("session") != "regular" else None
+            quote.get("extended_change_pct") if quote.get("session") != "regular" else None
         )
-        effective_pct = regular_pct if carry_completed_daily else treemap_daily_pct(quote, regular_pct)
+        effective_pct = treemap_daily_pct(quote, regular_pct)
         extended_change_cny = None
         if isinstance(extended_pct, (int, float)):
             extended_change = regular_value * (float(extended_pct) / 100.0)
@@ -2000,6 +2024,24 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     if completed_weighted_change is not None and completed_weighted_basis and completed_weighted_basis > 0:
         weighted_daily_change_cny = completed_weighted_change
         weighted_daily_pct = completed_weighted_change / completed_weighted_basis * 100.0
+
+    if carry_completed_daily:
+        # The homepage freezes the latest display snapshot, including the last
+        # valid extended-hours print. This is display-only; the performance
+        # history above still records the closed calendar day as zero.
+        weighted_daily_change_cny = sum(
+            _daily_amount(
+                value_cny_by_symbol.get(sym, 0.0),
+                closed_display_daily_pct(sym, quotes[sym], latest_completed_row),
+            )
+            for sym in ALL_SYMBOLS
+        )
+        closed_display_basis_cny = total_value_cny - weighted_daily_change_cny
+        weighted_daily_pct = (
+            weighted_daily_change_cny / closed_display_basis_cny * 100.0
+            if closed_display_basis_cny > 0
+            else 0.0
+        )
 
     # Build the live daily weighting using the user's trading-day definition:
     # 09:00 A-share open through the next US regular close.  Before the US

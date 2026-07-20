@@ -94,6 +94,18 @@ class ConfirmedCloseMetricTests(unittest.TestCase):
             -2.0,
         )
 
+    def test_closed_day_display_includes_last_extended_hours_move(self):
+        quote = {
+            "session": "closed",
+            "regular_change_pct": -2.0,
+            "extended_change_pct": 1.0,
+        }
+        expected = ((1.0 - 0.02) * (1.0 + 0.01) - 1.0) * 100.0
+        self.assertAlmostEqual(
+            portfolio.closed_display_daily_pct("VOO", quote, None),
+            expected,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
