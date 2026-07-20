@@ -1092,6 +1092,40 @@ def apply_trade_to_holdings(
     return holdings, 0.0
 
 
+def rewind_trade_from_holdings(
+    holdings: dict[str, dict[str, float]],
+    trade: dict[str, Any],
+) -> dict[str, dict[str, float]]:
+    """Undo one recorded trade from an end-of-period holdings snapshot."""
+    sym = str(trade.get("symbol", "")).upper()
+    action = str(trade.get("action", "buy")).lower()
+    shares = max(0.0, float(trade.get("shares", 0.0) or 0.0))
+    amount = max(0.0, float(trade.get("amount_usd", 0.0) or 0.0))
+    if not sym or shares <= 0 or amount <= 0:
+        return holdings
+
+    current = holdings.get(sym, {"shares": 0.0, "avg_cost": 0.0})
+    current_shares = max(0.0, float(current.get("shares", 0.0) or 0.0))
+    current_avg_cost = max(0.0, float(current.get("avg_cost", 0.0) or 0.0))
+    prev_avg_cost = max(0.0, float(trade.get("prev_avg_cost", 0.0) or 0.0))
+
+    if action == "sell":
+        previous_shares = current_shares + shares
+        cost_basis = max(0.0, float(trade.get("cost_basis", 0.0) or 0.0))
+        if prev_avg_cost <= 0 and previous_shares > 0:
+            prev_avg_cost = (current_shares * current_avg_cost + cost_basis) / previous_shares
+    else:
+        previous_shares = max(0.0, current_shares - shares)
+        if prev_avg_cost <= 0 and previous_shares > 0:
+            prev_avg_cost = max(0.0, (current_shares * current_avg_cost - amount) / previous_shares)
+
+    holdings[sym] = {
+        "shares": previous_shares,
+        "avg_cost": prev_avg_cost if previous_shares > 1e-9 else 0.0,
+    }
+    return holdings
+
+
 def holdings_snapshot_for_day(
     day: str,
     current_holdings: dict[str, dict[str, float]],
@@ -1104,6 +1138,29 @@ def holdings_snapshot_for_day(
     else:
         base = current_holdings
     snapshot = {sym: {"shares": float(item.get("shares", 0.0) or 0.0), "avg_cost": float(item.get("avg_cost", 0.0) or 0.0)} for sym, item in base.items()}
+
+    # current_holdings already contains every recorded trade up to today.  When
+    # there is no earlier finalized snapshot, replaying trades up to ``day``
+    # would count them twice.  Instead, rewind only trades after the requested
+    # day so the first generated snapshot has the correct end-of-day holdings.
+    if not previous_rows:
+        future_trades = [
+            trade
+            for trade in trades
+            if str(trade.get("trade_date") or "")[:10] > day
+        ]
+        future_trades.sort(
+            key=lambda trade: (
+                str(trade.get("trade_date") or "")[:10],
+                str(trade.get("created_at") or ""),
+                str(trade.get("id") or ""),
+            ),
+            reverse=True,
+        )
+        for trade in future_trades:
+            snapshot = rewind_trade_from_holdings(snapshot, trade)
+        return snapshot
+
     start_date = previous_rows[-1]["date"] if previous_rows else ""
     for trade in trades:
         trade_date = str(trade.get("trade_date") or "")[:10]
