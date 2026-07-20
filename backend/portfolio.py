@@ -760,6 +760,31 @@ def completed_daily_pct_for_symbol(symbol: str, day: str, histories: dict[str, d
     return (today_price / prev_price - 1.0) * 100.0
 
 
+def quote_with_official_fund_nav(
+    symbol: str,
+    quote: dict[str, Any],
+    day: str,
+    prices: dict[str, float],
+) -> dict[str, Any]:
+    """Replace a stale intraday estimate with the fund's published daily NAV."""
+    price = close_on(prices, day)
+    prev_price = close_on_or_before(prices, previous_day(day))
+    if price is None or prev_price is None or prev_price <= 0:
+        return dict(quote)
+    daily_pct = (price / prev_price - 1.0) * 100.0
+    return {
+        **quote,
+        "symbol": symbol,
+        "price": price,
+        "regular_price": price,
+        "change_pct": daily_pct,
+        "regular_change_pct": daily_pct,
+        "quote_date": day,
+        "quote_time": f"{day} 15:00",
+        "source": "东方财富基金净值",
+    }
+
+
 def completed_portfolio_daily_pct(
     holdings_snapshot: dict[str, dict[str, float]],
     day: str,
@@ -1755,7 +1780,7 @@ def daily_pct_for_current_history_quote(symbol: str, investment_day: str, now: d
 def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     market = fetch_quotes()
     target_weights = effective_target_weights()
-    quotes = market["quotes"]
+    quotes = dict(market["quotes"])
     fx = float(market["fx"]["rate"])
     holdings, balances, storage_mode = load_user_state(user_id)
     fx_conversions = load_fx_conversion_records(user_id)
@@ -1764,6 +1789,15 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     raw_holdings = holdings
     history_now = datetime.now(TZ_SHANGHAI)
     history_day = performance_history_date(history_now)
+    if is_china_daily_close_ready(history_day, history_now):
+        official_fund_prices = fetch_fund_close_history("001015")
+        quotes["001015"] = quote_with_official_fund_nav(
+            "001015",
+            quotes.get("001015") or {},
+            history_day,
+            official_fund_prices,
+        )
+        market = {**market, "quotes": quotes}
     finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
     completed_day = completed_performance_day(history_now)
     latest_completed_row = max(
