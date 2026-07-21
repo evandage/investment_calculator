@@ -6,6 +6,7 @@ frontend/dist/
 .fund_quotes_cache.json
 .fx_rate_cache.json
 portfolio_snapshot_ledger.backup-*.json
+portfolio_history.backup-*.json
 
 # *.json
 *.sql

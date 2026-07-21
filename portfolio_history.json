@@ -220,13 +220,20 @@
     },
     {
       "date": "2026-07-09",
-      "portfolio_daily_pct": 1.8164255721487697,
       "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": 1.8164255721487697,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
       "holding_pnl_pct": 2.5113250407094254,
+      "holding_daily_pnl_pct": 1.8164255721487697,
       "holding_pnl_cny": 1685.045049562797,
       "holding_cost_cny": 67097.84764009631,
+      "total_pnl_cny": 868.5606842761873,
+      "total_return_basis_cny": 97955.08050538292,
+      "fx_pnl_cny": -816.4843652866097,
       "fx_rate": 6.7979,
-      "holding_daily_pnl_pct": 1.8164255721487697,
+      "cash_usd": 4415.0,
+      "cash_cny": 28.019999999999982,
       "holding_daily_pnl_cny": 1224.7248864782982,
       "holding_daily_basis_cny": 67424.9969421808,
       "usd_return_pct": 2.262631241981879,
@@ -236,9 +243,15 @@
       "usd_daily_pct": 1.0847938425306742,
       "usd_daily_pnl_usd": 61.417677,
       "usd_daily_basis_usd": 5661.691152,
+      "cash_flow_cny": 0.0,
+      "cash_flow_flag": false,
       "pnl_basis_version": 2,
       "snapshot_schema_version": 4,
       "calculation_version": "2026-07-eod-v4-dated-fx",
+      "price_source": "historical_daily_close",
+      "fx_source": "Sina fx_susdcny daily close",
+      "voo_dividend_usd": 7.98,
+      "sgov_dividend_usd": 11.61,
       "closing_prices": {
         "VOO": 690.69,
         "QQQ": 723.28,
@@ -251,14 +264,6 @@
         "PLTR": 129.04,
         "SGOV": 100.48
       },
-      "price_source": "historical_daily_close",
-      "fx_source": "Sina fx_susdcny daily close",
-      "voo_dividend_usd": 7.98,
-      "sgov_dividend_usd": 11.61,
-      "cash_flow_cny": 0,
-      "cash_flow_flag": false,
-      "total_assets_cny": 0.0,
-      "total_cost_cny": 0.0,
       "benchmark_prices": {
         "001015": 2.432,
         "VOO": 690.69,
@@ -269,11 +274,6 @@
         "VOO": 0.7923999649767977,
         "QQQ": 1.664230293489255
       },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
       "symbol_daily_pct": {
         "VOO": 0.7923999649768063,
         "QQQ": 1.6642302934892494,
@@ -321,31 +321,28 @@
         "PLTR": {
           "shares": 0.1941,
           "avg_cost": 128.74806800618236
-        },
-        "SGOV": {
-          "shares": 0.0,
-          "avg_cost": 0.0
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
-      "updated_at": "2026-07-09T08:00:00+08:00",
-      "total_pnl_cny": 868.5606842761873,
-      "total_return_basis_cny": 97955.08050538292,
-      "total_pnl_pct": 0.8866928389982358,
-      "fx_pnl_cny": -816.4843652866097,
-      "cash_usd": 4415.0,
-      "cash_cny": 28.019999999999982
+      "estimated_symbols": [],
+      "updated_at": "2026-07-09T08:00:00+08:00"
     },
     {
       "date": "2026-07-10",
-      "portfolio_daily_pct": -0.7218999823474399,
       "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": -0.7218999823474399,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
       "holding_pnl_pct": 1.7655266987380984,
+      "holding_daily_pnl_pct": -0.7218999823474399,
       "holding_pnl_cny": 1186.5364974656143,
       "holding_cost_cny": 67205.80879992839,
+      "total_pnl_cny": 199.5312920110614,
+      "total_return_basis_cny": 97955.08050538292,
+      "fx_pnl_cny": -987.0052054545529,
       "fx_rate": 6.7809,
-      "holding_daily_pnl_pct": -0.7218999823474399,
+      "cash_usd": 4385.0,
+      "cash_cny": 28.019999999999982,
       "holding_daily_pnl_cny": -496.3485121720999,
       "holding_daily_basis_cny": 68755.8559785661,
       "usd_return_pct": 2.5195205875030755,
@@ -355,9 +352,15 @@
       "usd_daily_pct": 0.26388916760051584,
       "usd_daily_pnl_usd": 15.181830999999884,
       "usd_daily_basis_usd": 5753.108829,
+      "cash_flow_cny": 203.427,
+      "cash_flow_flag": true,
       "pnl_basis_version": 2,
       "snapshot_schema_version": 4,
       "calculation_version": "2026-07-eod-v4-dated-fx",
+      "price_source": "historical_daily_close",
+      "fx_source": "Sina fx_susdcny daily close",
+      "voo_dividend_usd": 7.98,
+      "sgov_dividend_usd": 11.61,
       "closing_prices": {
         "VOO": 693.86,
         "QQQ": 725.51,
@@ -370,14 +373,6 @@
         "PLTR": 126.79,
         "SGOV": 100.5
       },
-      "price_source": "historical_daily_close",
-      "fx_source": "Sina fx_susdcny daily close",
-      "voo_dividend_usd": 7.98,
-      "sgov_dividend_usd": 11.61,
-      "cash_flow_cny": 203.427,
-      "cash_flow_flag": true,
-      "total_assets_cny": 0.0,
-      "total_cost_cny": 0.0,
       "benchmark_prices": {
         "001015": 2.383,
         "VOO": 693.86,
@@ -388,11 +383,6 @@
         "VOO": 0.4589613285265415,
         "QQQ": 0.30831766397523275
       },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
       "symbol_daily_pct": {
         "VOO": 0.45896132852654,
         "QQQ": 0.30831766397522653,
@@ -440,31 +430,28 @@
         "PLTR": {
           "shares": 0.1941,
           "avg_cost": 128.74806800618236
-        },
-        "SGOV": {
-          "shares": 0.0,
-          "avg_cost": 0.0
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
-      "updated_at": "2026-07-10T08:00:00+08:00",
-      "total_pnl_cny": 199.5312920110614,
-      "total_return_basis_cny": 97955.08050538292,
-      "total_pnl_pct": 0.2036967260724129,
-      "fx_pnl_cny": -987.0052054545529,
-      "cash_usd": 4385.0,
-      "cash_cny": 28.019999999999982
+      "estimated_symbols": [],
+      "updated_at": "2026-07-10T08:00:00+08:00"
     },
     {
       "date": "2026-07-13",
-      "portfolio_daily_pct": -1.3669502333189172,
       "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": -1.3669502333189172,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
       "holding_pnl_pct": 0.3747707680413767,
+      "holding_daily_pnl_pct": -1.3669502333189172,
       "holding_pnl_cny": 252.33801881699887,
       "holding_cost_cny": 67331.29697808751,
+      "total_pnl_cny": -692.5385084784161,
+      "total_return_basis_cny": 97955.08050538292,
+      "fx_pnl_cny": -944.876527295415,
       "fx_rate": 6.7851,
-      "holding_daily_pnl_pct": -1.3669502333189172,
+      "cash_usd": 4370.0,
+      "cash_cny": 28.019999999999982,
       "holding_daily_pnl_cny": -934.7958992614989,
       "holding_daily_basis_cny": 68385.510787166,
       "usd_return_pct": 1.2572017920127734,
@@ -474,9 +461,15 @@
       "usd_daily_pct": -1.2290124978778083,
       "usd_daily_pnl_usd": -71.077365,
       "usd_daily_basis_usd": 5783.290660000001,
+      "cash_flow_cny": 101.7765,
+      "cash_flow_flag": true,
       "pnl_basis_version": 2,
       "snapshot_schema_version": 4,
       "calculation_version": "2026-07-eod-v4-dated-fx",
+      "price_source": "historical_daily_close",
+      "fx_source": "Sina fx_susdcny daily close",
+      "voo_dividend_usd": 7.98,
+      "sgov_dividend_usd": 11.61,
       "closing_prices": {
         "VOO": 688.5,
         "QQQ": 711.74,
@@ -489,14 +482,6 @@
         "PLTR": 130.04,
         "SGOV": 100.52
       },
-      "price_source": "historical_daily_close",
-      "fx_source": "Sina fx_susdcny daily close",
-      "voo_dividend_usd": 7.98,
-      "sgov_dividend_usd": 11.61,
-      "cash_flow_cny": 101.7765,
-      "cash_flow_flag": true,
-      "total_assets_cny": 0.0,
-      "total_cost_cny": 0.0,
       "benchmark_prices": {
         "001015": 2.346,
         "VOO": 688.5,
@@ -507,11 +492,6 @@
         "VOO": -0.772490127691472,
         "QQQ": -1.8979752174332565
       },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
       "symbol_daily_pct": {
         "VOO": -0.7724901276914671,
         "QQQ": -1.8979752174332514,
@@ -559,31 +539,28 @@
         "PLTR": {
           "shares": 0.1941,
           "avg_cost": 128.74806800618236
-        },
-        "SGOV": {
-          "shares": 0.0,
-          "avg_cost": 0.0
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
-      "updated_at": "2026-07-13T08:00:00+08:00",
-      "total_pnl_cny": -692.5385084784161,
-      "total_return_basis_cny": 97955.08050538292,
-      "total_pnl_pct": -0.7069960076653289,
-      "fx_pnl_cny": -944.876527295415,
-      "cash_usd": 4370.0,
-      "cash_cny": 28.019999999999982
+      "estimated_symbols": [],
+      "updated_at": "2026-07-13T08:00:00+08:00"
     },
     {
       "date": "2026-07-14",
-      "portfolio_daily_pct": 1.183875421341294,
       "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": 1.183875421341294,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
       "holding_pnl_pct": 1.5597300890612913,
+      "holding_daily_pnl_pct": 1.183875421341294,
       "holding_pnl_cny": 1050.4929943300724,
       "holding_cost_cny": 67350.94755800355,
+      "total_pnl_cny": 20.35604695069037,
+      "total_return_basis_cny": 97955.08050538292,
+      "fx_pnl_cny": -1030.136947379382,
       "fx_rate": 6.7766,
-      "holding_daily_pnl_pct": 1.183875421341294,
+      "cash_usd": 4360.0,
+      "cash_cny": 28.019999999999982,
       "holding_daily_pnl_cny": 798.7598834366008,
       "holding_daily_basis_cny": 67469.927074897,
       "usd_return_pct": 1.6467414197788621,
@@ -593,9 +570,15 @@
       "usd_daily_pct": 0.3882256716891612,
       "usd_daily_pnl_usd": 22.215101000000235,
       "usd_daily_basis_usd": 5722.2132950000005,
+      "cash_flow_cny": 67.766,
+      "cash_flow_flag": true,
       "pnl_basis_version": 2,
       "snapshot_schema_version": 4,
       "calculation_version": "2026-07-eod-v4-dated-fx",
+      "price_source": "historical_daily_close",
+      "fx_source": "Sina fx_susdcny daily close",
+      "voo_dividend_usd": 7.98,
+      "sgov_dividend_usd": 11.61,
       "closing_prices": {
         "VOO": 691.1,
         "QQQ": 719.69,
@@ -608,14 +591,6 @@
         "PLTR": 133.72,
         "SGOV": 100.52
       },
-      "price_source": "historical_daily_close",
-      "fx_source": "Sina fx_susdcny daily close",
-      "voo_dividend_usd": 7.98,
-      "sgov_dividend_usd": 11.61,
-      "cash_flow_cny": 67.766,
-      "cash_flow_flag": true,
-      "total_assets_cny": 0.0,
-      "total_cost_cny": 0.0,
       "benchmark_prices": {
         "001015": 2.399,
         "VOO": 691.1,
@@ -626,11 +601,6 @@
         "VOO": 0.3776325344952758,
         "QQQ": 1.1169809199988778
       },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
       "symbol_daily_pct": {
         "VOO": 0.3776325344952829,
         "QQQ": 1.1169809199988823,
@@ -678,31 +648,28 @@
         "PLTR": {
           "shares": 0.1941,
           "avg_cost": 128.74806800618236
-        },
-        "SGOV": {
-          "shares": 0.0,
-          "avg_cost": 0.0
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
-      "updated_at": "2026-07-14T08:00:00+08:00",
-      "total_pnl_cny": 20.35604695069037,
-      "total_return_basis_cny": 97955.08050538292,
-      "total_pnl_pct": 0.020781001705747915,
-      "fx_pnl_cny": -1030.136947379382,
-      "cash_usd": 4360.0,
-      "cash_cny": 28.019999999999982
+      "estimated_symbols": [],
+      "updated_at": "2026-07-14T08:00:00+08:00"
     },
     {
       "date": "2026-07-15",
-      "portfolio_daily_pct": 0.16588143307255437,
       "portfolio_return_pct": 0.0,
+      "portfolio_daily_pct": 0.16588143307255437,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
       "holding_pnl_pct": 1.727821341150649,
+      "holding_daily_pnl_pct": 0.16588143307255437,
       "holding_pnl_cny": 1163.0279938098174,
       "holding_cost_cny": 67311.82015817068,
+      "total_pnl_cny": 63.67964659756649,
+      "total_return_basis_cny": 97955.08050538292,
+      "fx_pnl_cny": -1099.348347212251,
       "fx_rate": 6.7697,
-      "holding_daily_pnl_pct": 0.16588143307255437,
+      "cash_usd": 4360.0,
+      "cash_cny": 28.019999999999982,
       "holding_daily_pnl_cny": 113.17932657929855,
       "holding_daily_basis_cny": 68229.0504024012,
       "usd_return_pct": 1.9734272375076003,
@@ -712,9 +679,15 @@
       "usd_daily_pct": 0.3224893361522124,
       "usd_daily_pnl_usd": 18.525168999999586,
       "usd_daily_basis_usd": 5744.428396,
+      "cash_flow_cny": 0.0,
+      "cash_flow_flag": false,
       "pnl_basis_version": 2,
       "snapshot_schema_version": 4,
       "calculation_version": "2026-07-eod-v4-dated-fx",
+      "price_source": "historical_daily_close",
+      "fx_source": "Sina fx_susdcny daily close",
+      "voo_dividend_usd": 7.98,
+      "sgov_dividend_usd": 11.61,
       "closing_prices": {
         "VOO": 693.8,
         "QQQ": 717.74,
@@ -727,14 +700,6 @@
         "PLTR": 133.76,
         "SGOV": 100.54
       },
-      "price_source": "historical_daily_close",
-      "fx_source": "Sina fx_susdcny daily close",
-      "voo_dividend_usd": 7.98,
-      "sgov_dividend_usd": 11.61,
-      "cash_flow_cny": 0,
-      "cash_flow_flag": false,
-      "total_assets_cny": 0.0,
-      "total_cost_cny": 0.0,
       "benchmark_prices": {
         "001015": 2.398,
         "VOO": 693.8,
@@ -745,11 +710,6 @@
         "VOO": 0.3906815222109561,
         "QQQ": -0.27094999235782735
       },
-      "market_open_symbols": [
-        "001015",
-        "VOO",
-        "QQQ"
-      ],
       "symbol_daily_pct": {
         "VOO": 0.3906815222109582,
         "QQQ": -0.270949992357827,
@@ -797,21 +757,11 @@
         "PLTR": {
           "shares": 0.1941,
           "avg_cost": 128.74806800618236
-        },
-        "SGOV": {
-          "shares": 0.0,
-          "avg_cost": 0.0
         }
       },
-      "estimated_symbols": [],
       "finalized": true,
-      "updated_at": "2026-07-15T08:00:00+08:00",
-      "total_pnl_cny": 63.67964659756649,
-      "total_return_basis_cny": 97955.08050538292,
-      "total_pnl_pct": 0.06500902890286236,
-      "fx_pnl_cny": -1099.348347212251,
-      "cash_usd": 4360.0,
-      "cash_cny": 28.019999999999982
+      "estimated_symbols": [],
+      "updated_at": "2026-07-15T08:00:00+08:00"
     },
     {
       "date": "2026-07-16",
@@ -925,11 +875,11 @@
       "estimated_symbols": [],
       "finalized": true,
       "updated_at": "2026-07-16T08:00:00+08:00",
-      "total_pnl_cny": -824.5523344081191,
-      "total_return_basis_cny": 97955.08050538292,
-      "total_pnl_pct": -0.8417657666697619,
-      "fx_pnl_cny": -1022.1124372538329,
-      "cash_usd": 4360.0,
+      "total_pnl_cny": -674.5976940246724,
+      "total_return_basis_cny": 87831.50402499948,
+      "total_pnl_pct": -0.7680589117916752,
+      "fx_pnl_cny": -872.1577968703862,
+      "cash_usd": 2888.4,
       "cash_cny": 28.019999999999982
     },
     {
@@ -1044,11 +994,11 @@
       "estimated_symbols": [],
       "finalized": true,
       "updated_at": "2026-07-17T08:00:00+08:00",
-      "total_pnl_cny": -2512.1234789417026,
-      "total_return_basis_cny": 97955.08050538292,
-      "total_pnl_pct": -2.5645668054998474,
-      "fx_pnl_cny": -1044.1798400990976,
-      "cash_usd": 4259.0,
+      "total_pnl_cny": -2358.931318558256,
+      "total_return_basis_cny": 87831.50402499948,
+      "total_pnl_pct": -2.6857462419029434,
+      "fx_pnl_cny": -890.9876797156508,
+      "cash_usd": 2787.4,
       "cash_cny": 28.019999999999982
     },
     {
@@ -1163,11 +1113,11 @@
       "estimated_symbols": [],
       "finalized": true,
       "updated_at": "2026-07-20T08:00:00+08:00",
-      "total_pnl_cny": -2020.0006873413104,
-      "total_return_basis_cny": 97955.08050538292,
-      "total_pnl_pct": -2.062170412110789,
-      "fx_pnl_cny": -1080.290135664069,
-      "cash_usd": 4199.0,
+      "total_pnl_cny": -1861.510766957864,
+      "total_return_basis_cny": 87831.50402499948,
+      "total_pnl_pct": -2.1194112381680523,
+      "fx_pnl_cny": -921.8002152806228,
+      "cash_usd": 2727.4,
       "cash_cny": 28.019999999999982
     }
   ]

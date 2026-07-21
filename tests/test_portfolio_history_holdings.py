@@ -5,6 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from backend.portfolio import (
+    cash_balances_for_history_day,
     current_holdings_pnl_for_history_day,
     fund_daily_status,
     historical_holding_pnl,
@@ -14,6 +15,51 @@ from backend.portfolio import (
 
 
 class HistoricalHoldingsSnapshotTests(unittest.TestCase):
+    def test_cash_history_rewinds_from_current_trusted_balance(self):
+        balances = {"cash_usd": 2727.4, "cash_cny": 28.02}
+        adjustments = [
+            {
+                "kind": "balances",
+                "effective_date": "2026-07-21",
+                "reconstruct_from_date": "2026-07-16",
+                "recorded_at": "2026-07-21T13:14:12+08:00",
+                "after": balances,
+            }
+        ]
+        trades = [
+            {"trade_date": "2026-07-17", "symbol": "TEM", "action": "buy", "amount_usd": 36.0},
+            {"trade_date": "2026-07-17", "symbol": "PLTR", "action": "buy", "amount_usd": 15.0},
+            {"trade_date": "2026-07-17", "symbol": "QQQ", "action": "buy", "amount_usd": 50.0},
+            {"trade_date": "2026-07-20", "symbol": "TEM", "action": "buy", "amount_usd": 20.0},
+            {"trade_date": "2026-07-20", "symbol": "ISRG", "action": "buy", "amount_usd": 40.0},
+        ]
+
+        self.assertEqual(cash_balances_for_history_day("2026-07-16", balances, trades, adjustments), (2888.4, 28.02))
+        self.assertEqual(cash_balances_for_history_day("2026-07-17", balances, trades, adjustments), (2787.4, 28.02))
+        self.assertEqual(cash_balances_for_history_day("2026-07-20", balances, trades, adjustments), (2727.4, 28.02))
+        self.assertEqual(cash_balances_for_history_day("2026-07-21", balances, trades, adjustments), (2727.4, 28.02))
+
+    def test_cash_history_preserves_old_snapshot_before_reconstruction_window(self):
+        adjustments = [
+            {
+                "kind": "balances",
+                "effective_date": "2026-07-21",
+                "reconstruct_from_date": "2026-07-16",
+                "after": {"cash_usd": 2727.4, "cash_cny": 28.02},
+            }
+        ]
+
+        cash = cash_balances_for_history_day(
+            "2026-07-15",
+            {"cash_usd": 2727.4, "cash_cny": 28.02},
+            [],
+            adjustments,
+            3000.0,
+            20.0,
+        )
+
+        self.assertEqual(cash, (3000.0, 20.0))
+
     def test_reconciled_daily_pnl_bridges_adjacent_cumulative_points(self):
         rows = [
             {"date": "2026-07-20", "total_pnl_cny": -1900.0, "total_return_basis_cny": 90000.0},

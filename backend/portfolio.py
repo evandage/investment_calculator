@@ -928,8 +928,68 @@ def cash_balances_for_history_day(
     history_day: str,
     balances: dict[str, float],
     trades: list[dict[str, Any]],
+    adjustments: list[dict[str, Any]] | None = None,
+    fallback_cash_usd: float | None = None,
+    fallback_cash_cny: float | None = None,
 ) -> tuple[float, float]:
-    """Rewind current cash by trades that happened after a historical snapshot."""
+    """Reconstruct EOD cash from a trusted balance anchor and dated trades.
+
+    A balance adjustment can opt into historical reconstruction with
+    ``reconstruct_from_date``.  For days before that anchor we reverse later
+    trades from the trusted current balance; older snapshots remain untouched
+    when the trade ledger is known to be incomplete.
+    """
+    anchors = sorted(
+        (
+            row
+            for row in adjustments or []
+            if row.get("kind") == "balances"
+            and isinstance(row.get("after"), dict)
+            and str(row.get("reconstruct_from_date") or "9999-12-31")[:10] <= history_day
+        ),
+        key=lambda row: (str(row.get("effective_date") or "")[:10], str(row.get("recorded_at") or "")),
+    )
+    if anchors:
+        future_anchors = [
+            row for row in anchors
+            if str(row.get("effective_date") or "")[:10] >= history_day
+        ]
+        anchor = future_anchors[0] if future_anchors else anchors[-1]
+        anchor_day = str(anchor.get("effective_date") or "")[:10]
+        anchor_balances = anchor.get("after") or {}
+        cash_usd = float(anchor_balances.get("cash_usd", 0.0) or 0.0)
+        cash_cny = float(anchor_balances.get("cash_cny", 0.0) or 0.0)
+        for trade in sorted(trades, key=lambda row: (str(row.get("trade_date") or "")[:10], str(row.get("created_at") or ""))):
+            trade_day = str(trade.get("trade_date") or "")[:10]
+            if not trade_day:
+                continue
+            symbol = str(trade.get("symbol") or "").upper()
+            amount = max(0.0, float(trade.get("amount_usd", 0.0) or 0.0))
+            action = str(trade.get("action") or "").lower()
+            if history_day < anchor_day:
+                if trade_day <= history_day or trade_day > anchor_day:
+                    continue
+                # Reverse trades after the requested historical close.
+                direction = 1.0 if action == "buy" else -1.0
+            else:
+                if trade_day <= anchor_day or trade_day > history_day:
+                    continue
+                # Replay trades after an older anchor.
+                direction = -1.0 if action == "buy" else 1.0
+            if symbol in USD_SYMBOLS:
+                cash_usd += direction * amount
+            else:
+                cash_cny += direction * amount
+        return max(0.0, cash_usd), max(0.0, cash_cny)
+
+    # Preserve older stored snapshots when no trustworthy dated anchor exists.
+    if fallback_cash_usd is not None or fallback_cash_cny is not None:
+        return (
+            max(0.0, float(fallback_cash_usd or 0.0)),
+            max(0.0, float(fallback_cash_cny or 0.0)),
+        )
+
+    # Legacy fallback for callers without snapshot cash fields.
     cash_usd = float(balances.get("cash_usd", 0.0) or 0.0)
     cash_cny = float(balances.get("cash_cny", 0.0) or 0.0)
     for trade in trades:
@@ -952,6 +1012,7 @@ def total_pnl_for_history_snapshot(
     trades: list[dict[str, Any]],
     usd_cost_fx: float,
     fallback_fx: float,
+    adjustments: list[dict[str, Any]] | None = None,
 ) -> dict[str, float]:
     """Add FX P&L and cash to a historical holding-only P&L snapshot."""
     snapshot = row.get("holdings_snapshot") or {}
@@ -977,7 +1038,14 @@ def total_pnl_for_history_snapshot(
         fx_rate = fallback_fx
 
     history_day = str(row.get("date") or "")[:10]
-    cash_usd, cash_cny = cash_balances_for_history_day(history_day, balances, trades)
+    cash_usd, cash_cny = cash_balances_for_history_day(
+        history_day,
+        balances,
+        trades,
+        adjustments,
+        coerce_optional_float(row.get("cash_usd")),
+        coerce_optional_float(row.get("cash_cny")),
+    )
     price_pnl_cny = float(row.get("holding_pnl_cny", 0.0) or 0.0)
     fx_pnl_cny = (usd_holding_cost + cash_usd) * (fx_rate - usd_cost_fx)
     total_pnl_cny = price_pnl_cny + fx_pnl_cny
@@ -1001,6 +1069,10 @@ def current_holdings_pnl_for_history_day(
     fx_rate: float,
     usd_cost_fx: float,
     archived_pnl_usd: float = 0.0,
+    trades: list[dict[str, Any]] | None = None,
+    adjustments: list[dict[str, Any]] | None = None,
+    snapshot_cash_usd: float | None = None,
+    snapshot_cash_cny: float | None = None,
 ) -> dict[str, float]:
     """Value today's book at a historical close for a continuous P&L series."""
     holding_pnl = historical_holding_pnl(holdings, prices, fx_rate, balances)
@@ -1031,11 +1103,17 @@ def current_holdings_pnl_for_history_day(
         "holding_pnl_cny": holding_pnl["amount_cny"],
         "holding_cost_cny": holding_pnl["cost_cny"],
         "fx_rate": fx_rate,
+        "cash_usd": snapshot_cash_usd,
+        "cash_cny": snapshot_cash_cny,
     }
-    # The cumulative holding-P&L line is anchored to the current book, so its
-    # cash balance must also remain current. Daily weighted returns continue to
-    # use the actual historical snapshot elsewhere.
-    total = total_pnl_for_history_snapshot(probe, balances, [], usd_cost_fx, fx_rate)
+    total = total_pnl_for_history_snapshot(
+        probe,
+        balances,
+        trades or [],
+        usd_cost_fx,
+        fx_rate,
+        adjustments,
+    )
     return {
         "holding_pnl_cny": holding_pnl["amount_cny"],
         "holding_cost_cny": holding_pnl["cost_cny"],
@@ -1442,7 +1520,7 @@ def ensure_completed_performance_history(
                         "revised_at": datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds"),
                     }
                 )
-                row.update(total_pnl_for_history_snapshot(row, balances, trades, usd_cost_fx, fx))
+                row.update(total_pnl_for_history_snapshot(row, balances, trades, usd_cost_fx, fx, adjustments))
                 snapshots_repaired = True
         repaired_snapshot_rows.append(row)
     if snapshots_repaired:
@@ -1529,7 +1607,7 @@ def ensure_completed_performance_history(
     for row in rows:
         if row.get("total_pnl_cny") is not None and row.get("total_return_basis_cny") is not None:
             continue
-        row.update(total_pnl_for_history_snapshot(row, balances, trades, usd_cost_fx, fx))
+        row.update(total_pnl_for_history_snapshot(row, balances, trades, usd_cost_fx, fx, adjustments))
         history_backfilled = True
     if history_backfilled:
         save_portfolio_history(user_id, sorted(rows, key=lambda row: row["date"]))
@@ -1612,7 +1690,11 @@ def ensure_completed_performance_history(
             "finalized": True,
             "updated_at": datetime.combine(date.fromisoformat(day), datetime.min.time(), TZ_SHANGHAI).replace(hour=PERFORMANCE_WRITE_HOUR).isoformat(timespec="seconds"),
         }
-        rows_by_date[day].update(total_pnl_for_history_snapshot(rows_by_date[day], balances, trades, usd_cost_fx, day_fx))
+        rows_by_date[day].update(
+            total_pnl_for_history_snapshot(
+                rows_by_date[day], balances, trades, usd_cost_fx, day_fx, adjustments
+            )
+        )
     rows = sorted(rows_by_date.values(), key=lambda row: row["date"])
     save_portfolio_history(user_id, rows)
     return rows
@@ -1706,6 +1788,8 @@ def build_performance_history(
     # trades or manual holding edits are incomplete. Daily weighted P&L fields
     # remain untouched and continue to use each day's actual snapshot.
     _, history_balances, _ = load_user_state(user_id)
+    history_trades = load_trade_records(user_id)
+    history_adjustments = load_portfolio_adjustments(user_id)
     history_usd_cost_fx = float(
         fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx
     )
@@ -1734,6 +1818,10 @@ def build_performance_history(
                     row_fx,
                     history_usd_cost_fx,
                     archived_pnl_usd,
+                    history_trades,
+                    history_adjustments,
+                    coerce_optional_float(row.get("cash_usd")),
+                    coerce_optional_float(row.get("cash_cny")),
                 )
             )
         anchored_rows.append(row)
