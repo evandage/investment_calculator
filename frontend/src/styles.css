@@ -1330,7 +1330,7 @@ h2 {
 .performanceTooltip {
   position: absolute;
   z-index: 6;
-  min-width: 210px;
+  min-width: 280px;
   display: grid;
   gap: 4px;
   padding: 9px 10px;

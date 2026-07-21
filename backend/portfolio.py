@@ -33,13 +33,14 @@ from .config import (
     USD_SYMBOLS,
     load_satellite_universe_config,
 )
-from .market_data import fetch_quotes
+from .market_data import fetch_fx_usdcny_history, fetch_quotes
 from .storage import (
     load_closed_satellite_pnl,
     load_drawdown_episode_store,
     load_monthly_usage,
     load_fx_conversion_records,
     load_portfolio_history,
+    load_portfolio_adjustments,
     load_trade_records,
     load_satellite_targets,
     load_user_state,
@@ -900,6 +901,29 @@ def holding_pnl_pct_for_snapshot(
     }
 
 
+def historical_holding_pnl(
+    holdings_snapshot: dict[str, dict[str, float]],
+    prices: dict[str, float],
+    fx: float,
+    balances: dict[str, float],
+    symbols: set[str] | None = None,
+    native_usd: bool = False,
+) -> dict[str, float]:
+    """Use the live-card dividend basis for historical holding P&L too."""
+    result = holding_pnl_pct_for_snapshot(holdings_snapshot, prices, fx, symbols, native_usd)
+    includes_usd = symbols is None or bool(set(USD_SYMBOLS) & symbols)
+    if not includes_usd:
+        return result
+    dividend_usd = float(balances.get("voo_dividend_usd", 0.0) or 0.0) + float(
+        balances.get("sgov_dividend_usd", 0.0) or 0.0
+    )
+    dividend_amount = dividend_usd if native_usd else dividend_usd * fx
+    result["amount_cny"] += dividend_amount
+    result["value_cny"] += dividend_amount
+    result["pct"] = result["amount_cny"] / result["cost_cny"] * 100.0 if result["cost_cny"] > 0 else 0.0
+    return result
+
+
 def cash_balances_for_history_day(
     history_day: str,
     balances: dict[str, float],
@@ -966,6 +990,41 @@ def total_pnl_for_history_snapshot(
         "fx_rate": fx_rate,
         "cash_usd": cash_usd,
         "cash_cny": cash_cny,
+    }
+
+
+def current_holdings_pnl_for_history_day(
+    day: str,
+    holdings: dict[str, dict[str, float]],
+    prices: dict[str, float],
+    balances: dict[str, float],
+    fx_rate: float,
+    usd_cost_fx: float,
+) -> dict[str, float]:
+    """Value today's book at a historical close for a continuous P&L series."""
+    holding_pnl = historical_holding_pnl(holdings, prices, fx_rate, balances)
+    usd_holding_pnl = historical_holding_pnl(
+        holdings, prices, fx_rate, balances, set(USD_SYMBOLS), True
+    )
+    probe = {
+        "date": day,
+        "holdings_snapshot": holdings,
+        "holding_pnl_cny": holding_pnl["amount_cny"],
+        "holding_cost_cny": holding_pnl["cost_cny"],
+        "fx_rate": fx_rate,
+    }
+    # The cumulative holding-P&L line is anchored to the current book, so its
+    # cash balance must also remain current. Daily weighted returns continue to
+    # use the actual historical snapshot elsewhere.
+    total = total_pnl_for_history_snapshot(probe, balances, [], usd_cost_fx, fx_rate)
+    return {
+        "holding_pnl_cny": holding_pnl["amount_cny"],
+        "holding_cost_cny": holding_pnl["cost_cny"],
+        "usd_return_pct": usd_holding_pnl["pct"],
+        "usd_pnl_usd": usd_holding_pnl["amount_cny"],
+        "usd_cost_usd": usd_holding_pnl["cost_cny"],
+        "usd_value_usd": usd_holding_pnl["value_cny"],
+        **total,
     }
 
 
@@ -1089,14 +1148,12 @@ def apply_trade_to_holdings(
     allow_oversell: bool = False,
 ) -> tuple[dict[str, dict[str, float]], float]:
     sym = str(trade.get("symbol", "")).upper()
-    if sym not in holdings:
-        return holdings, 0.0
     action = str(trade.get("action", "buy")).lower()
     shares = max(0.0, float(trade.get("shares", 0.0) or 0.0))
     amount = max(0.0, float(trade.get("amount_usd", 0.0) or 0.0))
     if shares <= 0 or amount <= 0:
         return holdings, 0.0
-    old = holdings[sym]
+    old = holdings.get(sym, {"shares": 0.0, "avg_cost": 0.0})
     old_shares = float(old.get("shares", 0.0) or 0.0)
     old_cost = float(old.get("avg_cost", 0.0) or 0.0)
     if action == "sell":
@@ -1156,6 +1213,7 @@ def holdings_snapshot_for_day(
     current_holdings: dict[str, dict[str, float]],
     finalized_rows: list[dict[str, Any]],
     trades: list[dict[str, Any]],
+    adjustments: list[dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, float]]:
     previous_rows = [row for row in finalized_rows if row.get("finalized") and str(row.get("date", "")) < day and row.get("holdings_snapshot")]
     if previous_rows:
@@ -1164,34 +1222,73 @@ def holdings_snapshot_for_day(
         base = current_holdings
     snapshot = {sym: {"shares": float(item.get("shares", 0.0) or 0.0), "avg_cost": float(item.get("avg_cost", 0.0) or 0.0)} for sym, item in base.items()}
 
+    # Saved history omits zero-share symbols. Seed them before replaying trades
+    # so a symbol's first purchase is not silently skipped.
+    for sym in current_holdings:
+        snapshot.setdefault(sym, {"shares": 0.0, "avg_cost": 0.0})
+
     # current_holdings already contains every recorded trade up to today.  When
     # there is no earlier finalized snapshot, replaying trades up to ``day``
     # would count them twice.  Instead, rewind only trades after the requested
     # day so the first generated snapshot has the correct end-of-day holdings.
     if not previous_rows:
-        future_trades = [
-            trade
-            for trade in trades
-            if str(trade.get("trade_date") or "")[:10] > day
-        ]
-        future_trades.sort(
-            key=lambda trade: (
-                str(trade.get("trade_date") or "")[:10],
-                str(trade.get("created_at") or ""),
-                str(trade.get("id") or ""),
-            ),
-            reverse=True,
-        )
-        for trade in future_trades:
-            snapshot = rewind_trade_from_holdings(snapshot, trade)
+        future_events: list[tuple[str, str, str, dict[str, Any]]] = []
+        for trade in trades:
+            event_day = str(trade.get("trade_date") or "")[:10]
+            if event_day > day:
+                future_events.append((event_day, str(trade.get("created_at") or ""), "trade", trade))
+        for adjustment in adjustments or []:
+            event_day = str(adjustment.get("effective_date") or "")[:10]
+            if adjustment.get("kind") == "holdings" and event_day > day:
+                future_events.append((event_day, str(adjustment.get("recorded_at") or ""), "adjustment", adjustment))
+        for _, _, event_type, event in sorted(future_events, key=lambda item: (item[0], item[1], item[2]), reverse=True):
+            if event_type == "trade":
+                snapshot = rewind_trade_from_holdings(snapshot, event)
+                continue
+            for sym, holding in (event.get("before") or {}).items():
+                if isinstance(holding, dict):
+                    snapshot[str(sym).upper()] = {
+                        "shares": float(holding.get("shares", 0.0) or 0.0),
+                        "avg_cost": float(holding.get("avg_cost", 0.0) or 0.0),
+                    }
         return snapshot
 
     start_date = previous_rows[-1]["date"] if previous_rows else ""
+    events: list[tuple[str, str, str, dict[str, Any]]] = []
     for trade in trades:
-        trade_date = str(trade.get("trade_date") or "")[:10]
-        if (not start_date or trade_date > start_date) and trade_date <= day:
-            snapshot, _ = apply_trade_to_holdings(snapshot, trade, allow_oversell=True)
+        event_day = str(trade.get("trade_date") or "")[:10]
+        if (not start_date or event_day > start_date) and event_day <= day:
+            events.append((event_day, str(trade.get("created_at") or ""), "trade", trade))
+    for adjustment in adjustments or []:
+        event_day = str(adjustment.get("effective_date") or "")[:10]
+        if adjustment.get("kind") == "holdings" and (not start_date or event_day > start_date) and event_day <= day:
+            events.append((event_day, str(adjustment.get("recorded_at") or ""), "adjustment", adjustment))
+    for _, _, event_type, event in sorted(events, key=lambda item: (item[0], item[1], item[2])):
+        if event_type == "trade":
+            snapshot, _ = apply_trade_to_holdings(snapshot, event, allow_oversell=True)
+            continue
+        for sym, holding in (event.get("after") or {}).items():
+            if isinstance(holding, dict):
+                snapshot[str(sym).upper()] = {
+                    "shares": float(holding.get("shares", 0.0) or 0.0),
+                    "avg_cost": float(holding.get("avg_cost", 0.0) or 0.0),
+                }
     return snapshot
+
+
+def holdings_snapshots_match(
+    left: dict[str, dict[str, float]],
+    right: dict[str, dict[str, float]],
+) -> bool:
+    symbols = set(left) | set(right)
+    for sym in symbols:
+        left_item = left.get(sym, {})
+        right_item = right.get(sym, {})
+        if abs(float(left_item.get("shares", 0.0) or 0.0) - float(right_item.get("shares", 0.0) or 0.0)) > 1e-8:
+            return False
+        if abs(float(left_item.get("avg_cost", 0.0) or 0.0) - float(right_item.get("avg_cost", 0.0) or 0.0)) > 1e-6:
+            return False
+    return True
 
 
 def invalidate_performance_history_from(user_id: str, start_day: str) -> None:
@@ -1218,10 +1315,100 @@ def ensure_completed_performance_history(
 
     rows_by_date = {row["date"]: row for row in rows}
     trades = load_trade_records(user_id)
+    adjustments = load_portfolio_adjustments(user_id)
     _, balances, _ = load_user_state(user_id)
     usd_cost_fx = float(fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx)
     symbols = set(holdings) | {str(trade.get("symbol", "")).upper() for trade in trades} | {"001015", "VOO", "QQQ"}
     histories = fetch_close_histories(symbols)
+    fx_history = fetch_fx_usdcny_history()
+
+    # Repair snapshots created before new symbols could be replayed. Rebuild
+    # sequentially from the preceding finalized row, preserving each row's
+    # historical FX rate and market date.
+    repaired_snapshot_rows: list[dict[str, Any]] = []
+    snapshots_repaired = False
+    for row in sorted(rows, key=lambda item: item["date"]):
+        day = str(row.get("date") or "")[:10]
+        if day:
+            historical_fx = close_on(fx_history, day) or close_on_or_before(fx_history, day)
+            row_fx = historical_fx or coerce_optional_float(row.get("fx_rate")) or fx
+            expected_snapshot = (
+                holdings_snapshot_for_day(day, holdings, repaired_snapshot_rows, trades, adjustments)
+                if repaired_snapshot_rows
+                else row.get("holdings_snapshot") or {}
+            )
+            snapshot_changed = not holdings_snapshots_match(row.get("holdings_snapshot") or {}, expected_snapshot)
+            needs_pnl_repair = (
+                snapshot_changed
+                or int(row.get("pnl_basis_version", 0) or 0) < 2
+                or int(row.get("snapshot_schema_version", 0) or 0) < 4
+                or (
+                    historical_fx is not None
+                    and abs(float(row.get("fx_rate", 0.0) or 0.0) - historical_fx) > 1e-9
+                )
+            )
+            if snapshot_changed:
+                row["holdings_snapshot"] = {
+                    sym: item
+                    for sym, item in expected_snapshot.items()
+                    if float(item.get("shares", 0.0) or 0.0) > 1e-9
+                }
+            if needs_pnl_repair and row.get("holdings_snapshot"):
+                holding_prices = {
+                    sym: price
+                    for sym in row["holdings_snapshot"]
+                    if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
+                }
+                holding_pnl = historical_holding_pnl(row["holdings_snapshot"], holding_prices, row_fx, balances)
+                usd_holding_pnl = historical_holding_pnl(
+                    row["holdings_snapshot"], holding_prices, row_fx, balances, set(USD_SYMBOLS), True
+                )
+                portfolio_daily_pct, symbol_daily_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(
+                    row["holdings_snapshot"], day, histories, row_fx, trades
+                )
+                usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
+                    row["holdings_snapshot"], day, histories, row_fx, trades, set(USD_SYMBOLS), True
+                )
+                row.update(
+                    {
+                        "portfolio_daily_pct": portfolio_daily_pct,
+                        "holding_pnl_pct": holding_pnl["pct"],
+                        "holding_pnl_cny": holding_pnl["amount_cny"],
+                        "holding_cost_cny": holding_pnl["cost_cny"],
+                        "holding_daily_pnl_pct": portfolio_daily_pct,
+                        "holding_daily_pnl_cny": holding_daily_pnl_cny,
+                        "holding_daily_basis_cny": holding_daily_basis_cny,
+                        "symbol_daily_pct": symbol_daily_pct,
+                        "usd_return_pct": usd_holding_pnl["pct"],
+                        "usd_pnl_usd": usd_holding_pnl["amount_cny"],
+                        "usd_cost_usd": usd_holding_pnl["cost_cny"],
+                        "usd_value_usd": usd_holding_pnl["value_cny"],
+                        "usd_daily_pct": usd_daily_pct,
+                        "usd_daily_pnl_usd": holding_daily_pnl_usd,
+                        "usd_daily_basis_usd": holding_daily_basis_usd,
+                        "pnl_basis_version": 2,
+                        "snapshot_schema_version": 4,
+                        "calculation_version": "2026-07-eod-v4-dated-fx",
+                        "fx_rate": row_fx,
+                        "closing_prices": holding_prices,
+                        "price_source": "historical_daily_close",
+                        "fx_source": (
+                            "Sina fx_susdcny daily close"
+                            if historical_fx is not None
+                            else str(row.get("fx_source") or "captured_spot")
+                        ),
+                        "voo_dividend_usd": float(balances.get("voo_dividend_usd", 0.0) or 0.0),
+                        "sgov_dividend_usd": float(balances.get("sgov_dividend_usd", 0.0) or 0.0),
+                        "revised_at": datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds"),
+                    }
+                )
+                row.update(total_pnl_for_history_snapshot(row, balances, trades, usd_cost_fx, fx))
+                snapshots_repaired = True
+        repaired_snapshot_rows.append(row)
+    if snapshots_repaired:
+        rows = repaired_snapshot_rows
+        save_portfolio_history(user_id, rows)
+
     repaired_market_history = False
     for row in rows:
         day = str(row.get("date") or "")[:10]
@@ -1262,17 +1449,23 @@ def ensure_completed_performance_history(
         if not day:
             continue
         snapshot = row.get("holdings_snapshot") or {}
+        row_fx = (
+            close_on(fx_history, day)
+            or close_on_or_before(fx_history, day)
+            or coerce_optional_float(row.get("fx_rate"))
+            or fx
+        )
         holding_prices = {
             sym: price
             for sym in snapshot
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
-        usd_holding_pnl = holding_pnl_pct_for_snapshot(snapshot, holding_prices, fx, set(USD_SYMBOLS), True)
+        usd_holding_pnl = historical_holding_pnl(snapshot, holding_prices, row_fx, balances, set(USD_SYMBOLS), True)
         usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
             snapshot,
             day,
             histories,
-            fx,
+            row_fx,
             trades,
             set(USD_SYMBOLS),
             True,
@@ -1303,13 +1496,16 @@ def ensure_completed_performance_history(
     if not missing_days:
         return rows
     for day in missing_days:
-        holdings_snapshot = holdings_snapshot_for_day(day, holdings, sorted(rows_by_date.values(), key=lambda item: item["date"]), trades)
-        portfolio_daily_pct, symbol_daily_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(holdings_snapshot, day, histories, fx, trades)
+        day_fx = close_on(fx_history, day) or close_on_or_before(fx_history, day) or fx
+        holdings_snapshot = holdings_snapshot_for_day(
+            day, holdings, sorted(rows_by_date.values(), key=lambda item: item["date"]), trades, adjustments
+        )
+        portfolio_daily_pct, symbol_daily_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(holdings_snapshot, day, histories, day_fx, trades)
         usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
             holdings_snapshot,
             day,
             histories,
-            fx,
+            day_fx,
             trades,
             set(USD_SYMBOLS),
             True,
@@ -1330,10 +1526,10 @@ def ensure_completed_performance_history(
             for sym in holdings_snapshot
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
-        holding_pnl = holding_pnl_pct_for_snapshot(holdings_snapshot, holding_prices, fx)
-        usd_holding_pnl = holding_pnl_pct_for_snapshot(holdings_snapshot, holding_prices, fx, set(USD_SYMBOLS), True)
+        holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances)
+        usd_holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances, set(USD_SYMBOLS), True)
         day_cash_flow_cny = sum(
-            max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
+            max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (day_fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
             for trade in trades
             if str(trade.get("trade_date") or "")[:10] == day
         )
@@ -1344,7 +1540,7 @@ def ensure_completed_performance_history(
             "holding_pnl_pct": holding_pnl["pct"],
             "holding_pnl_cny": holding_pnl["amount_cny"],
             "holding_cost_cny": holding_pnl["cost_cny"],
-            "fx_rate": fx,
+            "fx_rate": day_fx,
             "holding_daily_pnl_pct": portfolio_daily_pct,
             "holding_daily_pnl_cny": holding_daily_pnl_cny,
             "holding_daily_basis_cny": holding_daily_basis_cny,
@@ -1355,6 +1551,14 @@ def ensure_completed_performance_history(
             "usd_daily_pct": usd_daily_pct,
             "usd_daily_pnl_usd": holding_daily_pnl_usd,
             "usd_daily_basis_usd": holding_daily_basis_usd,
+            "pnl_basis_version": 2,
+            "snapshot_schema_version": 4,
+            "calculation_version": "2026-07-eod-v4-dated-fx",
+            "closing_prices": holding_prices,
+            "price_source": "historical_daily_close",
+            "fx_source": "Sina fx_susdcny daily close",
+            "voo_dividend_usd": float(balances.get("voo_dividend_usd", 0.0) or 0.0),
+            "sgov_dividend_usd": float(balances.get("sgov_dividend_usd", 0.0) or 0.0),
             "cash_flow_cny": day_cash_flow_cny,
             "cash_flow_flag": day_cash_flow_cny > 0,
             "total_assets_cny": 0.0,
@@ -1368,7 +1572,7 @@ def ensure_completed_performance_history(
             "finalized": True,
             "updated_at": datetime.combine(date.fromisoformat(day), datetime.min.time(), TZ_SHANGHAI).replace(hour=PERFORMANCE_WRITE_HOUR).isoformat(timespec="seconds"),
         }
-        rows_by_date[day].update(total_pnl_for_history_snapshot(rows_by_date[day], balances, trades, usd_cost_fx, fx))
+        rows_by_date[day].update(total_pnl_for_history_snapshot(rows_by_date[day], balances, trades, usd_cost_fx, day_fx))
     rows = sorted(rows_by_date.values(), key=lambda row: row["date"])
     save_portfolio_history(user_id, rows)
     return rows
@@ -1457,6 +1661,38 @@ def build_performance_history(
         for row in ensure_completed_performance_history(user_id, holdings, fx, now)
         if row.get("finalized") and (row.get("market_open_symbols") or is_weekday(row["date"]))
     ]
+    # Cumulative holding P&L answers "what would today's book have earned at
+    # that day's close?" This keeps adjacent dates continuous even when older
+    # trades or manual holding edits are incomplete. Daily weighted P&L fields
+    # remain untouched and continue to use each day's actual snapshot.
+    _, history_balances, _ = load_user_state(user_id)
+    history_usd_cost_fx = float(
+        fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx
+    )
+    holding_histories = fetch_close_histories(set(holdings))
+    anchored_rows: list[dict[str, Any]] = []
+    for stored_row in rows:
+        row = dict(stored_row)
+        row_day = str(row.get("date") or "")[:10]
+        row_fx = coerce_optional_float(row.get("fx_rate")) or fx
+        row_prices = {
+            sym: price
+            for sym in holdings
+            if (price := close_on(holding_histories.get(sym, {}), row_day) or close_on_or_before(holding_histories.get(sym, {}), row_day)) is not None
+        }
+        if row_day and row_prices:
+            row.update(
+                current_holdings_pnl_for_history_day(
+                    row_day,
+                    holdings,
+                    row_prices,
+                    history_balances,
+                    row_fx,
+                    history_usd_cost_fx,
+                )
+            )
+        anchored_rows.append(row)
+    rows = anchored_rows
     current = {
         "date": today,
         "portfolio_daily_pct": portfolio_daily_pct,
@@ -1523,12 +1759,17 @@ def build_performance_history(
             "portfolio_daily_pct": coerce_optional_float(baseline_row.get("holding_daily_pnl_pct")) or coerce_optional_float(baseline_row.get("portfolio_daily_pct")) or 0.0,
             "holding_pnl_cny": coerce_optional_float(baseline_row.get("holding_pnl_cny")),
             "holding_cost_cny": coerce_optional_float(baseline_row.get("holding_cost_cny")),
+            "holding_daily_pnl_cny": coerce_optional_float(baseline_row.get("holding_daily_pnl_cny")),
+            "holding_daily_basis_cny": coerce_optional_float(baseline_row.get("holding_daily_basis_cny")),
             "total_pnl_cny": baseline_total_pnl_cny,
             "total_return_basis_cny": baseline_total_basis_cny,
             "fx_pnl_cny": coerce_optional_float(baseline_row.get("fx_pnl_cny")),
             "usd_return_pct": coerce_optional_float(baseline_row.get("usd_return_pct")) or 0.0,
             "usd_daily_pct": coerce_optional_float(baseline_row.get("usd_daily_pct")) or 0.0,
             "usd_pnl_usd": coerce_optional_float(baseline_row.get("usd_pnl_usd")),
+            "usd_cost_usd": coerce_optional_float(baseline_row.get("usd_cost_usd")),
+            "usd_daily_pnl_usd": coerce_optional_float(baseline_row.get("usd_daily_pnl_usd")),
+            "usd_daily_basis_usd": coerce_optional_float(baseline_row.get("usd_daily_basis_usd")),
             "cash_flow_cny": coerce_optional_float(baseline_row.get("cash_flow_cny")) or 0.0,
             "cash_flow_flag": bool(baseline_row.get("cash_flow_flag")),
             "market_open_symbols": list(benchmark_symbols),
@@ -1673,6 +1914,20 @@ def fund_daily_pct_for_day(quote: dict[str, Any], investment_day: str) -> float:
     return coerce_optional_float(quote.get("regular_change_pct", quote.get("change_pct"))) or 0.0
 
 
+def fund_daily_status(quote: dict[str, Any], investment_day: str, now: datetime) -> str:
+    current = now.astimezone(TZ_SHANGHAI) if now.tzinfo else now.replace(tzinfo=TZ_SHANGHAI)
+    if current.date().isoformat() != investment_day or current.weekday() >= 5:
+        return "closed"
+    minutes = current.hour * 60 + current.minute
+    if minutes < 9 * 60 + 30:
+        return "preopen"
+    quote_day = str(quote.get("quote_date") or quote.get("quote_time") or "")[:10]
+    if quote_day != investment_day:
+        return "pending"
+    source = str(quote.get("source") or "")
+    return "official" if "正式" in source or ("净值" in source and "估算" not in source) else "estimated"
+
+
 def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_day: str, now: datetime) -> float:
     # Quote providers commonly retain Friday's change over the weekend. Do not
     # count that old move again as the current investment day's return.
@@ -1685,7 +1940,7 @@ def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_
         if current.date().isoformat() != investment_day:
             return 0.0
         minutes = current.hour * 60 + current.minute
-        if minutes < 9 * 60:
+        if minutes < 9 * 60 + 30:
             return 0.0
         return fund_daily_pct_for_day(quote, investment_day)
     session = str(quote.get("session") or "").lower()
@@ -1789,15 +2044,26 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     raw_holdings = holdings
     history_now = datetime.now(TZ_SHANGHAI)
     history_day = performance_history_date(history_now)
-    if is_china_daily_close_ready(history_day, history_now):
+    china_minutes = history_now.hour * 60 + history_now.minute
+    official_fund_prices: dict[str, float] = {}
+    if (
+        is_weekday(history_day)
+        and history_now.date().isoformat() == history_day
+        and china_minutes >= 9 * 60 + 30
+    ):
         official_fund_prices = fetch_fund_close_history("001015")
+    if is_china_daily_close_ready(history_day, history_now):
+        if not official_fund_prices:
+            official_fund_prices = fetch_fund_close_history("001015")
         quotes["001015"] = quote_with_official_fund_nav(
             "001015",
             quotes.get("001015") or {},
             history_day,
             official_fund_prices,
         )
-        market = {**market, "quotes": quotes}
+    # Keep the public market payload consistent with the effective quote used
+    # by cards, weights and P&L calculations (proxy estimate or official NAV).
+    market = {**market, "quotes": quotes}
     finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
     completed_day = completed_performance_day(history_now)
     latest_completed_row = max(
@@ -1955,6 +2221,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "change_cny": change_cny,
                 "extended_change_usd": extended_change_cny / fx if extended_change_cny is not None and fx > 0 else None,
                 "extended_change_cny": extended_change_cny,
+                "daily_status": fund_daily_status(quote, history_day, history_now) if sym == "001015" else "live",
             }
         daily_cards.append(card)
         card_by_symbol[sym] = card

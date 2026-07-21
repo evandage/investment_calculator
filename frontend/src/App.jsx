@@ -471,14 +471,28 @@ function Summary({ data }) {
     symbol: row.symbol,
     amount: Number(row.pnl || 0),
     pct: Number(row.pnl_pct || 0),
+    contributionPct: usdHoldingCost > 0
+      ? Number(row.pnl || 0) / usdHoldingCost * 100
+      : 0,
   }));
+  const totalReturnBasisCny = Number(summary.total_return_basis_cny || 0);
   const totalHoldingPnlDetails = (data.holdings || []).map((row) => ({
     symbol: row.symbol,
     amount: Number(row.pnl_cny || 0),
     pct: Number(row.pnl_pct || 0),
+    contributionPct: totalReturnBasisCny > 0
+      ? Number(row.pnl_cny || 0) / totalReturnBasisCny * 100
+      : 0,
   }));
   if (Math.abs(Number(summary.usd_cash_fx_pnl_cny || 0)) > 0.000001) {
-    totalHoldingPnlDetails.push({ symbol: "美元现金汇兑", amount: Number(summary.usd_cash_fx_pnl_cny), pct: null });
+    totalHoldingPnlDetails.push({
+      symbol: "美元现金汇兑",
+      amount: Number(summary.usd_cash_fx_pnl_cny),
+      pct: null,
+      contributionPct: totalReturnBasisCny > 0
+        ? Number(summary.usd_cash_fx_pnl_cny) / totalReturnBasisCny * 100
+        : 0,
+    });
   }
   const usdDailyDetails = usdRows.map((row) => ({
     symbol: row.symbol,
@@ -510,7 +524,7 @@ function Summary({ data }) {
         <strong className={tone(usdPnl)}>
           {fmtMoney(usdPnl, "USD")} · {fmtPct(usdPnlPct)}
         </strong>
-        <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} />
+        <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} showContribution />
       </div>
       <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
         <span>当日加权{dailyAsOfLabel}</span>
@@ -534,7 +548,7 @@ function Summary({ data }) {
         <strong className={tone(summary.total_pnl_cny)}>
           {fmtMoney(summary.total_pnl_cny, "CNY")} · {fmtPct(summary.total_pnl_pct)}
         </strong>
-        <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} />
+        <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} showContribution />
       </div>
       <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
         <span>当日加权{dailyAsOfLabel}</span>
@@ -551,6 +565,9 @@ function DailyCards({ cards }) {
   return (
     <section className="cardGrid">
       {cards.map((card) => {
+        const fundPending = card.symbol === "001015" && ["pending", "preopen"].includes(card.daily_status);
+        const fundStatusText = card.daily_status === "pending" ? "待更新" : card.daily_status === "preopen" ? "未开盘" : "";
+        const fundEstimateTag = card.symbol === "001015" && card.daily_status === "estimated" ? "（估值）" : "";
         const regularPct = Number(card.regular_pct ?? 0);
         const extendedPct = Number(card.extended_pct);
         const hasDistinctExtendedPct = card.symbol !== "001015" && card.extended_pct != null && Math.abs(extendedPct - regularPct) > 0.0001;
@@ -564,16 +581,16 @@ function DailyCards({ cards }) {
           <article className={`dailyCard ${card.wide ? "wideCard" : ""}`} key={card.symbol}>
             <div className="cardTitle">{card.label}</div>
             {card.price_line ? <div className="priceLine">{fmtCardPriceLine(card.price_line)}</div> : null}
-            <div className={tone(regularPct)}>
-              {fmtPct(regularPct)}
+            <div className={fundPending ? "flat" : tone(regularPct)}>
+              {fundPending ? fundStatusText : `${fmtPct(regularPct)}${fundEstimateTag}`}
               {hasDistinctExtendedPct ? <span className={tone(extendedPct)}>（{fmtPct(extendedPct)}）</span> : null}
             </div>
-            <div className={tone(regularUsd)}>
-              {fmtMoney(regularUsd, "USD")}
+            <div className={fundPending ? "flat" : tone(regularUsd)}>
+              {fundPending ? "--" : fmtMoney(regularUsd, "USD")}
               {hasDistinctExtendedUsd ? <span className={tone(extendedUsd)}>（{extendedUsd.toFixed(2)}）</span> : null}
             </div>
-            <div className={tone(regularCny)}>
-              {fmtMoney(regularCny, "CNY")}
+            <div className={fundPending ? "flat" : tone(regularCny)}>
+              {fundPending ? "--" : fmtMoney(regularCny, "CNY")}
               {hasDistinctExtendedCny ? <span className={tone(extendedCny)}>（{extendedCny.toFixed(2)}）</span> : null}
             </div>
           </article>
@@ -625,6 +642,8 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
       });
     }
     return displayCards.map((card) => {
+    const fundPending = card.symbol === "001015" && ["pending", "preopen"].includes(card.daily_status);
+    const fundStatusText = card.daily_status === "pending" ? "待更新" : card.daily_status === "preopen" ? "未开盘" : "";
     const holding = holdingsBySymbol[card.symbol] || {};
     const rawValueCny = Number(holding.value_cny ?? card.value_cny ?? 0);
     const valueCny = Number.isFinite(rawValueCny) ? Math.max(0, rawValueCny) : 0;
@@ -667,6 +686,8 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
         dailyPct,
         bg,
         magnitude,
+        fundPending,
+        fundStatusText,
       };
     });
   }, [cards, holdingsBySymbol, satelliteCards, satelliteSymbols, totalValue]);
@@ -818,16 +839,16 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
               role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
             >
               <div className="heatSymbol">{row.label}</div>
-              <strong className={tone(row.regularPct)}>
-                {fmtPct(row.regularPct)}
+              <strong className={row.fundPending ? "flat" : tone(row.regularPct)}>
+                {row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}
                 {row.hasDistinctExtendedPct ? <span className={tone(row.extendedPct)}>（{fmtPct(row.extendedPct)}）</span> : null}
               </strong>
-              <div className={`heatPnl heatPnlUsd ${tone(row.regularUsd)}`}>
-                {fmtMoney(row.regularUsd, "USD")}
+              <div className={`heatPnl heatPnlUsd ${row.fundPending ? "flat" : tone(row.regularUsd)}`}>
+                {row.fundPending ? "--" : fmtMoney(row.regularUsd, "USD")}
                 {row.hasDistinctExtendedUsd ? <span className={tone(row.extendedUsd)}>（{fmtMoney(row.extendedUsd, "USD")}）</span> : null}
               </div>
-              <div className={`heatPnl heatPnlCny ${tone(row.regularCny)}`}>
-                {fmtMoney(row.regularCny, "CNY")}
+              <div className={`heatPnl heatPnlCny ${row.fundPending ? "flat" : tone(row.regularCny)}`}>
+                {row.fundPending ? "--" : fmtMoney(row.regularCny, "CNY")}
                 {row.hasDistinctExtendedCny ? <span className={tone(row.extendedCny)}>（{fmtMoney(row.extendedCny, "CNY")}）</span> : null}
               </div>
               <span>{row.assetPct.toFixed(1)}%</span>
@@ -1060,8 +1081,8 @@ function PerformanceLightweightChart({ points, series }) {
         setTooltip((current) => current.visible ? { ...current, visible: false } : current);
         return;
       }
-      const left = Math.min(Math.max(param.point.x + 14, 8), Math.max(8, container.clientWidth - 230));
-      const top = Math.min(Math.max(param.point.y + 14, 8), Math.max(8, container.clientHeight - 154));
+      const left = Math.min(Math.max(param.point.x + 14, 8), Math.max(8, container.clientWidth - 300));
+      const top = Math.min(Math.max(param.point.y + 14, 8), Math.max(8, container.clientHeight - 220));
       setTooltip({ visible: true, left, top, point });
     });
     return () => {
@@ -1115,25 +1136,30 @@ function PerformanceLightweightChart({ points, series }) {
       {tooltip.visible && tooltip.point ? (
         <div className="performanceTooltip" style={{ left: tooltip.left, top: tooltip.top }}>
           <strong>{tooltip.point.date}</strong>
-          <span className={tone(tooltip.point.portfolio_daily_pct)}>
-            总资产当日 {tooltip.point.portfolio_daily_pct == null ? "-" : fmtPct(tooltip.point.portfolio_daily_pct)}
+          <span className={tone(tooltip.point.usd_pnl_usd)}>
+            美元资产持仓盈亏&nbsp;
+            {tooltip.point.usd_pnl_usd == null ? "-" : fmtMoney(tooltip.point.usd_pnl_usd, "USD")}
+            &nbsp;·&nbsp;{tooltip.point.usd_return_pct == null ? "-" : fmtPct(tooltip.point.usd_return_pct)}
           </span>
-          <span className={tone(tooltip.point.usd_daily_pct)}>
-            美元资产当日 {tooltip.point.usd_daily_pct == null ? "-" : fmtPct(tooltip.point.usd_daily_pct)}
+          <span className={tone(tooltip.point.usd_daily_pnl_usd)}>
+            美元资产当日加权&nbsp;
+            {tooltip.point.usd_daily_pnl_usd == null ? "-" : fmtMoney(tooltip.point.usd_daily_pnl_usd, "USD")}
+            &nbsp;·&nbsp;{tooltip.point.usd_daily_pct == null ? "-" : fmtPct(tooltip.point.usd_daily_pct)}
           </span>
           <span className={tone(tooltip.point.total_pnl_cny)}>
-            总资产盈亏 {tooltip.point.total_pnl_cny == null ? "-" : fmtMoney(tooltip.point.total_pnl_cny, "CNY")}
+            总资产持仓盈亏&nbsp;
+            {tooltip.point.total_pnl_cny == null ? "-" : fmtMoney(tooltip.point.total_pnl_cny, "CNY")}
+            &nbsp;·&nbsp;{tooltip.point.portfolio_return_pct == null ? "-" : fmtPct(tooltip.point.portfolio_return_pct)}
           </span>
-          {tooltip.point.fx_pnl_cny != null ? (
-            <span className={tone(tooltip.point.fx_pnl_cny)}>其中汇率盈亏 {fmtMoney(tooltip.point.fx_pnl_cny, "CNY")}</span>
-          ) : null}
-          <span className={tone(tooltip.point.usd_pnl_usd)}>
-            美元资产盈亏 {tooltip.point.usd_pnl_usd == null ? "-" : fmtMoney(tooltip.point.usd_pnl_usd, "USD")}
+          <span className={tone(tooltip.point.holding_daily_pnl_cny)}>
+            总资产当日加权&nbsp;
+            {tooltip.point.holding_daily_pnl_cny == null ? "-" : fmtMoney(tooltip.point.holding_daily_pnl_cny, "CNY")}
+            &nbsp;·&nbsp;{tooltip.point.portfolio_daily_pct == null ? "-" : fmtPct(tooltip.point.portfolio_daily_pct)}
           </span>
           {tooltip.point.cash_flow_flag ? (
             <span>资金流/交易 {fmtMoney(tooltip.point.cash_flow_cny || 0, "CNY")}</span>
           ) : null}
-          {series.map(([key, name, color]) => (
+          {series.slice(2).map(([key, name, color]) => (
             <span key={key} style={{ "--series-color": color }}>
               <i />{name} {tooltip.point[key] == null ? "-" : fmtPct(tooltip.point[key])}
             </span>

@@ -5,6 +5,7 @@ frontend/node_modules/
 frontend/dist/
 .fund_quotes_cache.json
 .fx_rate_cache.json
+portfolio_snapshot_ledger.backup-*.json
 
 # *.json
 *.sql

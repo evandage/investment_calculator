@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from datetime import datetime
 from typing import Any
 
@@ -16,6 +17,8 @@ from .config import (
     FX_CONVERSION_RECORDS_FILE,
     MONTHLY_USAGE_FILE,
     PORTFOLIO_HISTORY_FILE,
+    PORTFOLIO_SNAPSHOT_LEDGER_FILE,
+    PORTFOLIO_ADJUSTMENTS_FILE,
     SATELLITE_SYMBOLS,
     SATELLITE_TARGETS_FILE,
     TZ_SHANGHAI,
@@ -96,6 +99,141 @@ def load_balances() -> dict[str, float]:
 
 def save_balances(balances: dict[str, float]) -> None:
     _write_json(BALANCES_FILE, normalize_balances(balances))
+
+
+def load_portfolio_adjustments(user_id: str = "evan") -> list[dict[str, Any]]:
+    raw = _read_json(PORTFOLIO_ADJUSTMENTS_FILE, {})
+    rows = raw.get(str(user_id or "local"), []) if isinstance(raw, dict) else []
+    return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def record_portfolio_adjustment(
+    user_id: str,
+    kind: str,
+    effective_date: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    reason: str = "manual_edit",
+) -> dict[str, Any] | None:
+    if before == after:
+        return None
+    raw = _read_json(PORTFOLIO_ADJUSTMENTS_FILE, {})
+    store = raw if isinstance(raw, dict) else {}
+    user_key = str(user_id or "local")
+    rows = store.get(user_key, [])
+    if not isinstance(rows, list):
+        rows = []
+    recorded_at = datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds")
+    record = {
+        "id": f"adj-{recorded_at.replace(':', '').replace('-', '')}-{len(rows) + 1}",
+        "kind": str(kind),
+        "effective_date": str(effective_date)[:10],
+        "recorded_at": recorded_at,
+        "reason": str(reason),
+        "before": before,
+        "after": after,
+    }
+    rows.append(record)
+    store[user_key] = rows
+    _write_json(PORTFOLIO_ADJUSTMENTS_FILE, store)
+    return record
+
+
+def load_portfolio_snapshot_ledger(user_id: str = "evan") -> list[dict[str, Any]]:
+    raw = _read_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, {})
+    rows = raw.get(str(user_id or "local"), []) if isinstance(raw, dict) else []
+    return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def _snapshot_checksum(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _sync_snapshot_ledger(user_id: str, rows: list[dict[str, Any]]) -> None:
+    raw = _read_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, {})
+    store = raw if isinstance(raw, dict) else {}
+    user_key = str(user_id or "local")
+    ledger = store.get(user_key, [])
+    if not isinstance(ledger, list):
+        ledger = []
+    changed = False
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("finalized") or not row.get("date"):
+            continue
+        payload = json.loads(json.dumps(row, ensure_ascii=False))
+        checksum = _snapshot_checksum(payload)
+        same_day = [item for item in ledger if isinstance(item, dict) and item.get("date") == row["date"]]
+        latest = max(same_day, key=lambda item: int(item.get("revision", 0) or 0), default=None)
+        if latest and latest.get("checksum") == checksum:
+            continue
+        revision = int((latest or {}).get("revision", 0) or 0) + 1
+        recorded_at = datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds")
+        ledger.append(
+            {
+                "snapshot_id": f"{row['date']}-r{revision}",
+                "date": row["date"],
+                "revision": revision,
+                "recorded_at": recorded_at,
+                "reason": "legacy_import" if latest is None else "recalculation",
+                "supersedes_snapshot_id": (latest or {}).get("snapshot_id"),
+                "checksum": checksum,
+                "payload": payload,
+            }
+        )
+        changed = True
+    if changed:
+        store[user_key] = ledger
+        _write_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, store)
+
+
+def replace_snapshot_ledger_with_corrected_history(
+    user_id: str,
+    rows: list[dict[str, Any]],
+    reason: str = "corrected_history_baseline",
+) -> dict[str, Any]:
+    """Replace one user's ledger with corrected finalized snapshots.
+
+    This is an explicit maintenance operation, not the normal append-only save
+    path.  Preserve the previous complete ledger beside the live file before
+    installing one corrected baseline revision per date.
+    """
+    raw = _read_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, {})
+    store = raw if isinstance(raw, dict) else {}
+    timestamp = datetime.now(TZ_SHANGHAI).strftime("%Y%m%d-%H%M%S")
+    backup_path = PORTFOLIO_SNAPSHOT_LEDGER_FILE.with_name(
+        f"{PORTFOLIO_SNAPSHOT_LEDGER_FILE.stem}.backup-{timestamp}{PORTFOLIO_SNAPSHOT_LEDGER_FILE.suffix}"
+    )
+    if PORTFOLIO_SNAPSHOT_LEDGER_FILE.exists():
+        _write_json(backup_path, store)
+
+    recorded_at = datetime.now(TZ_SHANGHAI).isoformat(timespec="seconds")
+    corrected: list[dict[str, Any]] = []
+    for row in sorted(rows, key=lambda item: str(item.get("date") or "")):
+        if not isinstance(row, dict) or not row.get("finalized") or not row.get("date"):
+            continue
+        payload = json.loads(json.dumps(row, ensure_ascii=False))
+        day = str(row["date"])[:10]
+        corrected.append(
+            {
+                "snapshot_id": f"{day}-corrected-r1",
+                "date": day,
+                "revision": 1,
+                "recorded_at": recorded_at,
+                "reason": str(reason),
+                "supersedes_snapshot_id": None,
+                "checksum": _snapshot_checksum(payload),
+                "payload": payload,
+            }
+        )
+    user_key = str(user_id or "local")
+    store[user_key] = corrected
+    _write_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, store)
+    return {
+        "user_id": user_key,
+        "snapshot_count": len(corrected),
+        "backup_path": str(backup_path) if backup_path.exists() else None,
+    }
 
 
 def normalize_satellite_targets(raw: Any) -> dict[str, float]:
@@ -373,6 +511,34 @@ def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
                     clean[key] = 0.0
         if "cash_flow_flag" in item:
             clean["cash_flow_flag"] = bool(item.get("cash_flow_flag"))
+        if "pnl_basis_version" in item:
+            try:
+                clean["pnl_basis_version"] = int(item.get("pnl_basis_version", 0))
+            except (TypeError, ValueError):
+                clean["pnl_basis_version"] = 0
+        for key in ("snapshot_schema_version",):
+            if key in item:
+                try:
+                    clean[key] = int(item.get(key, 0))
+                except (TypeError, ValueError):
+                    clean[key] = 0
+        for key in ("calculation_version", "price_source", "fx_source", "revised_at"):
+            if key in item:
+                clean[key] = str(item.get(key) or "")
+        for key in ("voo_dividend_usd", "sgov_dividend_usd"):
+            if key in item:
+                try:
+                    clean[key] = float(item.get(key, 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    clean[key] = 0.0
+        closing_prices: dict[str, float] = {}
+        for sym, value in (item.get("closing_prices") or {}).items():
+            try:
+                closing_prices[str(sym).upper()] = float(value)
+            except (TypeError, ValueError):
+                continue
+        if closing_prices:
+            clean["closing_prices"] = closing_prices
         benchmarks: dict[str, float] = {}
         raw_benchmarks = item.get("benchmark_prices", {})
         if isinstance(raw_benchmarks, dict):
@@ -434,6 +600,7 @@ def save_portfolio_history(user_id: str, rows: list[dict[str, Any]]) -> None:
     user_key = str(user_id or "local").strip() or "local"
     store[user_key] = rows
     _write_json(PORTFOLIO_HISTORY_FILE, store)
+    _sync_snapshot_ledger(user_id, rows)
 
 
 def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:

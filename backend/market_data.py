@@ -31,6 +31,9 @@ _FX_CACHE: dict[str, Any] | None = None
 _FX_CACHE_AT = 0.0
 _FX_CACHE_FILE = ROOT_DIR / ".fx_rate_cache.json"
 _FX_CACHE_TTL_SECONDS = 60
+_FX_HISTORY_CACHE: dict[str, float] = {}
+_FX_HISTORY_CACHE_AT = 0.0
+_FX_HISTORY_CACHE_TTL_SECONDS = 900
 _VALUATION_METRICS_CACHE: dict[str, dict[str, float]] | None = None
 _FORWARD_PE_CACHE_AT = 0.0
 _FUTU_SUB_LOCK = threading.RLock()
@@ -821,6 +824,50 @@ def fetch_fund_quote(code: str) -> dict[str, Any] | None:
     return quote
 
 
+def _parse_sina_fund_estimate(code: str, text: str) -> dict[str, Any] | None:
+    match = re.search(rf'hq_str_fu_{re.escape(code)}="([^"]*)"', text or "")
+    if not match:
+        return None
+    fields = match.group(1).split(",")
+    if len(fields) < 8:
+        return None
+    try:
+        price = float(fields[2])
+        change_pct = float(fields[6])
+    except (TypeError, ValueError):
+        return None
+    quote_date = str(fields[7]).strip()[:10]
+    quote_clock = str(fields[1]).strip()
+    if price <= 0 or not re.match(r"^\d{4}-\d{2}-\d{2}$", quote_date):
+        return None
+    return {
+        "symbol": code,
+        "price": price,
+        "regular_price": price,
+        "change_pct": change_pct,
+        "regular_change_pct": change_pct,
+        "quote_date": quote_date,
+        "quote_time": f"{quote_date} {quote_clock}" if quote_clock else quote_date,
+        "extended_price": None,
+        "extended_change_pct": None,
+        "session": "regular",
+        "source": "新浪基金估值",
+    }
+
+
+def fetch_sina_fund_estimate(code: str) -> dict[str, Any] | None:
+    try:
+        response = requests.get(
+            f"https://hq.sinajs.cn/list=fu_{code}",
+            timeout=HTTP_TIMEOUT,
+            headers={**REQUEST_HEADERS, "Referer": "https://finance.sina.com.cn/"},
+        )
+        response.encoding = "gbk"
+    except requests.RequestException:
+        return None
+    return _parse_sina_fund_estimate(code, response.text)
+
+
 def fetch_fx_usdcny() -> dict[str, Any]:
     global _FX_CACHE_AT
     now = time.time()
@@ -864,6 +911,48 @@ def fetch_fx_usdcny() -> dict[str, Any]:
     if cached:
         return cached
     return {"rate": 7.2, "source": "Fallback"}
+
+
+def _parse_sina_fx_daily_history(text: str) -> dict[str, float]:
+    match = re.search(r'=\("(.*)"\);?\s*$', text or "", flags=re.S)
+    if not match:
+        return {}
+    prices: dict[str, float] = {}
+    for raw_row in match.group(1).split("|"):
+        fields = raw_row.split(",")
+        if len(fields) < 5:
+            continue
+        day = str(fields[0]).strip()[:10]
+        try:
+            close = float(fields[4])
+        except (TypeError, ValueError):
+            continue
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", day) and 5.0 < close < 10.0:
+            prices[day] = close
+    return prices
+
+
+def fetch_fx_usdcny_history() -> dict[str, float]:
+    """Return onshore USD/CNY daily closes keyed by trading date."""
+    global _FX_HISTORY_CACHE, _FX_HISTORY_CACHE_AT
+    now = time.time()
+    if _FX_HISTORY_CACHE and now - _FX_HISTORY_CACHE_AT < _FX_HISTORY_CACHE_TTL_SECONDS:
+        return dict(_FX_HISTORY_CACHE)
+    try:
+        response = requests.get(
+            "https://vip.stock.finance.sina.com.cn/forex/api/jsonp.php/"
+            "var%20_fx_susdcny=/NewForexService.getDayKLine?symbol=fx_susdcny",
+            timeout=HTTP_TIMEOUT,
+            headers={**REQUEST_HEADERS, "Referer": "https://finance.sina.com.cn/"},
+        )
+        response.encoding = "gbk"
+        prices = _parse_sina_fx_daily_history(response.text)
+    except requests.RequestException:
+        prices = {}
+    if prices:
+        _FX_HISTORY_CACHE = dict(prices)
+        _FX_HISTORY_CACHE_AT = now
+    return dict(_FX_HISTORY_CACHE)
 
 
 def _extract_peg(forward_pe: float | None, data: dict[str, Any]) -> float | None:
@@ -994,6 +1083,12 @@ def fetch_quotes() -> dict[str, Any]:
                 quotes[sym] = fallback
     for sym, code in app_config.FUND_CODES.items():
         fund = fetch_fund_quote(code)
+        today = datetime.now(TZ_SHANGHAI).date().isoformat()
+        fund_day = str((fund or {}).get("quote_date") or "")[:10]
+        if fund_day != today:
+            sina_estimate = fetch_sina_fund_estimate(code)
+            if sina_estimate and str(sina_estimate.get("quote_date") or "")[:10] == today:
+                fund = sina_estimate
         if fund:
             fund["symbol"] = sym
             quotes[sym] = fund

@@ -14,6 +14,8 @@ SATELLITE_TARGETS_FILE = ROOT_DIR / "satellite_targets.json"
 SATELLITE_UNIVERSE_FILE = ROOT_DIR / "satellite_universe.json"
 CLOSED_SATELLITE_PNL_FILE = ROOT_DIR / "closed_satellite_pnl.json"
 PORTFOLIO_HISTORY_FILE = ROOT_DIR / "portfolio_history.json"
+PORTFOLIO_SNAPSHOT_LEDGER_FILE = ROOT_DIR / "portfolio_snapshot_ledger.json"
+PORTFOLIO_ADJUSTMENTS_FILE = ROOT_DIR / "portfolio_adjustments.json"
 TRADE_RECORDS_FILE = ROOT_DIR / "trades.json"
 FX_CONVERSION_RECORDS_FILE = ROOT_DIR / "fx_conversions.json"
 

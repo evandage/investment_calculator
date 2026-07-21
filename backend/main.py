@@ -41,12 +41,15 @@ from .storage import (
     load_balances,
     load_closed_satellite_pnl,
     load_holdings,
+    load_portfolio_adjustments,
+    load_portfolio_snapshot_ledger,
     load_satellite_targets,
     load_trade_records,
     save_balances,
     save_closed_satellite_pnl,
     save_holdings,
     save_satellite_targets,
+    record_portfolio_adjustment,
 )
 from .drawdown_recalculation import start_monthly_drawdown_scheduler
 
@@ -569,14 +572,42 @@ def holdings() -> dict[str, Any]:
 
 @app.put("/api/holdings")
 def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
+    before = load_holdings()
     save_holdings(payload.holdings)
-    return {"saved": True, "holdings": load_holdings()}
+    after = load_holdings()
+    effective_date = portfolio_module.performance_history_date()
+    adjustment = record_portfolio_adjustment("evan", "holdings", effective_date, before, after)
+    if adjustment:
+        portfolio_module.invalidate_performance_history_from("evan", effective_date)
+    return {"saved": True, "holdings": after, "adjustment": adjustment}
 
 
 @app.put("/api/balances")
 def update_balances(payload: BalancesPayload) -> dict[str, Any]:
+    before = load_balances()
     save_balances(payload.balances)
-    return {"saved": True, "balances": load_balances()}
+    after = load_balances()
+    adjustment = record_portfolio_adjustment(
+        "evan", "balances", portfolio_module.performance_history_date(), before, after
+    )
+    return {"saved": True, "balances": after, "adjustment": adjustment}
+
+
+@app.get("/api/portfolio-audit")
+def portfolio_audit(user_id: str = "evan") -> dict[str, Any]:
+    ledger = load_portfolio_snapshot_ledger(user_id)
+    latest_by_date: dict[str, dict[str, Any]] = {}
+    for item in ledger:
+        day = str(item.get("date") or "")
+        if not day:
+            continue
+        if int(item.get("revision", 0) or 0) >= int((latest_by_date.get(day) or {}).get("revision", 0) or 0):
+            latest_by_date[day] = item
+    return {
+        "adjustments": load_portfolio_adjustments(user_id),
+        "snapshot_revisions": ledger,
+        "latest_snapshots": [latest_by_date[day] for day in sorted(latest_by_date)],
+    }
 
 
 @app.get("/api/satellite-targets")
