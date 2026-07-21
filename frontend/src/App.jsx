@@ -508,6 +508,18 @@ function Summary({ data }) {
     amount: dailyAmount(row.value_cny, row.effective_daily_pct),
     pct: Number(row.effective_daily_pct || 0),
   }));
+  const securityDailyTotalCny = totalDailyDetails.reduce(
+    (sum, row) => sum + Number(row.amount || 0),
+    0,
+  );
+  const dailyFxBridgeCny = weightedDailyChangeCny - securityDailyTotalCny;
+  if (Math.abs(dailyFxBridgeCny) > 0.000001) {
+    totalDailyDetails.push({
+      symbol: "USD/CNY汇率",
+      amount: dailyFxBridgeCny,
+      pct: null,
+    });
+  }
   const totalDailyBasis = Number(summary.total_value_cny || 0) - weightedDailyChangeCny;
   totalDailyDetails.forEach((row) => {
     row.contributionPct = totalDailyBasis > 0 ? Number(row.amount || 0) / totalDailyBasis * 100 : 0;
@@ -1136,6 +1148,11 @@ function PerformanceLightweightChart({ points, series }) {
       {tooltip.visible && tooltip.point ? (
         <div className="performanceTooltip" style={{ left: tooltip.left, top: tooltip.top }}>
           <strong>{tooltip.point.date}</strong>
+          <span>
+            USD/CNY&nbsp;
+            {tooltip.point.fx_rate == null ? "-" : Number(tooltip.point.fx_rate).toFixed(4)}
+            {tooltip.point.fx_source ? " · " + tooltip.point.fx_source : ""}
+          </span>
           <span className={tone(tooltip.point.usd_pnl_usd)}>
             美元资产持仓盈亏&nbsp;
             {tooltip.point.usd_pnl_usd == null ? "-" : fmtMoney(tooltip.point.usd_pnl_usd, "USD")}

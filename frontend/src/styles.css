@@ -499,9 +499,8 @@ h2 {
 }
 
 .summaryBreakdownRows {
-  max-height: 300px;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  max-height: none;
+  overflow: visible;
 }
 
 .summaryBreakdownRow {

@@ -1067,7 +1067,11 @@ def fetch_quotes() -> dict[str, Any]:
     provider = "futu-subscribe" if subscription_quotes else ("futu" if futu_available else "tencent")
     quotes = dict(subscription_quotes)
     usd_symbols = _usd_symbols()
-    if futu_available and len(quotes) < len(usd_symbols):
+    # Subscription quotes also contain 510330.SS.  A count comparison can
+    # therefore look complete while one USD holding (for example ISRG) is
+    # actually missing. Check required symbols explicitly before falling back
+    # to a Futu snapshot.
+    if futu_available and any(sym not in quotes for sym in usd_symbols):
         snapshot_quotes = fetch_futu_us_quotes()
         for sym, quote in snapshot_quotes.items():
             quotes.setdefault(sym, quote)

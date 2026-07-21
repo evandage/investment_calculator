@@ -9,10 +9,24 @@ from backend.portfolio import (
     fund_daily_status,
     historical_holding_pnl,
     holdings_snapshot_for_day,
+    reconcile_current_book_daily_pnl,
 )
 
 
 class HistoricalHoldingsSnapshotTests(unittest.TestCase):
+    def test_reconciled_daily_pnl_bridges_adjacent_cumulative_points(self):
+        rows = [
+            {"date": "2026-07-20", "total_pnl_cny": -1900.0, "total_return_basis_cny": 90000.0},
+            {"date": "2026-07-21", "total_pnl_cny": -1750.0, "total_return_basis_cny": 90000.0},
+        ]
+        reconciled = reconcile_current_book_daily_pnl(rows)
+        self.assertAlmostEqual(reconciled[1]["holding_daily_pnl_cny"], 150.0)
+        self.assertAlmostEqual(
+            reconciled[0]["total_pnl_cny"] + reconciled[1]["holding_daily_pnl_cny"],
+            reconciled[1]["total_pnl_cny"],
+        )
+        self.assertTrue(reconciled[1]["daily_pnl_reconciled"])
+
     def test_first_snapshot_does_not_reapply_trade_already_in_current_holdings(self):
         current = {"001015": {"shares": 12230.51, "avg_cost": 2.3648485968287503}}
         trades = [

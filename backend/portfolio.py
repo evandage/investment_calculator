@@ -1028,6 +1028,27 @@ def current_holdings_pnl_for_history_day(
     }
 
 
+def reconcile_current_book_daily_pnl(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Make CNY daily P&L bridge exactly between adjacent cumulative P&L points."""
+    previous_total: float | None = None
+    for row in rows:
+        current_total = coerce_optional_float(row.get("total_pnl_cny"))
+        return_basis = coerce_optional_float(row.get("total_return_basis_cny"))
+        if current_total is None:
+            continue
+        if previous_total is not None:
+            daily_pnl = current_total - previous_total
+            prior_value = (return_basis or 0.0) + previous_total
+            daily_pct = daily_pnl / prior_value * 100.0 if prior_value > 0 else 0.0
+            row["holding_daily_pnl_cny"] = daily_pnl
+            row["holding_daily_basis_cny"] = prior_value
+            row["holding_daily_pnl_pct"] = daily_pct
+            row["portfolio_daily_pct"] = daily_pct
+            row["daily_pnl_reconciled"] = True
+        previous_total = current_total
+    return rows
+
+
 def annotate_trade_close_effects(
     trades: list[dict[str, Any]],
     quotes: dict[str, Any],
@@ -1704,6 +1725,7 @@ def build_performance_history(
         "total_return_basis_cny": total_return_basis_cny,
         "fx_pnl_cny": fx_pnl_cny,
         "fx_rate": fx,
+        "fx_source": "live USD/CNY spot",
         "cash_usd": cash_usd,
         "cash_cny": cash_cny,
         "holding_daily_pnl_pct": portfolio_daily_pct,
@@ -1736,6 +1758,7 @@ def build_performance_history(
         (row for row in rows_by_date.values() if str(row.get("date", "")) >= PERFORMANCE_CHART_START_DATE),
         key=lambda row: row["date"],
     )
+    rows = reconcile_current_book_daily_pnl(rows)
     points: list[dict[str, Any]] = []
     cumulative = {
         "001015": 1.0,
@@ -1764,6 +1787,8 @@ def build_performance_history(
             "total_pnl_cny": baseline_total_pnl_cny,
             "total_return_basis_cny": baseline_total_basis_cny,
             "fx_pnl_cny": coerce_optional_float(baseline_row.get("fx_pnl_cny")),
+            "fx_rate": coerce_optional_float(baseline_row.get("fx_rate")),
+            "fx_source": str(baseline_row.get("fx_source") or ""),
             "usd_return_pct": coerce_optional_float(baseline_row.get("usd_return_pct")) or 0.0,
             "usd_daily_pct": coerce_optional_float(baseline_row.get("usd_daily_pct")) or 0.0,
             "usd_pnl_usd": coerce_optional_float(baseline_row.get("usd_pnl_usd")),
@@ -1804,6 +1829,8 @@ def build_performance_history(
             "total_pnl_cny": total_pnl_cny,
             "total_return_basis_cny": total_return_basis_cny,
             "fx_pnl_cny": coerce_optional_float(row.get("fx_pnl_cny")),
+            "fx_rate": coerce_optional_float(row.get("fx_rate")),
+            "fx_source": str(row.get("fx_source") or ""),
             "holding_daily_pnl_cny": coerce_optional_float(row.get("holding_daily_pnl_cny")),
             "holding_daily_basis_cny": coerce_optional_float(row.get("holding_daily_basis_cny")),
             "usd_return_pct": coerce_optional_float(row.get("usd_return_pct")),
@@ -2427,6 +2454,27 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     if not carry_completed_daily and live_daily_basis_cny > 0:
         weighted_daily_change_cny = live_daily_change_cny
         weighted_daily_pct = live_daily_change_cny / live_daily_basis_cny * 100.0
+
+    # The CNY daily card must bridge adjacent cumulative CNY P&L points. This
+    # includes the day-over-day FX move and guarantees:
+    # previous cumulative P&L + today's P&L = current cumulative P&L.
+    current_performance_point = next(
+        (
+            point
+            for point in reversed(performance_history.get("points") or [])
+            if str(point.get("date") or "") == history_day
+        ),
+        None,
+    )
+    reconciled_daily_change = coerce_optional_float(
+        (current_performance_point or {}).get("holding_daily_pnl_cny")
+    )
+    reconciled_daily_pct = coerce_optional_float(
+        (current_performance_point or {}).get("portfolio_daily_pct")
+    )
+    if reconciled_daily_change is not None and reconciled_daily_pct is not None:
+        weighted_daily_change_cny = reconciled_daily_change
+        weighted_daily_pct = reconciled_daily_pct
 
     return {
         "user_id": user_id,
