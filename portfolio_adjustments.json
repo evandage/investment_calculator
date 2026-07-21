@@ -1,0 +1,23 @@
+{
+  "evan": [
+    {
+      "id": "adj-20260721T105508+0800-1",
+      "kind": "holdings",
+      "effective_date": "2026-07-09",
+      "recorded_at": "2026-07-21T10:55:08+08:00",
+      "reason": "historical_ledger_baseline_reconciliation",
+      "before": {
+        "ISRG": {
+          "shares": 0.4181,
+          "avg_cost": 408.93
+        }
+      },
+      "after": {
+        "ISRG": {
+          "shares": 0.5994,
+          "avg_cost": 408.94
+        }
+      }
+    }
+  ]
+}
