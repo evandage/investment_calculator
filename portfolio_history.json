@@ -88,8 +88,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-07T08:00:00+08:00",
-      "total_pnl_pct": -0.3645621277796406
+      "updated_at": "2026-07-07T08:00:00+08:00"
     },
     {
       "date": "2026-07-08",
@@ -174,8 +173,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-08T08:00:00+08:00",
-      "total_pnl_pct": -0.8793758266730338
+      "updated_at": "2026-07-08T08:00:00+08:00"
     },
     {
       "date": "2026-07-09",
@@ -260,8 +258,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-09T08:00:00+08:00",
-      "total_pnl_pct": 0.3853329215607207
+      "updated_at": "2026-07-09T08:00:00+08:00"
     },
     {
       "date": "2026-07-10",
@@ -346,8 +343,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-10T08:00:00+08:00",
-      "total_pnl_pct": -0.19069440761183093
+      "updated_at": "2026-07-10T08:00:00+08:00"
     },
     {
       "date": "2026-07-13",
@@ -432,8 +428,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-13T08:00:00+08:00",
-      "total_pnl_pct": -1.1108844516795844
+      "updated_at": "2026-07-13T08:00:00+08:00"
     },
     {
       "date": "2026-07-14",
@@ -518,8 +513,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-14T08:00:00+08:00",
-      "total_pnl_pct": -0.2888161843626303
+      "updated_at": "2026-07-14T08:00:00+08:00"
     },
     {
       "date": "2026-07-15",
@@ -604,8 +598,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-15T08:00:00+08:00",
-      "total_pnl_pct": -0.21036220826198587
+      "updated_at": "2026-07-15T08:00:00+08:00"
     },
     {
       "date": "2026-07-16",
@@ -690,8 +683,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-16T08:00:00+08:00",
-      "total_pnl_pct": -1.2451656262303554
+      "updated_at": "2026-07-16T08:00:00+08:00"
     },
     {
       "date": "2026-07-17",
@@ -776,8 +768,98 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-17T08:00:00+08:00",
-      "total_pnl_pct": -2.8362576328131284
+      "updated_at": "2026-07-17T08:00:00+08:00"
+    },
+    {
+      "date": "2026-07-20",
+      "portfolio_daily_pct": 0.7848515915422519,
+      "portfolio_return_pct": 0.0,
+      "holding_pnl_pct": -1.6870306028851498,
+      "holding_pnl_cny": -1134.9627465339436,
+      "holding_cost_cny": 67275.76515760514,
+      "fx_rate": 6.7574,
+      "holding_daily_pnl_pct": 0.7848515915422519,
+      "holding_daily_pnl_cny": 515.0646473003005,
+      "holding_daily_basis_cny": 65625.7377637709,
+      "usd_return_pct": -1.3058561427283417,
+      "usd_pnl_usd": -74.1154829570487,
+      "usd_cost_usd": 5675.623870957048,
+      "usd_value_usd": 5601.508387999999,
+      "usd_daily_pct": 0.06832441120751881,
+      "usd_daily_pnl_usd": 3.824584500000019,
+      "usd_daily_basis_usd": 5597.6838035,
+      "cash_flow_cny": 0,
+      "cash_flow_flag": false,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
+      "benchmark_prices": {
+        "001015": 2.313,
+        "VOO": 682.21,
+        "QQQ": 696.06
+      },
+      "benchmark_daily_pct": {
+        "001015": 1.7597888253409577,
+        "VOO": -0.14052139291829135,
+        "QQQ": 0.10498612169760335
+      },
+      "market_open_symbols": [
+        "001015",
+        "VOO",
+        "QQQ"
+      ],
+      "symbol_daily_pct": {
+        "VOO": -0.14052139291829602,
+        "QQQ": 0.10498612169759745,
+        "ISRG": 2.243645417173296,
+        "TEM": -7.737754907566234,
+        "GOOGL": 1.5053205294575736,
+        "MSFT": 2.150728759331681,
+        "AVGO": 1.9780219780219876,
+        "001015": 1.7597888253409604
+      },
+      "holdings_snapshot": {
+        "VOO": {
+          "shares": 3.9726,
+          "avg_cost": 667.0912983831868
+        },
+        "QQQ": {
+          "shares": 3.2929000000000004,
+          "avg_cost": 718.7957551094779
+        },
+        "ISRG": {
+          "shares": 0.49300000000000005,
+          "avg_cost": 407.6544279918864
+        },
+        "TEM": {
+          "shares": 1.3081999999999998,
+          "avg_cost": 54.27221755083321
+        },
+        "GOOGL": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 363.71
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.81
+        },
+        "AVGO": {
+          "shares": 0.3465,
+          "avg_cost": 421.25
+        },
+        "001015": {
+          "shares": 12230.51,
+          "avg_cost": 2.3648485968287503
+        }
+      },
+      "estimated_symbols": [],
+      "finalized": true,
+      "updated_at": "2026-07-20T08:00:00+08:00",
+      "total_pnl_cny": -2345.9839477327637,
+      "total_return_basis_cny": 97294.57295880397,
+      "total_pnl_pct": -2.4112176829493763,
+      "fx_pnl_cny": -1211.02120119882,
+      "cash_usd": 4259.0,
+      "cash_cny": 28.019999999999982
     }
   ]
 }
