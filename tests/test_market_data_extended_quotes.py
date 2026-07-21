@@ -4,6 +4,7 @@ import unittest
 
 from backend.market_data import (
     _apply_futu_ticker_price,
+    _build_futu_quote,
     _merge_futu_subscription_quote,
     _parse_sina_fx_daily_history,
     _parse_sina_fund_estimate,
@@ -11,6 +12,41 @@ from backend.market_data import (
 
 
 class ExtendedQuoteStabilityTests(unittest.TestCase):
+    def test_china_etf_quote_never_uses_us_extended_session_fields(self):
+        quote = _build_futu_quote(
+            "510330.SS",
+            {
+                "last_price": 4.908,
+                "prev_close_price": 4.846,
+                "open_price": 4.868,
+                "overnight_price": 4.908,
+                "overnight_change_rate": 0.0,
+            },
+        )
+
+        self.assertIsNotNone(quote)
+        self.assertEqual(quote["session"], "regular")
+        self.assertIsNone(quote["extended_price"])
+        self.assertIsNone(quote["extended_change_pct"])
+        self.assertAlmostEqual(quote["change_pct"], (4.908 / 4.846 - 1.0) * 100.0)
+
+    def test_china_etf_ticker_updates_regular_change(self):
+        quote = {
+            "session": "overnight",
+            "regular_price": 4.908,
+            "prev_close": 4.846,
+            "extended_price": 4.908,
+            "extended_change_pct": 0.0,
+        }
+
+        updated = _apply_futu_ticker_price(quote, "510330.SS", 4.91)
+
+        self.assertEqual(updated["session"], "regular")
+        self.assertEqual(updated["regular_price"], 4.91)
+        self.assertIsNone(updated["extended_price"])
+        self.assertIsNone(updated["extended_change_pct"])
+        self.assertAlmostEqual(updated["change_pct"], (4.91 / 4.846 - 1.0) * 100.0)
+
     def test_sina_fund_estimate_parser_uses_daily_change_field(self):
         text = (
             'var hq_str_fu_001015="华夏沪深300指数增强A,10:04:00,2.3053,'

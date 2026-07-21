@@ -166,6 +166,11 @@ def _price_matches_change_pct(price: float | None, base: float | None, pct: floa
     return abs(implied - pct) <= max(0.15, abs(pct) * 0.2)
 
 
+def _is_us_futu_symbol(sym: str) -> bool:
+    """Return whether a dashboard symbol maps to Futu's US market."""
+    return str(app_config.FUTU_US.get(sym, "")).upper().startswith("US.")
+
+
 def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | None:
     last_price = _coerce_float(_row_get(row, "last_price") or _row_get(row, "cur_price") or _row_get(row, "price"))
     prev_close = _coerce_float(_row_get(row, "prev_close_price") or _row_get(row, "prev_close"))
@@ -185,7 +190,12 @@ def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | N
     after_change_pct = _coerce_float(_row_get(row, "after_change_rate"))
     overnight_price = _coerce_float(_row_get(row, "overnight_price"))
     overnight_change_pct = _coerce_float(_row_get(row, "overnight_change_rate"))
-    session = _infer_us_session(state)
+    # Futu QUOTE pushes for China securities do not carry US extended-hours
+    # fields. Running them through the New York session clock mislabeled the
+    # CSI 300 ETF as "overnight", after which ticker pushes manufactured a
+    # zero extended-session return that hid its real daily change.
+    is_us_symbol = _is_us_futu_symbol(sym)
+    session = _infer_us_session(state) if is_us_symbol else "regular"
     extended_price: float | None = None
     extended_change_pct: float | None = None
     if session == "premarket":
@@ -258,7 +268,9 @@ def _apply_futu_ticker_price(quote: dict[str, Any], sym: str, price: float) -> d
     updated = dict(quote)
     updated["symbol"] = sym
     updated["price"] = price
-    session = str(updated.get("session") or "").lower()
+    is_us_symbol = _is_us_futu_symbol(sym)
+    session = str(updated.get("session") or "").lower() if is_us_symbol else "regular"
+    updated["session"] = session
     prev_close = _coerce_float(updated.get("prev_close"))
     if prev_close and prev_close > 0:
         updated["change_pct"] = (price / prev_close - 1.0) * 100.0
