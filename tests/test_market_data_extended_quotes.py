@@ -29,7 +29,7 @@ class ExtendedQuoteStabilityTests(unittest.TestCase):
         self.assertEqual(merged["extended_change_pct"], 1.0)
         self.assertEqual(merged["price"], 101.0)
 
-    def test_closed_session_does_not_carry_stale_extended_value(self):
+    def test_closed_session_freezes_last_extended_value(self):
         previous = {
             "session": "postmarket",
             "extended_price": 101.0,
@@ -44,8 +44,9 @@ class ExtendedQuoteStabilityTests(unittest.TestCase):
 
         merged = _merge_futu_subscription_quote(previous, incoming)
 
-        self.assertIsNone(merged["extended_price"])
-        self.assertIsNone(merged["extended_change_pct"])
+        self.assertEqual(merged["extended_price"], 101.0)
+        self.assertEqual(merged["extended_change_pct"], 1.0)
+        self.assertEqual(merged["price"], 101.0)
 
     def test_extended_ticker_updates_extended_fields_against_regular_close(self):
         quote = {
@@ -74,6 +75,20 @@ class ExtendedQuoteStabilityTests(unittest.TestCase):
         self.assertEqual(updated["regular_price"], 102.0)
         self.assertIsNone(updated["extended_price"])
         self.assertIsNone(updated["extended_change_pct"])
+
+    def test_closed_ticker_refreshes_frozen_extended_snapshot(self):
+        quote = {
+            "session": "closed",
+            "regular_price": 100.0,
+            "prev_close": 99.0,
+            "extended_price": 101.0,
+            "extended_change_pct": 1.0,
+        }
+
+        updated = _apply_futu_ticker_price(quote, "VOO", 102.0)
+
+        self.assertEqual(updated["extended_price"], 102.0)
+        self.assertAlmostEqual(updated["extended_change_pct"], 2.0)
 
 
 if __name__ == "__main__":

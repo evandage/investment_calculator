@@ -63,6 +63,31 @@ class ConfirmedCloseMetricTests(unittest.TestCase):
         )
         self.assertFalse(portfolio.is_symbol_daily_history_estimated("001015", "2026-07-17", after_close, quote))
 
+    def test_csi300_stale_estimate_is_replaced_by_official_fund_nav(self):
+        stale_quote = {
+            "symbol": "001015",
+            "price": 2.2654,
+            "quote_date": "2026-07-17",
+            "regular_change_pct": -3.6,
+            "source": "东方财富基金估算",
+        }
+        prices = {"2026-07-17": 2.273, "2026-07-20": 2.313}
+        quote = portfolio.quote_with_official_fund_nav("001015", stale_quote, "2026-07-20", prices)
+        self.assertEqual(quote["price"], 2.313)
+        self.assertEqual(quote["quote_date"], "2026-07-20")
+        self.assertEqual(quote["source"], "东方财富基金净值")
+        self.assertAlmostEqual(quote["regular_change_pct"], (2.313 / 2.273 - 1.0) * 100.0)
+
+    def test_csi300_keeps_estimate_until_official_nav_is_published(self):
+        stale_quote = {"symbol": "001015", "price": 2.2654, "quote_date": "2026-07-17"}
+        quote = portfolio.quote_with_official_fund_nav(
+            "001015",
+            stale_quote,
+            "2026-07-20",
+            {"2026-07-17": 2.273},
+        )
+        self.assertEqual(quote, stale_quote)
+
     def test_closed_day_display_carries_latest_completed_symbol_return(self):
         completed_row = {
             "date": "2026-07-17",
@@ -92,6 +117,18 @@ class ConfirmedCloseMetricTests(unittest.TestCase):
         self.assertAlmostEqual(
             portfolio.carried_completed_daily_pct("SGOV", quote, None),
             -2.0,
+        )
+
+    def test_closed_day_display_includes_last_extended_hours_move(self):
+        quote = {
+            "session": "closed",
+            "regular_change_pct": -2.0,
+            "extended_change_pct": 1.0,
+        }
+        expected = ((1.0 - 0.02) * (1.0 + 0.01) - 1.0) * 100.0
+        self.assertAlmostEqual(
+            portfolio.closed_display_daily_pct("VOO", quote, None),
+            expected,
         )
 
 
