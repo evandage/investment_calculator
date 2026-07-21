@@ -1083,8 +1083,12 @@ def current_holdings_pnl_for_history_day(
     # after their zero-share holding row is removed. Keep that frozen result
     # on every cumulative point; it contributes no new daily movement.
     archived_pnl_cny = float(archived_pnl_usd or 0.0) * fx_rate
+    realized_pnl_usd = float(balances.get("realized_usd", 0.0) or 0.0)
+    realized_pnl_cny = float(balances.get("realized_cny", 0.0) or 0.0)
     holding_pnl["amount_cny"] += archived_pnl_cny
     holding_pnl["value_cny"] += archived_pnl_cny
+    holding_pnl["amount_cny"] += realized_pnl_cny + realized_pnl_usd * fx_rate
+    holding_pnl["value_cny"] += realized_pnl_cny + realized_pnl_usd * fx_rate
     holding_pnl["pct"] = (
         holding_pnl["amount_cny"] / holding_pnl["cost_cny"] * 100.0
         if holding_pnl["cost_cny"] > 0
@@ -1092,6 +1096,8 @@ def current_holdings_pnl_for_history_day(
     )
     usd_holding_pnl["amount_cny"] += float(archived_pnl_usd or 0.0)
     usd_holding_pnl["value_cny"] += float(archived_pnl_usd or 0.0)
+    usd_holding_pnl["amount_cny"] += realized_pnl_usd
+    usd_holding_pnl["value_cny"] += realized_pnl_usd
     usd_holding_pnl["pct"] = (
         usd_holding_pnl["amount_cny"] / usd_holding_pnl["cost_cny"] * 100.0
         if usd_holding_pnl["cost_cny"] > 0
@@ -2445,10 +2451,23 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     attributed_dividend_usd = float(balances.get("voo_dividend_usd", 0.0)) + float(
         balances.get("sgov_dividend_usd", 0.0)
     )
+    realized_pnl_usd = float(balances.get("realized_usd", 0.0) or 0.0)
+    realized_pnl_cny = float(balances.get("realized_cny", 0.0) or 0.0)
     archived_pnl = load_closed_satellite_pnl()
-    archived_pnl_usd = sum(float(item.get("pnl_usd", 0.0) or 0.0) for item in archived_pnl.values())
+    archived_display_pnl_usd = sum(
+        float(item.get("pnl_usd", 0.0) or 0.0) for item in archived_pnl.values()
+    )
+    archived_pnl_usd = sum(
+        float(item.get("pnl_usd", 0.0) or 0.0)
+        for item in archived_pnl.values()
+        if not bool(item.get("included_in_realized", False))
+    )
     archived_pnl_cny = archived_pnl_usd * fx
-    usd_pnl_usd = usd_value_usd - usd_cost_usd + attributed_dividend_usd + archived_pnl_usd
+    usd_realized_pnl_usd = realized_pnl_usd
+    usd_unrealized_pnl_usd = (
+        usd_value_usd - usd_cost_usd + attributed_dividend_usd + archived_pnl_usd
+    )
+    usd_pnl_usd = usd_unrealized_pnl_usd + usd_realized_pnl_usd
     usd_return_pct = usd_pnl_usd / usd_cost_usd * 100.0 if usd_cost_usd > 0 else 0.0
     usd_daily_pnl_usd = sum(
         _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, accounting_daily_pct(s))
@@ -2460,9 +2479,16 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         if usd_value_usd - usd_daily_pnl_usd > 0
         else 0.0
     )
-    holding_pnl_cny = sum(float(row.get("pnl_cny", 0.0)) for row in rows) + archived_pnl_cny
+    holding_pnl_cny = (
+        sum(float(row.get("pnl_cny", 0.0)) for row in rows)
+        + archived_pnl_cny
+        + realized_pnl_cny
+        + realized_pnl_usd * fx
+    )
     usd_cash_fx_pnl_cny = cash_usd * (fx - usd_cost_fx)
     total_pnl_cny = holding_pnl_cny + usd_cash_fx_pnl_cny
+    total_realized_pnl_cny = realized_pnl_cny + usd_realized_pnl_usd * fx
+    total_unrealized_pnl_cny = total_pnl_cny - total_realized_pnl_cny
     total_return_basis_cny = total_cost_cny + cash_usd * usd_cost_fx + cash_cny
     total_pnl_pct = total_pnl_cny / total_return_basis_cny * 100.0 if total_return_basis_cny > 0 else 0.0
     usd_fx_pnl_cny = (usd_cost_usd + cash_usd) * (fx - usd_cost_fx)
@@ -2609,7 +2635,12 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "total_return_basis_cny": total_return_basis_cny,
             "holding_pnl_cny": holding_pnl_cny,
             "usd_pnl_usd": usd_pnl_usd,
+            "usd_realized_pnl_usd": usd_realized_pnl_usd,
+            "usd_unrealized_pnl_usd": usd_unrealized_pnl_usd,
+            "total_realized_pnl_cny": total_realized_pnl_cny,
+            "total_unrealized_pnl_cny": total_unrealized_pnl_cny,
             "archived_pnl_usd": archived_pnl_usd,
+            "archived_display_pnl_usd": archived_display_pnl_usd,
             "archived_pnl_cny": archived_pnl_cny,
             "usd_cash_fx_pnl_cny": usd_cash_fx_pnl_cny,
             "cash_total_cny": cash_total_cny,

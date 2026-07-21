@@ -3,6 +3,7 @@
     "symbol": "NVDA",
     "label": "NVDA",
     "pnl_usd": -10.76,
-    "closed_at": ""
+    "closed_at": "",
+    "included_in_realized": true
   }
 }

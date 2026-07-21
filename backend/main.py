@@ -658,6 +658,7 @@ def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, An
                     "label": next((item.get("label") or sym for item in previous_items if item["symbol"] == sym), sym),
                     "pnl_usd": archived_pnl,
                     "closed_at": closed_at,
+                    "included_in_realized": shares <= 1e-9,
                 }
         save_closed_satellite_pnl(archived_rows)
 

@@ -454,6 +454,11 @@ function Summary({ data }) {
   const usdTotalAssets = usdHoldingValue + usdCash;
   const archivedPnlRows = Object.values(data.archived_pnl || {});
   const archivedPnlUsd = archivedPnlRows.reduce((sum, row) => sum + Number(row.pnl_usd || 0), 0);
+  const includedArchivedPnlUsd = archivedPnlRows
+    .filter((row) => Boolean(row.included_in_realized))
+    .reduce((sum, row) => sum + Number(row.pnl_usd || 0), 0);
+  const realizedTradeUsd = Number(data.balances?.realized_usd || 0);
+  const realizedTradeCny = Number(data.balances?.realized_cny || 0);
   const usdPnl = Number.isFinite(Number(summary.usd_pnl_usd))
     ? Number(summary.usd_pnl_usd)
     : usdRows.reduce((sum, row) => sum + Number(row.pnl || 0), 0) + archivedPnlUsd;
@@ -488,6 +493,15 @@ function Summary({ data }) {
       contributionPct: usdHoldingCost > 0 ? amount / usdHoldingCost * 100 : 0,
     });
   });
+  const otherRealizedTradeUsd = realizedTradeUsd - includedArchivedPnlUsd;
+  if (Math.abs(otherRealizedTradeUsd) > 0.000001) {
+    usdHoldingPnlDetails.push({
+      symbol: "其他已变现交易",
+      amount: otherRealizedTradeUsd,
+      pct: null,
+      contributionPct: usdHoldingCost > 0 ? otherRealizedTradeUsd / usdHoldingCost * 100 : 0,
+    });
+  }
   const totalReturnBasisCny = Number(summary.total_return_basis_cny || 0);
   const totalHoldingPnlDetails = (data.holdings || []).map((row) => ({
     symbol: row.symbol,
@@ -506,6 +520,17 @@ function Summary({ data }) {
       contributionPct: totalReturnBasisCny > 0 ? amount / totalReturnBasisCny * 100 : 0,
     });
   });
+  const realizedTradeTotalCny = realizedTradeCny + otherRealizedTradeUsd * fx;
+  if (Math.abs(realizedTradeTotalCny) > 0.000001) {
+    totalHoldingPnlDetails.push({
+      symbol: "其他已变现交易",
+      amount: realizedTradeTotalCny,
+      pct: null,
+      contributionPct: totalReturnBasisCny > 0
+        ? realizedTradeTotalCny / totalReturnBasisCny * 100
+        : 0,
+    });
+  }
   if (Math.abs(Number(summary.usd_cash_fx_pnl_cny || 0)) > 0.000001) {
     totalHoldingPnlDetails.push({
       symbol: "美元现金汇兑",
@@ -2501,11 +2526,19 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const usdCost = usdRows.reduce((sum, row) => sum + row.cost, 0);
   const usdValue = usdRows.reduce((sum, row) => sum + row.value, 0);
   const attributedDividendUsd = Number(balances.voo_dividend_usd || 0) + Number(balances.sgov_dividend_usd || 0);
-  const usdUnrealized = usdValue - usdCost + attributedDividendUsd;
+  const archivedPnlUsd = Object.values(data.archived_pnl || {})
+    .filter((row) => !Boolean(row.included_in_realized))
+    .reduce((sum, row) => sum + Number(row.pnl_usd || 0), 0);
+  const usdUnrealized = Number.isFinite(Number(data.summary?.usd_unrealized_pnl_usd))
+    ? Number(data.summary.usd_unrealized_pnl_usd)
+    : usdValue - usdCost;
   const usdCash = Number(balances.cash_usd || 0);
-  const usdRealized = Number(balances.realized_usd || 0);
+  const usdRealized = Number.isFinite(Number(data.summary?.usd_realized_pnl_usd))
+    ? Number(data.summary.usd_realized_pnl_usd)
+    : Number(balances.realized_usd || 0);
+  const usdTotalPnl = usdRealized + usdUnrealized;
   const usdTotal = usdValue + usdCash;
-  const usdReturn = usdCost ? (usdUnrealized / usdCost) * 100 : 0;
+  const usdReturn = usdCost ? (usdTotalPnl / usdCost) * 100 : 0;
   const cnyInvestmentUnrealized = rows
     .filter((row) => row.currency !== "USD")
     .reduce((sum, row) => sum + (row.value - row.cost), 0);
@@ -2516,17 +2549,24 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const investmentFormula = `${fmtMoney(usdUnrealized, "USD")} 美元收益 × ${fx.toFixed(4)} + ${fmtMoney(cnyInvestmentUnrealized, "CNY")} 沪深300收益 = ${fmtMoney(investmentUnrealizedCny, "CNY")}`;
   const fxUnrealizedCny = (usdCost + usdCash) * (fx - avgFx);
   const fxFormula = `(${fmtMoney(usdCost, "USD")} 投资成本 + ${fmtMoney(usdCash, "USD")} 现金) × (${fx.toFixed(4)} - ${avgFx.toFixed(4)}) = ${fmtMoney(fxUnrealizedCny, "CNY")}`;
-  const totalUnrealizedCny = investmentUnrealizedCny + fxUnrealizedCny;
+  const calculatedTotalUnrealizedCny = investmentUnrealizedCny + fxUnrealizedCny;
   const totalReturnBasisCny = totalCostCny + usdCash * avgFx + Number(balances.cash_cny || 0);
   const pnlSplitTotal = Math.max(1, Math.abs(investmentUnrealizedCny) + Math.abs(fxUnrealizedCny));
   const cashCny = Number(balances.cash_cny || 0) + usdCash * fx;
-  const totalRealizedCny = Number(balances.realized_cny || 0) + usdRealized * fx;
+  const totalRealizedCny = Number.isFinite(Number(data.summary?.total_realized_pnl_cny))
+    ? Number(data.summary.total_realized_pnl_cny)
+    : Number(balances.realized_cny || 0) + usdRealized * fx;
+  const totalUnrealizedCny = Number.isFinite(Number(data.summary?.total_unrealized_pnl_cny))
+    ? Number(data.summary.total_unrealized_pnl_cny)
+    : calculatedTotalUnrealizedCny;
+  const totalPnlCny = totalRealizedCny + totalUnrealizedCny;
   const totalAssetsCny = totalValueCny + cashCny;
-  const totalReturn = totalReturnBasisCny ? (totalUnrealizedCny / totalReturnBasisCny) * 100 : 0;
+  const totalReturn = totalReturnBasisCny ? (totalPnlCny / totalReturnBasisCny) * 100 : 0;
   const usdDetailItems = [
     ["成本", fmtMoney(usdCost, "USD")],
     ["持仓市值", fmtMoney(usdValue, "USD")],
     ["已变现盈亏", fmtMoney(usdRealized, "USD")],
+    ["合计盈亏", fmtMoney(usdTotalPnl, "USD")],
     ["现金", fmtMoney(usdCash, "USD")],
     ["总资产", fmtMoney(usdTotal, "USD")],
     ["收益率", fmtPct(usdReturn)],
@@ -2535,6 +2575,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
     ["成本基准", fmtMoney(totalReturnBasisCny, "CNY")],
     ["持仓市值", fmtMoney(totalValueCny, "CNY")],
     ["已变现盈亏", fmtMoney(totalRealizedCny, "CNY")],
+    ["合计盈亏", fmtMoney(totalPnlCny, "CNY")],
     ["现金", fmtMoney(cashCny, "CNY")],
     ["总资产", fmtMoney(totalAssetsCny, "CNY")],
     ["收益率", fmtPct(totalReturn)],
@@ -2547,6 +2588,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
         <div className="assetMetricGrid">
           <div className="assetMetricCard"><span>已变现盈亏</span><strong>{fmtMoney(usdRealized, "USD")}</strong></div>
           <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(usdUnrealized)}>{fmtMoney(usdUnrealized, "USD")}</strong><em className={tone(usdReturn)}>{fmtPct(usdReturn)}</em></div>
+          <div className="assetMetricCard"><span>合计盈亏</span><strong className={tone(usdTotalPnl)}>{fmtMoney(usdTotalPnl, "USD")}</strong></div>
         </div>
         <div className="assetDetailPanel">
           <div className="assetDetailGrid">
@@ -2557,7 +2599,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
               </div>
             ))}
           </div>
-          <p>收益率 = 未实现浮盈亏 / 美元持仓成本。</p>
+          <p>合计盈亏 = 已变现盈亏 + 未实现浮盈亏；收益率 = 合计盈亏 / 美元持仓成本。</p>
         </div>
       </div>
       <div className="assetMetricBlock">
@@ -2568,6 +2610,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
         <div className="assetMetricGrid">
           <div className="assetMetricCard"><span>已变现盈亏</span><strong>{fmtMoney(totalRealizedCny, "CNY")}</strong></div>
           <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(totalUnrealizedCny)}>{fmtMoney(totalUnrealizedCny, "CNY")}</strong><em className={tone(totalReturn)}>{fmtPct(totalReturn)}</em></div>
+          <div className="assetMetricCard"><span>合计盈亏</span><strong className={tone(totalPnlCny)}>{fmtMoney(totalPnlCny, "CNY")}</strong></div>
         </div>
         <div className="assetDetailPanel">
           <div className="assetDetailGrid">
@@ -2578,7 +2621,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
               </div>
             ))}
           </div>
-          <p>合计浮盈亏 = 投资组合浮盈亏 + 汇率浮盈亏；收益率 = 合计浮盈亏 / 成本基准。</p>
+          <p>合计盈亏 = 已变现盈亏 + 未实现浮盈亏；收益率 = 合计盈亏 / 成本基准。</p>
         </div>
       </div>
       <div className="pnlBreakdownPanel" aria-label="总资产浮盈亏分解">

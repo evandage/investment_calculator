@@ -42,6 +42,52 @@
         "voo_dividend_usd": 7.98,
         "sgov_dividend_usd": 11.61
       }
+    },
+    {
+      "id": "adj-20260721T152621+0800-3",
+      "kind": "balances",
+      "effective_date": "2026-07-21",
+      "recorded_at": "2026-07-21T15:26:21+08:00",
+      "reason": "manual_edit",
+      "before": {
+        "cash_usd": 2727.4,
+        "cash_cny": 28.019999999999982,
+        "realized_usd": 20.756871602822454,
+        "realized_cny": 1121.57,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "after": {
+        "cash_usd": 2727.4,
+        "cash_cny": 0.35,
+        "realized_usd": 20.756871602822454,
+        "realized_cny": 1121.91,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      }
+    },
+    {
+      "id": "adj-20260721T153008+0800-4",
+      "kind": "balances",
+      "effective_date": "2026-07-21",
+      "recorded_at": "2026-07-21T15:30:08+08:00",
+      "reason": "manual_edit",
+      "before": {
+        "cash_usd": 2727.4,
+        "cash_cny": 0.35,
+        "realized_usd": 20.756871602822454,
+        "realized_cny": 1121.91,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "after": {
+        "cash_usd": 2727.4,
+        "cash_cny": 0.35,
+        "realized_usd": 9.996871602822457,
+        "realized_cny": 1121.91,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      }
     }
   ]
 }

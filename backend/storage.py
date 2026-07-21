@@ -276,6 +276,7 @@ def normalize_closed_satellite_pnl(raw: Any) -> dict[str, dict[str, Any]]:
             "label": str(item.get("label") or symbol),
             "pnl_usd": pnl_usd,
             "closed_at": str(item.get("closed_at") or ""),
+            "included_in_realized": bool(item.get("included_in_realized", False)),
         }
     return out
 
