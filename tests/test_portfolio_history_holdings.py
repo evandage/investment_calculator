@@ -143,6 +143,21 @@ class HistoricalHoldingsSnapshotTests(unittest.TestCase):
         self.assertAlmostEqual(pnl["total_pnl_cny"], -48.0)
         self.assertAlmostEqual(pnl["total_return_basis_cny"], 748.0)
 
+    def test_current_book_history_includes_frozen_closed_position_pnl(self):
+        pnl = current_holdings_pnl_for_history_day(
+            "2026-07-20",
+            {"VOO": {"shares": 1.0, "avg_cost": 100.0}},
+            {"VOO": 105.0},
+            {"cash_usd": 0.0, "cash_cny": 0.0},
+            7.0,
+            7.0,
+            -10.76,
+        )
+
+        self.assertAlmostEqual(pnl["usd_pnl_usd"], -5.76)
+        self.assertAlmostEqual(pnl["holding_pnl_cny"], -40.32)
+        self.assertAlmostEqual(pnl["total_pnl_cny"], -40.32)
+
     def test_manual_holding_adjustment_is_applied_after_trades(self):
         previous = {
             "date": "2026-07-20",

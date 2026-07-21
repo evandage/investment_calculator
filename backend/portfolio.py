@@ -1000,11 +1000,30 @@ def current_holdings_pnl_for_history_day(
     balances: dict[str, float],
     fx_rate: float,
     usd_cost_fx: float,
+    archived_pnl_usd: float = 0.0,
 ) -> dict[str, float]:
     """Value today's book at a historical close for a continuous P&L series."""
     holding_pnl = historical_holding_pnl(holdings, prices, fx_rate, balances)
     usd_holding_pnl = historical_holding_pnl(
         holdings, prices, fx_rate, balances, set(USD_SYMBOLS), True
+    )
+    # Closed satellite positions remain part of the user's displayed P&L even
+    # after their zero-share holding row is removed. Keep that frozen result
+    # on every cumulative point; it contributes no new daily movement.
+    archived_pnl_cny = float(archived_pnl_usd or 0.0) * fx_rate
+    holding_pnl["amount_cny"] += archived_pnl_cny
+    holding_pnl["value_cny"] += archived_pnl_cny
+    holding_pnl["pct"] = (
+        holding_pnl["amount_cny"] / holding_pnl["cost_cny"] * 100.0
+        if holding_pnl["cost_cny"] > 0
+        else 0.0
+    )
+    usd_holding_pnl["amount_cny"] += float(archived_pnl_usd or 0.0)
+    usd_holding_pnl["value_cny"] += float(archived_pnl_usd or 0.0)
+    usd_holding_pnl["pct"] = (
+        usd_holding_pnl["amount_cny"] / usd_holding_pnl["cost_cny"] * 100.0
+        if usd_holding_pnl["cost_cny"] > 0
+        else 0.0
     )
     probe = {
         "date": day,
@@ -1691,6 +1710,10 @@ def build_performance_history(
         fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx
     )
     holding_histories = fetch_close_histories(set(holdings))
+    archived_pnl_usd = sum(
+        float(item.get("pnl_usd", 0.0) or 0.0)
+        for item in load_closed_satellite_pnl().values()
+    )
     anchored_rows: list[dict[str, Any]] = []
     for stored_row in rows:
         row = dict(stored_row)
@@ -1710,6 +1733,7 @@ def build_performance_history(
                     history_balances,
                     row_fx,
                     history_usd_cost_fx,
+                    archived_pnl_usd,
                 )
             )
         anchored_rows.append(row)
@@ -2333,7 +2357,10 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     attributed_dividend_usd = float(balances.get("voo_dividend_usd", 0.0)) + float(
         balances.get("sgov_dividend_usd", 0.0)
     )
-    usd_pnl_usd = usd_value_usd - usd_cost_usd + attributed_dividend_usd
+    archived_pnl = load_closed_satellite_pnl()
+    archived_pnl_usd = sum(float(item.get("pnl_usd", 0.0) or 0.0) for item in archived_pnl.values())
+    archived_pnl_cny = archived_pnl_usd * fx
+    usd_pnl_usd = usd_value_usd - usd_cost_usd + attributed_dividend_usd + archived_pnl_usd
     usd_return_pct = usd_pnl_usd / usd_cost_usd * 100.0 if usd_cost_usd > 0 else 0.0
     usd_daily_pnl_usd = sum(
         _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, accounting_daily_pct(s))
@@ -2345,7 +2372,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         if usd_value_usd - usd_daily_pnl_usd > 0
         else 0.0
     )
-    holding_pnl_cny = sum(float(row.get("pnl_cny", 0.0)) for row in rows)
+    holding_pnl_cny = sum(float(row.get("pnl_cny", 0.0)) for row in rows) + archived_pnl_cny
     usd_cash_fx_pnl_cny = cash_usd * (fx - usd_cost_fx)
     total_pnl_cny = holding_pnl_cny + usd_cash_fx_pnl_cny
     total_return_basis_cny = total_cost_cny + cash_usd * usd_cost_fx + cash_cny
@@ -2493,6 +2520,9 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "total_cost_cny": total_cost_cny,
             "total_return_basis_cny": total_return_basis_cny,
             "holding_pnl_cny": holding_pnl_cny,
+            "usd_pnl_usd": usd_pnl_usd,
+            "archived_pnl_usd": archived_pnl_usd,
+            "archived_pnl_cny": archived_pnl_cny,
             "usd_cash_fx_pnl_cny": usd_cash_fx_pnl_cny,
             "cash_total_cny": cash_total_cny,
             "total_assets_cny": total_assets_cny,
@@ -2513,6 +2543,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         "targets": target_weights,
         "satellite_targets": load_satellite_targets(),
         "satellite_universe": load_satellite_universe_config(),
+        "archived_pnl": archived_pnl,
         "performance_history": performance_history,
         "rebalance": build_rebalance_v2(user_id, rows, balances, market, value_cny_by_symbol, fx),
         "trades": annotate_trade_close_effects(trades, quotes, fx, history_day),

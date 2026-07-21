@@ -452,7 +452,11 @@ function Summary({ data }) {
   const usdHoldingCost = usdRows.reduce((sum, row) => sum + Number(row.shares || 0) * Number(row.avg_cost || 0), 0);
   const usdCash = Number(data.balances?.cash_usd || 0);
   const usdTotalAssets = usdHoldingValue + usdCash;
-  const usdPnl = usdRows.reduce((sum, row) => sum + Number(row.pnl || 0), 0);
+  const archivedPnlRows = Object.values(data.archived_pnl || {});
+  const archivedPnlUsd = archivedPnlRows.reduce((sum, row) => sum + Number(row.pnl_usd || 0), 0);
+  const usdPnl = Number.isFinite(Number(summary.usd_pnl_usd))
+    ? Number(summary.usd_pnl_usd)
+    : usdRows.reduce((sum, row) => sum + Number(row.pnl || 0), 0) + archivedPnlUsd;
   const usdPnlPct = usdHoldingCost > 0 ? (usdPnl / usdHoldingCost) * 100 : 0;
   const usdDailyChange = usdRows.reduce(
     (total, row) => total + dailyAmount(row.value, row.effective_daily_pct),
@@ -475,6 +479,15 @@ function Summary({ data }) {
       ? Number(row.pnl || 0) / usdHoldingCost * 100
       : 0,
   }));
+  archivedPnlRows.forEach((row) => {
+    const amount = Number(row.pnl_usd || 0);
+    usdHoldingPnlDetails.push({
+      symbol: `${row.label || row.symbol}*`,
+      amount,
+      pct: null,
+      contributionPct: usdHoldingCost > 0 ? amount / usdHoldingCost * 100 : 0,
+    });
+  });
   const totalReturnBasisCny = Number(summary.total_return_basis_cny || 0);
   const totalHoldingPnlDetails = (data.holdings || []).map((row) => ({
     symbol: row.symbol,
@@ -484,6 +497,15 @@ function Summary({ data }) {
       ? Number(row.pnl_cny || 0) / totalReturnBasisCny * 100
       : 0,
   }));
+  archivedPnlRows.forEach((row) => {
+    const amount = Number(row.pnl_usd || 0) * fx;
+    totalHoldingPnlDetails.push({
+      symbol: `${row.label || row.symbol}*`,
+      amount,
+      pct: null,
+      contributionPct: totalReturnBasisCny > 0 ? amount / totalReturnBasisCny * 100 : 0,
+    });
+  });
   if (Math.abs(Number(summary.usd_cash_fx_pnl_cny || 0)) > 0.000001) {
     totalHoldingPnlDetails.push({
       symbol: "美元现金汇兑",
