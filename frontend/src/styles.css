@@ -712,6 +712,28 @@ h2 {
   gap: 10px;
 }
 
+.pnlBreakdownHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pnlBreakdownHeader strong {
+  color: var(--text-main);
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.pnlBreakdownHeader span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.homePnlBreakdown {
+  margin-top: 14px;
+}
+
 .pnlBreakdownItem {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -778,6 +800,40 @@ h2 {
 .pnlSplitSegment.flat,
 .pnlSplitLegend i.flat {
   background: rgba(226, 238, 251, 0.48);
+}
+
+.pnlSplitSegment.realized.up,
+.pnlSplitLegend i.realized.up {
+  background: linear-gradient(90deg, #167c5b, #2da47e);
+}
+
+.pnlSplitSegment.unrealized.up,
+.pnlSplitLegend i.unrealized.up {
+  background: linear-gradient(90deg, #46bd73, #7de39a);
+}
+
+.pnlSplitSegment.fx.up,
+.pnlSplitLegend i.fx.up {
+  background: linear-gradient(90deg, #159a91, #55d6c9);
+}
+
+.pnlSplitSegment.realized.down,
+.pnlSplitLegend i.realized.down {
+  background: linear-gradient(90deg, #9f3441, #c44f59);
+}
+
+.pnlSplitSegment.unrealized.down,
+.pnlSplitLegend i.unrealized.down {
+  background: linear-gradient(90deg, #dc655f, #ff9184);
+}
+
+.pnlSplitSegment.fx.down,
+.pnlSplitLegend i.fx.down {
+  background: linear-gradient(90deg, #b33f68, #e36f91);
+}
+
+.pnlSplitSegment + .pnlSplitSegment {
+  box-shadow: inset 1px 0 rgba(7, 21, 37, 0.72);
 }
 
 .pnlSplitLegend {
@@ -1138,6 +1194,21 @@ h2 {
   color: var(--text-main);
 }
 
+.heatPrice span.up,
+.satelliteTooltipPrice span.up {
+  color: var(--green);
+}
+
+.heatPrice span.down,
+.satelliteTooltipPrice span.down {
+  color: var(--red);
+}
+
+.heatPrice span.flat,
+.satelliteTooltipPrice span.flat {
+  color: #cbd5e1;
+}
+
 .heatCell {
   position: absolute;
   display: grid;
@@ -1179,6 +1250,16 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.heatPrice {
+  position: relative;
+  z-index: 1;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: clamp(0.62rem, 0.85vw, 0.78rem);
+  font-weight: 850;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
 .heatCell.compact {
   justify-items: center;
   align-content: center;
@@ -1190,22 +1271,31 @@ h2 {
   font-size: 0.72rem;
 }
 
+.heatCell.compact .heatPrice {
+  font-size: 0.58rem;
+}
+
 .heatCell.compact strong {
   font-size: 0.86rem;
 }
 
-.heatCell.compact span {
+.heatCell.compact > span {
   display: none;
 }
 
 .heatCell.tiny {
-  gap: 0;
+  gap: 1px;
   padding: 4px;
 }
 
 .heatCell.tiny strong {
   display: block;
   font-size: 0.72rem;
+}
+
+.heatCell.tiny .heatPrice {
+  display: block;
+  font-size: 0.5rem;
 }
 
 .heatCell strong {
@@ -3211,7 +3301,8 @@ tbody th {
 }
 
 .heatCell.tiny .heatPnl {
-  display: none;
+  display: block;
+  font-size: 0.5rem;
 }
 
 .barTrack {

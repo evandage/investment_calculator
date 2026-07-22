@@ -359,6 +359,36 @@
       "new_avg_cost": 400.25230026673444,
       "intensity": "large",
       "created_at": "2026-07-21T10:42:24+08:00"
+    },
+    {
+      "id": "20260722094330-24-001015",
+      "trade_date": "2026-07-21",
+      "symbol": "001015",
+      "action": "sell",
+      "amount_usd": 10089.76635,
+      "shares": 4230.51,
+      "price": 2.385,
+      "cost_basis": 10004.515637369997,
+      "realized_pnl": 85.25071263000245,
+      "prev_avg_cost": 2.3648485968287503,
+      "new_avg_cost": 2.36484859682875,
+      "intensity": "normal",
+      "created_at": "2026-07-22T09:43:30+08:00"
+    },
+    {
+      "id": "20260722094559-25-SGOV",
+      "trade_date": "2026-07-21",
+      "symbol": "SGOV",
+      "action": "buy",
+      "amount_usd": 2615.47,
+      "shares": 26.0,
+      "price": 100.595,
+      "cost_basis": 2615.47,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 0.0,
+      "new_avg_cost": 100.595,
+      "intensity": "normal",
+      "created_at": "2026-07-22T09:45:59+08:00"
     }
   ]
 }

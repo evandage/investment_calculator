@@ -2409,6 +2409,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "label": ASSET_META[sym]["label"],
                 "session": quote.get("session", "regular"),
                 "price_line": _quote_price_line(sym, quote),
+                "currency": currency,
+                "regular_price": regular_price,
+                "extended_price": (
+                    quote.get("extended_price") if quote.get("session") != "regular" else None
+                ),
                 "regular_pct": regular_pct,
                 "summary_pct": summary_pct,
                 "effective_pct": effective_pct,

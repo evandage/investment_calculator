@@ -211,6 +211,34 @@ function tone(value) {
   return "flat";
 }
 
+function TreemapPriceLine({ priceLine = "", regularPrice, extendedPrice, currency = "USD", regularPct = 0, extendedPct = null }) {
+  const legacyMatch = String(priceLine || "").trim().match(
+    /^(USD|CNY)\s+([\d,]+(?:\.\d+)?)(?:（([\d,]+(?:\.\d+)?)）)?$/,
+  );
+  const resolvedCurrency = legacyMatch?.[1] || currency;
+  const legacyRegular = legacyMatch?.[2] ? Number(legacyMatch[2].replaceAll(",", "")) : null;
+  const legacyExtended = legacyMatch?.[3] ? Number(legacyMatch[3].replaceAll(",", "")) : null;
+  const regular = Number.isFinite(Number(regularPrice)) && Number(regularPrice) > 0
+    ? Number(regularPrice)
+    : legacyRegular;
+  if (!Number.isFinite(regular) || regular <= 0) return "-";
+  const digits = resolvedCurrency === "USD" ? 2 : 4;
+  const formatPrice = (value) => Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  const extended = Number.isFinite(Number(extendedPrice)) && Number(extendedPrice) > 0
+    ? Number(extendedPrice)
+    : legacyExtended;
+  const hasExtended = Number.isFinite(extended) && extended > 0;
+  return (
+    <>
+      <span className={tone(regularPct)}>{resolvedCurrency} {formatPrice(regular)}</span>
+      {hasExtended ? <span className={tone(extendedPct)}>（{formatPrice(extended)}）</span> : null}
+    </>
+  );
+}
+
 function tierClass(intensity) {
   return {
     manual_review_only: "tierManual",
@@ -852,6 +880,18 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 title={`${card.label} · 当前价 ${fmtCurrentPrice(card.currentPrice, card.currency)} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
               >
                 <b>{card.label}</b>
+                {card.regular_price || card.price_line ? (
+                  <div className="heatPrice">
+                    <TreemapPriceLine
+                      priceLine={card.price_line}
+                      regularPrice={card.regular_price}
+                      extendedPrice={card.extended_price}
+                      currency={card.currency}
+                      regularPct={card.regular_pct}
+                      extendedPct={card.extended_pct}
+                    />
+                  </div>
+                ) : null}
                 <span className={tone(card.regular_pct)}>
                   {fmtPct(card.regular_pct)}
                   {card.session !== "regular" && card.extended_pct != null ? (
@@ -879,7 +919,17 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
             return (
               <div className="satelliteMiniTooltip">
                 <b>{card.label}</b>
-                <span>当前价 {fmtCurrentPrice(card.currentPrice, card.currency)}</span>
+                <span className="satelliteTooltipPrice">
+                  价格&nbsp;
+                  <TreemapPriceLine
+                    priceLine={card.price_line}
+                    regularPrice={card.regular_price}
+                    extendedPrice={card.extended_price}
+                    currency={card.currency}
+                    regularPct={card.regular_pct}
+                    extendedPct={card.extended_pct}
+                  />
+                </span>
                 <span>收盘 {fmtPct(card.regular_pct)}{card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 {fmtPct(card.effectivePct)}</span>
                 <span>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")} · {fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
               </div>
@@ -901,11 +951,23 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 width: `${row.width / HEATMAP_LAYOUT_WIDTH * 100}%`,
                 height: `${row.height / HEATMAP_LAYOUT_HEIGHT * 100}%`,
               }}
-              title={`${row.label} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 当前价 ${fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
+              title={`${row.label} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 价格 ${row.price_line ? fmtCardPriceLine(row.price_line) : fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
               onMouseEnter={row.symbol === "SATELLITE_GROUP" ? () => setSatelliteHovered(true) : undefined}
               role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
             >
               <div className="heatSymbol">{row.label}</div>
+              {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? (
+                <div className="heatPrice">
+                  <TreemapPriceLine
+                    priceLine={row.price_line}
+                    regularPrice={row.regular_price}
+                    extendedPrice={row.extended_price}
+                    currency={row.currency}
+                    regularPct={row.regularPct}
+                    extendedPct={row.extendedPct}
+                  />
+                </div>
+              ) : null}
               <strong className={row.fundPending ? "flat" : tone(row.regularPct)}>
                 {row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}
                 {row.hasDistinctExtendedPct ? <span className={tone(row.extendedPct)}>（{fmtPct(row.extendedPct)}）</span> : null}
@@ -2516,6 +2578,95 @@ function KlinePage({ dashboardData }) {
   );
 }
 
+function PnlBreakdownPanel({ data }) {
+  const summary = data.summary || {};
+  const fx = Number(summary.fx || 0);
+  const avgFx = Number(summary.avg_fx_rate || fx);
+  const usdRows = (data.holdings || []).filter((row) => row.currency === "USD");
+  const usdCost = usdRows.reduce(
+    (sum, row) => sum + Number(row.shares || 0) * Number(row.avg_cost || 0),
+    0,
+  );
+  const usdCash = Number(data.balances?.cash_usd || 0);
+  const fallbackFxPnlCny = (usdCost + usdCash) * (fx - avgFx);
+  const fxPnlCny = Number.isFinite(Number(summary.usd_fx_pnl_cny))
+    ? Number(summary.usd_fx_pnl_cny)
+    : fallbackFxPnlCny;
+  const realizedPnlCny = Number.isFinite(Number(summary.total_realized_pnl_cny))
+    ? Number(summary.total_realized_pnl_cny)
+    : Number(data.balances?.realized_cny || 0) + Number(data.balances?.realized_usd || 0) * fx;
+  const totalPnlCny = Number(summary.total_pnl_cny || 0);
+  const totalUnrealizedPnlCny = Number.isFinite(Number(summary.total_unrealized_pnl_cny))
+    ? Number(summary.total_unrealized_pnl_cny)
+    : totalPnlCny - realizedPnlCny;
+  const investmentUnrealizedPnlCny = totalUnrealizedPnlCny - fxPnlCny;
+  const investmentPnlCny = realizedPnlCny + investmentUnrealizedPnlCny;
+  const splitTotal = Math.max(
+    1,
+    Math.abs(realizedPnlCny) + Math.abs(investmentUnrealizedPnlCny) + Math.abs(fxPnlCny),
+  );
+  const parts = [
+    {
+      key: "realized",
+      label: "已变现盈亏",
+      amount: realizedPnlCny,
+      detail: `已平仓交易累计 = ${fmtMoney(realizedPnlCny, "CNY")}`,
+    },
+    {
+      key: "unrealized",
+      label: "未变现浮盈亏",
+      amount: investmentUnrealizedPnlCny,
+      detail: `总未变现 ${fmtMoney(totalUnrealizedPnlCny, "CNY")} - 汇率 ${fmtMoney(fxPnlCny, "CNY")} = ${fmtMoney(investmentUnrealizedPnlCny, "CNY")}`,
+    },
+    {
+      key: "fx",
+      label: "汇率浮盈亏",
+      amount: fxPnlCny,
+      detail: `(${fmtMoney(usdCost, "USD")} 投资成本 + ${fmtMoney(usdCash, "USD")} 现金) × (${fx.toFixed(4)} - ${avgFx.toFixed(4)}) = ${fmtMoney(fxPnlCny, "CNY")}`,
+    },
+  ];
+
+  return (
+    <section className="pnlBreakdownPanel homePnlBreakdown" aria-label="总资产累计盈亏构成">
+      <div className="pnlBreakdownHeader">
+        <strong>投资组合盈亏 vs 汇率盈亏</strong>
+        <span>投资组合细分为已变现与未变现</span>
+      </div>
+      <div className="pnlBreakdownGrid">
+        <div className="pnlBreakdownItem">
+          <span>投资组合盈亏</span>
+          <strong className={tone(investmentPnlCny)}>{fmtMoney(investmentPnlCny, "CNY")}</strong>
+          <small>
+            已变现 {fmtMoney(realizedPnlCny, "CNY")} + 未变现 {fmtMoney(investmentUnrealizedPnlCny, "CNY")} = {fmtMoney(investmentPnlCny, "CNY")}
+          </small>
+        </div>
+        <div className="pnlBreakdownItem">
+          <span>汇率盈亏</span>
+          <strong className={tone(fxPnlCny)}>{fmtMoney(fxPnlCny, "CNY")}</strong>
+          <small>{parts.find((part) => part.key === "fx")?.detail}</small>
+        </div>
+      </div>
+      <div className="pnlSplitViz">
+        <div className="pnlSplitTrack">
+          {parts.map((part) => (
+            <div
+              className={`pnlSplitSegment ${part.key} ${tone(part.amount)}`}
+              key={`segment-${part.key}`}
+              style={{ width: `${Math.abs(part.amount) / splitTotal * 100}%` }}
+              title={`${part.label} ${fmtMoney(part.amount, "CNY")}`}
+            />
+          ))}
+        </div>
+        <div className="pnlSplitLegend">
+          {parts.map((part) => (
+            <span key={`legend-${part.key}`}><i className={`${part.key} ${tone(part.amount)}`} />{part.label} {fmtMoney(part.amount, "CNY")}</span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const fx = Number(data.summary?.fx || 7.1);
   const avgFx = Number(data.summary?.avg_fx_rate || fx);
@@ -2554,12 +2705,9 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const totalCostCny = rows.reduce((sum, row) => sum + row.costCny, 0);
   const totalValueCny = rows.reduce((sum, row) => sum + row.valueCny, 0);
   const investmentUnrealizedCny = usdUnrealized * fx + cnyInvestmentUnrealized;
-  const investmentFormula = `${fmtMoney(usdUnrealized, "USD")} 美元收益 × ${fx.toFixed(4)} + ${fmtMoney(cnyInvestmentUnrealized, "CNY")} 沪深300收益 = ${fmtMoney(investmentUnrealizedCny, "CNY")}`;
   const fxUnrealizedCny = (usdCost + usdCash) * (fx - avgFx);
-  const fxFormula = `(${fmtMoney(usdCost, "USD")} 投资成本 + ${fmtMoney(usdCash, "USD")} 现金) × (${fx.toFixed(4)} - ${avgFx.toFixed(4)}) = ${fmtMoney(fxUnrealizedCny, "CNY")}`;
   const calculatedTotalUnrealizedCny = investmentUnrealizedCny + fxUnrealizedCny;
   const totalReturnBasisCny = totalCostCny + usdCash * avgFx + Number(balances.cash_cny || 0);
-  const pnlSplitTotal = Math.max(1, Math.abs(investmentUnrealizedCny) + Math.abs(fxUnrealizedCny));
   const cashCny = Number(balances.cash_cny || 0) + usdCash * fx;
   const totalRealizedCny = Number.isFinite(Number(data.summary?.total_realized_pnl_cny))
     ? Number(data.summary.total_realized_pnl_cny)
@@ -2630,30 +2778,6 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
             ))}
           </div>
           <p>合计盈亏 = 已变现盈亏 + 未实现浮盈亏；收益率 = 合计盈亏 / 成本基准。</p>
-        </div>
-      </div>
-      <div className="pnlBreakdownPanel" aria-label="总资产浮盈亏分解">
-        <div className="pnlBreakdownGrid">
-          <div className="pnlBreakdownItem">
-            <span>投资组合浮盈亏</span>
-            <strong className={tone(investmentUnrealizedCny)}>{fmtMoney(investmentUnrealizedCny, "CNY")}</strong>
-            <small>{investmentFormula}</small>
-          </div>
-          <div className="pnlBreakdownItem">
-            <span>汇率浮盈亏</span>
-            <strong className={tone(fxUnrealizedCny)}>{fmtMoney(fxUnrealizedCny, "CNY")}</strong>
-            <small>{fxFormula}</small>
-          </div>
-        </div>
-        <div className="pnlSplitViz">
-          <div className="pnlSplitTrack">
-            <div className={`pnlSplitSegment ${tone(investmentUnrealizedCny)}`} style={{ width: `${Math.abs(investmentUnrealizedCny) / pnlSplitTotal * 100}%` }} />
-            <div className={`pnlSplitSegment ${tone(fxUnrealizedCny)}`} style={{ width: `${Math.abs(fxUnrealizedCny) / pnlSplitTotal * 100}%` }} />
-          </div>
-          <div className="pnlSplitLegend">
-            <span><i className={tone(investmentUnrealizedCny)} />投资</span>
-            <span><i className={tone(fxUnrealizedCny)} />汇率</span>
-          </div>
         </div>
       </div>
     </div>
@@ -3809,6 +3933,7 @@ function DashboardPage({ data }) {
   return (
     <>
       <Summary data={data} />
+      <PnlBreakdownPanel data={data} />
       <PerformanceChart history={data.performance_history} />
       <DailyHeatmap
         cards={data.daily_cards}

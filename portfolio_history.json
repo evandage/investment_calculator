@@ -1092,22 +1092,22 @@
     },
     {
       "date": "2026-07-21",
-      "portfolio_daily_pct": 1.9398965396701564,
+      "portfolio_daily_pct": 1.536981542825905,
       "portfolio_return_pct": 0.0,
-      "holding_pnl_pct": 0.535874505890066,
-      "holding_pnl_cny": 366.5912465659417,
-      "holding_cost_cny": 68409.90615089037,
+      "holding_pnl_pct": 0.3707820784962992,
+      "holding_pnl_cny": 282.22077693592973,
+      "holding_cost_cny": 76114.99943052037,
       "fx_rate": 6.7711,
-      "holding_daily_pnl_pct": 1.9398965396701564,
-      "holding_daily_pnl_cny": 1306.279235202696,
-      "holding_daily_basis_cny": 67337.57231325361,
-      "usd_return_pct": 0.3042280248887428,
-      "usd_pnl_usd": 17.74147606236951,
-      "usd_cost_usd": 5831.637656937631,
-      "usd_value_usd": 5849.379133,
-      "usd_daily_pct": 1.0901406612088134,
-      "usd_daily_pnl_usd": 62.86755700000011,
-      "usd_daily_basis_usd": 5766.921576,
+      "holding_daily_pnl_pct": 1.536981542825905,
+      "holding_daily_pnl_cny": 1307.1594782026953,
+      "holding_daily_basis_cny": 85047.1812302536,
+      "usd_return_pct": 0.21156917596156988,
+      "usd_pnl_usd": 17.87147606236962,
+      "usd_cost_usd": 8447.107656937631,
+      "usd_value_usd": 8464.979133,
+      "usd_daily_pct": 0.7515463388798385,
+      "usd_daily_pnl_usd": 62.99755699999999,
+      "usd_daily_basis_usd": 8382.391576,
       "pnl_basis_version": 2,
       "snapshot_schema_version": 4,
       "calculation_version": "2026-07-eod-v4-dated-fx",
@@ -1127,8 +1127,8 @@
       "fx_source": "Sina fx_susdcny daily close",
       "voo_dividend_usd": 7.98,
       "sgov_dividend_usd": 11.61,
-      "cash_flow_cny": 0,
-      "cash_flow_flag": false,
+      "cash_flow_cny": 27799.375266999996,
+      "cash_flow_flag": true,
       "total_assets_cny": 0.0,
       "total_cost_cny": 0.0,
       "benchmark_prices": {
@@ -1154,8 +1154,9 @@
         "GOOGL": -1.375039063609771,
         "MSFT": -1.1285391135747895,
         "AVGO": 2.205415697059439,
-        "001015": 3.112840466926053,
-        "PLTR": -1.624026696329253
+        "001015": 3.1128404669260537,
+        "PLTR": -1.624026696329253,
+        "SGOV": 0.004970425965500723
       },
       "holdings_snapshot": {
         "VOO": {
@@ -1187,25 +1188,25 @@
           "avg_cost": 421.25
         },
         "001015": {
-          "shares": 12230.51,
-          "avg_cost": 2.3648485968287503
+          "shares": 8000.0,
+          "avg_cost": 2.36484859682875
         },
         "PLTR": {
           "shares": 0.30879999999999996,
           "avg_cost": 129.50129533678756
         },
         "SGOV": {
-          "shares": 0.0,
-          "avg_cost": 0.0
+          "shares": 26.0,
+          "avg_cost": 100.595
         }
       },
       "estimated_symbols": [],
       "finalized": true,
       "updated_at": "2026-07-21T08:00:00+08:00",
-      "total_pnl_cny": -559.4884875431552,
-      "total_return_basis_cny": 87831.50402499948,
-      "total_pnl_pct": -0.637002057238947,
-      "fx_pnl_cny": -926.0797341090969,
+      "total_pnl_cny": -926.8503236391189,
+      "total_return_basis_cny": 95819.58867109542,
+      "total_pnl_pct": -0.9672868945624153,
+      "fx_pnl_cny": -1209.0711005750486,
       "cash_usd": 2727.4,
       "cash_cny": 28.019999999999982
     }
