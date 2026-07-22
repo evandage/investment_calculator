@@ -559,11 +559,19 @@ function Summary({ data }) {
     (sum, row) => sum + Number(row.amount || 0),
     0,
   );
-  const dailyFxBridgeCny = weightedDailyChangeCny - securityDailyTotalCny;
-  if (Math.abs(dailyFxBridgeCny) > 0.000001) {
+  const dailyFxPnlCny = Number(summary.daily_fx_pnl_cny || 0);
+  if (Math.abs(dailyFxPnlCny) > 0.000001) {
     totalDailyDetails.push({
       symbol: "USD/CNY汇率",
-      amount: dailyFxBridgeCny,
+      amount: dailyFxPnlCny,
+      pct: null,
+    });
+  }
+  const unexplainedDailyBridgeCny = weightedDailyChangeCny - securityDailyTotalCny - dailyFxPnlCny;
+  if (Math.abs(unexplainedDailyBridgeCny) > 0.01) {
+    totalDailyDetails.push({
+      symbol: "其他桥接调整",
+      amount: unexplainedDailyBridgeCny,
       pct: null,
     });
   }

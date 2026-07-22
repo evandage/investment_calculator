@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from backend.portfolio import (
     cash_balances_for_history_day,
     current_holdings_pnl_for_history_day,
+    daily_fx_change_cny,
     fund_daily_status,
     historical_holding_pnl,
     holdings_snapshot_for_day,
@@ -15,6 +16,31 @@ from backend.portfolio import (
 
 
 class HistoricalHoldingsSnapshotTests(unittest.TestCase):
+    def test_daily_fx_change_uses_previous_usd_assets_and_cash(self):
+        pnl_cny, exposure_usd, previous_fx = daily_fx_change_cny(
+            6.7569,
+            {"fx_rate": 6.7711, "usd_value_usd": 5849.379133, "cash_usd": 2727.4},
+        )
+
+        self.assertAlmostEqual(exposure_usd, 8576.779133)
+        self.assertAlmostEqual(previous_fx, 6.7711)
+        self.assertAlmostEqual(pnl_cny, -121.7902636886)
+
+    def test_daily_fx_change_does_not_use_cny_assets_or_cost_basis(self):
+        pnl_cny, exposure_usd, _ = daily_fx_change_cny(
+            7.1,
+            {
+                "fx_rate": 7.0,
+                "usd_value_usd": 1000.0,
+                "cash_usd": 200.0,
+                "holding_cost_cny": 500000.0,
+                "total_return_basis_cny": 800000.0,
+            },
+        )
+
+        self.assertAlmostEqual(exposure_usd, 1200.0)
+        self.assertAlmostEqual(pnl_cny, 120.0)
+
     def test_cash_history_rewinds_from_current_trusted_balance(self):
         balances = {"cash_usd": 2727.4, "cash_cny": 28.02}
         adjustments = [

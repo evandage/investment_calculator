@@ -88,6 +88,37 @@ class ConfirmedCloseMetricTests(unittest.TestCase):
         )
         self.assertEqual(quote, stale_quote)
 
+    def test_csi300_preopen_uses_previous_confirmed_close(self):
+        preopen_estimate = {
+            "symbol": "001015",
+            "price": 2.3078,
+            "regular_price": 2.3078,
+            "quote_date": "2026-07-22",
+            "regular_change_pct": -3.24,
+            "source": "preopen estimate",
+        }
+        completed_row = {
+            "date": "2026-07-21",
+            "closing_prices": {"001015": 2.385},
+        }
+
+        quote = portfolio.quote_with_previous_fund_close(
+            "001015", preopen_estimate, completed_row
+        )
+
+        self.assertEqual(quote["price"], 2.385)
+        self.assertEqual(quote["regular_price"], 2.385)
+        self.assertEqual(quote["regular_change_pct"], 0.0)
+        self.assertEqual(quote["quote_date"], "2026-07-21")
+        self.assertEqual(quote["source"], "上一交易日确认净值")
+
+    def test_csi300_preopen_fallback_keeps_quote_without_confirmed_close(self):
+        estimate = {"symbol": "001015", "price": 2.3078}
+
+        quote = portfolio.quote_with_previous_fund_close("001015", estimate, None)
+
+        self.assertEqual(quote, estimate)
+
     def test_closed_day_display_carries_latest_completed_symbol_return(self):
         completed_row = {
             "date": "2026-07-17",

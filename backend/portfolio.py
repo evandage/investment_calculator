@@ -786,6 +786,35 @@ def quote_with_official_fund_nav(
     }
 
 
+def quote_with_previous_fund_close(
+    symbol: str,
+    quote: dict[str, Any],
+    completed_row: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Freeze a fund at its latest confirmed close before the next session opens."""
+    if not completed_row:
+        return dict(quote)
+    closing_prices = completed_row.get("closing_prices") or {}
+    benchmark_prices = completed_row.get("benchmark_prices") or {}
+    price = coerce_optional_float(closing_prices.get(symbol))
+    if price is None or price <= 0:
+        price = coerce_optional_float(benchmark_prices.get(symbol))
+    if price is None or price <= 0:
+        return dict(quote)
+    close_day = str(completed_row.get("date") or "")[:10]
+    return {
+        **quote,
+        "symbol": symbol,
+        "price": price,
+        "regular_price": price,
+        "change_pct": 0.0,
+        "regular_change_pct": 0.0,
+        "quote_date": close_day,
+        "quote_time": f"{close_day} 15:00" if close_day else "",
+        "source": "上一交易日确认净值",
+    }
+
+
 def completed_portfolio_daily_pct(
     holdings_snapshot: dict[str, dict[str, float]],
     day: str,
@@ -1150,6 +1179,19 @@ def reconcile_current_book_daily_pnl(rows: list[dict[str, Any]]) -> list[dict[st
             row["daily_pnl_reconciled"] = True
         previous_total = current_total
     return rows
+
+
+def daily_fx_change_cny(current_fx: float, previous_snapshot: dict[str, Any] | None) -> tuple[float, float, float]:
+    """Return daily CNY FX P&L from the previous snapshot's USD exposure."""
+    if not previous_snapshot:
+        return 0.0, 0.0, float(current_fx)
+    previous_fx = coerce_optional_float(previous_snapshot.get("fx_rate"))
+    usd_value = coerce_optional_float(previous_snapshot.get("usd_value_usd"))
+    cash_usd = coerce_optional_float(previous_snapshot.get("cash_usd"))
+    if previous_fx is None or previous_fx <= 0:
+        previous_fx = float(current_fx)
+    exposure_usd = max(0.0, (usd_value or 0.0) + (cash_usd or 0.0))
+    return exposure_usd * (float(current_fx) - previous_fx), exposure_usd, previous_fx
 
 
 def annotate_trade_close_effects(
@@ -2190,6 +2232,13 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     history_now = datetime.now(TZ_SHANGHAI)
     history_day = performance_history_date(history_now)
     china_minutes = history_now.hour * 60 + history_now.minute
+    finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
+    completed_day = completed_performance_day(history_now)
+    latest_completed_row = max(
+        (row for row in finalized_rows if str(row.get("date") or "") <= completed_day),
+        key=lambda row: str(row.get("date") or ""),
+        default=None,
+    )
     official_fund_prices: dict[str, float] = {}
     if (
         is_weekday(history_day)
@@ -2197,7 +2246,18 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         and china_minutes >= 9 * 60 + 30
     ):
         official_fund_prices = fetch_fund_close_history("001015")
-    if is_china_daily_close_ready(history_day, history_now):
+    is_china_preopen = (
+        is_weekday(history_day)
+        and history_now.date().isoformat() == history_day
+        and china_minutes < 9 * 60 + 30
+    )
+    if is_china_preopen:
+        quotes["001015"] = quote_with_previous_fund_close(
+            "001015",
+            quotes.get("001015") or {},
+            latest_completed_row,
+        )
+    elif is_china_daily_close_ready(history_day, history_now):
         if not official_fund_prices:
             official_fund_prices = fetch_fund_close_history("001015")
         quotes["001015"] = quote_with_official_fund_nav(
@@ -2209,13 +2269,6 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     # Keep the public market payload consistent with the effective quote used
     # by cards, weights and P&L calculations (proxy estimate or official NAV).
     market = {**market, "quotes": quotes}
-    finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
-    completed_day = completed_performance_day(history_now)
-    latest_completed_row = max(
-        (row for row in finalized_rows if str(row.get("date") or "") <= completed_day),
-        key=lambda row: str(row.get("date") or ""),
-        default=None,
-    )
     carry_completed_daily = not is_weekday(history_day)
     trades = load_trade_records(user_id)
     holdings = raw_holdings
@@ -2596,26 +2649,30 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         weighted_daily_change_cny = live_daily_change_cny
         weighted_daily_pct = live_daily_change_cny / live_daily_basis_cny * 100.0
 
-    # The CNY daily card must bridge adjacent cumulative CNY P&L points. This
-    # includes the day-over-day FX move and guarantees:
-    # previous cumulative P&L + today's P&L = current cumulative P&L.
-    current_performance_point = next(
-        (
-            point
-            for point in reversed(performance_history.get("points") or [])
-            if str(point.get("date") or "") == history_day
-        ),
-        None,
+    # Attribute FX directly instead of treating every unexplained P&L bridge
+    # residual as USD/CNY.  Security P&L is translated at today's FX, so the
+    # exact companion term is yesterday's USD exposure times the FX move.
+    fx_reference_row = latest_completed_row
+    display_fx = fx
+    if carry_completed_daily and latest_completed_row:
+        latest_day = str(latest_completed_row.get("date") or "")
+        fx_reference_row = max(
+            (row for row in finalized_rows if str(row.get("date") or "") < latest_day),
+            key=lambda row: str(row.get("date") or ""),
+            default=None,
+        )
+        display_fx = coerce_optional_float(latest_completed_row.get("fx_rate")) or fx
+    daily_fx_pnl_cny, daily_fx_exposure_usd, previous_daily_fx_rate = daily_fx_change_cny(
+        display_fx,
+        fx_reference_row,
     )
-    reconciled_daily_change = coerce_optional_float(
-        (current_performance_point or {}).get("holding_daily_pnl_cny")
+    weighted_daily_change_cny += daily_fx_pnl_cny
+    weighted_daily_basis_cny = total_assets_cny - weighted_daily_change_cny
+    weighted_daily_pct = (
+        weighted_daily_change_cny / weighted_daily_basis_cny * 100.0
+        if weighted_daily_basis_cny > 0
+        else 0.0
     )
-    reconciled_daily_pct = coerce_optional_float(
-        (current_performance_point or {}).get("portfolio_daily_pct")
-    )
-    if reconciled_daily_change is not None and reconciled_daily_pct is not None:
-        weighted_daily_change_cny = reconciled_daily_change
-        weighted_daily_pct = reconciled_daily_pct
 
     return {
         "user_id": user_id,
@@ -2650,6 +2707,9 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "weighted_daily_pct": weighted_daily_pct,
             "weighted_daily_change_cny": weighted_daily_change_cny,
             "weighted_daily_change_usd": weighted_daily_change_cny / fx if fx > 0 else 0.0,
+            "daily_fx_pnl_cny": daily_fx_pnl_cny,
+            "daily_fx_exposure_usd": daily_fx_exposure_usd,
+            "previous_daily_fx_rate": previous_daily_fx_rate,
             "daily_as_of": (
                 str((latest_completed_row or {}).get("date") or completed_day)
                 if carry_completed_daily
