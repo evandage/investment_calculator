@@ -2968,12 +2968,15 @@ function EditableHoldingsPage({ data, onSaved }) {
       if (!response.ok) throw new Error(await readApiError(response, `holdings HTTP ${response.status}`));
       const result = await response.json();
       const anchorDate = result?.adjustment?.effective_date || "今天";
-      setHoldingMessage(`持仓已保存，${anchorDate} 已设为新的准确锚点`);
+      const successMessage = `持仓已保存，${anchorDate} 已设为新的准确锚点；浮盈亏和收益快照已重新计算`;
+      setHoldingMessage(successMessage);
       setEditingHoldings(false);
       await onSaved();
+      window.alert(successMessage);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setHoldingMessage(`持仓保存失败：${message}`);
+      window.alert(`持仓保存失败：${message}`);
     } finally {
       setSavingHoldings(false);
     }
@@ -3027,7 +3030,6 @@ function EditableHoldingsPage({ data, onSaved }) {
           </button>
         </div>
       ) : null}
-      {holdingMessage ? <div className={holdingMessage.includes("失败") ? "saveMessage down" : "saveMessage up"}>{holdingMessage}</div> : null}
       {balanceMessage ? <div className={balanceMessage === "现金与已变现已保存" ? "saveMessage up" : "saveMessage down"}>{balanceMessage}</div> : null}
       <div className="tableWrap">
         <table className="editableHoldingsTable">

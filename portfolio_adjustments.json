@@ -120,28 +120,270 @@
       "recorded_at": "2026-07-22T10:46:09+08:00",
       "reason": "exact_holdings_anchor_reconciliation",
       "before": {
-        "VOO": {"shares": 3.9726, "avg_cost": 662.5297475048155},
-        "QQQ": {"shares": 3.2929000000000004, "avg_cost": 718.7957551094779},
-        "ISRG": {"shares": 0.7873, "avg_cost": 400.25230026673444},
-        "TEM": {"shares": 1.7178999999999998, "avg_cost": 52.97101984981664},
-        "GOOGL": {"shares": 0.30879999999999996, "avg_cost": 363.71},
-        "MSFT": {"shares": 0.3036, "avg_cost": 422.81},
-        "AVGO": {"shares": 0.3465, "avg_cost": 421.25},
-        "001015": {"shares": 8000.0, "avg_cost": 2.36484859682875},
-        "PLTR": {"shares": 0.30879999999999996, "avg_cost": 129.50129533678756},
-        "SGOV": {"shares": 26.0, "avg_cost": 100.595}
+        "VOO": {
+          "shares": 3.9726,
+          "avg_cost": 662.5297475048155
+        },
+        "QQQ": {
+          "shares": 3.2929000000000004,
+          "avg_cost": 718.7957551094779
+        },
+        "ISRG": {
+          "shares": 0.7873,
+          "avg_cost": 400.25230026673444
+        },
+        "TEM": {
+          "shares": 1.7178999999999998,
+          "avg_cost": 52.97101984981664
+        },
+        "GOOGL": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 363.71
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.81
+        },
+        "AVGO": {
+          "shares": 0.3465,
+          "avg_cost": 421.25
+        },
+        "001015": {
+          "shares": 8000.0,
+          "avg_cost": 2.36484859682875
+        },
+        "PLTR": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 129.50129533678756
+        },
+        "SGOV": {
+          "shares": 26.0,
+          "avg_cost": 100.595
+        }
       },
       "after": {
-        "VOO": {"shares": 3.1753, "avg_cost": 657.2688171},
-        "QQQ": {"shares": 2.2163, "avg_cost": 720.8503628977656},
-        "ISRG": {"shares": 0.7873, "avg_cost": 400.25230026673444},
-        "TEM": {"shares": 1.7178999999999998, "avg_cost": 52.97208801443624},
-        "PLTR": {"shares": 0.30879999999999996, "avg_cost": 129.50879533678759},
-        "GOOGL": {"shares": 0.4442, "avg_cost": 363.76},
-        "MSFT": {"shares": 0.3036, "avg_cost": 422.83},
-        "AVGO": {"shares": 0.4569, "avg_cost": 421.23},
-        "SGOV": {"shares": 26.0, "avg_cost": 100.595},
-        "001015": {"shares": 8000.0, "avg_cost": 2.36484859682875}
+        "VOO": {
+          "shares": 3.1753,
+          "avg_cost": 657.2688171
+        },
+        "QQQ": {
+          "shares": 2.2163,
+          "avg_cost": 720.8503628977656
+        },
+        "ISRG": {
+          "shares": 0.7873,
+          "avg_cost": 400.25230026673444
+        },
+        "TEM": {
+          "shares": 1.7178999999999998,
+          "avg_cost": 52.97208801443624
+        },
+        "PLTR": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 129.50879533678759
+        },
+        "GOOGL": {
+          "shares": 0.4442,
+          "avg_cost": 363.76
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.83
+        },
+        "AVGO": {
+          "shares": 0.4569,
+          "avg_cost": 421.23
+        },
+        "SGOV": {
+          "shares": 26.0,
+          "avg_cost": 100.595
+        },
+        "001015": {
+          "shares": 8000.0,
+          "avg_cost": 2.36484859682875
+        }
+      }
+    },
+    {
+      "id": "adj-20260722T113456+0800-7",
+      "kind": "holdings",
+      "effective_date": "2026-07-22",
+      "recorded_at": "2026-07-22T11:34:56+08:00",
+      "reason": "exact_holdings_anchor_reconciliation",
+      "before": {
+        "VOO": {
+          "shares": 3.1753,
+          "avg_cost": 657.2688171
+        },
+        "QQQ": {
+          "shares": 2.2163,
+          "avg_cost": 720.8503628977656
+        },
+        "ISRG": {
+          "shares": 0.7873,
+          "avg_cost": 400.25230026673444
+        },
+        "TEM": {
+          "shares": 1.7178999999999998,
+          "avg_cost": 52.97208801443624
+        },
+        "PLTR": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 129.50879533678759
+        },
+        "GOOGL": {
+          "shares": 0.4442,
+          "avg_cost": 363.76
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.83
+        },
+        "AVGO": {
+          "shares": 0.4569,
+          "avg_cost": 421.23
+        },
+        "SGOV": {
+          "shares": 26.0,
+          "avg_cost": 100.595
+        },
+        "001015": {
+          "shares": 8000.0,
+          "avg_cost": 2.36484859682875
+        }
+      },
+      "after": {
+        "VOO": {
+          "shares": 3.1753,
+          "avg_cost": 657.2688171
+        },
+        "QQQ": {
+          "shares": 2.2163,
+          "avg_cost": 720.83
+        },
+        "ISRG": {
+          "shares": 0.7873,
+          "avg_cost": 400.18
+        },
+        "TEM": {
+          "shares": 1.7178999999999998,
+          "avg_cost": 52.97
+        },
+        "PLTR": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 129.47
+        },
+        "GOOGL": {
+          "shares": 0.4442,
+          "avg_cost": 363.76
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.83
+        },
+        "AVGO": {
+          "shares": 0.4569,
+          "avg_cost": 421.23
+        },
+        "SGOV": {
+          "shares": 26.0,
+          "avg_cost": 100.595
+        },
+        "001015": {
+          "shares": 8000.0,
+          "avg_cost": 2.36484859682875
+        }
+      }
+    },
+    {
+      "id": "adj-20260722T113937+0800-8",
+      "kind": "holdings",
+      "effective_date": "2026-07-22",
+      "recorded_at": "2026-07-22T11:39:37+08:00",
+      "reason": "exact_holdings_anchor_reconciliation",
+      "before": {
+        "VOO": {
+          "shares": 3.1753,
+          "avg_cost": 657.2688171
+        },
+        "QQQ": {
+          "shares": 2.2163,
+          "avg_cost": 720.83
+        },
+        "ISRG": {
+          "shares": 0.7873,
+          "avg_cost": 400.18
+        },
+        "TEM": {
+          "shares": 1.7178999999999998,
+          "avg_cost": 52.97
+        },
+        "PLTR": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 129.47
+        },
+        "GOOGL": {
+          "shares": 0.4442,
+          "avg_cost": 363.76
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.83
+        },
+        "AVGO": {
+          "shares": 0.4569,
+          "avg_cost": 421.23
+        },
+        "SGOV": {
+          "shares": 26.0,
+          "avg_cost": 100.595
+        },
+        "001015": {
+          "shares": 8000.0,
+          "avg_cost": 2.36484859682875
+        }
+      },
+      "after": {
+        "VOO": {
+          "shares": 3.1753,
+          "avg_cost": 657.2688171
+        },
+        "QQQ": {
+          "shares": 2.2163,
+          "avg_cost": 720.83
+        },
+        "ISRG": {
+          "shares": 0.7873,
+          "avg_cost": 400.18
+        },
+        "TEM": {
+          "shares": 1.7178999999999998,
+          "avg_cost": 52.97
+        },
+        "PLTR": {
+          "shares": 0.30879999999999996,
+          "avg_cost": 129.47
+        },
+        "GOOGL": {
+          "shares": 0.4442,
+          "avg_cost": 363.76
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.83
+        },
+        "AVGO": {
+          "shares": 0.4569,
+          "avg_cost": 421.23
+        },
+        "SGOV": {
+          "shares": 26.0,
+          "avg_cost": 100.595
+        },
+        "001015": {
+          "shares": 8000.0,
+          "avg_cost": 2.3648
+        }
       }
     }
   ]

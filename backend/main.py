@@ -587,7 +587,18 @@ def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
     )
     if adjustment:
         portfolio_module.invalidate_performance_history_from("evan", effective_date)
-    return {"saved": True, "holdings": after, "adjustment": adjustment}
+    # Rebuild the live P&L and performance payload before acknowledging the
+    # save.  The exact anchor remains authoritative for future EOD snapshots;
+    # this call refreshes the current point immediately without finalizing an
+    # incomplete trading day.
+    refreshed_dashboard = build_dashboard("evan")
+    return {
+        "saved": True,
+        "holdings": after,
+        "adjustment": adjustment,
+        "recalculated": True,
+        "dashboard": refreshed_dashboard,
+    }
 
 
 @app.put("/api/balances")

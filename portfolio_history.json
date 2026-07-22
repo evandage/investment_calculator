@@ -20,6 +20,8 @@
       "fx_rate": 6.801,
       "cash_usd": 2148.29,
       "cash_cny": 28.019999999999982,
+      "cash_cost_basis_usd": 2118.7031283971774,
+      "cash_cost_basis_cny": -1179.1407126300026,
       "holding_daily_pnl_cny": -603.4946030779988,
       "holding_daily_basis_cny": 84283.58774016201,
       "security_daily_pnl_cny": -603.4946030779988,
@@ -135,10 +137,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-07T08:00:00+08:00",
-      "total_pnl_pct": 1.3177490875101234,
-      "cash_cost_basis_usd": 2118.7031283971774,
-      "cash_cost_basis_cny": -1179.1407126300026
+      "updated_at": "2026-07-07T08:00:00+08:00"
     },
     {
       "date": "2026-07-08",
@@ -160,6 +159,8 @@
       "fx_rate": 6.8052,
       "cash_usd": 4415.0,
       "cash_cny": 28.019999999999982,
+      "cash_cost_basis_usd": 4385.413128397177,
+      "cash_cost_basis_cny": -1179.1407126300026,
       "holding_daily_pnl_cny": -177.55687388239787,
       "holding_daily_basis_cny": 71656.9947817968,
       "security_daily_pnl_cny": -177.55687388239787,
@@ -275,10 +276,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-08T08:00:00+08:00",
-      "total_pnl_pct": 1.0338438241034473,
-      "cash_cost_basis_usd": 4385.413128397177,
-      "cash_cost_basis_cny": -1179.1407126300026
+      "updated_at": "2026-07-08T08:00:00+08:00"
     },
     {
       "date": "2026-07-09",
@@ -300,6 +298,8 @@
       "fx_rate": 6.7979,
       "cash_usd": 4415.0,
       "cash_cny": 28.019999999999982,
+      "cash_cost_basis_usd": 4385.413128397177,
+      "cash_cost_basis_cny": -1179.1407126300026,
       "holding_daily_pnl_cny": 1224.7248864782982,
       "holding_daily_basis_cny": 67424.9969421808,
       "security_daily_pnl_cny": 1224.7248864782982,
@@ -415,10 +415,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-09T08:00:00+08:00",
-      "total_pnl_pct": 2.2229024725399045,
-      "cash_cost_basis_usd": 4385.413128397177,
-      "cash_cost_basis_cny": -1179.1407126300026
+      "updated_at": "2026-07-09T08:00:00+08:00"
     },
     {
       "date": "2026-07-10",
@@ -440,6 +437,8 @@
       "fx_rate": 6.7809,
       "cash_usd": 4385.0,
       "cash_cny": 28.019999999999982,
+      "cash_cost_basis_usd": 4355.413128397177,
+      "cash_cost_basis_cny": -1179.1407126300026,
       "holding_daily_pnl_cny": -496.3485121720999,
       "holding_daily_basis_cny": 68755.8559785661,
       "security_daily_pnl_cny": -496.3485121720999,
@@ -555,10 +554,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-10T08:00:00+08:00",
-      "total_pnl_pct": 1.5302714333328697,
-      "cash_cost_basis_usd": 4355.413128397177,
-      "cash_cost_basis_cny": -1179.1407126300026
+      "updated_at": "2026-07-10T08:00:00+08:00"
     },
     {
       "date": "2026-07-13",
@@ -580,6 +576,8 @@
       "fx_rate": 6.7851,
       "cash_usd": 4370.0,
       "cash_cny": 28.019999999999982,
+      "cash_cost_basis_usd": 4340.413128397177,
+      "cash_cost_basis_cny": -1179.1407126300026,
       "holding_daily_pnl_cny": -934.7958992614989,
       "holding_daily_basis_cny": 68385.510787166,
       "security_daily_pnl_cny": -934.7958992614989,
@@ -695,10 +693,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-13T08:00:00+08:00",
-      "total_pnl_pct": 0.6061865180781881,
-      "cash_cost_basis_usd": 4340.413128397177,
-      "cash_cost_basis_cny": -1179.1407126300026
+      "updated_at": "2026-07-13T08:00:00+08:00"
     },
     {
       "date": "2026-07-14",
@@ -720,6 +715,8 @@
       "fx_rate": 6.7766,
       "cash_usd": 4360.0,
       "cash_cny": 28.019999999999982,
+      "cash_cost_basis_usd": 4330.413128397177,
+      "cash_cost_basis_cny": -1179.1407126300026,
       "holding_daily_pnl_cny": 798.7598834366008,
       "holding_daily_basis_cny": 67469.927074897,
       "security_daily_pnl_cny": 798.7598834366008,
@@ -835,10 +832,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-14T08:00:00+08:00",
-      "total_pnl_pct": 1.3447702133093205,
-      "cash_cost_basis_usd": 4330.413128397177,
-      "cash_cost_basis_cny": -1179.1407126300026
+      "updated_at": "2026-07-14T08:00:00+08:00"
     },
     {
       "date": "2026-07-15",
@@ -860,6 +854,8 @@
       "fx_rate": 6.7697,
       "cash_usd": 4360.0,
       "cash_cny": 28.019999999999982,
+      "cash_cost_basis_usd": 4330.413128397177,
+      "cash_cost_basis_cny": -1179.1407126300026,
       "holding_daily_pnl_cny": 113.17932657929855,
       "holding_daily_basis_cny": 68229.0504024012,
       "security_daily_pnl_cny": 113.17932657929855,
@@ -975,10 +971,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-15T08:00:00+08:00",
-      "total_pnl_pct": 1.389784505556766,
-      "cash_cost_basis_usd": 4330.413128397177,
-      "cash_cost_basis_cny": -1179.1407126300026
+      "updated_at": "2026-07-15T08:00:00+08:00"
     },
     {
       "date": "2026-07-16",
@@ -1000,6 +993,8 @@
       "fx_rate": 6.7774,
       "cash_usd": 2888.4,
       "cash_cny": 0.3500000000003638,
+      "cash_cost_basis_usd": 2858.8131283971775,
+      "cash_cost_basis_cny": -1121.5599999999995,
       "holding_daily_pnl_cny": -966.3295664561989,
       "holding_daily_basis_cny": 68386.60447143101,
       "security_daily_pnl_cny": -966.3295664561989,
@@ -1115,10 +1110,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-16T08:00:00+08:00",
-      "total_pnl_pct": 0.5990860781548392,
-      "cash_cost_basis_usd": 2858.8131283971775,
-      "cash_cost_basis_cny": -1121.5599999999995
+      "updated_at": "2026-07-16T08:00:00+08:00"
     },
     {
       "date": "2026-07-17",
@@ -1140,6 +1132,8 @@
       "fx_rate": 6.7752,
       "cash_usd": 2787.4,
       "cash_cny": 0.3500000000003638,
+      "cash_cost_basis_usd": 2757.8131283971775,
+      "cash_cost_basis_cny": -1121.5599999999995,
       "holding_daily_pnl_cny": -1665.3806612692003,
       "holding_daily_basis_cny": 68092.01471971041,
       "security_daily_pnl_cny": -1665.3806612692003,
@@ -1255,10 +1249,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-17T08:00:00+08:00",
-      "total_pnl_pct": -1.3485572385884135,
-      "cash_cost_basis_usd": 2757.8131283971775,
-      "cash_cost_basis_cny": -1121.5599999999995
+      "updated_at": "2026-07-17T08:00:00+08:00"
     },
     {
       "date": "2026-07-20",
@@ -1280,6 +1271,8 @@
       "fx_rate": 6.7716,
       "cash_usd": 2727.4,
       "cash_cny": 0.3500000000003638,
+      "cash_cost_basis_usd": 2697.8131283971775,
+      "cash_cost_basis_cny": -1121.5599999999995,
       "holding_daily_pnl_cny": 528.0499902170006,
       "holding_daily_basis_cny": 66812.40578382461,
       "security_daily_pnl_cny": 528.0499902170006,
@@ -1395,10 +1388,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-20T08:00:00+08:00",
-      "total_pnl_pct": -0.7732793080483257,
-      "cash_cost_basis_usd": 2697.8131283971775,
-      "cash_cost_basis_cny": -1121.5599999999995
+      "updated_at": "2026-07-20T08:00:00+08:00"
     },
     {
       "date": "2026-07-21",
@@ -1420,6 +1410,8 @@
       "fx_rate": 6.7711,
       "cash_usd": 111.93000000000029,
       "cash_cny": 10090.11635,
+      "cash_cost_basis_usd": 82.34312839717784,
+      "cash_cost_basis_cny": 8882.955637369998,
       "holding_daily_pnl_cny": 1307.1594782026953,
       "holding_daily_basis_cny": 85047.1812302536,
       "security_daily_pnl_cny": 1307.1594782026953,
@@ -1543,10 +1535,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-21T08:00:00+08:00",
-      "total_pnl_pct": 0.733354154135792,
-      "cash_cost_basis_usd": 82.34312839717784,
-      "cash_cost_basis_cny": 8882.955637369998
+      "updated_at": "2026-07-21T08:00:00+08:00"
     }
   ]
 }

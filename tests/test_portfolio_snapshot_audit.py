@@ -3,12 +3,33 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from backend import main as main_module
 from backend import storage
 
 
 class PortfolioSnapshotAuditTests(unittest.TestCase):
+    def test_holding_anchor_save_invalidates_and_recalculates_dashboard(self):
+        before = {"VOO": {"shares": 1.0, "avg_cost": 100.0}}
+        after = {"VOO": {"shares": 1.5, "avg_cost": 101.0}}
+        adjustment = {"effective_date": "2026-07-22"}
+        invalidate = Mock()
+        with (
+            patch.object(main_module, "load_holdings", side_effect=[before, after]),
+            patch.object(main_module, "save_holdings"),
+            patch.object(main_module, "record_portfolio_adjustment", return_value=adjustment),
+            patch.object(main_module.portfolio_module, "performance_history_date", return_value="2026-07-22"),
+            patch.object(main_module.portfolio_module, "invalidate_performance_history_from", invalidate),
+            patch.object(main_module, "build_dashboard", return_value={"summary": {"total_pnl_cny": 12.0}}) as rebuild,
+        ):
+            result = main_module.update_holdings(main_module.HoldingPayload(holdings=after))
+
+        invalidate.assert_called_once_with("evan", "2026-07-22")
+        rebuild.assert_called_once_with("evan")
+        self.assertTrue(result["recalculated"])
+        self.assertEqual(result["dashboard"]["summary"]["total_pnl_cny"], 12.0)
+
     def test_legacy_balances_infer_cash_cost_basis_without_clamping_negative(self):
         normalized = storage.normalize_balances({
             "cash_usd": 5.0,
