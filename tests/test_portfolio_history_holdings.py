@@ -2,20 +2,148 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+from backend import portfolio
 from backend.portfolio import (
     cash_balances_for_history_day,
+    balances_for_history_day,
+    completed_daily_pct_for_symbol,
+    completed_portfolio_daily_pct,
     current_holdings_pnl_for_history_day,
     daily_fx_change_cny,
     fund_daily_status,
     historical_holding_pnl,
     holdings_snapshot_for_day,
     reconcile_current_book_daily_pnl,
+    total_pnl_for_history_snapshot,
 )
 
 
 class HistoricalHoldingsSnapshotTests(unittest.TestCase):
+    def test_confirmed_sale_moves_cost_not_profit_into_cash_basis(self):
+        balances = {
+            "cash_usd": 0.0,
+            "cash_cny": 0.0,
+            "cash_cost_basis_usd": 0.0,
+            "cash_cost_basis_cny": 0.0,
+            "realized_usd": 0.0,
+            "realized_cny": 0.0,
+            "voo_dividend_usd": 0.0,
+            "sgov_dividend_usd": 0.0,
+        }
+        holdings = {"001015": {"shares": 100.0, "avg_cost": 10.0}}
+        saved: dict[str, object] = {}
+
+        def capture_state(_user_id, next_holdings, next_balances):
+            saved["holdings"] = next_holdings
+            saved["balances"] = next_balances
+            return "local"
+
+        with (
+            patch.object(portfolio, "load_user_state", return_value=(holdings, balances, "local")),
+            patch.object(portfolio, "save_user_state", side_effect=capture_state),
+            patch.object(portfolio, "load_trade_records", return_value=[]),
+            patch.object(portfolio, "save_trade_records"),
+            patch.object(portfolio, "load_monthly_usage", return_value={
+                "planned_new_cash_usd": 700.0,
+                "planned_cash_by_month": {},
+                "bought_amount_by_symbol": {},
+                "sold_amount_by_symbol": {},
+                "bought_intensity_by_symbol": {},
+            }),
+            patch.object(portfolio, "save_monthly_usage"),
+            patch.object(portfolio, "record_portfolio_adjustment"),
+            patch.object(portfolio, "invalidate_performance_history_from"),
+        ):
+            portfolio.confirm_trades("evan", [{
+                "symbol": "001015",
+                "action": "sell",
+                "trade_date": "2026-07-21",
+                "amount_usd": 60.0,
+                "shares": 5.0,
+            }])
+
+        saved_balances = saved["balances"]
+        self.assertAlmostEqual(saved_balances["cash_cny"], 60.0)
+        self.assertAlmostEqual(saved_balances["cash_cost_basis_cny"], 50.0)
+        self.assertAlmostEqual(saved_balances["realized_cny"], 10.0)
+
+    def test_cny_sale_profit_is_not_counted_as_cash_principal(self):
+        result = total_pnl_for_history_snapshot(
+            {"date": "2026-07-21", "holdings_snapshot": {}, "holding_pnl_cny": 0.0, "fx_rate": 7.0},
+            {
+                "cash_cny": 1085.25,
+                "cash_usd": 0.0,
+                "cash_cost_basis_cny": 1000.0,
+                "cash_cost_basis_usd": 0.0,
+                "realized_cny": 85.25,
+                "realized_usd": 0.0,
+            },
+            [],
+            6.8,
+            7.0,
+        )
+
+        self.assertAlmostEqual(result["total_pnl_cny"], 85.25)
+        self.assertAlmostEqual(result["total_return_basis_cny"], 1000.0)
+
+    def test_usd_realized_profit_fx_is_not_counted_twice(self):
+        result = total_pnl_for_history_snapshot(
+            {"date": "2026-07-21", "holdings_snapshot": {}, "holding_pnl_cny": 0.0, "fx_rate": 7.0},
+            {
+                "cash_usd": 110.0,
+                "cash_cny": 0.0,
+                "cash_cost_basis_usd": 100.0,
+                "cash_cost_basis_cny": 0.0,
+                "realized_usd": 10.0,
+                "realized_cny": 0.0,
+            },
+            [],
+            6.8,
+            7.0,
+        )
+
+        self.assertAlmostEqual(result["fx_pnl_cny"], 20.0)
+        self.assertAlmostEqual(result["realized_pnl_cny"], 70.0)
+        self.assertAlmostEqual(result["total_pnl_cny"], 90.0)
+        self.assertAlmostEqual(result["total_return_basis_cny"], 680.0)
+
+    def test_historical_sale_rewinds_cash_basis_by_cost_not_proceeds(self):
+        balances = {
+            "cash_usd": 0.0,
+            "cash_cny": 1085.25,
+            "cash_cost_basis_usd": 0.0,
+            "cash_cost_basis_cny": 1000.0,
+            "realized_usd": 0.0,
+            "realized_cny": 85.25,
+        }
+        adjustments = [{
+            "kind": "balances",
+            "effective_date": "2026-07-21",
+            "reconstruct_from_date": "2026-07-20",
+            "recorded_at": "2026-07-22T10:00:00+08:00",
+            "after": balances,
+        }]
+        trades = [{
+            "trade_date": "2026-07-21",
+            "symbol": "001015",
+            "action": "sell",
+            "amount_usd": 1085.25,
+            "cost_basis": 1000.0,
+            "realized_pnl": 85.25,
+        }]
+
+        before = balances_for_history_day("2026-07-20", balances, trades, adjustments)
+        after = balances_for_history_day("2026-07-21", balances, trades, adjustments)
+
+        self.assertAlmostEqual(before["cash_cny"], 0.0)
+        self.assertAlmostEqual(before["cash_cost_basis_cny"], 0.0)
+        self.assertAlmostEqual(before["realized_cny"], 0.0)
+        self.assertAlmostEqual(after["cash_cny"], 1085.25)
+        self.assertAlmostEqual(after["cash_cost_basis_cny"], 1000.0)
+
     def test_daily_fx_change_uses_previous_usd_assets_and_cash(self):
         pnl_cny, exposure_usd, previous_fx = daily_fx_change_cny(
             6.7569,
@@ -88,16 +216,89 @@ class HistoricalHoldingsSnapshotTests(unittest.TestCase):
 
     def test_reconciled_daily_pnl_bridges_adjacent_cumulative_points(self):
         rows = [
-            {"date": "2026-07-20", "total_pnl_cny": -1900.0, "total_return_basis_cny": 90000.0},
-            {"date": "2026-07-21", "total_pnl_cny": -1750.0, "total_return_basis_cny": 90000.0},
+            {"date": "2026-07-20", "total_pnl_cny": -1900.0, "total_return_basis_cny": 90000.0, "holding_daily_pnl_cny": 12.0},
+            {"date": "2026-07-21", "total_pnl_cny": -1750.0, "total_return_basis_cny": 90000.0, "holding_daily_pnl_cny": 25.0},
         ]
         reconciled = reconcile_current_book_daily_pnl(rows)
-        self.assertAlmostEqual(reconciled[1]["holding_daily_pnl_cny"], 150.0)
+        self.assertAlmostEqual(reconciled[1]["holding_daily_pnl_cny"], 25.0)
+        self.assertAlmostEqual(reconciled[1]["total_daily_pnl_cny"], 150.0)
         self.assertAlmostEqual(
-            reconciled[0]["total_pnl_cny"] + reconciled[1]["holding_daily_pnl_cny"],
+            reconciled[0]["total_pnl_cny"] + reconciled[1]["total_daily_pnl_cny"],
             reconciled[1]["total_pnl_cny"],
         )
         self.assertTrue(reconciled[1]["daily_pnl_reconciled"])
+
+    def test_latest_same_day_cash_anchor_wins(self):
+        adjustments = [
+            {
+                "kind": "balances",
+                "effective_date": "2026-07-21",
+                "reconstruct_from_date": "2026-07-16",
+                "recorded_at": "2026-07-21T09:00:00+08:00",
+                "after": {"cash_usd": 2727.4, "cash_cny": 28.02},
+            },
+            {
+                "kind": "balances",
+                "effective_date": "2026-07-21",
+                "reconstruct_from_date": "2026-07-16",
+                "recorded_at": "2026-07-21T16:00:00+08:00",
+                "after": {"cash_usd": 111.93, "cash_cny": 10090.11635},
+            },
+        ]
+
+        self.assertEqual(
+            cash_balances_for_history_day("2026-07-21", {}, [], adjustments),
+            (111.93, 10090.11635),
+        )
+
+    def test_realized_pnl_is_rewound_by_trade_date(self):
+        balances = {
+            "cash_usd": 111.93,
+            "cash_cny": 10090.11635,
+            "realized_usd": 9.9968716028,
+            "realized_cny": 1207.16071263,
+        }
+        adjustments = [{
+            "kind": "balances",
+            "effective_date": "2026-07-21",
+            "reconstruct_from_date": "2026-07-16",
+            "recorded_at": "2026-07-22T10:00:00+08:00",
+            "after": balances,
+        }]
+        trades = [{
+            "trade_date": "2026-07-21",
+            "symbol": "001015",
+            "action": "sell",
+            "amount_usd": 10089.76635,
+            "realized_pnl": 85.25071263,
+        }]
+
+        before_sale = balances_for_history_day("2026-07-20", balances, trades, adjustments)
+        after_sale = balances_for_history_day("2026-07-21", balances, trades, adjustments)
+
+        self.assertAlmostEqual(before_sale["realized_cny"], 1121.91)
+        self.assertAlmostEqual(after_sale["realized_cny"], 1207.16071263)
+
+    def test_market_return_is_separate_from_trade_aware_position_return(self):
+        histories = {"TEM": {"2026-07-09": 100.0, "2026-07-10": 90.0}}
+        snapshot = {"TEM": {"shares": 2.0, "avg_cost": 95.0}}
+        trades = [
+            {
+                "trade_date": "2026-07-10",
+                "symbol": "TEM",
+                "action": "buy",
+                "shares": 1.0,
+                "amount_usd": 95.0,
+            }
+        ]
+
+        market_pct = completed_daily_pct_for_symbol("TEM", "2026-07-10", histories)
+        _, position_pcts, _, _ = completed_portfolio_daily_pct(
+            snapshot, "2026-07-10", histories, 1.0, trades
+        )
+
+        self.assertAlmostEqual(market_pct, -10.0)
+        self.assertAlmostEqual(position_pcts["TEM"], -15.0 / 195.0 * 100.0)
 
     def test_first_snapshot_does_not_reapply_trade_already_in_current_holdings(self):
         current = {"001015": {"shares": 12230.51, "avg_cost": 2.3648485968287503}}

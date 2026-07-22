@@ -1047,6 +1047,34 @@ h2 {
   min-width: 1280px;
 }
 
+.holdingAnchorBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(112, 215, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(24, 72, 104, 0.28);
+  color: var(--text-soft);
+}
+
+.holdingAnchorBar .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.holdingCellInput {
+  width: 112px;
+  min-width: 96px;
+  padding: 6px 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .saveMessage {
   margin: 8px 0 12px;
   font-weight: 800;

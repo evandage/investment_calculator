@@ -73,6 +73,8 @@ def default_balances() -> dict[str, float]:
     return {
         "cash_usd": 0.0,
         "cash_cny": 0.0,
+        "cash_cost_basis_usd": 0.0,
+        "cash_cost_basis_cny": 0.0,
         "realized_usd": 0.0,
         "realized_cny": 0.0,
         "voo_dividend_usd": 0.0,
@@ -84,12 +86,29 @@ def normalize_balances(raw: Any) -> dict[str, float]:
     out = default_balances()
     if not isinstance(raw, dict):
         return out
-    for key in out:
+    for key in ("cash_usd", "cash_cny", "realized_usd", "realized_cny", "voo_dividend_usd", "sgov_dividend_usd"):
         try:
             value = float(raw.get(key, out[key]))
         except (TypeError, ValueError):
             value = out[key]
         out[key] = max(0.0, value) if key.startswith("cash_") or key.endswith("_dividend_usd") else value
+    # Cash balance and principal basis are deliberately separate.  A basis can
+    # be negative when previously realized profit has already been reinvested;
+    # keeping that negative residual is what makes buys and sells basis-neutral.
+    inferred_basis = {
+        "cash_cost_basis_usd": (
+            out["cash_usd"]
+            - out["realized_usd"]
+            - out["voo_dividend_usd"]
+            - out["sgov_dividend_usd"]
+        ),
+        "cash_cost_basis_cny": out["cash_cny"] - out["realized_cny"],
+    }
+    for key, fallback in inferred_basis.items():
+        try:
+            out[key] = float(raw[key]) if key in raw else fallback
+        except (TypeError, ValueError):
+            out[key] = fallback
     return out
 
 
@@ -114,8 +133,10 @@ def record_portfolio_adjustment(
     before: dict[str, Any],
     after: dict[str, Any],
     reason: str = "manual_edit",
+    metadata: dict[str, Any] | None = None,
+    allow_noop: bool = False,
 ) -> dict[str, Any] | None:
-    if before == after:
+    if before == after and not allow_noop:
         return None
     raw = _read_json(PORTFOLIO_ADJUSTMENTS_FILE, {})
     store = raw if isinstance(raw, dict) else {}
@@ -133,6 +154,8 @@ def record_portfolio_adjustment(
         "before": before,
         "after": after,
     }
+    if metadata:
+        record.update(dict(metadata))
     rows.append(record)
     store[user_key] = rows
     _write_json(PORTFOLIO_ADJUSTMENTS_FILE, store)
@@ -485,17 +508,32 @@ def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
                 clean["holding_daily_pnl_pct"] = float(item.get("holding_daily_pnl_pct", 0.0))
             except (TypeError, ValueError):
                 clean["holding_daily_pnl_pct"] = None
+        for key in ("security_daily_pnl_pct", "total_daily_pnl_pct"):
+            if key in item:
+                try:
+                    clean[key] = float(item.get(key, 0.0))
+                except (TypeError, ValueError):
+                    clean[key] = None
         for key in (
             "holding_pnl_cny",
             "holding_cost_cny",
             "total_pnl_cny",
             "total_return_basis_cny",
             "fx_pnl_cny",
+            "realized_pnl_cny",
+            "realized_usd",
+            "realized_cny",
             "fx_rate",
             "cash_usd",
             "cash_cny",
+            "cash_cost_basis_usd",
+            "cash_cost_basis_cny",
             "holding_daily_pnl_cny",
             "holding_daily_basis_cny",
+            "security_daily_pnl_cny",
+            "security_daily_basis_cny",
+            "total_daily_pnl_cny",
+            "total_daily_basis_cny",
             "usd_return_pct",
             "usd_pnl_usd",
             "usd_cost_usd",
@@ -560,15 +598,16 @@ def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
                 except (TypeError, ValueError):
                     continue
         clean["benchmark_daily_pct"] = benchmark_daily_pct
-        symbol_daily_pct: dict[str, float] = {}
-        raw_symbol_daily_pct = item.get("symbol_daily_pct", {})
-        if isinstance(raw_symbol_daily_pct, dict):
-            for sym, value in raw_symbol_daily_pct.items():
-                try:
-                    symbol_daily_pct[str(sym).upper()] = float(value)
-                except (TypeError, ValueError):
-                    continue
-        clean["symbol_daily_pct"] = symbol_daily_pct
+        for field in ("symbol_daily_pct", "symbol_market_pct", "symbol_position_pct"):
+            normalized_pct: dict[str, float] = {}
+            raw_pct = item.get(field, {})
+            if isinstance(raw_pct, dict):
+                for sym, value in raw_pct.items():
+                    try:
+                        normalized_pct[str(sym).upper()] = float(value)
+                    except (TypeError, ValueError):
+                        continue
+            clean[field] = normalized_pct
         holdings_snapshot: dict[str, dict[str, float]] = {}
         raw_holdings_snapshot = item.get("holdings_snapshot", {})
         if isinstance(raw_holdings_snapshot, dict):

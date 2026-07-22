@@ -50,6 +50,7 @@ from .storage import (
     save_portfolio_history,
     save_trade_records,
     save_user_state,
+    record_portfolio_adjustment,
 )
 
 
@@ -761,6 +762,19 @@ def completed_daily_pct_for_symbol(symbol: str, day: str, histories: dict[str, d
     return (today_price / prev_price - 1.0) * 100.0
 
 
+def completed_market_daily_pcts(
+    symbols: set[str] | list[str],
+    day: str,
+    histories: dict[str, dict[str, float]],
+) -> dict[str, float]:
+    """Pure close-to-close returns, independent of the user's trades."""
+    return {
+        sym: pct
+        for sym in symbols
+        if (pct := completed_daily_pct_for_symbol(sym, day, histories)) is not None
+    }
+
+
 def quote_with_official_fund_nav(
     symbol: str,
     quote: dict[str, Any],
@@ -953,15 +967,49 @@ def historical_holding_pnl(
     return result
 
 
-def cash_balances_for_history_day(
+def accounting_balance_fields(
+    raw: dict[str, Any] | None,
+    dividend_fallback: dict[str, Any] | None = None,
+) -> dict[str, float]:
+    """Return cash, cash principal basis and realized P&L from any snapshot.
+
+    Balance anchors written before cash-basis tracking are migrated lazily from
+    the accounting identity ``cash = basis + realized + attributed income``.
+    """
+    source = raw or {}
+    fallback = dividend_fallback or {}
+    cash_usd = float(source.get("cash_usd", 0.0) or 0.0)
+    cash_cny = float(source.get("cash_cny", 0.0) or 0.0)
+    realized_usd = float(source.get("realized_usd", 0.0) or 0.0)
+    realized_cny = float(source.get("realized_cny", 0.0) or 0.0)
+    dividends_usd = sum(
+        float(source.get(key, fallback.get(key, 0.0)) or 0.0)
+        for key in ("voo_dividend_usd", "sgov_dividend_usd")
+    )
+    return {
+        "cash_usd": cash_usd,
+        "cash_cny": cash_cny,
+        "cash_cost_basis_usd": float(
+            source.get("cash_cost_basis_usd", cash_usd - realized_usd - dividends_usd)
+            or 0.0
+        ),
+        "cash_cost_basis_cny": float(
+            source.get("cash_cost_basis_cny", cash_cny - realized_cny) or 0.0
+        ),
+        "realized_usd": realized_usd,
+        "realized_cny": realized_cny,
+    }
+
+
+def balances_for_history_day(
     history_day: str,
     balances: dict[str, float],
     trades: list[dict[str, Any]],
     adjustments: list[dict[str, Any]] | None = None,
     fallback_cash_usd: float | None = None,
     fallback_cash_cny: float | None = None,
-) -> tuple[float, float]:
-    """Reconstruct EOD cash from a trusted balance anchor and dated trades.
+) -> dict[str, float]:
+    """Reconstruct EOD cash and realized P&L from a trusted dated anchor.
 
     A balance adjustment can opt into historical reconstruction with
     ``reconstruct_from_date``.  For days before that anchor we reverse later
@@ -983,11 +1031,19 @@ def cash_balances_for_history_day(
             row for row in anchors
             if str(row.get("effective_date") or "")[:10] >= history_day
         ]
-        anchor = future_anchors[0] if future_anchors else anchors[-1]
+        if future_anchors:
+            # An effective date can receive several corrections.  The newest
+            # correction on the nearest future date is the trusted EOD anchor.
+            nearest_day = min(str(row.get("effective_date") or "")[:10] for row in future_anchors)
+            anchor = max(
+                (row for row in future_anchors if str(row.get("effective_date") or "")[:10] == nearest_day),
+                key=lambda row: str(row.get("recorded_at") or ""),
+            )
+        else:
+            anchor = anchors[-1]
         anchor_day = str(anchor.get("effective_date") or "")[:10]
         anchor_balances = anchor.get("after") or {}
-        cash_usd = float(anchor_balances.get("cash_usd", 0.0) or 0.0)
-        cash_cny = float(anchor_balances.get("cash_cny", 0.0) or 0.0)
+        reconstructed = accounting_balance_fields(anchor_balances, balances)
         for trade in sorted(trades, key=lambda row: (str(row.get("trade_date") or "")[:10], str(row.get("created_at") or ""))):
             trade_day = str(trade.get("trade_date") or "")[:10]
             if not trade_day:
@@ -1000,27 +1056,46 @@ def cash_balances_for_history_day(
                     continue
                 # Reverse trades after the requested historical close.
                 direction = 1.0 if action == "buy" else -1.0
+                realized_direction = -1.0
             else:
                 if trade_day <= anchor_day or trade_day > history_day:
                     continue
                 # Replay trades after an older anchor.
                 direction = -1.0 if action == "buy" else 1.0
+                realized_direction = 1.0
             if symbol in USD_SYMBOLS:
-                cash_usd += direction * amount
+                reconstructed["cash_usd"] += direction * amount
+                realized_key = "realized_usd"
+                basis_key = "cash_cost_basis_usd"
             else:
-                cash_cny += direction * amount
-        return max(0.0, cash_usd), max(0.0, cash_cny)
+                reconstructed["cash_cny"] += direction * amount
+                realized_key = "realized_cny"
+                basis_key = "cash_cost_basis_cny"
+            if action == "sell":
+                cost_basis = max(0.0, float(trade.get("cost_basis", amount) or 0.0))
+                reconstructed[basis_key] += realized_direction * cost_basis
+                reconstructed[realized_key] += realized_direction * float(
+                    trade.get("realized_pnl", 0.0) or 0.0
+                )
+            else:
+                reconstructed[basis_key] += direction * amount
+        reconstructed["cash_usd"] = max(0.0, reconstructed["cash_usd"])
+        reconstructed["cash_cny"] = max(0.0, reconstructed["cash_cny"])
+        return reconstructed
 
     # Preserve older stored snapshots when no trustworthy dated anchor exists.
     if fallback_cash_usd is not None or fallback_cash_cny is not None:
-        return (
-            max(0.0, float(fallback_cash_usd or 0.0)),
-            max(0.0, float(fallback_cash_cny or 0.0)),
-        )
+        return accounting_balance_fields({
+            "cash_usd": max(0.0, float(fallback_cash_usd or 0.0)),
+            "cash_cny": max(0.0, float(fallback_cash_cny or 0.0)),
+            "realized_usd": float(balances.get("realized_usd", 0.0) or 0.0),
+            "realized_cny": float(balances.get("realized_cny", 0.0) or 0.0),
+            "voo_dividend_usd": float(balances.get("voo_dividend_usd", 0.0) or 0.0),
+            "sgov_dividend_usd": float(balances.get("sgov_dividend_usd", 0.0) or 0.0),
+        }, balances)
 
     # Legacy fallback for callers without snapshot cash fields.
-    cash_usd = float(balances.get("cash_usd", 0.0) or 0.0)
-    cash_cny = float(balances.get("cash_cny", 0.0) or 0.0)
+    reconstructed = accounting_balance_fields(balances)
     for trade in trades:
         trade_day = str(trade.get("trade_date") or "")[:10]
         if not trade_day or trade_day <= history_day:
@@ -1029,10 +1104,40 @@ def cash_balances_for_history_day(
         amount = max(0.0, float(trade.get("amount_usd", 0.0) or 0.0))
         direction = 1.0 if str(trade.get("action") or "").lower() == "buy" else -1.0
         if symbol in USD_SYMBOLS:
-            cash_usd += direction * amount
+            reconstructed["cash_usd"] += direction * amount
+            realized_key = "realized_usd"
+            basis_key = "cash_cost_basis_usd"
         else:
-            cash_cny += direction * amount
-    return max(0.0, cash_usd), max(0.0, cash_cny)
+            reconstructed["cash_cny"] += direction * amount
+            realized_key = "realized_cny"
+            basis_key = "cash_cost_basis_cny"
+        if str(trade.get("action") or "").lower() == "sell":
+            reconstructed[basis_key] -= max(0.0, float(trade.get("cost_basis", amount) or 0.0))
+            reconstructed[realized_key] -= float(trade.get("realized_pnl", 0.0) or 0.0)
+        else:
+            reconstructed[basis_key] += amount
+    reconstructed["cash_usd"] = max(0.0, reconstructed["cash_usd"])
+    reconstructed["cash_cny"] = max(0.0, reconstructed["cash_cny"])
+    return reconstructed
+
+
+def cash_balances_for_history_day(
+    history_day: str,
+    balances: dict[str, float],
+    trades: list[dict[str, Any]],
+    adjustments: list[dict[str, Any]] | None = None,
+    fallback_cash_usd: float | None = None,
+    fallback_cash_cny: float | None = None,
+) -> tuple[float, float]:
+    reconstructed = balances_for_history_day(
+        history_day,
+        balances,
+        trades,
+        adjustments,
+        fallback_cash_usd,
+        fallback_cash_cny,
+    )
+    return reconstructed["cash_usd"], reconstructed["cash_cny"]
 
 
 def total_pnl_for_history_snapshot(
@@ -1067,7 +1172,7 @@ def total_pnl_for_history_snapshot(
         fx_rate = fallback_fx
 
     history_day = str(row.get("date") or "")[:10]
-    cash_usd, cash_cny = cash_balances_for_history_day(
+    historical_balances = balances_for_history_day(
         history_day,
         balances,
         trades,
@@ -1075,18 +1180,34 @@ def total_pnl_for_history_snapshot(
         coerce_optional_float(row.get("cash_usd")),
         coerce_optional_float(row.get("cash_cny")),
     )
+    cash_usd = historical_balances["cash_usd"]
+    cash_cny = historical_balances["cash_cny"]
+    cash_cost_basis_usd = historical_balances["cash_cost_basis_usd"]
+    cash_cost_basis_cny = historical_balances["cash_cost_basis_cny"]
+    realized_usd = historical_balances["realized_usd"]
+    realized_cny = historical_balances["realized_cny"]
     price_pnl_cny = float(row.get("holding_pnl_cny", 0.0) or 0.0)
-    fx_pnl_cny = (usd_holding_cost + cash_usd) * (fx_rate - usd_cost_fx)
-    total_pnl_cny = price_pnl_cny + fx_pnl_cny
-    total_return_basis_cny = cny_holding_cost + (usd_holding_cost + cash_usd) * usd_cost_fx + cash_cny
+    fx_pnl_cny = (usd_holding_cost + cash_cost_basis_usd) * (fx_rate - usd_cost_fx)
+    realized_pnl_cny = realized_cny + realized_usd * fx_rate
+    total_pnl_cny = price_pnl_cny + fx_pnl_cny + realized_pnl_cny
+    total_return_basis_cny = (
+        cny_holding_cost
+        + (usd_holding_cost + cash_cost_basis_usd) * usd_cost_fx
+        + cash_cost_basis_cny
+    )
     return {
         "total_pnl_cny": total_pnl_cny,
         "total_return_basis_cny": total_return_basis_cny,
         "total_pnl_pct": total_pnl_cny / total_return_basis_cny * 100.0 if total_return_basis_cny > 0 else 0.0,
         "fx_pnl_cny": fx_pnl_cny,
+        "realized_pnl_cny": realized_pnl_cny,
+        "realized_usd": realized_usd,
+        "realized_cny": realized_cny,
         "fx_rate": fx_rate,
         "cash_usd": cash_usd,
         "cash_cny": cash_cny,
+        "cash_cost_basis_usd": cash_cost_basis_usd,
+        "cash_cost_basis_cny": cash_cost_basis_cny,
     }
 
 
@@ -1116,6 +1237,7 @@ def current_holdings_pnl_for_history_day(
     realized_pnl_cny = float(balances.get("realized_cny", 0.0) or 0.0)
     holding_pnl["amount_cny"] += archived_pnl_cny
     holding_pnl["value_cny"] += archived_pnl_cny
+    unrealized_and_archived_pnl_cny = holding_pnl["amount_cny"]
     holding_pnl["amount_cny"] += realized_pnl_cny + realized_pnl_usd * fx_rate
     holding_pnl["value_cny"] += realized_pnl_cny + realized_pnl_usd * fx_rate
     holding_pnl["pct"] = (
@@ -1135,7 +1257,7 @@ def current_holdings_pnl_for_history_day(
     probe = {
         "date": day,
         "holdings_snapshot": holdings,
-        "holding_pnl_cny": holding_pnl["amount_cny"],
+        "holding_pnl_cny": unrealized_and_archived_pnl_cny,
         "holding_cost_cny": holding_pnl["cost_cny"],
         "fx_rate": fx_rate,
         "cash_usd": snapshot_cash_usd,
@@ -1161,7 +1283,13 @@ def current_holdings_pnl_for_history_day(
 
 
 def reconcile_current_book_daily_pnl(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Make CNY daily P&L bridge exactly between adjacent cumulative P&L points."""
+    """Add an explicit bridge between adjacent cumulative total-P&L points.
+
+    ``holding_daily_*`` is a trade-aware securities return and must not be
+    overwritten by a change in cumulative total P&L (which also contains FX,
+    cash and realized P&L).  Keeping both metrics removes the old field-name
+    ambiguity while preserving backwards-compatible raw snapshots.
+    """
     previous_total: float | None = None
     for row in rows:
         current_total = coerce_optional_float(row.get("total_pnl_cny"))
@@ -1172,10 +1300,9 @@ def reconcile_current_book_daily_pnl(rows: list[dict[str, Any]]) -> list[dict[st
             daily_pnl = current_total - previous_total
             prior_value = (return_basis or 0.0) + previous_total
             daily_pct = daily_pnl / prior_value * 100.0 if prior_value > 0 else 0.0
-            row["holding_daily_pnl_cny"] = daily_pnl
-            row["holding_daily_basis_cny"] = prior_value
-            row["holding_daily_pnl_pct"] = daily_pct
-            row["portfolio_daily_pct"] = daily_pct
+            row["total_daily_pnl_cny"] = daily_pnl
+            row["total_daily_basis_cny"] = prior_value
+            row["total_daily_pnl_pct"] = daily_pct
             row["daily_pnl_reconciled"] = True
         previous_total = current_total
     return rows
@@ -1507,7 +1634,7 @@ def ensure_completed_performance_history(
             needs_pnl_repair = (
                 snapshot_changed
                 or int(row.get("pnl_basis_version", 0) or 0) < 2
-                or int(row.get("snapshot_schema_version", 0) or 0) < 4
+                or int(row.get("snapshot_schema_version", 0) or 0) < 7
                 or (
                     historical_fx is not None
                     and abs(float(row.get("fx_rate", 0.0) or 0.0) - historical_fx) > 1e-9
@@ -1529,9 +1656,10 @@ def ensure_completed_performance_history(
                 usd_holding_pnl = historical_holding_pnl(
                     row["holdings_snapshot"], holding_prices, row_fx, balances, set(USD_SYMBOLS), True
                 )
-                portfolio_daily_pct, symbol_daily_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(
+                portfolio_daily_pct, symbol_position_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(
                     row["holdings_snapshot"], day, histories, row_fx, trades
                 )
+                symbol_market_pct = completed_market_daily_pcts(set(row["holdings_snapshot"]), day, histories)
                 usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
                     row["holdings_snapshot"], day, histories, row_fx, trades, set(USD_SYMBOLS), True
                 )
@@ -1544,7 +1672,14 @@ def ensure_completed_performance_history(
                         "holding_daily_pnl_pct": portfolio_daily_pct,
                         "holding_daily_pnl_cny": holding_daily_pnl_cny,
                         "holding_daily_basis_cny": holding_daily_basis_cny,
-                        "symbol_daily_pct": symbol_daily_pct,
+                        "security_daily_pnl_pct": portfolio_daily_pct,
+                        "security_daily_pnl_cny": holding_daily_pnl_cny,
+                        "security_daily_basis_cny": holding_daily_basis_cny,
+                        "symbol_position_pct": symbol_position_pct,
+                        "symbol_market_pct": symbol_market_pct,
+                        # Legacy consumers expect this field to mean the
+                        # instrument's own close-to-close market move.
+                        "symbol_daily_pct": symbol_market_pct,
                         "usd_return_pct": usd_holding_pnl["pct"],
                         "usd_pnl_usd": usd_holding_pnl["amount_cny"],
                         "usd_cost_usd": usd_holding_pnl["cost_cny"],
@@ -1553,8 +1688,8 @@ def ensure_completed_performance_history(
                         "usd_daily_pnl_usd": holding_daily_pnl_usd,
                         "usd_daily_basis_usd": holding_daily_basis_usd,
                         "pnl_basis_version": 2,
-                        "snapshot_schema_version": 4,
-                        "calculation_version": "2026-07-eod-v4-dated-fx",
+                        "snapshot_schema_version": 7,
+                        "calculation_version": "2026-07-eod-v7-cash-cost-basis",
                         "fx_rate": row_fx,
                         "closing_prices": holding_prices,
                         "price_source": "historical_daily_close",
@@ -1666,7 +1801,8 @@ def ensure_completed_performance_history(
         holdings_snapshot = holdings_snapshot_for_day(
             day, holdings, sorted(rows_by_date.values(), key=lambda item: item["date"]), trades, adjustments
         )
-        portfolio_daily_pct, symbol_daily_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(holdings_snapshot, day, histories, day_fx, trades)
+        portfolio_daily_pct, symbol_position_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(holdings_snapshot, day, histories, day_fx, trades)
+        symbol_market_pct = completed_market_daily_pcts(set(holdings_snapshot), day, histories)
         usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
             holdings_snapshot,
             day,
@@ -1710,6 +1846,9 @@ def ensure_completed_performance_history(
             "holding_daily_pnl_pct": portfolio_daily_pct,
             "holding_daily_pnl_cny": holding_daily_pnl_cny,
             "holding_daily_basis_cny": holding_daily_basis_cny,
+            "security_daily_pnl_pct": portfolio_daily_pct,
+            "security_daily_pnl_cny": holding_daily_pnl_cny,
+            "security_daily_basis_cny": holding_daily_basis_cny,
             "usd_return_pct": usd_holding_pnl["pct"],
             "usd_pnl_usd": usd_holding_pnl["amount_cny"],
             "usd_cost_usd": usd_holding_pnl["cost_cny"],
@@ -1718,8 +1857,8 @@ def ensure_completed_performance_history(
             "usd_daily_pnl_usd": holding_daily_pnl_usd,
             "usd_daily_basis_usd": holding_daily_basis_usd,
             "pnl_basis_version": 2,
-            "snapshot_schema_version": 4,
-            "calculation_version": "2026-07-eod-v4-dated-fx",
+            "snapshot_schema_version": 7,
+            "calculation_version": "2026-07-eod-v7-cash-cost-basis",
             "closing_prices": holding_prices,
             "price_source": "historical_daily_close",
             "fx_source": "Sina fx_susdcny daily close",
@@ -1732,7 +1871,9 @@ def ensure_completed_performance_history(
             "benchmark_prices": benchmark_prices,
             "benchmark_daily_pct": benchmark_daily_pct,
             "market_open_symbols": market_union_open_symbols(day, histories),
-            "symbol_daily_pct": symbol_daily_pct,
+            "symbol_position_pct": symbol_position_pct,
+            "symbol_market_pct": symbol_market_pct,
+            "symbol_daily_pct": symbol_market_pct,
             "holdings_snapshot": holdings_snapshot,
             "estimated_symbols": [],
             "finalized": True,
@@ -1780,6 +1921,8 @@ def build_performance_history(
     fx_pnl_cny: float,
     cash_usd: float,
     cash_cny: float,
+    cash_cost_basis_usd: float,
+    cash_cost_basis_cny: float,
     holding_daily_pnl_cny: float,
     holding_daily_basis_cny: float,
     usd_return_pct: float,
@@ -1831,49 +1974,10 @@ def build_performance_history(
         for row in ensure_completed_performance_history(user_id, holdings, fx, now)
         if row.get("finalized") and (row.get("market_open_symbols") or is_weekday(row["date"]))
     ]
-    # Cumulative holding P&L answers "what would today's book have earned at
-    # that day's close?" This keeps adjacent dates continuous even when older
-    # trades or manual holding edits are incomplete. Daily weighted P&L fields
-    # remain untouched and continue to use each day's actual snapshot.
-    _, history_balances, _ = load_user_state(user_id)
-    history_trades = load_trade_records(user_id)
-    history_adjustments = load_portfolio_adjustments(user_id)
-    history_usd_cost_fx = float(
-        fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx
-    )
-    holding_histories = fetch_close_histories(set(holdings))
-    archived_pnl_usd = sum(
-        float(item.get("pnl_usd", 0.0) or 0.0)
-        for item in load_closed_satellite_pnl().values()
-    )
-    anchored_rows: list[dict[str, Any]] = []
-    for stored_row in rows:
-        row = dict(stored_row)
-        row_day = str(row.get("date") or "")[:10]
-        row_fx = coerce_optional_float(row.get("fx_rate")) or fx
-        row_prices = {
-            sym: price
-            for sym in holdings
-            if (price := close_on(holding_histories.get(sym, {}), row_day) or close_on_or_before(holding_histories.get(sym, {}), row_day)) is not None
-        }
-        if row_day and row_prices:
-            row.update(
-                current_holdings_pnl_for_history_day(
-                    row_day,
-                    holdings,
-                    row_prices,
-                    history_balances,
-                    row_fx,
-                    history_usd_cost_fx,
-                    archived_pnl_usd,
-                    history_trades,
-                    history_adjustments,
-                    coerce_optional_float(row.get("cash_usd")),
-                    coerce_optional_float(row.get("cash_cny")),
-                )
-            )
-        anchored_rows.append(row)
-    rows = anchored_rows
+    # Finalized dates are immutable EOD facts.  Never revalue them with today's
+    # holdings: doing so rewrites history whenever a position is edited.  A
+    # trusted dated holdings anchor plus later trades/adjustments governs only
+    # snapshots on and after that anchor.
     current = {
         "date": today,
         "portfolio_daily_pct": portfolio_daily_pct,
@@ -1888,9 +1992,14 @@ def build_performance_history(
         "fx_source": "live USD/CNY spot",
         "cash_usd": cash_usd,
         "cash_cny": cash_cny,
+        "cash_cost_basis_usd": cash_cost_basis_usd,
+        "cash_cost_basis_cny": cash_cost_basis_cny,
         "holding_daily_pnl_pct": portfolio_daily_pct,
         "holding_daily_pnl_cny": holding_daily_pnl_cny,
         "holding_daily_basis_cny": holding_daily_basis_cny,
+        "security_daily_pnl_pct": portfolio_daily_pct,
+        "security_daily_pnl_cny": holding_daily_pnl_cny,
+        "security_daily_basis_cny": holding_daily_basis_cny,
         "usd_return_pct": usd_return_pct,
         "usd_pnl_usd": usd_pnl_usd,
         "usd_cost_usd": usd_cost_usd,
@@ -1939,14 +2048,27 @@ def build_performance_history(
             "date": PERFORMANCE_CHART_BASELINE_DATE,
             # 总资产和美元资产保留基准日的实际记录；基准指数从该日归零。
             "portfolio_return_pct": baseline_total_return_pct,
-            "portfolio_daily_pct": coerce_optional_float(baseline_row.get("holding_daily_pnl_pct")) or coerce_optional_float(baseline_row.get("portfolio_daily_pct")) or 0.0,
+            "portfolio_daily_pct": coerce_optional_float(baseline_row.get("total_daily_pnl_pct")) or 0.0,
             "holding_pnl_cny": coerce_optional_float(baseline_row.get("holding_pnl_cny")),
             "holding_cost_cny": coerce_optional_float(baseline_row.get("holding_cost_cny")),
             "holding_daily_pnl_cny": coerce_optional_float(baseline_row.get("holding_daily_pnl_cny")),
             "holding_daily_basis_cny": coerce_optional_float(baseline_row.get("holding_daily_basis_cny")),
+            "security_daily_pnl_pct": coerce_optional_float(baseline_row.get("security_daily_pnl_pct", baseline_row.get("holding_daily_pnl_pct"))),
+            "security_daily_pnl_cny": coerce_optional_float(baseline_row.get("security_daily_pnl_cny", baseline_row.get("holding_daily_pnl_cny"))),
+            "security_daily_basis_cny": coerce_optional_float(baseline_row.get("security_daily_basis_cny", baseline_row.get("holding_daily_basis_cny"))),
+            "total_daily_pnl_pct": coerce_optional_float(baseline_row.get("total_daily_pnl_pct")),
+            "total_daily_pnl_cny": coerce_optional_float(baseline_row.get("total_daily_pnl_cny")),
+            "total_daily_basis_cny": coerce_optional_float(baseline_row.get("total_daily_basis_cny")),
             "total_pnl_cny": baseline_total_pnl_cny,
             "total_return_basis_cny": baseline_total_basis_cny,
             "fx_pnl_cny": coerce_optional_float(baseline_row.get("fx_pnl_cny")),
+            "realized_pnl_cny": coerce_optional_float(baseline_row.get("realized_pnl_cny")),
+            "realized_usd": coerce_optional_float(baseline_row.get("realized_usd")),
+            "realized_cny": coerce_optional_float(baseline_row.get("realized_cny")),
+            "cash_usd": coerce_optional_float(baseline_row.get("cash_usd")),
+            "cash_cny": coerce_optional_float(baseline_row.get("cash_cny")),
+            "cash_cost_basis_usd": coerce_optional_float(baseline_row.get("cash_cost_basis_usd")),
+            "cash_cost_basis_cny": coerce_optional_float(baseline_row.get("cash_cost_basis_cny")),
             "fx_rate": coerce_optional_float(baseline_row.get("fx_rate")),
             "fx_source": str(baseline_row.get("fx_source") or ""),
             "usd_return_pct": coerce_optional_float(baseline_row.get("usd_return_pct")) or 0.0,
@@ -1967,10 +2089,7 @@ def build_performance_history(
     for row_index, row in enumerate(rows):
         if str(row.get("date", "")) <= PERFORMANCE_CHART_BASELINE_DATE:
             continue
-        portfolio_daily = coerce_optional_float(row.get("portfolio_daily_pct"))
-        holding_daily = coerce_optional_float(row.get("holding_daily_pnl_pct"))
-        if holding_daily is not None:
-            portfolio_daily = holding_daily
+        portfolio_daily = coerce_optional_float(row.get("total_daily_pnl_pct"))
         if portfolio_daily is None:
             portfolio_daily = 0.0
         total_pnl_pct = coerce_optional_float(row.get("portfolio_return_pct"))
@@ -1989,10 +2108,23 @@ def build_performance_history(
             "total_pnl_cny": total_pnl_cny,
             "total_return_basis_cny": total_return_basis_cny,
             "fx_pnl_cny": coerce_optional_float(row.get("fx_pnl_cny")),
+            "realized_pnl_cny": coerce_optional_float(row.get("realized_pnl_cny")),
+            "realized_usd": coerce_optional_float(row.get("realized_usd")),
+            "realized_cny": coerce_optional_float(row.get("realized_cny")),
+            "cash_usd": coerce_optional_float(row.get("cash_usd")),
+            "cash_cny": coerce_optional_float(row.get("cash_cny")),
+            "cash_cost_basis_usd": coerce_optional_float(row.get("cash_cost_basis_usd")),
+            "cash_cost_basis_cny": coerce_optional_float(row.get("cash_cost_basis_cny")),
             "fx_rate": coerce_optional_float(row.get("fx_rate")),
             "fx_source": str(row.get("fx_source") or ""),
             "holding_daily_pnl_cny": coerce_optional_float(row.get("holding_daily_pnl_cny")),
             "holding_daily_basis_cny": coerce_optional_float(row.get("holding_daily_basis_cny")),
+            "security_daily_pnl_pct": coerce_optional_float(row.get("security_daily_pnl_pct", row.get("holding_daily_pnl_pct"))),
+            "security_daily_pnl_cny": coerce_optional_float(row.get("security_daily_pnl_cny", row.get("holding_daily_pnl_cny"))),
+            "security_daily_basis_cny": coerce_optional_float(row.get("security_daily_basis_cny", row.get("holding_daily_basis_cny"))),
+            "total_daily_pnl_pct": coerce_optional_float(row.get("total_daily_pnl_pct")),
+            "total_daily_pnl_cny": coerce_optional_float(row.get("total_daily_pnl_cny")),
+            "total_daily_basis_cny": coerce_optional_float(row.get("total_daily_basis_cny")),
             "usd_return_pct": coerce_optional_float(row.get("usd_return_pct")),
             "usd_daily_pct": coerce_optional_float(row.get("usd_daily_pct")),
             "usd_pnl_usd": coerce_optional_float(row.get("usd_pnl_usd")),
@@ -2003,6 +2135,8 @@ def build_performance_history(
             "cash_flow_flag": bool(row.get("cash_flow_flag")),
             "market_open_symbols": row.get("market_open_symbols") or [],
             "symbol_daily_pct": row.get("symbol_daily_pct") or {},
+            "symbol_market_pct": row.get("symbol_market_pct") or row.get("symbol_daily_pct") or {},
+            "symbol_position_pct": row.get("symbol_position_pct") or {},
             "holdings_snapshot": row.get("holdings_snapshot") or {},
         }
         daily_pcts = row.get("benchmark_daily_pct") or {}
@@ -2511,6 +2645,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     )
     realized_pnl_usd = float(balances.get("realized_usd", 0.0) or 0.0)
     realized_pnl_cny = float(balances.get("realized_cny", 0.0) or 0.0)
+    cash_cost_basis_usd = float(balances.get("cash_cost_basis_usd", 0.0) or 0.0)
+    cash_cost_basis_cny = float(balances.get("cash_cost_basis_cny", 0.0) or 0.0)
     archived_pnl = load_closed_satellite_pnl()
     archived_display_pnl_usd = sum(
         float(item.get("pnl_usd", 0.0) or 0.0) for item in archived_pnl.values()
@@ -2543,13 +2679,17 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         + realized_pnl_cny
         + realized_pnl_usd * fx
     )
-    usd_cash_fx_pnl_cny = cash_usd * (fx - usd_cost_fx)
+    usd_cash_fx_pnl_cny = cash_cost_basis_usd * (fx - usd_cost_fx)
     total_pnl_cny = holding_pnl_cny + usd_cash_fx_pnl_cny
     total_realized_pnl_cny = realized_pnl_cny + usd_realized_pnl_usd * fx
     total_unrealized_pnl_cny = total_pnl_cny - total_realized_pnl_cny
-    total_return_basis_cny = total_cost_cny + cash_usd * usd_cost_fx + cash_cny
+    total_return_basis_cny = (
+        total_cost_cny
+        + cash_cost_basis_usd * usd_cost_fx
+        + cash_cost_basis_cny
+    )
     total_pnl_pct = total_pnl_cny / total_return_basis_cny * 100.0 if total_return_basis_cny > 0 else 0.0
-    usd_fx_pnl_cny = (usd_cost_usd + cash_usd) * (fx - usd_cost_fx)
+    usd_fx_pnl_cny = (usd_cost_usd + cash_cost_basis_usd) * (fx - usd_cost_fx)
     current_rows = [
         row
         for row in rows
@@ -2576,6 +2716,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         usd_fx_pnl_cny,
         cash_usd,
         cash_cny,
+        cash_cost_basis_usd,
+        cash_cost_basis_cny,
         weighted_daily_change_cny,
         total_value_cny,
         usd_return_pct,
@@ -2695,6 +2837,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             "total_value_cny": total_value_cny,
             "total_cost_cny": total_cost_cny,
             "total_return_basis_cny": total_return_basis_cny,
+            "cash_cost_basis_usd": cash_cost_basis_usd,
+            "cash_cost_basis_cny": cash_cost_basis_cny,
             "holding_pnl_cny": holding_pnl_cny,
             "usd_pnl_usd": usd_pnl_usd,
             "usd_realized_pnl_usd": usd_realized_pnl_usd,
@@ -3317,6 +3461,7 @@ def delete_fx_conversion_record(user_id: str, record_id: str) -> dict[str, Any]:
 
 def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, Any]:
     holdings, balances, _ = load_user_state(user_id)
+    balances_before = dict(balances)
     now = datetime.now(TZ_SHANGHAI)
     month_key = now.strftime("%Y-%m")
     usage = load_monthly_usage(user_id, month_key)
@@ -3389,6 +3534,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
 
 def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, Any]:
     holdings, balances, _ = load_user_state(user_id)
+    balances_before = dict(balances)
     now = datetime.now(TZ_SHANGHAI)
     records = load_trade_records(user_id)
     usage_by_month: dict[str, dict[str, Any]] = {}
@@ -3437,9 +3583,15 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             new_avg_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
             if is_cny_trade:
                 available_cny += amount
+                balances["cash_cost_basis_cny"] = (
+                    float(balances.get("cash_cost_basis_cny", 0.0) or 0.0) + cost_basis
+                )
                 balances["realized_cny"] = float(balances.get("realized_cny", 0.0)) + sale_pnl
             else:
                 available_usd += amount
+                balances["cash_cost_basis_usd"] = (
+                    float(balances.get("cash_cost_basis_usd", 0.0) or 0.0) + cost_basis
+                )
                 realized_pnl += sale_pnl
                 if tracks_monthly_usage:
                     sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
@@ -3456,8 +3608,14 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             sale_pnl = 0.0
             if is_cny_trade:
                 available_cny -= amount
+                balances["cash_cost_basis_cny"] = (
+                    float(balances.get("cash_cost_basis_cny", 0.0) or 0.0) - amount
+                )
             else:
                 available_usd -= amount
+                balances["cash_cost_basis_usd"] = (
+                    float(balances.get("cash_cost_basis_usd", 0.0) or 0.0) - amount
+                )
                 if tracks_monthly_usage:
                     amounts[sym] = float(amounts.get(sym, 0.0)) + amount
                     new_intensity = normalize_intensity(item.get("intensity", "normal"))
@@ -3504,6 +3662,16 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             sold_amount_by_symbol=dict(usage.get("sold_amount_by_symbol", {})),
         )
     if earliest_trade_date:
+        anchor_day = performance_history_date(now)
+        record_portfolio_adjustment(
+            user_id,
+            "balances",
+            anchor_day,
+            balances_before,
+            dict(balances),
+            "trade_batch_cash_anchor",
+            {"reconstruct_from_date": earliest_trade_date},
+        )
         invalidate_performance_history_from(user_id, earliest_trade_date)
     return {
         "saved": True,
@@ -3553,6 +3721,7 @@ def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
         raise ValueError("交易记录不存在")
 
     holdings, balances, _ = load_user_state(user_id)
+    balances_before = dict(balances)
     sym = str(target.get("symbol", "")).upper()
     action = str(target.get("action", "buy")).lower()
     amount = max(0.0, float(target.get("amount_usd", 0.0) or 0.0))
@@ -3575,8 +3744,14 @@ def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
         }
         if is_cny_trade:
             balances["cash_cny"] = float(balances.get("cash_cny", 0.0) or 0.0) + amount
+            balances["cash_cost_basis_cny"] = (
+                float(balances.get("cash_cost_basis_cny", 0.0) or 0.0) + amount
+            )
         else:
             balances["cash_usd"] = float(balances.get("cash_usd", 0.0) or 0.0) + amount
+            balances["cash_cost_basis_usd"] = (
+                float(balances.get("cash_cost_basis_usd", 0.0) or 0.0) + amount
+            )
     elif action == "sell":
         cost_basis = float(target.get("cost_basis", 0.0) or 0.0)
         avg_restore_cost = cost_basis / shares if cost_basis > 0 else current_cost
@@ -3590,12 +3765,18 @@ def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
             if amount > current_cash + 1e-9:
                 raise ValueError(f"人民币现金不足，无法撤销该次卖出")
             balances["cash_cny"] = current_cash - amount
+            balances["cash_cost_basis_cny"] = (
+                float(balances.get("cash_cost_basis_cny", 0.0) or 0.0) - cost_basis
+            )
             balances["realized_cny"] = float(balances.get("realized_cny", 0.0) or 0.0) - float(target.get("realized_pnl", 0.0) or 0.0)
         else:
             current_cash = float(balances.get("cash_usd", 0.0) or 0.0)
             if amount > current_cash + 1e-9:
                 raise ValueError(f"美元现金不足，无法撤销该次卖出")
             balances["cash_usd"] = current_cash - amount
+            balances["cash_cost_basis_usd"] = (
+                float(balances.get("cash_cost_basis_usd", 0.0) or 0.0) - cost_basis
+            )
             balances["realized_usd"] = float(balances.get("realized_usd", 0.0) or 0.0) - float(target.get("realized_pnl", 0.0) or 0.0)
     else:
         raise ValueError("交易方向无效")
@@ -3608,5 +3789,14 @@ def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
         _rebuild_month_usage_from_records(user_id, month_key, remaining_records)
     trade_date = str(target.get("trade_date") or "")[:10]
     if trade_date:
+        record_portfolio_adjustment(
+            user_id,
+            "balances",
+            performance_history_date(),
+            balances_before,
+            dict(balances),
+            "trade_delete_cash_anchor",
+            {"reconstruct_from_date": trade_date},
+        )
         invalidate_performance_history_from(user_id, trade_date)
     return {"deleted": True, "trade_id": trade_id, "trades": load_trade_records(user_id)}

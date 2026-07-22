@@ -97,6 +97,8 @@ function fmtPct(value) {
 const BALANCE_FIELD_LABELS = {
   cash_usd: "USD 现金",
   cash_cny: "CNY 现金",
+  cash_cost_basis_usd: "USD 现金成本基准",
+  cash_cost_basis_cny: "CNY 现金成本基准",
   realized_usd: "USD 已变现",
   realized_cny: "CNY 已变现",
   voo_dividend_usd: "VOO 累计分红",
@@ -1075,7 +1077,7 @@ function withUsdPerformanceFallback(points) {
     }
 
     const snapshot = point?.holdings_snapshot || {};
-    const symbolDailyPct = point?.symbol_daily_pct || {};
+    const symbolDailyPct = point?.symbol_position_pct || point?.symbol_daily_pct || {};
     let basis = 0;
     let pnl = 0;
     USD_PERFORMANCE_SYMBOLS.forEach((symbol) => {
@@ -1285,9 +1287,9 @@ function PerformanceLightweightChart({ points, series }) {
             {tooltip.point.total_pnl_cny == null ? "-" : fmtMoney(tooltip.point.total_pnl_cny, "CNY")}
             &nbsp;·&nbsp;{tooltip.point.portfolio_return_pct == null ? "-" : fmtPct(tooltip.point.portfolio_return_pct)}
           </span>
-          <span className={tone(tooltip.point.holding_daily_pnl_cny)}>
+          <span className={tone(tooltip.point.total_daily_pnl_cny)}>
             总资产当日加权&nbsp;
-            {tooltip.point.holding_daily_pnl_cny == null ? "-" : fmtMoney(tooltip.point.holding_daily_pnl_cny, "CNY")}
+            {tooltip.point.total_daily_pnl_cny == null ? "-" : fmtMoney(tooltip.point.total_daily_pnl_cny, "CNY")}
             &nbsp;·&nbsp;{tooltip.point.portfolio_daily_pct == null ? "-" : fmtPct(tooltip.point.portfolio_daily_pct)}
           </span>
           {tooltip.point.cash_flow_flag ? (
@@ -2692,6 +2694,8 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
     ? Number(data.summary.usd_unrealized_pnl_usd)
     : usdValue - usdCost;
   const usdCash = Number(balances.cash_usd || 0);
+  const usdCashCostBasis = Number(balances.cash_cost_basis_usd || 0);
+  const cnyCashCostBasis = Number(balances.cash_cost_basis_cny || 0);
   const usdRealized = Number.isFinite(Number(data.summary?.usd_realized_pnl_usd))
     ? Number(data.summary.usd_realized_pnl_usd)
     : Number(balances.realized_usd || 0);
@@ -2705,9 +2709,9 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
   const totalCostCny = rows.reduce((sum, row) => sum + row.costCny, 0);
   const totalValueCny = rows.reduce((sum, row) => sum + row.valueCny, 0);
   const investmentUnrealizedCny = usdUnrealized * fx + cnyInvestmentUnrealized;
-  const fxUnrealizedCny = (usdCost + usdCash) * (fx - avgFx);
+  const fxUnrealizedCny = (usdCost + usdCashCostBasis) * (fx - avgFx);
   const calculatedTotalUnrealizedCny = investmentUnrealizedCny + fxUnrealizedCny;
-  const totalReturnBasisCny = totalCostCny + usdCash * avgFx + Number(balances.cash_cny || 0);
+  const totalReturnBasisCny = totalCostCny + usdCashCostBasis * avgFx + cnyCashCostBasis;
   const cashCny = Number(balances.cash_cny || 0) + usdCash * fx;
   const totalRealizedCny = Number.isFinite(Number(data.summary?.total_realized_pnl_cny))
     ? Number(data.summary.total_realized_pnl_cny)
@@ -2724,6 +2728,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
     ["已变现盈亏", fmtMoney(usdRealized, "USD")],
     ["合计盈亏", fmtMoney(usdTotalPnl, "USD")],
     ["现金", fmtMoney(usdCash, "USD")],
+    ["现金成本基准", fmtMoney(usdCashCostBasis, "USD")],
     ["总资产", fmtMoney(usdTotal, "USD")],
     ["收益率", fmtPct(usdReturn)],
   ];
@@ -2733,6 +2738,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
     ["已变现盈亏", fmtMoney(totalRealizedCny, "CNY")],
     ["合计盈亏", fmtMoney(totalPnlCny, "CNY")],
     ["现金", fmtMoney(cashCny, "CNY")],
+    ["现金成本基准", fmtMoney(usdCashCostBasis * avgFx + cnyCashCostBasis, "CNY")],
     ["总资产", fmtMoney(totalAssetsCny, "CNY")],
     ["收益率", fmtPct(totalReturn)],
   ];
@@ -2806,15 +2812,18 @@ function EditableHoldingsPage({ data, onSaved }) {
   const [holdings, setHoldings] = useState({});
   const [balances, setBalances] = useState({});
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const [editingHoldings, setEditingHoldings] = useState(false);
   const [editingBalances, setEditingBalances] = useState(false);
   const [universeOpen, setUniverseOpen] = useState(false);
   const [budgetInputs, setBudgetInputs] = useState({});
   const [balanceInputs, setBalanceInputs] = useState({});
   const [universeInputs, setUniverseInputs] = useState([]);
   const [savingBudget, setSavingBudget] = useState(false);
+  const [savingHoldings, setSavingHoldings] = useState(false);
   const [savingBalances, setSavingBalances] = useState(false);
   const [savingUniverse, setSavingUniverse] = useState(false);
   const [balanceMessage, setBalanceMessage] = useState("");
+  const [holdingMessage, setHoldingMessage] = useState("");
   const realtimeTotalValueCny = (data.holdings || []).reduce(
     (sum, row) => sum + Math.max(0, Number(row.value_cny || 0)),
     0,
@@ -2825,6 +2834,8 @@ function EditableHoldingsPage({ data, onSaved }) {
     setBalances({
       cash_usd: String(data.balances?.cash_usd ?? 0),
       cash_cny: String(data.balances?.cash_cny ?? 0),
+      cash_cost_basis_usd: String(data.balances?.cash_cost_basis_usd ?? 0),
+      cash_cost_basis_cny: String(data.balances?.cash_cost_basis_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
       voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
@@ -2833,8 +2844,8 @@ function EditableHoldingsPage({ data, onSaved }) {
   }
 
   useEffect(() => {
-    resetDraft();
-  }, [data]);
+    if (!editingHoldings) resetDraft();
+  }, [data, editingHoldings]);
 
   useEffect(() => {
     setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance?.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
@@ -2845,6 +2856,8 @@ function EditableHoldingsPage({ data, onSaved }) {
     setBalanceInputs({
       cash_usd: String(data.balances?.cash_usd ?? 0),
       cash_cny: String(data.balances?.cash_cny ?? 0),
+      cash_cost_basis_usd: String(data.balances?.cash_cost_basis_usd ?? 0),
+      cash_cost_basis_cny: String(data.balances?.cash_cost_basis_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
       voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
@@ -2862,6 +2875,13 @@ function EditableHoldingsPage({ data, onSaved }) {
 
   function updateBalance(key, value) {
     setBalanceInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateHolding(symbol, key, value) {
+    setHoldings((prev) => ({
+      ...prev,
+      [symbol]: { ...(prev[symbol] || {}), [key]: value },
+    }));
   }
 
   function trackBackdropPointerDown(event) {
@@ -2927,6 +2947,38 @@ function EditableHoldingsPage({ data, onSaved }) {
     }
   }
 
+  async function saveHoldingsAnchor() {
+    setSavingHoldings(true);
+    setHoldingMessage("");
+    try {
+      const nextHoldings = Object.fromEntries(data.holdings.map((row) => {
+        const draft = holdings[row.symbol] || {};
+        const shares = Number(draft.shares);
+        const avgCost = Number(draft.avg_cost);
+        if (!Number.isFinite(shares) || shares < 0 || !Number.isFinite(avgCost) || avgCost < 0) {
+          throw new Error(`${row.symbol} 的数量和成本价必须是非负数字`);
+        }
+        return [row.symbol, { shares, avg_cost: avgCost }];
+      }));
+      const response = await fetch(`${API_BASE}/api/holdings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ holdings: nextHoldings }),
+      });
+      if (!response.ok) throw new Error(await readApiError(response, `holdings HTTP ${response.status}`));
+      const result = await response.json();
+      const anchorDate = result?.adjustment?.effective_date || "今天";
+      setHoldingMessage(`持仓已保存，${anchorDate} 已设为新的准确锚点`);
+      setEditingHoldings(false);
+      await onSaved();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setHoldingMessage(`持仓保存失败：${message}`);
+    } finally {
+      setSavingHoldings(false);
+    }
+  }
+
   async function saveUniverse() {
     setSavingUniverse(true);
     try {
@@ -2953,6 +3005,11 @@ function EditableHoldingsPage({ data, onSaved }) {
   const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
   const holdingActions = (
     <div className="assetTitleActions">
+      <button className="toolButton compactTool" onClick={() => {
+        resetDraft();
+        setHoldingMessage("");
+        setEditingHoldings((value) => !value);
+      }}>{editingHoldings ? "取消编辑" : "编辑持仓"}</button>
       <button className="toolButton compactTool" onClick={() => setBudgetOpen(true)}>预算</button>
       <button className="toolButton compactTool" onClick={() => setEditingBalances(true)}>现金</button>
       <button className="toolButton compactTool" onClick={() => setUniverseOpen(true)}>标的</button>
@@ -2962,6 +3019,15 @@ function EditableHoldingsPage({ data, onSaved }) {
   return (
     <section>
       <AssetMetricCards data={data} holdings={holdings} balances={balances} totalActions={holdingActions} />
+      {editingHoldings ? (
+        <div className="holdingAnchorBar">
+          <span>修改数量或成本价后，保存日将成为新的准确持仓锚点；无需补齐锚点前的历史交易。</span>
+          <button className="primary" onClick={saveHoldingsAnchor} disabled={savingHoldings}>
+            <Save size={16} /> {savingHoldings ? "保存中…" : "保存并设为新锚点"}
+          </button>
+        </div>
+      ) : null}
+      {holdingMessage ? <div className={holdingMessage.includes("失败") ? "saveMessage down" : "saveMessage up"}>{holdingMessage}</div> : null}
       {balanceMessage ? <div className={balanceMessage === "现金与已变现已保存" ? "saveMessage up" : "saveMessage down"}>{balanceMessage}</div> : null}
       <div className="tableWrap">
         <table className="editableHoldingsTable">
@@ -2975,12 +3041,28 @@ function EditableHoldingsPage({ data, onSaved }) {
               <tr key={row.symbol}>
                 <th>{row.label}</th>
                 <td>{realtimeTotalValueCny > 0 ? `${(Number(row.value_cny || 0) / realtimeTotalValueCny * 100).toFixed(2)}%` : "-"}</td>
-                <td>{Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                <td>{editingHoldings ? (
+                  <input
+                    className="holdingCellInput"
+                    value={holdings[row.symbol]?.shares ?? ""}
+                    onChange={(event) => updateHolding(row.symbol, "shares", event.target.value)}
+                    inputMode="decimal"
+                    aria-label={`${row.symbol} 数量`}
+                  />
+                ) : Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                 <td>{fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
                 <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
                 <td className={tone(row.rebound_pct)}>{row.rebound_pct == null ? "-" : fmtPct(row.rebound_pct)}</td>
-                <td>{fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
+                <td>{editingHoldings ? (
+                  <input
+                    className="holdingCellInput"
+                    value={holdings[row.symbol]?.avg_cost ?? ""}
+                    onChange={(event) => updateHolding(row.symbol, "avg_cost", event.target.value)}
+                    inputMode="decimal"
+                    aria-label={`${row.symbol} 成本价`}
+                  />
+                ) : fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
               </tr>
@@ -3028,11 +3110,14 @@ function EditableHoldingsPage({ data, onSaved }) {
             <div className="balanceEditGrid">
               <label><span>USD 现金</span><input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 现金</span><input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
+              <label><span>USD 现金成本基准</span><input value={balanceInputs.cash_cost_basis_usd ?? ""} onChange={(event) => updateBalance("cash_cost_basis_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>CNY 现金成本基准</span><input value={balanceInputs.cash_cost_basis_cny ?? ""} onChange={(event) => updateBalance("cash_cost_basis_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>USD 已变现</span><input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>VOO 累计分红</span><input value={balanceInputs.voo_dividend_usd ?? ""} onChange={(event) => updateBalance("voo_dividend_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
+            <p className="muted">现金成本基准用于区分本金和已变现收益；普通入金、出金会自动同步，盈利再投资后允许显示为负数。</p>
             <div className="actions">
               <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>
               <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存</button>
@@ -3166,6 +3251,8 @@ function Rebalance({ data, onSaved }) {
     setBalanceInputs({
       cash_usd: String(data.balances?.cash_usd ?? 0),
       cash_cny: String(data.balances?.cash_cny ?? 0),
+      cash_cost_basis_usd: String(data.balances?.cash_cost_basis_usd ?? 0),
+      cash_cost_basis_cny: String(data.balances?.cash_cost_basis_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
       voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
@@ -3913,11 +4000,14 @@ function Rebalance({ data, onSaved }) {
             <div className="balanceEditGrid">
               <label><span>USD 现金</span><input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 现金</span><input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
+              <label><span>USD 现金成本基准</span><input value={balanceInputs.cash_cost_basis_usd ?? ""} onChange={(event) => updateBalance("cash_cost_basis_usd", event.target.value)} inputMode="decimal" /></label>
+              <label><span>CNY 现金成本基准</span><input value={balanceInputs.cash_cost_basis_cny ?? ""} onChange={(event) => updateBalance("cash_cost_basis_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>USD 已变现</span><input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>VOO 累计分红</span><input value={balanceInputs.voo_dividend_usd ?? ""} onChange={(event) => updateBalance("voo_dividend_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
+            <p className="muted">现金成本基准用于区分本金和已变现收益；普通入金、出金会自动同步，盈利再投资后允许显示为负数。</p>
             <div className="actions">
               <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>
               <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存</button>

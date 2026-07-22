@@ -576,7 +576,15 @@ def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
     save_holdings(payload.holdings)
     after = load_holdings()
     effective_date = portfolio_module.performance_history_date()
-    adjustment = record_portfolio_adjustment("evan", "holdings", effective_date, before, after)
+    adjustment = record_portfolio_adjustment(
+        "evan",
+        "holdings",
+        effective_date,
+        before,
+        after,
+        "exact_holdings_anchor_reconciliation",
+        allow_noop=True,
+    )
     if adjustment:
         portfolio_module.invalidate_performance_history_from("evan", effective_date)
     return {"saved": True, "holdings": after, "adjustment": adjustment}
@@ -585,11 +593,46 @@ def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
 @app.put("/api/balances")
 def update_balances(payload: BalancesPayload) -> dict[str, Any]:
     before = load_balances()
-    save_balances(payload.balances)
+    requested = dict(payload.balances)
+    # A manual cash edit is normally an external deposit/withdrawal, while a
+    # simultaneous realized-P&L or dividend edit is income already contained
+    # in that cash.  Move only the principal portion into the cash basis unless
+    # the user explicitly supplies a different basis value.
+    basis_rules = {
+        "USD": ("cash_usd", "cash_cost_basis_usd", ("realized_usd", "voo_dividend_usd", "sgov_dividend_usd")),
+        "CNY": ("cash_cny", "cash_cost_basis_cny", ("realized_cny",)),
+    }
+    for cash_key, basis_key, income_keys in basis_rules.values():
+        old_basis = float(before.get(basis_key, 0.0) or 0.0)
+        try:
+            requested_basis = float(requested.get(basis_key, old_basis) or 0.0)
+        except (TypeError, ValueError):
+            requested_basis = old_basis
+        explicitly_changed = basis_key in requested and abs(requested_basis - old_basis) > 1e-9
+        if explicitly_changed:
+            continue
+        old_cash = float(before.get(cash_key, 0.0) or 0.0)
+        new_cash = float(requested.get(cash_key, old_cash) or 0.0)
+        income_delta = sum(
+            float(requested.get(key, before.get(key, 0.0)) or 0.0)
+            - float(before.get(key, 0.0) or 0.0)
+            for key in income_keys
+        )
+        requested[basis_key] = old_basis + (new_cash - old_cash) - income_delta
+    save_balances(requested)
     after = load_balances()
+    effective_date = portfolio_module.performance_history_date()
     adjustment = record_portfolio_adjustment(
-        "evan", "balances", portfolio_module.performance_history_date(), before, after
+        "evan",
+        "balances",
+        effective_date,
+        before,
+        after,
+        "manual_edit",
+        {"reconstruct_from_date": effective_date},
     )
+    if adjustment:
+        portfolio_module.invalidate_performance_history_from("evan", effective_date)
     return {"saved": True, "balances": after, "adjustment": adjustment}
 
 

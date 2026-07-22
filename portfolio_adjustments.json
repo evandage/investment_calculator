@@ -88,6 +88,61 @@
         "voo_dividend_usd": 7.98,
         "sgov_dividend_usd": 11.61
       }
+    },
+    {
+      "id": "adj-20260722T104609+0800-5",
+      "kind": "balances",
+      "effective_date": "2026-07-21",
+      "reconstruct_from_date": "2026-07-16",
+      "recorded_at": "2026-07-22T10:46:09+08:00",
+      "reason": "backdated_trade_eod_cash_anchor",
+      "before": {
+        "cash_usd": 2727.4,
+        "cash_cny": 0.35,
+        "realized_usd": 9.996871602822457,
+        "realized_cny": 1121.91,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "after": {
+        "cash_usd": 111.93000000000029,
+        "cash_cny": 10090.11635,
+        "realized_usd": 9.996871602822457,
+        "realized_cny": 1207.1607126300025,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      }
+    },
+    {
+      "id": "adj-20260722T104609+0800-6",
+      "kind": "holdings",
+      "effective_date": "2026-07-22",
+      "recorded_at": "2026-07-22T10:46:09+08:00",
+      "reason": "exact_holdings_anchor_reconciliation",
+      "before": {
+        "VOO": {"shares": 3.9726, "avg_cost": 662.5297475048155},
+        "QQQ": {"shares": 3.2929000000000004, "avg_cost": 718.7957551094779},
+        "ISRG": {"shares": 0.7873, "avg_cost": 400.25230026673444},
+        "TEM": {"shares": 1.7178999999999998, "avg_cost": 52.97101984981664},
+        "GOOGL": {"shares": 0.30879999999999996, "avg_cost": 363.71},
+        "MSFT": {"shares": 0.3036, "avg_cost": 422.81},
+        "AVGO": {"shares": 0.3465, "avg_cost": 421.25},
+        "001015": {"shares": 8000.0, "avg_cost": 2.36484859682875},
+        "PLTR": {"shares": 0.30879999999999996, "avg_cost": 129.50129533678756},
+        "SGOV": {"shares": 26.0, "avg_cost": 100.595}
+      },
+      "after": {
+        "VOO": {"shares": 3.1753, "avg_cost": 657.2688171},
+        "QQQ": {"shares": 2.2163, "avg_cost": 720.8503628977656},
+        "ISRG": {"shares": 0.7873, "avg_cost": 400.25230026673444},
+        "TEM": {"shares": 1.7178999999999998, "avg_cost": 52.97208801443624},
+        "PLTR": {"shares": 0.30879999999999996, "avg_cost": 129.50879533678759},
+        "GOOGL": {"shares": 0.4442, "avg_cost": 363.76},
+        "MSFT": {"shares": 0.3036, "avg_cost": 422.83},
+        "AVGO": {"shares": 0.4569, "avg_cost": 421.23},
+        "SGOV": {"shares": 26.0, "avg_cost": 100.595},
+        "001015": {"shares": 8000.0, "avg_cost": 2.36484859682875}
+      }
     }
   ]
 }

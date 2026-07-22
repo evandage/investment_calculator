@@ -9,6 +9,19 @@ from backend import storage
 
 
 class PortfolioSnapshotAuditTests(unittest.TestCase):
+    def test_legacy_balances_infer_cash_cost_basis_without_clamping_negative(self):
+        normalized = storage.normalize_balances({
+            "cash_usd": 5.0,
+            "cash_cny": 1085.25,
+            "realized_usd": 10.0,
+            "realized_cny": 85.25,
+            "voo_dividend_usd": 2.0,
+            "sgov_dividend_usd": 1.0,
+        })
+
+        self.assertAlmostEqual(normalized["cash_cost_basis_usd"], -8.0)
+        self.assertAlmostEqual(normalized["cash_cost_basis_cny"], 1000.0)
+
     def test_finalized_snapshot_revisions_are_append_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             history_file = Path(temp_dir) / "history.json"
@@ -48,6 +61,24 @@ class PortfolioSnapshotAuditTests(unittest.TestCase):
                 self.assertEqual(len(loaded), 1)
                 self.assertEqual(loaded[0]["before"]["VOO"]["shares"], 1.0)
                 self.assertEqual(loaded[0]["after"]["VOO"]["shares"], 1.5)
+
+    def test_exact_anchor_can_be_recorded_without_position_change(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            adjustment_file = Path(temp_dir) / "adjustments.json"
+            with patch.object(storage, "PORTFOLIO_ADJUSTMENTS_FILE", adjustment_file):
+                holdings = {"QQQ": {"shares": 2.2163, "avg_cost": 720.85}}
+                record = storage.record_portfolio_adjustment(
+                    "evan",
+                    "holdings",
+                    "2026-07-22",
+                    holdings,
+                    holdings,
+                    "exact_holdings_anchor_reconciliation",
+                    allow_noop=True,
+                )
+
+                self.assertIsNotNone(record)
+                self.assertEqual(record["before"], record["after"])
 
     def test_corrected_history_replaces_ledger_and_keeps_backup(self):
         with tempfile.TemporaryDirectory() as temp_dir:
