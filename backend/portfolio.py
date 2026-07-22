@@ -125,7 +125,7 @@ def rebalance_rules_payload(
             {
                 "heading": "长期目标",
                 "items": [
-                    "美元资产目标：VOO 40% / QQQ 30% / AI卫星仓位 10% / 短债(SGOV) 20%。",
+                    "美元资产目标：VOO 40% / QQQ 30% / AI卫星仓位 10% / SGOV 20%。",
                     f"卫星仓位内部目标：{satellite_names}；{zero_target_note}",
                     "A股基金按 Dashboard 目标占比展示，但当前买入建议只处理美元标的。",
                 ],
@@ -554,7 +554,7 @@ def build_visualizations(
         ("VOO", "VOO", ["VOO"]),
         ("QQQ", "QQQ", ["QQQ"]),
         ("SATELLITE", "卫星仓位", list(SATELLITE_SYMBOLS)),
-        ("SGOV", "短债(SGOV)", ["SGOV"]),
+        ("SGOV", "SGOV", ["SGOV"]),
         ("CASH", "现金", []),
     ]
     target_map = {

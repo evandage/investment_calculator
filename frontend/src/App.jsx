@@ -9,7 +9,8 @@ const API_BASE =
   `${window.location.protocol}//${window.location.hostname}:8010`;
 const WS_BASE = API_BASE.replace(/^http/i, "ws");
 const HEATMAP_LAYOUT_WIDTH = 100;
-const HEATMAP_LAYOUT_HEIGHT = 78;
+const HEATMAP_LAYOUT_HEIGHT = 72;
+const HEATMAP_MAX_CANVAS_HEIGHT = 612;
 const SATELLITE_HOVER_LAYOUT_WIDTH = 100;
 const SATELLITE_HOVER_LAYOUT_HEIGHT = 42;
 const TERMINAL_CHART = {
@@ -92,6 +93,15 @@ function fmtSignedMoney(value, currency = "USD", digits = 2) {
 function fmtPct(value) {
   const num = Number(value || 0);
   return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
+}
+
+function displayAssetLabel(label, symbol = "") {
+  const normalizedSymbol = String(symbol || "").trim().toUpperCase();
+  const normalizedLabel = String(label || "").trim();
+  if (normalizedSymbol === "SGOV" || ["短债", "短债(SGOV)", "短债（SGOV）"].includes(normalizedLabel)) {
+    return "SGOV";
+  }
+  return label;
 }
 
 const BALANCE_FIELD_LABELS = {
@@ -611,48 +621,56 @@ function Summary({ data }) {
   });
   return (
     <section className="summaryGrid">
-      <div className="summaryRowLabel">美元资产</div>
-      <div className="summaryItem">
-        <span>资产规模</span>
-        <strong>{fmtMoney(usdTotalAssets, "USD")}</strong>
+      <div className="summaryAssetGroup">
+        <div className="summaryRowLabel">美元资产</div>
+        <div className="summaryAssetMetrics">
+          <div className="summaryItem">
+            <span>资产规模</span>
+            <strong>{fmtMoney(usdTotalAssets, "USD")}</strong>
+          </div>
+          <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
+            <span>持仓盈亏</span>
+            <strong className={tone(usdPnl)}>
+              {fmtMoney(usdPnl, "USD")} · {fmtPct(usdPnlPct)}
+            </strong>
+            <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} showContribution />
+          </div>
+          <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
+            <span>当日加权{dailyAsOfLabel}</span>
+            <strong className={tone(usdDailyChange)}>
+              {fmtMoney(usdDailyChange, "USD")} · {fmtPct(usdDailyPct)}
+            </strong>
+            <SummaryBreakdownTooltip title="美元当日盈亏明细" rows={usdDailyDetails} currency="USD" total={usdDailyChange} showContribution />
+          </div>
+        </div>
       </div>
-      <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
-        <span>持仓盈亏</span>
-        <strong className={tone(usdPnl)}>
-          {fmtMoney(usdPnl, "USD")} · {fmtPct(usdPnlPct)}
-        </strong>
-        <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} showContribution />
-      </div>
-      <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
-        <span>当日加权{dailyAsOfLabel}</span>
-        <strong className={tone(usdDailyChange)}>
-          {fmtMoney(usdDailyChange, "USD")} · {fmtPct(usdDailyPct)}
-        </strong>
-        <SummaryBreakdownTooltip title="美元当日盈亏明细" rows={usdDailyDetails} currency="USD" total={usdDailyChange} showContribution />
+      <div className="summaryAssetGroup">
+        <div className="summaryRowLabel">总资产</div>
+        <div className="summaryAssetMetrics">
+          <div className="summaryItem">
+            <span>资产规模</span>
+            <strong>{fmtMoney(summary.total_assets_cny, "CNY")}</strong>
+          </div>
+          <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
+            <span>持仓盈亏</span>
+            <strong className={tone(summary.total_pnl_cny)}>
+              {fmtMoney(summary.total_pnl_cny, "CNY")} · {fmtPct(summary.total_pnl_pct)}
+            </strong>
+            <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} showContribution />
+          </div>
+          <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
+            <span>当日加权{dailyAsOfLabel}</span>
+            <strong className={tone(weightedDailyChangeCny)}>
+              {fmtMoney(weightedDailyChangeCny, "CNY")} · {fmtPct(summary.weighted_daily_pct)}
+            </strong>
+            <SummaryBreakdownTooltip title="总资产当日盈亏明细" rows={totalDailyDetails} currency="CNY" total={weightedDailyChangeCny} showContribution />
+          </div>
+        </div>
       </div>
       <div className="summaryItem fxSummaryItem">
         <span>汇率</span>
         <strong>{fx.toFixed(4)}</strong>
         <em>成本 {Number(summary.avg_fx_rate || fx).toFixed(4)}</em>
-      </div>
-      <div className="summaryRowLabel">总资产</div>
-      <div className="summaryItem">
-        <span>资产规模</span>
-        <strong>{fmtMoney(summary.total_assets_cny, "CNY")}</strong>
-      </div>
-      <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
-        <span>持仓盈亏</span>
-        <strong className={tone(summary.total_pnl_cny)}>
-          {fmtMoney(summary.total_pnl_cny, "CNY")} · {fmtPct(summary.total_pnl_pct)}
-        </strong>
-        <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} showContribution />
-      </div>
-      <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
-        <span>当日加权{dailyAsOfLabel}</span>
-        <strong className={tone(weightedDailyChangeCny)}>
-          {fmtMoney(weightedDailyChangeCny, "CNY")} · {fmtPct(summary.weighted_daily_pct)}
-        </strong>
-        <SummaryBreakdownTooltip title="总资产当日盈亏明细" rows={totalDailyDetails} currency="CNY" total={weightedDailyChangeCny} showContribution />
       </div>
     </section>
   );
@@ -676,7 +694,7 @@ function DailyCards({ cards }) {
       const hasDistinctExtendedCny = card.session !== "regular" && card.extended_change_cny != null && Math.abs(extendedCny - regularCny) > 0.005;
         return (
           <article className={`dailyCard ${card.wide ? "wideCard" : ""}`} key={card.symbol}>
-            <div className="cardTitle">{card.label}</div>
+            <div className="cardTitle">{displayAssetLabel(card.label, card.symbol)}</div>
             {card.price_line ? <div className="priceLine">{fmtCardPriceLine(card.price_line)}</div> : null}
             <div className={fundPending ? "flat" : tone(regularPct)}>
               {fundPending ? fundStatusText : `${fmtPct(regularPct)}${fundEstimateTag}`}
@@ -700,6 +718,22 @@ function DailyCards({ cards }) {
 function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
   const [satelliteHovered, setSatelliteHovered] = useState(false);
   const [satelliteHoverSymbol, setSatelliteHoverSymbol] = useState(null);
+  const [heatmapLayoutHeight, setHeatmapLayoutHeight] = useState(HEATMAP_LAYOUT_HEIGHT);
+  const heatmapCanvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = heatmapCanvasRef.current;
+    if (!canvas || typeof ResizeObserver === "undefined") return undefined;
+    const updateLayoutHeight = (width) => {
+      if (!Number.isFinite(width) || width <= 0) return;
+      const capHeight = window.innerWidth > 1240 ? HEATMAP_MAX_CANVAS_HEIGHT : Number.POSITIVE_INFINITY;
+      const nextHeight = Number(Math.min(HEATMAP_LAYOUT_HEIGHT, capHeight / width * HEATMAP_LAYOUT_WIDTH).toFixed(3));
+      setHeatmapLayoutHeight((current) => Math.abs(current - nextHeight) < 0.05 ? current : nextHeight);
+    };
+    const observer = new ResizeObserver(([entry]) => updateLayoutHeight(entry?.contentRect?.width));
+    observer.observe(canvas);
+    updateLayoutHeight(canvas.clientWidth);
+    return () => observer.disconnect();
+  }, []);
   const satelliteSymbols = useMemo(
     () => new Set(["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA"]),
     [],
@@ -841,7 +875,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
       .sort((a, b) => (b.value || 0) - (a.value || 0));
     treemap()
       .tile(treemapSquarify.ratio(1))
-      .size([HEATMAP_LAYOUT_WIDTH, HEATMAP_LAYOUT_HEIGHT])
+      .size([HEATMAP_LAYOUT_WIDTH, heatmapLayoutHeight])
       .paddingInner(0.7)
       .round(false)(root);
     return root.leaves().map((leaf) => ({
@@ -851,15 +885,13 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
       width: leaf.x1 - leaf.x0,
       height: leaf.y1 - leaf.y0,
     }));
-  }, [rows, minLayoutValue]);
+  }, [rows, minLayoutValue, heatmapLayoutHeight]);
 
   return (
     <section className="chartPanel heatmapPanel" onMouseLeave={() => setSatelliteHovered(false)}>
       <div className="heatmapToolbar">
-        <span>
-          卫星仓位已合并 · 悬浮查看成员明细
-          {dailyCarriedForward && dailyAsOf ? ` · 涨跌截至 ${String(dailyAsOf).slice(5).replace("-", "/")}` : ""}
-        </span>
+        <h2>当日收益热力图</h2>
+        {dailyCarriedForward && dailyAsOf ? <span>涨跌截至 {String(dailyAsOf).slice(5).replace("-", "/")}</span> : null}
       </div>
       {satelliteHovered ? (
         <div className="satelliteHoverPanel" onMouseEnter={() => setSatelliteHovered(true)}>
@@ -879,9 +911,9 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 }}
                 onMouseEnter={() => setSatelliteHoverSymbol(card.symbol)}
                 onMouseLeave={() => setSatelliteHoverSymbol(null)}
-                title={`${card.label} · 当前价 ${fmtCurrentPrice(card.currentPrice, card.currency)} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
+                title={`${displayAssetLabel(card.label, card.symbol)} · 当前价 ${fmtCurrentPrice(card.currentPrice, card.currency)} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
               >
-                <b>{card.label}</b>
+                <b>{displayAssetLabel(card.label, card.symbol)}</b>
                 {card.regular_price || card.price_line ? (
                   <div className="heatPrice">
                     <TreemapPriceLine
@@ -920,7 +952,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
             if (!card) return null;
             return (
               <div className="satelliteMiniTooltip">
-                <b>{card.label}</b>
+                <b>{displayAssetLabel(card.label, card.symbol)}</b>
                 <span className="satelliteTooltipPrice">
                   价格&nbsp;
                   <TreemapPriceLine
@@ -939,7 +971,11 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
           })() : null}
         </div>
       ) : null}
-      <div className="heatmapCanvas">
+      <div
+        className="heatmapCanvas"
+        ref={heatmapCanvasRef}
+        style={{ aspectRatio: `${HEATMAP_LAYOUT_WIDTH} / ${heatmapLayoutHeight}` }}
+      >
         {rects.map((row) => {
           return (
             <article
@@ -949,15 +985,15 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 "--heat-bg": row.bg,
                 "--heat-border": row.dailyPct > 0 ? `rgba(52, 211, 153, ${0.24 + row.magnitude * 0.42})` : row.dailyPct < 0 ? `rgba(248, 113, 113, ${0.26 + row.magnitude * 0.44})` : "rgba(148, 163, 184, 0.24)",
                 left: `${row.x / HEATMAP_LAYOUT_WIDTH * 100}%`,
-                top: `${row.y / HEATMAP_LAYOUT_HEIGHT * 100}%`,
+                top: `${row.y / heatmapLayoutHeight * 100}%`,
                 width: `${row.width / HEATMAP_LAYOUT_WIDTH * 100}%`,
-                height: `${row.height / HEATMAP_LAYOUT_HEIGHT * 100}%`,
+                height: `${row.height / heatmapLayoutHeight * 100}%`,
               }}
-              title={`${row.label} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 价格 ${row.price_line ? fmtCardPriceLine(row.price_line) : fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
+              title={`${displayAssetLabel(row.label, row.symbol)} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 价格 ${row.price_line ? fmtCardPriceLine(row.price_line) : fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
               onMouseEnter={row.symbol === "SATELLITE_GROUP" ? () => setSatelliteHovered(true) : undefined}
               role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
             >
-              <div className="heatSymbol">{row.label}</div>
+              <div className="heatSymbol">{displayAssetLabel(row.label, row.symbol)}</div>
               {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? (
                 <div className="heatPrice">
                   <TreemapPriceLine
@@ -994,14 +1030,14 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
 function BarList({ title, rows, valueKey, formatValue }) {
   const max = Math.max(1, ...rows.map((row) => Math.abs(Number(row[valueKey] || 0))));
   return (
-    <section className="chartPanel">
+    <section className="chartPanel rankChartPanel">
       <h2>{title}</h2>
       <div className="barList">
         {rows.map((row) => {
           const value = Number(row[valueKey] || 0);
           return (
             <div className="barRow" key={row.symbol || row.label}>
-              <div className="barLabel">{row.label || row.symbol}</div>
+              <div className="barLabel">{displayAssetLabel(row.label || row.symbol, row.symbol)}</div>
               <div className="barTrack">
                 <div className={`barFill ${tone(value)}`} style={{ width: `${Math.max(3, Math.abs(value) / max * 100)}%` }} />
               </div>
@@ -1036,7 +1072,7 @@ function CompareBars({ title, rows, amountKey = "current_usd", className = "" })
                 <span>{Number(row.target_pct || 0).toFixed(1)}%</span>
               </div>
             </div>
-            <div className="verticalLabel">{row.label}</div>
+            <div className="verticalLabel">{displayAssetLabel(row.label, row.symbol)}</div>
             <div className="verticalAmount">{fmtMoney(row[amountKey], "USD")}</div>
           </div>
         ))}
@@ -1055,7 +1091,7 @@ function Visualizations({ data }) {
     <section className="visualGrid">
       <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value, row) => row.symbol === "001015" ? fmtMoney(row.pnl_cny, "CNY") : fmtMoney(value, "USD")} />
       <BarList title="卫星仓位浮盈亏排名" rows={viz.satellite_pnl_rank || []} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} />
-      <CompareBars title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比" rows={viz.allocation_compare || []} />
+      <CompareBars title="美元资产配置占比" rows={viz.allocation_compare || []} />
       <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" />
     </section>
   );
@@ -2649,7 +2685,11 @@ function PnlBreakdownPanel({ data }) {
         </div>
       </div>
       <div className="pnlSplitViz">
-        <div className="pnlSplitTrack">
+        <div
+          className="pnlSplitTrack"
+          tabIndex="0"
+          aria-label={parts.map((part) => `${part.label} ${fmtMoney(part.amount, "CNY")}`).join("，")}
+        >
           {parts.map((part) => (
             <div
               className={`pnlSplitSegment ${part.key} ${tone(part.amount)}`}
@@ -4023,18 +4063,24 @@ function Rebalance({ data, onSaved }) {
 
 function DashboardPage({ data }) {
   return (
-    <>
-      <Summary data={data} />
-      <PnlBreakdownPanel data={data} />
-      <PerformanceChart history={data.performance_history} />
-      <DailyHeatmap
-        cards={data.daily_cards}
-        holdings={data.holdings}
-        dailyAsOf={data.summary?.daily_as_of}
-        dailyCarriedForward={data.summary?.daily_carried_forward}
-      />
-      <Visualizations data={data} />
-    </>
+    <div className="dashboardPage">
+      <div className="dashboardTopGrid">
+        <Summary data={data} />
+        <PnlBreakdownPanel data={data} />
+      </div>
+      <div className="dashboardWorkspace">
+        <DailyHeatmap
+          cards={data.daily_cards}
+          holdings={data.holdings}
+          dailyAsOf={data.summary?.daily_as_of}
+          dailyCarriedForward={data.summary?.daily_carried_forward}
+        />
+        <div className="dashboardInsights">
+          <PerformanceChart history={data.performance_history} />
+          <Visualizations data={data} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -4063,7 +4109,7 @@ export default function App() {
     );
   }
   return (
-    <main className="appShell">
+    <main className={`appShell ${page === "dashboard" ? "dashboardShell" : ""}`}>
       <Header data={data} />
       <PageNav page={page} setPage={setPage} />
       {page === "dashboard" ? <DashboardPage data={data} /> : null}

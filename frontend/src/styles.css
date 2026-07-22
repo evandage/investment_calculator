@@ -1122,7 +1122,7 @@ h2 {
   position: relative;
   width: 100%;
   /* Keep the DOM canvas ratio identical to the d3 layout coordinate space. */
-  aspect-ratio: 100 / 78;
+  aspect-ratio: 100 / 72;
   min-height: 502px;
   max-height: 794px;
   margin: 0 auto;
@@ -1153,6 +1153,11 @@ h2 {
 .heatmapToolbar button:hover {
   border-color: rgba(112, 215, 255, 0.65);
   color: var(--text-main);
+}
+
+.heatmapToolbar h2 {
+  margin: 0;
+  font-size: 0.92rem;
 }
 
 .heatmapPanel {
@@ -2793,7 +2798,501 @@ tbody th {
   color: var(--text-soft);
 }
 
+/* Desktop dashboard: dense, single-screen overview with a large treemap. */
+.dashboardShell {
+  width: min(1600px, 100%);
+  padding: 12px 16px 16px;
+}
+
+.dashboardShell .topbar {
+  min-height: 58px;
+  margin-bottom: 8px;
+  padding: 8px 14px;
+}
+
+.dashboardShell .topbar h1 {
+  font-size: clamp(1.35rem, 2vw, 1.72rem);
+}
+
+.dashboardShell .topbar .muted {
+  font-size: 0.76rem;
+}
+
+.dashboardShell .pageNav {
+  margin-bottom: 8px;
+  padding: 4px;
+}
+
+.dashboardShell .pageNav::before {
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--nav-count));
+}
+
+.dashboardShell .pageNav button {
+  padding: 7px 14px;
+  font-size: 0.86rem;
+}
+
+.dashboardPage .summaryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 108px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.dashboardTopGrid {
+  display: grid;
+  grid-template-columns: minmax(680px, 1.7fr) minmax(490px, 1fr);
+  align-items: stretch;
+  gap: 10px;
+}
+
+.dashboardTopGrid .pnlBreakdownPanel {
+  grid-column: auto;
+}
+
+.summaryAssetGroup {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+
+.dashboardPage .summaryAssetGroup {
+  grid-column: 1;
+}
+
+.summaryAssetMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.dashboardPage .summaryRowLabel,
+.dashboardPage .summaryItem {
+  min-height: 0;
+  border-radius: 8px;
+}
+
+.dashboardPage .summaryRowLabel {
+  padding: 6px;
+  font-size: 0.75rem;
+}
+
+.dashboardPage .summaryItem {
+  gap: 2px;
+  padding: 8px 7px;
+}
+
+.dashboardPage .summaryItem span {
+  font-size: 0.72rem;
+}
+
+.dashboardPage .summaryItem strong {
+  font-size: clamp(0.82rem, 1.08vw, 1rem);
+  white-space: nowrap;
+}
+
+.dashboardPage .fxSummaryItem {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-height: 0;
+}
+
+.dashboardPage .fxSummaryItem strong {
+  font-size: 1.08rem;
+}
+
+.dashboardPage .fxSummaryItem em {
+  font-size: 0.66rem;
+}
+
+.dashboardPage .homePnlBreakdown {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "header"
+    "metrics"
+    "viz";
+  align-content: center;
+  gap: 5px;
+  margin-top: 0;
+  padding: 7px 10px;
+}
+
+.dashboardPage .pnlBreakdownHeader {
+  grid-area: header;
+  display: flex;
+  align-content: normal;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dashboardPage .pnlBreakdownHeader strong {
+  font-size: 0.8rem;
+}
+
+.dashboardPage .pnlBreakdownHeader span {
+  font-size: 0.65rem;
+}
+
+.dashboardPage .pnlBreakdownGrid {
+  grid-area: metrics;
+  gap: 6px;
+}
+
+.dashboardPage .pnlBreakdownItem {
+  gap: 4px 8px;
+  padding: 5px 7px;
+}
+
+.dashboardPage .pnlBreakdownItem span,
+.dashboardPage .pnlBreakdownItem small {
+  font-size: 0.65rem;
+}
+
+.dashboardPage .pnlBreakdownItem strong {
+  font-size: 0.86rem;
+}
+
+.dashboardPage .pnlSplitViz {
+  grid-area: viz;
+  position: relative;
+  grid-template-columns: 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboardPage .pnlSplitTrack {
+  height: 7px;
+  cursor: help;
+  outline: none;
+}
+
+.dashboardPage .pnlSplitTrack:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.dashboardPage .pnlSplitLegend {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(100% + 7px);
+  width: max-content;
+  max-width: min(430px, calc(100vw - 32px));
+  padding: 7px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 7px;
+  background: rgba(5, 15, 28, 0.97);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+  gap: 8px;
+  font-size: 0.64rem;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+}
+
+.dashboardPage .pnlSplitTrack:hover + .pnlSplitLegend,
+.dashboardPage .pnlSplitTrack:focus + .pnlSplitLegend,
+.dashboardPage .pnlSplitTrack:focus-visible + .pnlSplitLegend {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.dashboardWorkspace {
+  display: grid;
+  grid-template-columns: minmax(680px, 1.7fr) minmax(490px, 1fr);
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.dashboardWorkspace > *,
+.dashboardInsights {
+  min-width: 0;
+}
+
+.dashboardWorkspace > .heatmapPanel {
+  margin: 0;
+  padding-bottom: 6px;
+}
+
+.dashboardInsights {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.dashboardInsights .performancePanel,
+.dashboardInsights .visualGrid {
+  margin: 0;
+}
+
+.dashboardInsights .visualGrid {
+  height: 100%;
+  grid-template-rows: 160px minmax(0, 1fr);
+}
+
+.dashboardInsights .performancePanel {
+  padding: 9px;
+}
+
+.dashboardInsights .compactHeader {
+  min-width: 0;
+  gap: 8px;
+}
+
+.dashboardInsights .compactHeader h2 {
+  flex: 0 0 auto;
+  font-size: 0.86rem;
+}
+
+.dashboardInsights .compactHeader .muted {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboardInsights .performanceStats {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.dashboardInsights .performanceStat {
+  gap: 1px;
+  padding: 5px 4px 5px 8px;
+  border-radius: 6px;
+}
+
+.dashboardInsights .performanceStat::before {
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+}
+
+.dashboardInsights .performanceStat span {
+  font-size: 0.58rem;
+}
+
+.dashboardInsights .performanceStat strong {
+  font-size: 0.72rem;
+}
+
+.dashboardInsights .performancePlot {
+  height: 190px;
+  margin-top: 4px;
+}
+
+.dashboardInsights .performanceTooltip {
+  min-width: 250px;
+  gap: 2px;
+  padding: 6px 8px;
+  font-size: 0.64rem;
+  line-height: 1.2;
+}
+
+.dashboardInsights .performanceTooltip strong {
+  font-size: 0.68rem;
+}
+
+.dashboardInsights .performanceTooltip span {
+  gap: 4px;
+}
+
+.dashboardInsights .performanceTooltip i {
+  width: 6px;
+  height: 6px;
+}
+
+.dashboardInsights .visualGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dashboardInsights .chartPanel {
+  padding: 8px;
+}
+
+.dashboardInsights .verticalChartPanel {
+  padding-bottom: 2px;
+}
+
+.dashboardInsights .chartPanel h2 {
+  min-height: 28px;
+  margin: 0 0 5px;
+  overflow: hidden;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.dashboardInsights .barList {
+  gap: 4px;
+}
+
+.dashboardInsights .rankChartPanel .barList {
+  height: 109px;
+  align-content: space-between;
+  gap: 0;
+}
+
+.dashboardInsights .barRow {
+  grid-template-columns: 68px minmax(38px, 1fr) 64px;
+  gap: 5px;
+  min-height: 14px;
+  font-size: 0.66rem;
+}
+
+.dashboardInsights .barTrack {
+  height: 7px;
+}
+
+.dashboardInsights .verticalBars {
+  grid-template-columns: repeat(auto-fit, minmax(36px, 1fr));
+  align-items: stretch;
+  gap: 4px;
+  min-height: 140px;
+}
+
+.dashboardInsights .verticalGroup,
+.dashboardInsights .compactVerticalChart .verticalGroup {
+  grid-template-rows: 104px 14px 18px;
+  gap: 2px;
+}
+
+.dashboardInsights .verticalPlot,
+.dashboardInsights .compactVerticalChart .verticalPlot {
+  height: 104px;
+  gap: 3px;
+  padding-top: 17px;
+  background-size: 100% 44px;
+}
+
+.dashboardInsights .verticalBar,
+.dashboardInsights .compactVerticalChart .verticalBar {
+  width: 16px;
+}
+
+.dashboardInsights .verticalBar span {
+  top: -14px;
+  font-size: 0.54rem;
+}
+
+.dashboardInsights .verticalLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
+.dashboardInsights .verticalAmount,
+.dashboardInsights .compactVerticalChart .verticalAmount {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+  font-size: 0.56rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboardInsights .legendLine {
+  gap: 7px;
+  margin-top: 4px;
+  font-size: 0.58rem;
+}
+
+.dashboardPage .heatmapToolbar h2 {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.dashboardPage .heatCell[role="button"] {
+  gap: 2px;
+  padding: 5px;
+}
+
+.dashboardPage .heatCell[role="button"] .heatSymbol {
+  font-size: 0.78rem;
+}
+
+.dashboardPage .heatCell[role="button"] strong {
+  font-size: 0.92rem;
+}
+
+.dashboardPage .heatCell[role="button"] .heatPnl {
+  font-size: 0.56rem;
+}
+
+.dashboardPage .heatCell[role="button"] > span {
+  font-size: 0.64rem;
+}
+
+@media (max-width: 1240px) {
+  .dashboardTopGrid,
+  .dashboardWorkspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboardTopGrid .homePnlBreakdown {
+    margin-top: 8px;
+  }
+}
+
 @media (max-width: 980px) {
+  .dashboardShell {
+    padding: 12px;
+  }
+
+  .dashboardPage .summaryGrid,
+  .dashboardWorkspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboardPage .fxSummaryItem {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+
+  .dashboardPage .summaryRowLabel {
+    grid-column: auto;
+  }
+
+  .dashboardPage .homePnlBreakdown {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "header"
+      "metrics"
+      "viz";
+  }
+
+  .dashboardPage .pnlSplitViz {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboardWorkspace {
+    margin-top: 12px;
+  }
+
+  .dashboardInsights .performancePlot {
+    height: 360px;
+  }
+
   .lwChartGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

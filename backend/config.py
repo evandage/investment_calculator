@@ -53,7 +53,7 @@ ASSET_META = {
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
     "NVDA": {"label": "NVDA", "currency": "USD"},
-    "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
+    "SGOV": {"label": "SGOV", "currency": "USD"},
     "001015": {"label": "沪深300", "currency": "CNY"},
 }
 

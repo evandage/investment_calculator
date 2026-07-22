@@ -195,12 +195,12 @@ _ASSET_META = {
     "MSFT": {"label": "MSFT", "currency": "USD"},
     "AVGO": {"label": "AVGO", "currency": "USD"},
     "NVDA": {"label": "NVDA", "currency": "USD"},
-    "SGOV": {"label": "短债(SGOV)", "currency": "USD"},
+    "SGOV": {"label": "SGOV", "currency": "USD"},
     "001015": {"label": "沪深300", "currency": "CNY"},
 }
 _TARGET_WEIGHTS = {
     # 目标比例：
-    # 美元资产: VOO/QQQ/AI卫星仓位/短债(SGOV) = 4:3:1:2
+    # 美元资产: VOO/QQQ/AI卫星仓位/SGOV = 4:3:1:2
     # 人民币资产: 沪深300(001015) 20%
     "VOO": 0.24,
     "QQQ": 0.18,
@@ -3668,8 +3668,8 @@ group1_df = pd.DataFrame(
         {"标的组": "QQQ", "类型": "目标比例%", "成分": "目标", "比例%": round(qqq_target, 2), "金额": _usd_amount_label(usd_total_cny * qqq_target / 100.0)},
         {"标的组": "卫星仓位", "类型": "当前比例%", "成分": "卫星仓位", "比例%": round(new4_ratio, 2), "金额": _usd_amount_label(satellite_current)},
         {"标的组": "卫星仓位", "类型": "目标比例%", "成分": "目标", "比例%": round(new4_target, 2), "金额": _usd_amount_label(usd_total_cny * new4_target / 100.0)},
-        {"标的组": "短债", "类型": "当前比例%", "成分": "SGOV", "比例%": round(sgov_ratio, 2), "金额": _usd_amount_label(sgov_current)},
-        {"标的组": "短债", "类型": "目标比例%", "成分": "目标", "比例%": round(sgov_target, 2), "金额": _usd_amount_label(usd_total_cny * sgov_target / 100.0)},
+        {"标的组": "SGOV", "类型": "当前比例%", "成分": "SGOV", "比例%": round(sgov_ratio, 2), "金额": _usd_amount_label(sgov_current)},
+        {"标的组": "SGOV", "类型": "目标比例%", "成分": "目标", "比例%": round(sgov_target, 2), "金额": _usd_amount_label(usd_total_cny * sgov_target / 100.0)},
         {"标的组": "现金", "类型": "当前比例%", "成分": "现金", "比例%": round(cash_usd_ratio, 2), "金额": _usd_amount_label(usd_extra_value_cny)},
         {"标的组": "现金", "类型": "目标比例%", "成分": "目标", "比例%": 0.0, "金额": _usd_amount_label(0.0)},
     ]
@@ -3679,7 +3679,7 @@ group1_chart = (
     alt.Chart(group1_df)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "短债", "现金"]),
+        x=alt.X("标的组:N", sort=["VOO", "QQQ", "卫星仓位", "SGOV", "现金"]),
         xOffset=alt.XOffset("类型:N", sort=["当前比例%", "目标比例%"]),
         y=alt.Y("比例%:Q", title="比例(%)"),
         color=alt.Color(
@@ -3693,7 +3693,7 @@ group1_chart = (
         order=alt.Order("成分:N", sort="ascending"),
         tooltip=["标的组:N", "类型:N", "成分:N", alt.Tooltip("比例%:Q", format=".2f"), "金额:N"],
     )
-    .properties(title="VOO / QQQ / 卫星仓位 / 短债(SGOV) / 现金 当前与目标对比")
+    .properties(title="VOO / QQQ / 卫星仓位 / SGOV / 现金 当前与目标对比")
 )
 tech_denominator = sum(satellite_ratio_by_symbol.values())
 tech_split_df = pd.DataFrame(
