@@ -2566,6 +2566,8 @@ function defaultKlineAvwapMode(interval, symbol) {
   return ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol) ? "year_start" : "earnings";
 }
 
+const KLINE_SWING_TARGET_PCTS = { QQQ: 3, ISRG: 1, AVGO: 0.35 };
+
 function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
   const [scope, setScope] = useState("global");
@@ -2732,6 +2734,14 @@ function KlinePage({ dashboardData }) {
 
   const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.avwap_mode || avwapMode}-${displayRange}`;
   const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
+  const swingTargetPct = KLINE_SWING_TARGET_PCTS[symbol];
+  const dashboardFx = Number(dashboardData?.summary?.fx || 0);
+  const totalAssetsUsd = dashboardFx > 0
+    ? Number(dashboardData?.summary?.total_assets_cny || 0) / dashboardFx
+    : 0;
+  const swingTargetAmount = swingTargetPct && totalAssetsUsd > 0
+    ? totalAssetsUsd * swingTargetPct / 100
+    : 0;
 
   return (
     <section className="chartPanel technicalPanel">
@@ -2811,7 +2821,7 @@ function KlinePage({ dashboardData }) {
         <button className="klineGuideButton" type="button" onClick={() => setShowCheatSheet(true)}><BookOpen size={16} />指标模板</button>
       </div>
       {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
-      {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}</div> : null}
+      {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}{swingTargetAmount > 0 ? ` · 波段目标 ${fmtMoney(swingTargetAmount, "USD", 0)}（${swingTargetPct}%）` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {realtimeError && !(error || data?.error) ? <div className="muted">{realtimeError}</div> : null}
