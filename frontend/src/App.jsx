@@ -1050,7 +1050,7 @@ function BarList({ title, rows, valueKey, formatValue }) {
   );
 }
 
-function CompareBars({ title, rows, amountKey = "current_usd", className = "" }) {
+function CompareBars({ title, rows, amountKey = "current_usd", className = "", alertThresholdPct = null }) {
   const max = Math.max(1, ...rows.flatMap((row) => [Number(row.current_pct || 0), Number(row.target_pct || 0)]));
   const currentTotal = rows.reduce((sum, row) => sum + Number(row.current_pct || 0), 0);
   const targetTotal = rows.reduce((sum, row) => sum + Number(row.target_pct || 0), 0);
@@ -1060,12 +1060,12 @@ function CompareBars({ title, rows, amountKey = "current_usd", className = "" })
       <div className="verticalBars">
         {rows.map((row) => (
           <div
-            className="verticalGroup"
+            className={`verticalGroup ${Number.isFinite(alertThresholdPct) && Math.abs(Number(row.current_pct || 0) - Number(row.target_pct || 0)) > alertThresholdPct ? "allocationDeviationAlert" : ""}`}
             key={row.key || row.symbol}
             title={`当前 ${Number(row.current_pct || 0).toFixed(2)}% · ${fmtMoney(row[amountKey], "USD")} / 目标 ${Number(row.target_pct || 0).toFixed(2)}%`}
           >
             <div className="verticalPlot">
-              <div className="verticalBar current" style={{ height: `${Number(row.current_pct || 0) / max * 100}%` }}>
+              <div className={`verticalBar current ${Number.isFinite(alertThresholdPct) && Math.abs(Number(row.current_pct || 0) - Number(row.target_pct || 0)) > alertThresholdPct ? "deviationAlert" : ""}`} style={{ height: `${Number(row.current_pct || 0) / max * 100}%` }}>
                 <span>{Number(row.current_pct || 0).toFixed(1)}%</span>
               </div>
               <div className="verticalBar target" style={{ height: `${Number(row.target_pct || 0) / max * 100}%` }}>
@@ -1092,7 +1092,7 @@ function Visualizations({ data }) {
       <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value, row) => row.symbol === "001015" ? fmtMoney(row.pnl_cny, "CNY") : fmtMoney(value, "USD")} />
       <BarList title="卫星仓位浮盈亏排名" rows={viz.satellite_pnl_rank || []} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} />
       <CompareBars title="美元资产配置占比" rows={viz.allocation_compare || []} />
-      <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" />
+      <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" alertThresholdPct={2.5} />
     </section>
   );
 }
@@ -3209,16 +3209,10 @@ function EditableHoldingsPage({ data, onSaved }) {
 function Rebalance({ data, onSaved }) {
   const rows = data.rebalance.rows;
   const suggestionRows = useMemo(() => rows.filter((row) => row.symbol !== "001015"), [rows]);
-  const realtimePctBySymbol = useMemo(() => {
-    const total = (data.holdings || []).reduce(
-      (sum, row) => sum + Math.max(0, Number(row.value_cny || 0)),
-      0,
-    );
-    return Object.fromEntries((data.holdings || []).map((row) => [
-      row.symbol,
-      total > 0 ? Number(row.value_cny || 0) / total * 100 : 0,
-    ]));
-  }, [data.holdings]);
+  const realtimeHoldingBySymbol = useMemo(
+    () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row])),
+    [data.holdings],
+  );
   const tradeRows = useMemo(() => {
     const bySymbol = new Map((data.holdings || []).map((row) => [row.symbol, { ...row, intensity: "normal", suggested_buy_usd: 0 }]));
     rows.forEach((row) => {
@@ -3795,6 +3789,18 @@ function Rebalance({ data, onSaved }) {
           <tbody>
             {suggestionRows.map((row) => {
               const diagnostics = row.tier_diagnostics || null;
+              const realtimeHolding = realtimeHoldingBySymbol[row.symbol] || {};
+              const currency = row.currency || realtimeHolding.currency || "USD";
+              const realtimeValue = Number(realtimeHolding.value || 0);
+              const realtimeMarketGap = Number(row.target_usd || 0) - realtimeValue;
+              const actualGapTooltip = [
+                `\u6210\u672c\u53e3\u5f84\u5b9e\u9645\u5dee\u503c\uff1a${fmtMoney(row.buy_difference_usd, currency)}`,
+                `\u5b9e\u65f6\u5e02\u503c\u5dee\u503c\uff1a${fmtMoney(realtimeMarketGap, currency)}`,
+                `\u76ee\u6807\u91d1\u989d\uff1a${fmtMoney(row.target_usd, currency)}`,
+                `\u5b9e\u65f6\u5e02\u503c\uff1a${fmtMoney(realtimeValue, currency)}`,
+                `\u5f53\u524d\u5e02\u503c\u5360\u6bd4\uff1a${Number(row.current_pct || 0).toFixed(2)}%`,
+                `\u76ee\u6807\u5360\u6bd4\uff1a${Number(row.target_pct || 0).toFixed(2)}%`,
+              ].join("\n");
               return (
                 <React.Fragment key={row.symbol}>
                   <tr className={Number(row.buy_difference_usd || 0) <= 0 ? "inactiveRebalanceRow" : ""}>
@@ -3815,8 +3821,8 @@ function Rebalance({ data, onSaved }) {
                         ) : null}
                       </div>
                     </td>
-                    <td className="planCell hasDetailTooltip" title={`当前占比：${Number(realtimePctBySymbol[row.symbol] || 0).toFixed(2)}%\n目标占比：${Number(row.target_pct || 0).toFixed(2)}%`}>
-                      <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, row.currency || "USD")}</div>
+                    <td className="planCell hasDetailTooltip" title={actualGapTooltip}>
+                      <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, currency)}</div>
                     </td>
                     <td className="planCell hasDetailTooltip" title={row.planned_buy_formula || "-"}>
                       <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>

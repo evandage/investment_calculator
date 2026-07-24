@@ -1675,6 +1675,14 @@ h2 {
   background: linear-gradient(180deg, rgba(112, 215, 255, 0.95), rgba(78, 166, 255, 0.86));
 }
 
+.verticalBar.current.deviationAlert {
+  background: linear-gradient(180deg, #fbbf24, #f97316);
+}
+
+.allocationDeviationAlert .verticalLabel {
+  color: #fbbf24;
+}
+
 .verticalBar.target {
   background: linear-gradient(180deg, rgba(255, 126, 182, 0.9), rgba(194, 141, 255, 0.78));
 }
@@ -3885,6 +3893,14 @@ tbody th {
   border-radius: 4px 4px 0 0;
   box-shadow: none;
 }
+.verticalBar.current {
+  background: linear-gradient(180deg, #7dd3fc 0%, #38bdf8 52%, #2563eb 100%);
+}
+
+.verticalBar.target {
+  background: linear-gradient(180deg, #d8b4fe 0%, #a78bfa 52%, #7c3aed 100%);
+}
+
 
 .toolbarRow,
 .segmented {

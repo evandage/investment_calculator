@@ -361,21 +361,6 @@
       "created_at": "2026-07-21T10:42:24+08:00"
     },
     {
-      "id": "20260722094330-24-001015",
-      "trade_date": "2026-07-21",
-      "symbol": "001015",
-      "action": "sell",
-      "amount_usd": 10089.76635,
-      "shares": 4230.51,
-      "price": 2.385,
-      "cost_basis": 10004.515637369997,
-      "realized_pnl": 85.25071263000245,
-      "prev_avg_cost": 2.3648485968287503,
-      "new_avg_cost": 2.36484859682875,
-      "intensity": "normal",
-      "created_at": "2026-07-22T09:43:30+08:00"
-    },
-    {
       "id": "20260722094559-25-SGOV",
       "trade_date": "2026-07-21",
       "symbol": "SGOV",
@@ -389,6 +374,66 @@
       "new_avg_cost": 100.595,
       "intensity": "normal",
       "created_at": "2026-07-22T09:45:59+08:00"
+    },
+    {
+      "id": "20260723094308-25-001015",
+      "trade_date": "2026-07-21",
+      "symbol": "001015",
+      "action": "sell",
+      "amount_usd": 10039.32,
+      "shares": 4230.51,
+      "price": 2.373075586631399,
+      "cost_basis": 10004.381160969588,
+      "realized_pnl": 34.938839030412055,
+      "prev_avg_cost": 2.3648168095500512,
+      "new_avg_cost": 2.3648168095500512,
+      "intensity": "normal",
+      "created_at": "2026-07-23T09:43:08+08:00"
+    },
+    {
+      "id": "20260724100216-26-PLTR",
+      "trade_date": "2026-07-23",
+      "symbol": "PLTR",
+      "action": "buy",
+      "amount_usd": 11.0,
+      "shares": 0.0861,
+      "price": 127.75842044134728,
+      "cost_basis": 11.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 129.47,
+      "new_avg_cost": 129.09682451253482,
+      "intensity": "small",
+      "created_at": "2026-07-24T10:02:16+08:00"
+    },
+    {
+      "id": "20260724100248-27-GOOGL",
+      "trade_date": "2026-07-23",
+      "symbol": "GOOGL",
+      "action": "buy",
+      "amount_usd": 30.0,
+      "shares": 0.0925,
+      "price": 324.3243243243243,
+      "cost_basis": 30.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 363.76,
+      "new_avg_cost": 356.9632792994224,
+      "intensity": "large",
+      "created_at": "2026-07-24T10:02:48+08:00"
+    },
+    {
+      "id": "20260724100313-28-PLTR",
+      "trade_date": "2026-07-23",
+      "symbol": "PLTR",
+      "action": "buy",
+      "amount_usd": 10.0,
+      "shares": 0.0813,
+      "price": 123.00123001230013,
+      "cost_basis": 10.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 129.09682451253482,
+      "new_avg_cost": 128.05614447711048,
+      "intensity": "small",
+      "created_at": "2026-07-24T10:03:13+08:00"
     }
   ]
 }

@@ -47,10 +47,11 @@
       "updated_at": "2026-06-29T15:40:16+08:00"
     },
     "2026-07": {
-      "used_budget_usd": 2239.68,
+      "used_budget_usd": 2290.68,
       "planned_new_cash_usd": 700.0,
       "planned_cash_by_month": {},
       "bought_symbols": [
+        "GOOGL",
         "ISRG",
         "PLTR",
         "QQQ",
@@ -60,9 +61,10 @@
       "bought_amount_by_symbol": {
         "QQQ": 819.9,
         "VOO": 1228.79,
-        "PLTR": 39.989999999999995,
+        "PLTR": 60.989999999999995,
         "TEM": 81.0,
-        "ISRG": 70.0
+        "ISRG": 70.0,
+        "GOOGL": 30.0
       },
       "sold_amount_by_symbol": {
         "ISRG": 80.0,
@@ -75,9 +77,10 @@
         "VOO": "normal",
         "PLTR": "small",
         "TEM": "normal",
-        "ISRG": "large"
+        "ISRG": "large",
+        "GOOGL": "large"
       },
-      "updated_at": "2026-07-22T09:45:59+08:00"
+      "updated_at": "2026-07-24T10:03:13+08:00"
     }
   }
 }
