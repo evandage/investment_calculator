@@ -2544,6 +2544,119 @@ tbody th {
 .fxConversionBlock {
   margin-top: 18px;
 }
+.recordTableToolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 8px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(13, 29, 49, 0.72);
+}
+
+.recordTableToolbar input {
+  flex: 1 1 260px;
+  min-width: 180px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.recordTableToolbar select {
+  flex: 0 1 132px;
+  width: 132px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.recordTableToolbar span {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.tradeHistoryBlock .recordTableWrap,
+.fxConversionBlock .recordTableWrap {
+  margin-top: 0;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+}
+
+.recordTableWrap.expanded {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.recordTableWrap.expanded thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #10233a;
+}
+
+.recordSortButton {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.recordSortButton:hover {
+  color: #7dd3fc;
+  background: transparent;
+}
+
+.recordExpandToggle {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 27px;
+  min-height: 0;
+  margin: -1px auto 0;
+  padding: 0;
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: #10233a;
+  color: #7dd3fc;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.recordExpandToggle:hover {
+  border-color: rgba(56, 189, 248, 0.72);
+  background: #16304d;
+}
+
+.recordExpandToggle.open {
+  color: #c4b5fd;
+}
+
+@media (max-width: 720px) {
+  .recordTableToolbar {
+    flex-wrap: wrap;
+  }
+
+  .recordTableToolbar input {
+    flex-basis: 100%;
+  }
+
+  .recordTableToolbar select {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .recordTableToolbar span {
+    margin-left: 0;
+  }
+}
 
 .fxConversionModal {
   width: min(720px, 96vw);

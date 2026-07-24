@@ -3247,6 +3247,12 @@ function Rebalance({ data, onSaved }) {
   const [deletingFxConversionId, setDeletingFxConversionId] = useState("");
   const [tradeHistoryOpen, setTradeHistoryOpen] = useState(false);
   const [fxHistoryOpen, setFxHistoryOpen] = useState(false);
+  const [tradeFilter, setTradeFilter] = useState("");
+  const [tradeActionFilter, setTradeActionFilter] = useState("all");
+  const [tradeSort, setTradeSort] = useState({ key: "trade_date", direction: "desc" });
+  const [fxFilter, setFxFilter] = useState("");
+  const [fxSort, setFxSort] = useState({ key: "converted_date", direction: "desc" });
+
   const [balanceMessage, setBalanceMessage] = useState("");
   const [tradeMessage, setTradeMessage] = useState("");
   const [fxConversionMessage, setFxConversionMessage] = useState("");
@@ -3321,10 +3327,59 @@ function Rebalance({ data, onSaved }) {
     { buy_USD: 0, sell_USD: 0, buy_CNY: 0, sell_CNY: 0 },
   ), [inputs, currencyBySymbol]);
   const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
-  const sortedTrades = useMemo(() => (data.trades || []).slice().reverse(), [data.trades]);
-  const visibleTrades = tradeHistoryOpen ? sortedTrades.slice(0, 20) : sortedTrades.slice(0, 3);
-  const sortedFxConversions = useMemo(() => (data.fx_conversions || []).slice().reverse(), [data.fx_conversions]);
-  const visibleFxConversions = fxHistoryOpen ? sortedFxConversions.slice(0, 20) : sortedFxConversions.slice(0, 3);
+  const sortedTrades = useMemo(() => {
+    const query = tradeFilter.trim().toLowerCase();
+    const rows = (data.trades || []).filter((trade) => {
+      if (tradeActionFilter !== "all" && String(trade.action || "buy") !== tradeActionFilter) return false;
+      if (!query) return true;
+      return [trade.trade_date, trade.date, trade.symbol, trade.action, trade.intensity]
+        .some((value) => String(value || "").toLowerCase().includes(query));
+    });
+    const valueFor = (trade) => {
+      if (tradeSort.key === "trade_date") return `${trade.trade_date || trade.date || ""} ${trade.created_at || ""}`;
+      return trade[tradeSort.key] ?? "";
+    };
+    return rows.slice().sort((left, right) => {
+      const leftValue = valueFor(left);
+      const rightValue = valueFor(right);
+      const leftNumber = Number(leftValue);
+      const rightNumber = Number(rightValue);
+      const comparison = Number.isFinite(leftNumber) && Number.isFinite(rightNumber)
+        ? leftNumber - rightNumber
+        : String(leftValue).localeCompare(String(rightValue), "zh-CN", { numeric: true });
+      return tradeSort.direction === "asc" ? comparison : -comparison;
+    });
+  }, [data.trades, tradeFilter, tradeActionFilter, tradeSort]);
+  const visibleTrades = tradeHistoryOpen ? sortedTrades : sortedTrades.slice(0, 3);
+  const sortedFxConversions = useMemo(() => {
+    const query = fxFilter.trim().toLowerCase();
+    const rows = (data.fx_conversions || []).filter((record) => (
+      !query || [record.converted_date, record.cny_amount, record.usd_amount, record.rate, record.note]
+        .some((value) => String(value || "").toLowerCase().includes(query))
+    ));
+    return rows.slice().sort((left, right) => {
+      const leftValue = left[fxSort.key] ?? "";
+      const rightValue = right[fxSort.key] ?? "";
+      const leftNumber = Number(leftValue);
+      const rightNumber = Number(rightValue);
+      const comparison = Number.isFinite(leftNumber) && Number.isFinite(rightNumber)
+        ? leftNumber - rightNumber
+        : String(leftValue).localeCompare(String(rightValue), "zh-CN", { numeric: true });
+      return fxSort.direction === "asc" ? comparison : -comparison;
+    });
+  }, [data.fx_conversions, fxFilter, fxSort]);
+  const visibleFxConversions = fxHistoryOpen ? sortedFxConversions : sortedFxConversions.slice(0, 3);
+
+  function toggleRecordSort(setter, current, key) {
+    setter(current.key === key
+      ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+      : { key, direction: "asc" });
+  }
+
+  function recordSortMark(current, key) {
+    if (current.key !== key) return "";
+    return current.direction === "asc" ? " \u25b2" : " \u25bc";
+  }
 
   function update(symbol, key, value) {
     setInputs((prev) => ({ ...prev, [symbol]: { ...prev[symbol], [key]: value } }));
@@ -3801,11 +3856,22 @@ function Rebalance({ data, onSaved }) {
                 `\u5f53\u524d\u5e02\u503c\u5360\u6bd4\uff1a${Number(row.current_pct || 0).toFixed(2)}%`,
                 `\u76ee\u6807\u5360\u6bd4\uff1a${Number(row.target_pct || 0).toFixed(2)}%`,
               ].join("\n");
+              const tierReviewTooltip = row.symbol === "TEM" && row.review_mode === "manual_review_only" && diagnostics
+                ? [
+                    "\u590d\u6838",
+                    `\u81ea\u8eab\u6837\u672c\u6863\u4f4d\uff1a${formatThresholdSet(diagnostics.self_thresholds_pct)}`,
+                    `\u540c\u884c\u6863\u4f4d\uff1a${formatThresholdSet(diagnostics.peer_thresholds_pct)}`,
+                    `\u6536\u7f29\u540e\u6700\u7ec8\u6863\u4f4d\uff1a${formatThresholdSet(diagnostics.shrunk_thresholds_pct)}`,
+                    `\u6709\u6548\u5386\u53f2\uff1a${Number(diagnostics.history_days || 0)}\u65e5\uff08\u53ef\u8ba1\u7b97\u56de\u64a4 ${Number(diagnostics.effective_drawdown_days || 0)}\u65e5\uff09`,
+                    `\u72ec\u7acb\u56de\u64a4\u5468\u671f\uff1a${Number(diagnostics.independent_drawdown_cycles || 0)}\u4e2a`,
+                    diagnostics.reason,
+                  ].join("\n")
+                : "";
               return (
                 <React.Fragment key={row.symbol}>
                   <tr className={Number(row.buy_difference_usd || 0) <= 0 ? "inactiveRebalanceRow" : ""}>
                     <th>{row.symbol}</th>
-                    <td>
+                    <td className={tierReviewTooltip ? "hasDetailTooltip" : undefined} title={tierReviewTooltip || undefined}>
                       <div className="tierSignalStack">
                         <span className={`tierBadge ${tierClass(row.intensity)}`}>{rebalanceTierLabel(row)}</span>
                         {row.intraday_warning?.active ? (
@@ -3834,7 +3900,7 @@ function Rebalance({ data, onSaved }) {
                     </td>
                     <td className={`${Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"} hasDetailTooltip`} title={valuationTooltip(row)}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
                   </tr>
-                  {row.review_mode === "manual_review_only" && diagnostics ? (
+                  {row.symbol !== "TEM" && row.review_mode === "manual_review_only" && diagnostics ? (
                     <tr className="manualReviewDetailRow">
                       <td colSpan="7">
                         <div className="manualReviewDetail">
@@ -3863,7 +3929,7 @@ function Rebalance({ data, onSaved }) {
           </div>
           <div className="headerActions">
             <button className="toolButton primaryTool" onClick={() => openTradeEditor(tradeRows[0]?.symbol || "")}>交易</button>
-            {sortedTrades.length > 3 ? (
+            {false && sortedTrades.length > 3 ? (
               <button className="toolButton compactTool" onClick={() => setTradeHistoryOpen((value) => !value)}>
                 {tradeHistoryOpen ? "收起" : "更多"}
               </button>
@@ -3871,9 +3937,34 @@ function Rebalance({ data, onSaved }) {
           </div>
         </div>
         {tradeMessage ? <div className="saveMessage down">{tradeMessage}</div> : null}
-        <div className="tableWrap">
+        <div className="recordTableToolbar">
+          <input
+            value={tradeFilter}
+            onChange={(event) => setTradeFilter(event.target.value)}
+            placeholder={"\u641c\u7d22\u65e5\u671f\u3001\u6807\u7684\u6216\u6863\u4f4d"}
+            aria-label={"\u7b5b\u9009\u4ea4\u6613\u8bb0\u5f55"}
+          />
+          <select value={tradeActionFilter} onChange={(event) => setTradeActionFilter(event.target.value)} aria-label={"\u6309\u4ea4\u6613\u65b9\u5411\u7b5b\u9009"}>
+            <option value="all">{"\u5168\u90e8\u65b9\u5411"}</option><option value="buy">{"\u4e70\u5165"}</option><option value="sell">{"\u5356\u51fa"}</option>
+          </select>
+          <span>{`\u7b5b\u9009\u540e ${sortedTrades.length} / ${(data.trades || []).length} \u6761`}</span>
+        </div>
+        <div className={`tableWrap recordTableWrap ${tradeHistoryOpen ? "expanded" : ""}`}>
           <table>
-            <thead><tr><th>日期</th><th>标的</th><th>方向</th><th>股数</th><th>成交金额</th><th>成交成本</th><th>收盘差额</th><th>持仓成本变化</th><th>档位</th><th>操作</th></tr></thead>
+            <thead>
+              <tr>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "trade_date")}>{"\u65e5\u671f"}{recordSortMark(tradeSort, "trade_date")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "symbol")}>{"\u6807\u7684"}{recordSortMark(tradeSort, "symbol")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "action")}>{"\u65b9\u5411"}{recordSortMark(tradeSort, "action")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "shares")}>{"\u80a1\u6570"}{recordSortMark(tradeSort, "shares")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "amount_usd")}>{"\u6210\u4ea4\u91d1\u989d"}{recordSortMark(tradeSort, "amount_usd")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "price")}>{"\u6210\u4ea4\u6210\u672c"}{recordSortMark(tradeSort, "price")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "close_effect")}>{"\u6536\u76d8\u5dee\u989d"}{recordSortMark(tradeSort, "close_effect")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "new_avg_cost")}>{"\u6301\u4ed3\u6210\u672c\u53d8\u5316"}{recordSortMark(tradeSort, "new_avg_cost")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setTradeSort, tradeSort, "intensity")}>{"\u6863\u4f4d"}{recordSortMark(tradeSort, "intensity")}</button></th>
+                <th>{"\u64cd\u4f5c"}</th>
+              </tr>
+            </thead>
             <tbody>
               {visibleTrades.map((trade, index) => (
                 <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
@@ -3903,6 +3994,12 @@ function Rebalance({ data, onSaved }) {
             </tbody>
           </table>
         </div>
+        {sortedTrades.length > 3 ? (
+          <button type="button" className={`recordExpandToggle ${tradeHistoryOpen ? "open" : ""}`} onClick={() => setTradeHistoryOpen((value) => !value)} aria-expanded={tradeHistoryOpen} title={tradeHistoryOpen ? "\u6536\u8d77\u4ea4\u6613\u8bb0\u5f55" : "\u5c55\u5f00\u5168\u90e8\u4ea4\u6613\u8bb0\u5f55"}>
+            <span aria-hidden="true">{tradeHistoryOpen ? "\u25b2" : "\u25bc"}</span>
+          </button>
+        ) : null}
+
       </div>
       <div className="fxConversionBlock">
         <div className="sectionHeader subHeader">
@@ -3916,7 +4013,7 @@ function Rebalance({ data, onSaved }) {
           </div>
           <div className="headerActions">
             <button className="toolButton primaryTool" onClick={openFxConversionEditor}>换汇</button>
-            {sortedFxConversions.length > 3 ? (
+            {false && sortedFxConversions.length > 3 ? (
               <button className="toolButton compactTool" onClick={() => setFxHistoryOpen((value) => !value)}>
                 {fxHistoryOpen ? "收起" : "更多"}
               </button>
@@ -3924,9 +4021,28 @@ function Rebalance({ data, onSaved }) {
           </div>
         </div>
         {fxConversionMessage ? <div className="saveMessage down">{fxConversionMessage}</div> : null}
-        <div className="tableWrap">
+        <div className="recordTableToolbar">
+          <input
+            value={fxFilter}
+            onChange={(event) => setFxFilter(event.target.value)}
+            placeholder={"\u641c\u7d22\u65e5\u671f\u3001\u91d1\u989d\u6216\u5907\u6ce8"}
+            aria-label={"\u7b5b\u9009\u8d2d\u6c47\u8bb0\u5f55"}
+          />
+          <span>{`\u7b5b\u9009\u540e ${sortedFxConversions.length} / ${(data.fx_conversions || []).length} \u6761`}</span>
+        </div>
+
+        <div className={`tableWrap recordTableWrap ${fxHistoryOpen ? "expanded" : ""}`}>
           <table>
-            <thead><tr><th>日期</th><th>人民币金额</th><th>美元金额</th><th>汇率</th><th>备注</th><th>操作</th></tr></thead>
+            <thead>
+              <tr>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setFxSort, fxSort, "converted_date")}>{"\u65e5\u671f"}{recordSortMark(fxSort, "converted_date")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setFxSort, fxSort, "cny_amount")}>{"\u4eba\u6c11\u5e01\u91d1\u989d"}{recordSortMark(fxSort, "cny_amount")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setFxSort, fxSort, "usd_amount")}>{"\u7f8e\u5143\u91d1\u989d"}{recordSortMark(fxSort, "usd_amount")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setFxSort, fxSort, "rate")}>{"\u6c47\u7387"}{recordSortMark(fxSort, "rate")}</button></th>
+                <th><button type="button" className="recordSortButton" onClick={() => toggleRecordSort(setFxSort, fxSort, "note")}>{"\u5907\u6ce8"}{recordSortMark(fxSort, "note")}</button></th>
+                <th>{"\u64cd\u4f5c"}</th>
+              </tr>
+            </thead>
             <tbody>
               {visibleFxConversions.map((record) => (
                 <tr key={record.id}>
@@ -3948,6 +4064,12 @@ function Rebalance({ data, onSaved }) {
             </tbody>
           </table>
         </div>
+        {sortedFxConversions.length > 3 ? (
+          <button type="button" className={`recordExpandToggle ${fxHistoryOpen ? "open" : ""}`} onClick={() => setFxHistoryOpen((value) => !value)} aria-expanded={fxHistoryOpen} title={fxHistoryOpen ? "\u6536\u8d77\u8d2d\u6c47\u8bb0\u5f55" : "\u5c55\u5f00\u5168\u90e8\u8d2d\u6c47\u8bb0\u5f55"}>
+            <span aria-hidden="true">{fxHistoryOpen ? "\u25b2" : "\u25bc"}</span>
+          </button>
+        ) : null}
+
       </div>
       {fxConversionOpen ? (
         <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
