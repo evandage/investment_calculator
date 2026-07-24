@@ -568,6 +568,29 @@ def _save_fund_quotes_cache() -> None:
         pass
 
 
+def cache_fund_quote(code: str, quote: dict[str, Any]) -> dict[str, Any]:
+    """Persist a fund quote without allowing an older provider row to replace it."""
+    _load_fund_quotes_cache()
+    now = time.time()
+    candidate = dict(quote)
+    cached = _FUND_QUOTES_CACHE.get(code)
+    if cached:
+        current = dict(cached[0])
+        current_day = str(current.get("quote_date") or current.get("quote_time") or "")[:10]
+        candidate_day = str(candidate.get("quote_date") or candidate.get("quote_time") or "")[:10]
+        current_source = str(current.get("source") or "")
+        candidate_source = str(candidate.get("source") or "")
+        current_official = "\u51c0\u503c" in current_source and "\u4f30" not in current_source
+        candidate_official = "\u51c0\u503c" in candidate_source and "\u4f30" not in candidate_source
+        if candidate_day < current_day or (
+            candidate_day == current_day and current_official and not candidate_official
+        ):
+            candidate = current
+    _FUND_QUOTES_CACHE[code] = (dict(candidate), now)
+    _save_fund_quotes_cache()
+    return candidate
+
+
 def _read_fx_cache() -> dict[str, Any] | None:
     if _FX_CACHE is not None:
         return dict(_FX_CACHE)
@@ -831,9 +854,7 @@ def fetch_fund_quote(code: str) -> dict[str, Any] | None:
         "session": "regular",
         "source": "东方财富基金估算",
     }
-    _FUND_QUOTES_CACHE[code] = (dict(quote), now)
-    _save_fund_quotes_cache()
-    return quote
+    return cache_fund_quote(code, quote)
 
 
 def _parse_sina_fund_estimate(code: str, text: str) -> dict[str, Any] | None:
@@ -870,7 +891,7 @@ def _parse_sina_fund_estimate(code: str, text: str) -> dict[str, Any] | None:
 def fetch_sina_fund_estimate(code: str) -> dict[str, Any] | None:
     try:
         response = requests.get(
-            f"https://hq.sinajs.cn/list=fu_{code}",
+            f"http://hq.sinajs.cn/list=fu_{code}",
             timeout=HTTP_TIMEOUT,
             headers={**REQUEST_HEADERS, "Referer": "https://finance.sina.com.cn/"},
         )
@@ -878,6 +899,19 @@ def fetch_sina_fund_estimate(code: str) -> dict[str, Any] | None:
     except requests.RequestException:
         return None
     return _parse_sina_fund_estimate(code, response.text)
+
+
+def fetch_direct_fund_quote(code: str, today: str | None = None) -> dict[str, Any] | None:
+    """Use Eastmoney first and Sina only when Eastmoney has no quote for today."""
+    expected_day = today or datetime.now(TZ_SHANGHAI).date().isoformat()
+    fund = fetch_fund_quote(code)
+    fund_day = str((fund or {}).get("quote_date") or "")[:10]
+    if fund_day == expected_day:
+        return fund
+    sina_estimate = fetch_sina_fund_estimate(code)
+    if sina_estimate and str(sina_estimate.get("quote_date") or "")[:10] == expected_day:
+        return cache_fund_quote(code, sina_estimate)
+    return fund
 
 
 def fetch_fx_usdcny() -> dict[str, Any]:
@@ -1098,13 +1132,7 @@ def fetch_quotes() -> dict[str, Any]:
             if fallback:
                 quotes[sym] = fallback
     for sym, code in app_config.FUND_CODES.items():
-        fund = fetch_fund_quote(code)
-        today = datetime.now(TZ_SHANGHAI).date().isoformat()
-        fund_day = str((fund or {}).get("quote_date") or "")[:10]
-        if fund_day != today:
-            sina_estimate = fetch_sina_fund_estimate(code)
-            if sina_estimate and str(sina_estimate.get("quote_date") or "")[:10] == today:
-                fund = sina_estimate
+        fund = fetch_direct_fund_quote(code)
         if fund:
             fund["symbol"] = sym
             quotes[sym] = fund

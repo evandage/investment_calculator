@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from backend import portfolio
 from backend.config import TZ_SHANGHAI
@@ -11,9 +11,11 @@ from backend.config import TZ_SHANGHAI
 class ConfirmedCloseMetricTests(unittest.TestCase):
     def setUp(self):
         portfolio._DRAWDOWN_CACHE.clear()
+        portfolio._FUND_HISTORY_CACHE.clear()
 
     def tearDown(self):
         portfolio._DRAWDOWN_CACHE.clear()
+        portfolio._FUND_HISTORY_CACHE.clear()
 
     @patch("backend.ohlcv.fetch_ohlcv")
     @patch("backend.portfolio.completed_performance_day", return_value="2026-07-16")
@@ -44,6 +46,21 @@ class ConfirmedCloseMetricTests(unittest.TestCase):
         metrics = portfolio.fetch_60d_metrics("VOO", current_price=110.0)
         self.assertAlmostEqual(metrics["confirmed_drawdown_pct"], -10.0)
         self.assertAlmostEqual(metrics["intraday_drawdown_pct"], 0.0)
+
+    @patch("backend.portfolio.requests.get")
+    def test_fund_history_reuses_cached_prices(self, get):
+        history_response = Mock()
+        history_response.text = "<tr><td>2026-07-23</td><td>2.4010</td></tr>"
+        history_response.encoding = ""
+        get.return_value = history_response
+
+        first = portfolio.fetch_fund_close_history("001015")
+        request_count = get.call_count
+        second = portfolio.fetch_fund_close_history("001015")
+
+        self.assertEqual(first, {"2026-07-23": 2.401})
+        self.assertEqual(second, first)
+        self.assertEqual(get.call_count, request_count)
 
     def test_csi300_keeps_same_day_return_after_china_close(self):
         quote = {
@@ -118,6 +135,44 @@ class ConfirmedCloseMetricTests(unittest.TestCase):
         quote = portfolio.quote_with_previous_fund_close("001015", estimate, None)
 
         self.assertEqual(quote, estimate)
+
+    def test_csi300_pending_uses_latest_official_close_before_today(self):
+        stale_estimate = {
+            "symbol": "001015",
+            "price": 2.3078,
+            "regular_price": 2.3078,
+            "quote_date": "2026-07-20",
+            "regular_change_pct": 1.53,
+            "source": "stale estimate",
+        }
+
+        quote = portfolio.quote_with_previous_fund_close(
+            "001015",
+            stale_estimate,
+            None,
+            {"2026-07-22": 2.385, "2026-07-23": 2.401},
+            "2026-07-24",
+        )
+
+        self.assertEqual(quote["price"], 2.401)
+        self.assertEqual(quote["regular_price"], 2.401)
+        self.assertEqual(quote["regular_change_pct"], 0.0)
+        self.assertEqual(quote["quote_date"], "2026-07-23")
+        self.assertEqual(quote["source"], "上一交易日确认净值")
+
+    def test_csi300_performance_curve_uses_510330_daily_return(self):
+        histories = {
+            "001015": {"2026-07-23": 2.30, "2026-07-24": 2.40},
+            "510330.SS": {"2026-07-23": 4.00, "2026-07-24": 3.92},
+        }
+
+        daily_pct = portfolio.performance_benchmark_daily_pct(
+            "001015",
+            "2026-07-24",
+            histories,
+        )
+
+        self.assertAlmostEqual(daily_pct, -2.0)
 
     def test_closed_day_display_carries_latest_completed_symbol_return(self):
         completed_row = {

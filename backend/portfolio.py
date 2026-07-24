@@ -33,7 +33,7 @@ from .config import (
     USD_SYMBOLS,
     load_satellite_universe_config,
 )
-from .market_data import fetch_fx_usdcny_history, fetch_quotes
+from .market_data import cache_fund_quote, fetch_fx_usdcny_history, fetch_quotes
 from .storage import (
     load_closed_satellite_pnl,
     load_drawdown_episode_store,
@@ -59,6 +59,13 @@ BUILD_TARGET_MONTH = 10
 MIDTERM_ELECTION_DATE = date(2026, 11, 3)
 _DRAWDOWN_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _DRAWDOWN_CACHE_TTL_SECONDS = 300
+_FUND_HISTORY_CACHE: dict[str, tuple[dict[str, float], float]] = {}
+_FUND_HISTORY_CACHE_TTL_SECONDS = 900
+PERFORMANCE_BENCHMARK_SOURCES = {
+    "001015": "510330.SS",
+    "VOO": "VOO",
+    "QQQ": "QQQ",
+}
 _EPISODE_STATE_LOCK = threading.Lock()
 NY_TZ = ZoneInfo("America/New_York")
 PERFORMANCE_WRITE_HOUR = 8
@@ -698,11 +705,16 @@ def fetch_us_close_history(symbol: str) -> dict[str, float]:
 
 def fetch_fund_close_history(symbol: str) -> dict[str, float]:
     code = FUND_CODES.get(symbol, symbol)
+    now = time.time()
+    cached = _FUND_HISTORY_CACHE.get(code)
+    if cached and now - cached[1] < _FUND_HISTORY_CACHE_TTL_SECONDS:
+        return dict(cached[0])
+
     prices: dict[str, float] = {}
     for page in range(1, 5):
         url = f"http://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page={page}&per=100"
         try:
-            response = requests.get(url, headers=FUND_HISTORY_HEADERS, timeout=(5, 20))
+            response = requests.get(url, headers=FUND_HISTORY_HEADERS, timeout=(2, 5))
             response.encoding = "utf-8"
         except requests.RequestException:
             break
@@ -728,7 +740,7 @@ def fetch_fund_close_history(symbol: str) -> dict[str, float]:
         response = requests.get(
             f"https://fund.eastmoney.com/pingzhongdata/{code}.js",
             headers=FUND_HISTORY_HEADERS,
-            timeout=(5, 20),
+            timeout=(2, 5),
         )
         response.encoding = "utf-8"
         match = re.search(r"var\s+Data_netWorthTrend\s*=\s*(\[.*?\]);", response.text, flags=re.S)
@@ -743,13 +755,22 @@ def fetch_fund_close_history(symbol: str) -> dict[str, float]:
             continue
         if price > 0:
             prices[day] = price
-    return prices
+    if prices:
+        _FUND_HISTORY_CACHE[code] = (dict(prices), now)
+        return prices
+    fallback = dict(cached[0]) if cached else {}
+    _FUND_HISTORY_CACHE[code] = (dict(fallback), now)
+    return fallback
 
 
 def fetch_close_histories(symbols: set[str]) -> dict[str, dict[str, float]]:
     histories: dict[str, dict[str, float]] = {}
     for sym in sorted(symbols):
-        histories[sym] = fetch_us_close_history(sym) if sym in USD_SYMBOLS else fetch_fund_close_history(sym)
+        histories[sym] = (
+            fetch_us_close_history(sym)
+            if sym in USD_SYMBOLS or sym == "510330.SS"
+            else fetch_fund_close_history(sym)
+        )
     return histories
 
 
@@ -760,6 +781,15 @@ def completed_daily_pct_for_symbol(symbol: str, day: str, histories: dict[str, d
     if not today_price or not prev_price or prev_price <= 0:
         return None
     return (today_price / prev_price - 1.0) * 100.0
+
+
+def performance_benchmark_daily_pct(
+    display_symbol: str,
+    day: str,
+    histories: dict[str, dict[str, float]],
+) -> float | None:
+    source_symbol = PERFORMANCE_BENCHMARK_SOURCES.get(display_symbol, display_symbol)
+    return completed_daily_pct_for_symbol(source_symbol, day, histories)
 
 
 def completed_market_daily_pcts(
@@ -804,18 +834,27 @@ def quote_with_previous_fund_close(
     symbol: str,
     quote: dict[str, Any],
     completed_row: dict[str, Any] | None,
+    prices: dict[str, float] | None = None,
+    before_day: str = "",
 ) -> dict[str, Any]:
     """Freeze a fund at its latest confirmed close before the next session opens."""
-    if not completed_row:
-        return dict(quote)
-    closing_prices = completed_row.get("closing_prices") or {}
-    benchmark_prices = completed_row.get("benchmark_prices") or {}
-    price = coerce_optional_float(closing_prices.get(symbol))
+    price: float | None = None
+    close_day = ""
+    if prices and before_day:
+        confirmed_days = [day for day in prices if day < before_day]
+        if confirmed_days:
+            close_day = max(confirmed_days)
+            price = coerce_optional_float(prices.get(close_day))
+
+    if (price is None or price <= 0) and completed_row:
+        closing_prices = completed_row.get("closing_prices") or {}
+        benchmark_prices = completed_row.get("benchmark_prices") or {}
+        price = coerce_optional_float(closing_prices.get(symbol))
+        if price is None or price <= 0:
+            price = coerce_optional_float(benchmark_prices.get(symbol))
+        close_day = str(completed_row.get("date") or "")[:10]
     if price is None or price <= 0:
-        price = coerce_optional_float(benchmark_prices.get(symbol))
-    if price is None or price <= 0:
         return dict(quote)
-    close_day = str(completed_row.get("date") or "")[:10]
     return {
         **quote,
         "symbol": symbol,
@@ -1935,7 +1974,7 @@ def build_performance_history(
 ) -> dict[str, Any]:
     now = datetime.now(TZ_SHANGHAI)
     today = performance_history_date(now)
-    benchmark_symbols = ("001015", "VOO", "QQQ")
+    benchmark_symbols = tuple(PERFORMANCE_BENCHMARK_SOURCES)
     required_history_symbols = list(ALL_SYMBOLS)
     history_quotes_usable = all(is_history_quote_usable(quotes.get(sym)) for sym in required_history_symbols)
     benchmark_prices = {}
@@ -1944,28 +1983,30 @@ def build_performance_history(
     # CSI300 has its own completion clock. Once Beijing reaches 15:00, use
     # the completed daily bar directly, even though the US benchmark day is
     # still open and the portfolio history row remains provisional.
-    benchmark_histories = fetch_close_histories(benchmark_symbols)
+    benchmark_histories = fetch_close_histories(set(PERFORMANCE_BENCHMARK_SOURCES.values()))
     for sym in benchmark_symbols:
-        if not is_history_quote_usable(quotes.get(sym)):
+        source_sym = PERFORMANCE_BENCHMARK_SOURCES[sym]
+        source_quote = quotes.get(source_sym)
+        if not is_history_quote_usable(source_quote):
             continue
         if sym == "001015" and is_china_daily_close_ready(today, now):
-            close_price = close_on(benchmark_histories.get(sym, {}), today)
-            close_daily_pct = completed_daily_pct_for_symbol(sym, today, benchmark_histories)
+            close_price = close_on(benchmark_histories.get(source_sym, {}), today)
+            close_daily_pct = performance_benchmark_daily_pct(sym, today, benchmark_histories)
             if close_price is not None and close_daily_pct is not None:
                 benchmark_prices[sym] = close_price
                 benchmark_daily_pct[sym] = close_daily_pct
                 continue
-        if is_symbol_daily_history_estimated(sym, today, now, quotes.get(sym)):
+        if is_symbol_daily_history_estimated(source_sym, today, now, source_quote):
             estimated_symbols.append(sym)
         try:
-            quote = quotes.get(sym) or {}
+            quote = source_quote or {}
             price = float(quote.get("price") or 0.0)
         except (TypeError, ValueError):
             price = 0.0
         if price > 0:
             benchmark_prices[sym] = price
         try:
-            benchmark_daily_pct[sym] = daily_pct_for_current_history_quote(sym, today, now, quote)
+            benchmark_daily_pct[sym] = daily_pct_for_current_history_quote(source_sym, today, now, quote)
         except (TypeError, ValueError):
             pass
 
@@ -2143,6 +2184,16 @@ def build_performance_history(
         if isinstance(daily_pcts, dict):
             for sym in benchmark_symbols:
                 daily_pct = coerce_optional_float(daily_pcts.get(sym))
+                if sym == "001015":
+                    etf_daily_pct = performance_benchmark_daily_pct(
+                        sym,
+                        str(row.get("date") or ""),
+                        benchmark_histories,
+                    )
+                    if etf_daily_pct is not None:
+                        daily_pct = etf_daily_pct
+                    elif row.get("finalized"):
+                        daily_pct = None
                 if daily_pct is None:
                     point[f"{sym}_return_pct"] = None
                     point[f"{sym}_daily_pct"] = None
@@ -2377,7 +2428,7 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     if (
         is_weekday(history_day)
         and history_now.date().isoformat() == history_day
-        and china_minutes >= 9 * 60 + 30
+        and china_minutes >= 15 * 60
     ):
         official_fund_prices = fetch_fund_close_history("001015")
     is_china_preopen = (
@@ -2400,8 +2451,19 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             history_day,
             official_fund_prices,
         )
-    # Keep the public market payload consistent with the effective quote used
-    # by cards, weights and P&L calculations (proxy estimate or official NAV).
+        if fund_daily_status(quotes.get("001015") or {}, history_day, history_now) == "official":
+            cached_official = cache_fund_quote(FUND_CODES["001015"], quotes["001015"])
+            quotes["001015"] = {**cached_official, "symbol": "001015"}
+    if fund_daily_status(quotes.get("001015") or {}, history_day, history_now) == "pending":
+        quotes["001015"] = quote_with_previous_fund_close(
+            "001015",
+            quotes.get("001015") or {},
+            latest_completed_row,
+            official_fund_prices,
+            history_day,
+        )
+    # Keep the public market payload consistent with the direct provider quote
+    # used by cards, weights and P&L calculations.
     market = {**market, "quotes": quotes}
     carry_completed_daily = not is_weekday(history_day)
     trades = load_trade_records(user_id)

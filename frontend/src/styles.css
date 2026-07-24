@@ -1416,6 +1416,60 @@ h2 {
   margin-top: 10px;
 }
 
+.performancePlotExpandable {
+  position: relative;
+  cursor: zoom-in;
+  outline: none;
+}
+
+.performancePlotExpandable:focus-visible {
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.68) inset;
+}
+
+.performanceModalBackdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 8, 20, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.performanceModal {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(1500px, 96vw);
+  height: min(900px, 92vh);
+  padding: 16px;
+  border: 1px solid rgba(112, 215, 255, 0.38);
+  border-radius: 16px;
+  background: #0b1b2e;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.58);
+}
+
+.performanceModal .sectionHeader {
+  margin-bottom: 8px;
+}
+
+.performanceModal .sectionHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.performanceModal .sectionHeader h2 {
+  margin: 0;
+  color: #f8fafc;
+}
+
+.performanceModalPlot {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(71, 107, 139, 0.38);
+  border-radius: 10px;
+}
+
 .performanceLwCanvas {
   position: relative;
   width: 100%;
@@ -3206,7 +3260,7 @@ tbody th {
 
 .dashboardWorkspace > .heatmapPanel {
   margin: 0;
-  padding-bottom: 6px;
+  padding: 8px 8px 6px;
 }
 
 .dashboardInsights {
@@ -4682,6 +4736,22 @@ tbody tr:hover th {
 .cheatSheetCommonGrid em { display: block; margin-top: 8px; color: #5eead4; font-size: 9px; font-style: normal; line-height: 1.5; }
 
 @media (max-width: 760px) {
+  .performanceModalBackdrop {
+    padding: 8px;
+  }
+
+  .performanceModal {
+    width: 100%;
+    height: 96vh;
+    padding: 10px;
+    border-radius: 11px;
+  }
+
+  .performanceModal .performanceStats {
+    grid-template-columns: repeat(5, minmax(92px, 1fr));
+    overflow-x: auto;
+  }
+
   .klineToolbar {
     justify-content: flex-start;
     padding: 5px;

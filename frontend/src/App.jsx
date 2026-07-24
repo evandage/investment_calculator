@@ -1138,6 +1138,7 @@ function withUsdPerformanceFallback(points) {
 }
 
 function PerformanceChart({ history }) {
+  const [expanded, setExpanded] = useState(false);
   const points = useMemo(() => withUsdPerformanceFallback(history?.points || []), [history?.points]);
   const latest = points[points.length - 1];
   const series = useMemo(() => [
@@ -1147,6 +1148,20 @@ function PerformanceChart({ history }) {
     ["VOO_return_pct", "VOO", TERMINAL_CHART.violet, 2],
     ["QQQ_return_pct", "QQQ", TERMINAL_CHART.cyan, 2],
   ], []);
+
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [expanded]);
 
   return (
     <section className="chartPanel performancePanel">
@@ -1164,9 +1179,40 @@ function PerformanceChart({ history }) {
           </div>
         ))}
       </div>
-      <div className="performancePlot">
+      <div
+        className="performancePlot performancePlotExpandable"
+        role="button"
+        tabIndex="0"
+        aria-label="放大累计日收益走势"
+        onClick={() => setExpanded(true)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setExpanded(true);
+          }
+        }}
+      >
         <PerformanceLightweightChart points={points} series={series} />
       </div>
+      {expanded ? createPortal((
+        <div className="performanceModalBackdrop" role="presentation" onClick={() => setExpanded(false)}>
+          <section className="performanceModal" role="dialog" aria-modal="true" aria-label="累计日收益走势放大图" onClick={(event) => event.stopPropagation()}>
+            <div className="sectionHeader">
+              <div><h2>累计日收益走势</h2><span className="muted">投资日 {history?.started_on || "-"} 至 {latest?.date || "-"}</span></div>
+              <button className="iconButton" type="button" onClick={() => setExpanded(false)} aria-label="关闭放大图"><X size={18} /></button>
+            </div>
+            <div className="performanceStats">
+              {series.map(([key, name, color]) => (
+                <div className="performanceStat" key={key} style={{ "--series-color": color }}>
+                  <span>{name}</span>
+                  <strong className={tone(latest?.[key])}>{latest?.[key] == null ? "-" : fmtPct(latest[key])}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="performanceModalPlot"><PerformanceLightweightChart points={points} series={series} /></div>
+          </section>
+        </div>
+      ), document.body) : null}
     </section>
   );
 }

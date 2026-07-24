@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from backend.market_data import (
+    cache_fund_quote,
+    fetch_direct_fund_quote,
     _apply_futu_ticker_price,
     _build_futu_quote,
     _merge_futu_subscription_quote,
@@ -12,6 +15,82 @@ from backend.market_data import (
 
 
 class ExtendedQuoteStabilityTests(unittest.TestCase):
+    def test_fund_cache_does_not_allow_an_older_quote_to_replace_today(self):
+        with (
+            patch("backend.market_data._load_fund_quotes_cache"),
+            patch("backend.market_data._save_fund_quotes_cache"),
+            patch.dict("backend.market_data._FUND_QUOTES_CACHE", {}, clear=True),
+        ):
+            today = cache_fund_quote(
+                "001015",
+                {"price": 2.33, "quote_date": "2026-07-24", "source": "provider estimate"},
+            )
+            selected = cache_fund_quote(
+                "001015",
+                {"price": 2.30, "quote_date": "2026-07-20", "source": "stale estimate"},
+            )
+
+        self.assertEqual(today["price"], 2.33)
+        self.assertEqual(selected["price"], 2.33)
+        self.assertEqual(selected["quote_date"], "2026-07-24")
+
+    @patch("backend.market_data.fetch_sina_fund_estimate")
+    @patch("backend.market_data.fetch_fund_quote")
+    def test_direct_fund_quote_prefers_same_day_eastmoney(self, eastmoney, sina):
+        eastmoney.return_value = {
+            "price": 2.33,
+            "quote_date": "2026-07-24",
+            "source": "eastmoney",
+        }
+
+        selected = fetch_direct_fund_quote("001015", "2026-07-24")
+
+        self.assertEqual(selected["source"], "eastmoney")
+        sina.assert_not_called()
+
+    @patch("backend.market_data.cache_fund_quote")
+    @patch("backend.market_data.fetch_sina_fund_estimate")
+    @patch("backend.market_data.fetch_fund_quote")
+    def test_direct_fund_quote_uses_same_day_sina_when_eastmoney_is_stale(
+        self,
+        eastmoney,
+        sina,
+        cache,
+    ):
+        eastmoney.return_value = {"price": 2.30, "quote_date": "2026-07-20"}
+        sina.return_value = {
+            "price": 2.33,
+            "quote_date": "2026-07-24",
+            "source": "sina",
+        }
+        cache.side_effect = lambda _code, quote: quote
+
+        selected = fetch_direct_fund_quote("001015", "2026-07-24")
+
+        self.assertEqual(selected["source"], "sina")
+        cache.assert_called_once_with("001015", sina.return_value)
+
+    def test_same_day_official_nav_replaces_estimate_in_cache(self):
+        with (
+            patch("backend.market_data._load_fund_quotes_cache"),
+            patch("backend.market_data._save_fund_quotes_cache"),
+            patch.dict("backend.market_data._FUND_QUOTES_CACHE", {}, clear=True),
+        ):
+            cache_fund_quote(
+                "001015",
+                {"price": 2.33, "quote_date": "2026-07-24", "source": "provider estimate"},
+            )
+            selected = cache_fund_quote(
+                "001015",
+                {
+                    "price": 2.34,
+                    "quote_date": "2026-07-24",
+                    "source": "\u4e1c\u65b9\u8d22\u5bcc\u57fa\u91d1\u51c0\u503c",
+                },
+            )
+
+        self.assertEqual(selected["price"], 2.34)
+
     def test_china_etf_quote_never_uses_us_extended_session_fields(self):
         quote = _build_futu_quote(
             "510330.SS",
