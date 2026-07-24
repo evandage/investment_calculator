@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { BaselineSeries, CandlestickSeries, createChart, HistogramSeries, LineSeries } from "lightweight-charts";
-import { Activity, BookOpen, Check, CircleAlert, Gauge, Plus, RefreshCcw, Save, Trash2, X } from "lucide-react";
+import { Activity, BookOpen, Check, CircleAlert, Gauge, Home, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -1959,11 +1959,43 @@ function requestPriceAutoscale(series) {
   });
 }
 
+const KLINE_DRAWINGS_STORAGE_KEY = "investment-dashboard:kline-drawings:v1";
+
+function readKlineDrawings(viewKey) {
+  if (!viewKey) return [];
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(KLINE_DRAWINGS_STORAGE_KEY) || "{}");
+    return Array.isArray(stored?.[viewKey]) ? stored[viewKey] : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeKlineDrawings(viewKey, drawings) {
+  if (!viewKey) return;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(KLINE_DRAWINGS_STORAGE_KEY) || "{}");
+    stored[viewKey] = drawings;
+    window.localStorage.setItem(KLINE_DRAWINGS_STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // Drawing persistence is a convenience; keep the chart usable if storage is unavailable.
+  }
+}
+
+function drawingTimeValue(time) {
+  if (typeof time === "number") return time;
+  if (typeof time === "string") return Date.parse(time) || 0;
+  if (time && typeof time === "object") return Date.UTC(time.year, Number(time.month || 1) - 1, Number(time.day || 1));
+  return 0;
+}
+
 function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileChange }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
   const priceLinesRef = useRef({});
+  const drawingSeriesRef = useRef([]);
+  const drawingPriceLinesRef = useRef([]);
   const didFitContentRef = useRef(false);
   const dataRangeRef = useRef({ first: null, last: null, length: 0 });
   const candlesRef = useRef([]);
@@ -1974,6 +2006,44 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
   const [profilePoc, setProfilePoc] = useState(null);
   const [candleTooltip, setCandleTooltip] = useState({ visible: false });
   const [percentAxisTicks, setPercentAxisTicks] = useState([]);
+  const drawingKey = `${data?.symbol || ""}|${data?.interval || ""}`;
+  const drawingKeyRef = useRef(drawingKey);
+  const [drawings, setDrawings] = useState(() => readKlineDrawings(drawingKey));
+  const [drawingTool, setDrawingTool] = useState("");
+  const drawingToolRef = useRef("");
+  const [drawingDraft, setDrawingDraft] = useState(null);
+  const drawingDraftRef = useRef(null);
+  const [drawingHint, setDrawingHint] = useState("");
+  const commitDrawingRef = useRef(null);
+  drawingKeyRef.current = drawingKey;
+  drawingToolRef.current = drawingTool;
+  drawingDraftRef.current = drawingDraft;
+  commitDrawingRef.current = (drawing) => {
+    setDrawings((current) => {
+      const next = [...current, drawing];
+      writeKlineDrawings(drawingKeyRef.current, next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    setDrawings(readKlineDrawings(drawingKey));
+    setDrawingTool("");
+    setDrawingDraft(null);
+    setDrawingHint("");
+  }, [drawingKey]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      setDrawingTool("");
+      setDrawingDraft(null);
+      setDrawingHint("");
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   useEffect(() => {
     visibleProfileCallbackRef.current = onVisibleProfileChange;
   }, [onVisibleProfileChange]);
@@ -2075,6 +2145,8 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
         horzLine: { color: "rgba(203, 213, 225, 0.35)", labelBackgroundColor: "#1d4ed8" },
       },
     });
+    drawingSeriesRef.current = [];
+    drawingPriceLinesRef.current = [];
     const candle = chart.addSeries(CandlestickSeries, {
       upColor: TERMINAL_CHART.green,
       downColor: TERMINAL_CHART.coral,
@@ -2130,6 +2202,10 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
     seriesRef.current = { candle, volume, percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
     chartRef.current = chart;
     const handleCrosshairMove = (param) => {
+      if (drawingToolRef.current) {
+        setCandleTooltip((current) => current.visible ? { visible: false } : current);
+        return;
+      }
       const point = param?.point;
       const candleRow = param?.seriesData?.get(candle);
       if (!point || !candleRow || point.x < 0 || point.y < 0 || point.x > container.clientWidth || point.y > container.clientHeight) {
@@ -2159,6 +2235,48 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
       });
     };
     chart.subscribeCrosshairMove(handleCrosshairMove);
+    const handleChartClick = (param) => {
+      const activeTool = drawingToolRef.current;
+      if (!activeTool || !param?.point) return;
+      const clickedTime = param.time ?? chart.timeScale().coordinateToTime(param.point.x);
+      const clickedPrice = candle.coordinateToPrice(param.point.y);
+      const mainPaneHeight = chart.panes?.()?.[0]?.getHeight?.() || container.clientHeight * 0.6;
+      if (param.point.y > mainPaneHeight || clickedTime == null || !Number.isFinite(Number(clickedPrice)) || Number(clickedPrice) <= 0) {
+        setDrawingHint("请在主图 K 线区域内落点");
+        return;
+      }
+      const point = { time: clickedTime, value: Number(clickedPrice) };
+      if (activeTool === "horizontal") {
+        commitDrawingRef.current?.({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          type: "horizontal",
+          price: point.value,
+        });
+        setDrawingTool("");
+        setDrawingHint("");
+        return;
+      }
+      const start = drawingDraftRef.current;
+      if (!start) {
+        setDrawingDraft(point);
+        setDrawingHint("起点已选，再点击一次确定终点");
+        return;
+      }
+      if (drawingTimeValue(start.time) === drawingTimeValue(point.time)) {
+        setDrawingHint("终点请选择另一根 K 线");
+        return;
+      }
+      const points = [start, point].sort((left, right) => drawingTimeValue(left.time) - drawingTimeValue(right.time));
+      commitDrawingRef.current?.({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: "trend",
+        points,
+      });
+      setDrawingDraft(null);
+      setDrawingTool("");
+      setDrawingHint("");
+    };
+    chart.subscribeClick(handleChartClick);
     const updateProfile = (logicalRange = null) => {
       const candleSeries = seriesRef.current.candle;
       if (!candleSeries) return;
@@ -2194,11 +2312,84 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
       chartRef.current = null;
       seriesRef.current = {};
       priceLinesRef.current = {};
+      drawingSeriesRef.current = [];
+      drawingPriceLinesRef.current = [];
       profileUpdaterRef.current = null;
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      chart.unsubscribeClick(handleChartClick);
       chart.remove();
     };
   }, [viewKey, rsiPeriod, showOpeningPercentAxis]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const candle = seriesRef.current.candle;
+    if (!chart || !candle) return;
+    for (const series of drawingSeriesRef.current) {
+      try {
+        chart.removeSeries(series);
+      } catch {
+        // Ignore chart lifecycle races while switching symbols or intervals.
+      }
+    }
+    for (const priceLine of drawingPriceLinesRef.current) {
+      try {
+        candle.removePriceLine(priceLine);
+      } catch {
+        // Ignore chart lifecycle races while switching symbols or intervals.
+      }
+    }
+    drawingSeriesRef.current = [];
+    drawingPriceLinesRef.current = [];
+    for (const drawing of drawings) {
+      if (drawing.type === "horizontal" && Number(drawing.price) > 0) {
+        drawingPriceLinesRef.current.push(candle.createPriceLine({
+          price: Number(drawing.price),
+          color: "#fbbf24",
+          lineWidth: 2,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: "Line",
+        }));
+      }
+      if (drawing.type === "trend" && Array.isArray(drawing.points) && drawing.points.length === 2) {
+        const anchorIndexes = drawing.points.map((point) => candles.reduce(
+          (best, row, index) => {
+            const distance = Math.abs(drawingTimeValue(row.time) - drawingTimeValue(point.time));
+            return distance < best.distance ? { index, distance } : best;
+          },
+          { index: 0, distance: Number.POSITIVE_INFINITY },
+        ).index);
+        const [startIndex, endIndex] = anchorIndexes;
+        const canExtend = candles.length > 1 && startIndex !== endIndex;
+        const slope = canExtend
+          ? (Number(drawing.points[1].value) - Number(drawing.points[0].value)) / (endIndex - startIndex)
+          : 0;
+        const extendedPoints = canExtend
+          ? [
+            {
+              time: candles[0].time,
+              value: Number(drawing.points[0].value) - slope * startIndex,
+            },
+            {
+              time: candles[candles.length - 1].time,
+              value: Number(drawing.points[0].value) + slope * (candles.length - 1 - startIndex),
+            },
+          ]
+          : drawing.points;
+        const line = chart.addSeries(LineSeries, {
+          color: slope < 0 ? TERMINAL_CHART.coral : "#fbbf24",
+          lineWidth: 2,
+          crosshairMarkerVisible: false,
+          lastValueVisible: false,
+          priceLineVisible: false,
+          autoscaleInfoProvider: () => null,
+        }, 0);
+        line.setData(extendedPoints);
+        drawingSeriesRef.current.push(line);
+      }
+    }
+  }, [candles, drawings, viewKey]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -2306,12 +2497,38 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
           <strong>{data?.symbol}</strong>
           <span>{data?.label} · {data?.interval} · {avwapText}{data?.avwap_anchor ? ` · 锚点 ${data.avwap_anchor}` : ""}{Number.isFinite(profilePoc) ? ` · 可见区间 POC ${fmtChartPrice(profilePoc, data?.symbol)}` : ""}</span>
         </div>
+        <div className="klineDrawingTools" role="toolbar" aria-label="画线工具">
+          <button type="button" className={drawingTool === "trend" ? "active" : ""} aria-pressed={drawingTool === "trend"} title="趋势线：依次点击起点和终点" onClick={() => {
+            const next = drawingTool === "trend" ? "" : "trend";
+            setDrawingTool(next);
+            setDrawingDraft(null);
+            setDrawingHint(next ? "点击图表选择趋势线起点" : "");
+          }}><TrendingUp size={15} /><span>趋势线</span></button>
+          <button type="button" className={drawingTool === "horizontal" ? "active" : ""} aria-pressed={drawingTool === "horizontal"} title="水平线：点击图表选择价位" onClick={() => {
+            const next = drawingTool === "horizontal" ? "" : "horizontal";
+            setDrawingTool(next);
+            setDrawingDraft(null);
+            setDrawingHint(next ? "点击图表选择水平价位" : "");
+          }}><Minus size={15} /><span>水平线</span></button>
+          <button type="button" disabled={!drawings.length} title="撤销上一条画线" onClick={() => setDrawings((current) => {
+            const next = current.slice(0, -1);
+            writeKlineDrawings(drawingKey, next);
+            return next;
+          })}><Undo2 size={15} /><span>撤销</span></button>
+          <button type="button" disabled={!drawings.length} title="清空当前标的和周期的画线" onClick={() => {
+            setDrawings([]);
+            writeKlineDrawings(drawingKey, []);
+            setDrawingDraft(null);
+            setDrawingHint("");
+          }}><Trash2 size={15} /><span>清空</span></button>
+          {drawingHint ? <em>{drawingHint}</em> : null}
+        </div>
         <div className={tone(data?.latest_change_pct)}>
           <strong>{fmtChartPrice(data?.latest_price, data?.symbol)}</strong>
           <span>{data?.latest_change_pct == null ? "-" : fmtPct(data.latest_change_pct)}</span>
         </div>
       </div>
-      <div className="singleLwCanvas" ref={containerRef}>
+      <div className={`singleLwCanvas ${drawingTool ? "isDrawing" : ""}`} ref={containerRef}>
         {candleTooltip.visible ? (
           <div className="klineCandleTooltip" style={{ left: `${candleTooltip.left}px`, top: `${candleTooltip.top}px` }}>
             <strong>{candleTooltip.time || "-"}</strong>
@@ -2351,7 +2568,7 @@ function defaultKlineAvwapMode(interval, symbol) {
 
 function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
-  const [scope, setScope] = useState(() => restoredState.scope === "single" ? "single" : "global");
+  const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState(() => String(restoredState.symbol || "VOO"));
   const [interval, setInterval] = useState(() => String(restoredState.interval || "1d"));
   const [avwapMode, setAvwapMode] = useState(() => String(
@@ -2373,7 +2590,6 @@ function KlinePage({ dashboardData }) {
 
   useEffect(() => {
     klinePageMemory = {
-      scope,
       symbol,
       interval,
       avwapMode,
@@ -2381,7 +2597,7 @@ function KlinePage({ dashboardData }) {
       showExtended,
       globalColumns,
     };
-  }, [scope, symbol, interval, avwapMode, displayRange, showExtended, globalColumns]);
+  }, [symbol, interval, avwapMode, displayRange, showExtended, globalColumns]);
   const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
@@ -2521,17 +2737,12 @@ function KlinePage({ dashboardData }) {
     <section className="chartPanel technicalPanel">
       <div className="toolbarRow klineToolbar">
         <div className="klineControlGroup">
-          <label className="klineControl">
-            <span>看板</span>
-            <select value={scope} onChange={(event) => {
-              const nextScope = event.target.value;
-              setScope(nextScope);
-              if (nextScope === "single") setAvwapMode(defaultKlineAvwapMode(interval, symbol));
-            }} aria-label="看板模式">
-              <option value="global">全局看板</option>
-              <option value="single">单标的</option>
-            </select>
-          </label>
+          {scope === "single" ? (
+            <button className="klineHomeButton" type="button" onClick={() => {
+              setScope("global");
+              setDisplayRange("60");
+            }} aria-label="返回全局 K 线看板" title="返回全局 K 线看板"><Home size={18} /><span>全局</span></button>
+          ) : null}
           <label className="klineControl">
             <span>周期</span>
             <select value={interval} onChange={(event) => changeKlineInterval(event.target.value)} aria-label="K线周期">

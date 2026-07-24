@@ -1971,6 +1971,66 @@ h2 {
   text-align: right;
 }
 
+.singleLwHeader .klineDrawingTools {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.klineDrawingTools button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  border-radius: 6px;
+  background: rgba(5, 15, 27, 0.62);
+  color: #a9bfd4;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.klineDrawingTools button:hover:not(:disabled),
+.klineDrawingTools button.active {
+  border-color: rgba(251, 191, 36, 0.72);
+  background: rgba(120, 75, 8, 0.28);
+  color: #fde68a;
+}
+
+.klineDrawingTools button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.klineDrawingTools button span {
+  color: inherit;
+  font-size: inherit;
+  overflow: visible;
+}
+
+.klineDrawingTools em {
+  position: absolute;
+  z-index: 12;
+  top: 36px;
+  left: 50%;
+  min-width: 190px;
+  padding: 6px 9px;
+  border: 1px solid rgba(251, 191, 36, 0.48);
+  border-radius: 6px;
+  background: rgba(12, 24, 40, 0.95);
+  color: #fde68a;
+  font-size: 10px;
+  font-style: normal;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 .singleLwHeader strong {
   color: #f8fafc;
   line-height: 1.1;
@@ -2007,6 +2067,10 @@ h2 {
   --single-profile-width: 15%;
   --single-profile-label-gutter: 5%;
   --single-price-axis-width: 62px;
+}
+
+.singleLwCanvas.isDrawing {
+  cursor: crosshair;
 }
 
 .klineCandleTooltip {
@@ -4241,6 +4305,29 @@ tbody tr:hover th {
   color: #ecfeff;
 }
 
+.klineHomeButton {
+  flex: 0 0 62px;
+  align-self: stretch;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 46px;
+  padding: 0 8px;
+  border-color: rgba(45, 212, 191, 0.52);
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgba(13, 56, 64, 0.76), rgba(5, 25, 34, 0.82));
+  color: #99f6e4;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.klineHomeButton:hover:not(:disabled) {
+  border-color: rgba(94, 234, 212, 0.82);
+  color: #ecfeff;
+}
+
 .klineAnalysisLayout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 292px;
@@ -4606,6 +4693,19 @@ tbody tr:hover th {
 
   .klineAnalysisControls {
     padding-left: 6px;
+  }
+
+  .singleLwHeader .klineDrawingTools {
+    gap: 2px;
+  }
+
+  .klineDrawingTools button {
+    width: 30px;
+    padding: 0;
+  }
+
+  .klineDrawingTools button span {
+    display: none;
   }
 
   .klineControl {
