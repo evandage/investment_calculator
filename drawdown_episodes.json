@@ -4068,8 +4068,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-23",
-        "last_confirmed_drawdown_pct": -2.5310971759488377,
+        "last_processed_close_date": "2026-07-24",
+        "last_confirmed_drawdown_pct": -2.7382350413885925,
         "last_confirmed_signal": null,
         "ended_at": null,
         "end_reason": null
@@ -4087,8 +4087,8 @@
           "small": "2026-07-16"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-23",
-        "last_confirmed_drawdown_pct": -7.16188506771579,
+        "last_processed_close_date": "2026-07-24",
+        "last_confirmed_drawdown_pct": -8.198995057348945,
         "last_confirmed_signal": {
           "id": "QQQ:2026-07-16:QQQ:建仓期:2026-07:small",
           "symbol": "QQQ",
@@ -4117,8 +4117,8 @@
           "large": "2026-07-17"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-23",
-        "last_confirmed_drawdown_pct": -28.848791359506254,
+        "last_processed_close_date": "2026-07-24",
+        "last_confirmed_drawdown_pct": -26.27462973480711,
         "last_confirmed_signal": {
           "id": "ISRG:2026-07-16:ISRG:建仓期:2026-07:large",
           "symbol": "ISRG",
@@ -4143,8 +4143,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-23",
-        "last_confirmed_drawdown_pct": -25.308441558441565,
+        "last_processed_close_date": "2026-07-24",
+        "last_confirmed_drawdown_pct": -30.69805194805195,
         "last_confirmed_signal": null,
         "ended_at": null,
         "end_reason": null
@@ -4162,8 +4162,8 @@
           "small": "2026-07-22"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-23",
-        "last_confirmed_drawdown_pct": -23.205726735138498,
+        "last_processed_close_date": "2026-07-24",
+        "last_confirmed_drawdown_pct": -23.485838779956424,
         "last_confirmed_signal": {
           "id": "PLTR:2026-07-22:PLTR:建仓期:2026-07:auto:2026-06-30:small",
           "symbol": "PLTR",
@@ -4192,8 +4192,8 @@
           "large": "2026-07-23"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-23",
-        "last_confirmed_drawdown_pct": -21.04719990828142,
+        "last_processed_close_date": "2026-07-24",
+        "last_confirmed_drawdown_pct": -20.537730802587117,
         "last_confirmed_signal": {
           "id": "GOOGL:2026-07-16:GOOGL:建仓期:2026-07:large",
           "symbol": "GOOGL",
@@ -4221,8 +4221,8 @@
           "medium": "2026-07-16"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-23",
-        "last_confirmed_drawdown_pct": -17.1414922261791,
+        "last_processed_close_date": "2026-07-24",
+        "last_confirmed_drawdown_pct": -17.115434725961954,
         "last_confirmed_signal": {
           "id": "MSFT:2026-07-16:MSFT:建仓期:2026-07:medium",
           "symbol": "MSFT",
@@ -4251,8 +4251,8 @@
           "large": "2026-07-16"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-23",
-        "last_confirmed_drawdown_pct": -18.372999130363286,
+        "last_processed_close_date": "2026-07-24",
+        "last_confirmed_drawdown_pct": -20.567217437940087,
         "last_confirmed_signal": {
           "id": "AVGO:2026-07-16:AVGO:建仓期:2026-07:large",
           "symbol": "AVGO",
@@ -4267,6 +4267,6 @@
         "end_reason": null
       }
     },
-    "updated_at": "2026-07-24T09:24:56+08:00"
+    "updated_at": "2026-07-25T11:16:14+08:00"
   }
 }

@@ -24,6 +24,7 @@ _QUOTES_CACHE: dict[str, Any] | None = None
 _QUOTES_CACHE_AT = 0.0
 _QUOTES_CACHE_TTL_SECONDS = 1.0
 _FUND_QUOTES_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
+_FUND_QUOTES_DAILY_CACHE: dict[str, dict[str, dict[str, Any]]] = {}
 _FUND_QUOTES_CACHE_LOADED = False
 _FUND_QUOTES_CACHE_FILE = ROOT_DIR / ".fund_quotes_cache.json"
 _FUND_QUOTES_TTL_SECONDS = 300
@@ -545,7 +546,19 @@ def _load_fund_quotes_cache() -> None:
         return
     if not isinstance(raw, dict):
         return
+    daily = raw.get("daily_quotes", {})
+    if isinstance(daily, dict):
+        for code, rows in daily.items():
+            if not isinstance(rows, dict):
+                continue
+            _FUND_QUOTES_DAILY_CACHE[str(code)] = {
+                str(day): dict(quote)
+                for day, quote in rows.items()
+                if isinstance(quote, dict)
+            }
     for code, item in raw.items():
+        if code == "daily_quotes":
+            continue
         if not isinstance(item, dict):
             continue
         quote = item.get("quote")
@@ -562,6 +575,7 @@ def _save_fund_quotes_cache() -> None:
         code: {"quote": quote, "fetched_at": fetched_at}
         for code, (quote, fetched_at) in _FUND_QUOTES_CACHE.items()
     }
+    payload["daily_quotes"] = _FUND_QUOTES_DAILY_CACHE
     try:
         _FUND_QUOTES_CACHE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
@@ -587,6 +601,12 @@ def cache_fund_quote(code: str, quote: dict[str, Any]) -> dict[str, Any]:
         ):
             candidate = current
     _FUND_QUOTES_CACHE[code] = (dict(candidate), now)
+    quote_day = str(candidate.get("quote_date") or candidate.get("quote_time") or "")[:10]
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", quote_day):
+        daily = _FUND_QUOTES_DAILY_CACHE.setdefault(code, {})
+        previous = daily.get(quote_day)
+        if previous is None or ("净值" in str(candidate.get("source") or "") and "估" not in str(candidate.get("source") or "")):
+            daily[quote_day] = dict(candidate)
     _save_fund_quotes_cache()
     return candidate
 

@@ -434,6 +434,51 @@
       "new_avg_cost": 128.05614447711048,
       "intensity": "small",
       "created_at": "2026-07-24T10:03:13+08:00"
+    },
+    {
+      "id": "20260725113337-29-SGOV",
+      "trade_date": "2026-07-24",
+      "symbol": "SGOV",
+      "action": "sell",
+      "amount_usd": 100.635,
+      "shares": 1.0,
+      "price": 100.635,
+      "cost_basis": 100.595,
+      "realized_pnl": 0.04000000000000625,
+      "prev_avg_cost": 100.595,
+      "new_avg_cost": 100.595,
+      "intensity": "none",
+      "created_at": "2026-07-25T11:33:37+08:00"
+    },
+    {
+      "id": "20260725113611-30-GOOGL",
+      "trade_date": "2026-07-24",
+      "symbol": "GOOGL",
+      "action": "buy",
+      "amount_usd": 29.98,
+      "shares": 0.0943,
+      "price": 317.92152704135736,
+      "cost_basis": 29.98,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 356.963279299425,
+      "new_avg_cost": 351.12867194928896,
+      "intensity": "large",
+      "created_at": "2026-07-25T11:36:11+08:00"
+    },
+    {
+      "id": "20260725113635-31-ISRG",
+      "trade_date": "2026-07-24",
+      "symbol": "ISRG",
+      "action": "buy",
+      "amount_usd": 19.97,
+      "shares": 0.0593,
+      "price": 336.76222596964584,
+      "cost_basis": 19.97,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 400.18,
+      "new_avg_cost": 395.73790928419555,
+      "intensity": "large",
+      "created_at": "2026-07-25T11:36:35+08:00"
     }
   ]
 }
