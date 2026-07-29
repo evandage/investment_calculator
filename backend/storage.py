@@ -21,6 +21,7 @@ from .config import (
     PORTFOLIO_ADJUSTMENTS_FILE,
     SATELLITE_SYMBOLS,
     SATELLITE_TARGETS_FILE,
+    SWING_POSITIONS_FILE,
     TZ_SHANGHAI,
     TRADE_RECORDS_FILE,
 )
@@ -280,6 +281,51 @@ def load_satellite_targets() -> dict[str, float]:
 
 def save_satellite_targets(targets: dict[str, float]) -> None:
     _write_json(SATELLITE_TARGETS_FILE, normalize_satellite_targets(targets))
+
+
+SWING_POSITION_DEFAULTS: dict[str, dict[str, float]] = {
+    "QQQ": {"shares": 0.0, "avg_cost": 0.0, "target_pct": 3.0, "stop_loss_min_pct": 5.0, "stop_loss_max_pct": 7.0, "take_profit_min_pct": 10.0, "take_profit_max_pct": 15.0},
+    "ISRG": {"shares": 0.0, "avg_cost": 0.0, "target_pct": 1.0, "stop_loss_min_pct": 8.0, "stop_loss_max_pct": 10.0, "take_profit_min_pct": 15.0, "take_profit_max_pct": 20.0},
+    "AVGO": {"shares": 0.0, "avg_cost": 0.0, "target_pct": 0.35, "stop_loss_min_pct": 8.0, "stop_loss_max_pct": 12.0, "take_profit_min_pct": 15.0, "take_profit_max_pct": 20.0},
+}
+
+
+def normalize_swing_positions(raw: Any) -> dict[str, dict[str, float]]:
+    source = raw if isinstance(raw, dict) else {}
+    out: dict[str, dict[str, float]] = {}
+    for symbol, defaults in SWING_POSITION_DEFAULTS.items():
+        item = source.get(symbol, {})
+        if not isinstance(item, dict):
+            item = {}
+        normalized = dict(defaults)
+        for key, fallback in defaults.items():
+            try:
+                normalized[key] = max(0.0, float(item.get(key, fallback) or 0.0))
+            except (TypeError, ValueError):
+                normalized[key] = fallback
+        normalized["stop_loss_min_pct"], normalized["stop_loss_max_pct"] = sorted(
+            (normalized["stop_loss_min_pct"], normalized["stop_loss_max_pct"])
+        )
+        normalized["take_profit_min_pct"], normalized["take_profit_max_pct"] = sorted(
+            (normalized["take_profit_min_pct"], normalized["take_profit_max_pct"])
+        )
+        out[symbol] = normalized
+    return out
+
+
+def load_swing_positions() -> dict[str, dict[str, float]]:
+    return normalize_swing_positions(_read_json(SWING_POSITIONS_FILE, {}))
+
+
+def save_swing_position(symbol: str, position: dict[str, float]) -> dict[str, dict[str, float]]:
+    normalized_symbol = str(symbol or "").strip().upper()
+    if normalized_symbol not in SWING_POSITION_DEFAULTS:
+        raise ValueError(f"unsupported swing position symbol: {normalized_symbol}")
+    positions = load_swing_positions()
+    positions[normalized_symbol] = {**positions[normalized_symbol], **position}
+    normalized = normalize_swing_positions(positions)
+    _write_json(SWING_POSITIONS_FILE, normalized)
+    return normalized
 
 
 def normalize_closed_satellite_pnl(raw: Any) -> dict[str, dict[str, Any]]:

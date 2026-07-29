@@ -44,11 +44,13 @@ from .storage import (
     load_portfolio_adjustments,
     load_portfolio_snapshot_ledger,
     load_satellite_targets,
+    load_swing_positions,
     load_trade_records,
     save_balances,
     save_closed_satellite_pnl,
     save_holdings,
     save_satellite_targets,
+    save_swing_position,
     record_portfolio_adjustment,
 )
 from .drawdown_recalculation import start_monthly_drawdown_scheduler
@@ -95,6 +97,16 @@ class ExecutionPayload(BaseModel):
 class RebalanceBudgetPayload(BaseModel):
     user_id: str = "evan"
     planned_cash_by_month: dict[str, float]
+
+
+class SwingPositionPayload(BaseModel):
+    shares: float = 0.0
+    avg_cost: float = 0.0
+    target_pct: float = 0.0
+    stop_loss_min_pct: float = 0.0
+    stop_loss_max_pct: float = 0.0
+    take_profit_min_pct: float = 0.0
+    take_profit_max_pct: float = 0.0
 
 
 class DeleteTradePayload(BaseModel):
@@ -673,6 +685,20 @@ def satellite_targets() -> dict[str, Any]:
 def update_satellite_targets(payload: SatelliteTargetsPayload) -> dict[str, Any]:
     save_satellite_targets(payload.targets)
     return {"saved": True, "targets": load_satellite_targets()}
+
+
+@app.get("/api/swing-positions")
+def swing_positions() -> dict[str, Any]:
+    return {"positions": load_swing_positions()}
+
+
+@app.put("/api/swing-positions/{symbol}")
+def update_swing_position(symbol: str, payload: SwingPositionPayload) -> dict[str, Any]:
+    try:
+        positions = save_swing_position(symbol, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"saved": True, "positions": positions}
 
 
 @app.get("/api/satellite-universe")

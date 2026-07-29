@@ -1515,16 +1515,24 @@ function LightweightKlineCard({ item, displayRange, onOpenSymbol }) {
       didFitContentRef.current = false;
     }
     dataRangeRef.current = nextRange;
-    candleSeries.setData(candles);
-    volumeSeries.setData(volumes);
-    // When a new trading session/bar arrives, keep the board on the latest
-    // candle. Without this, data updates successfully but remain off-screen
-    // to the right when the page was opened before the session started.
-    if (rangeChanged && previousRange.last != null && nextRange.last !== previousRange.last) {
+    const displaySeries = fixedIntradaySeriesData(candles, volumes, item?.symbol, item?.interval, item?.show_extended);
+    candleSeries.setData(displaySeries.candles);
+    volumeSeries.setData(displaySeries.volumes);
+    const usesFixedIntradayRange = applyFixedIntradaySessionRange(
+      chart,
+      item?.symbol,
+      item?.interval,
+      item?.show_extended,
+    );
+    // Non-fixed views keep following the newest bar. Regular 5m/15m views
+    // instead reserve the complete opening-to-closing session from the start.
+    if (!usesFixedIntradayRange && rangeChanged && previousRange.last != null && nextRange.last !== previousRange.last) {
       chart.timeScale().scrollToRealTime();
     }
     if (!didFitContentRef.current && candles.length) {
-      applyKlineDisplayRange(chart, candles, item?.interval === "1d" ? displayRange : "all");
+      if (!usesFixedIntradayRange) {
+        applyKlineDisplayRange(chart, candles, item?.interval === "1d" ? displayRange : "all");
+      }
       requestPriceAutoscale(candleSeries);
       didFitContentRef.current = true;
     }
@@ -1646,6 +1654,46 @@ function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = 
   const rightOffsetBars = Math.ceil(visibleDataBars * clampedRatio / Math.max(0.01, 1 - clampedRatio));
   chart.timeScale().applyOptions({ rightOffset: rightOffsetBars });
   chart.timeScale().setVisibleLogicalRange({ from: startIndex, to: candles.length - 1 + rightOffsetBars });
+}
+
+function fixedIntradaySessionBars(symbol, interval, showExtended) {
+  if (showExtended || !["5m", "15m"].includes(interval)) return 0;
+  const normalizedSymbol = String(symbol || "").toUpperCase();
+  const isChinaMarket = normalizedSymbol === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalizedSymbol);
+  const sessionMinutes = isChinaMarket ? 240 : 390;
+  const intervalMinutes = interval === "5m" ? 5 : 15;
+  return Math.ceil(sessionMinutes / intervalMinutes);
+}
+
+function fixedIntradaySeriesData(candles, volumes, symbol, interval, showExtended) {
+  const sessionBars = fixedIntradaySessionBars(symbol, interval, showExtended);
+  const firstTime = Number(candles?.[0]?.time);
+  if (!sessionBars || !Number.isFinite(firstTime)) return { candles, volumes };
+  const normalizedSymbol = String(symbol || "").toUpperCase();
+  const isChinaMarket = normalizedSymbol === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalizedSymbol);
+  const intervalMinutes = interval === "5m" ? 5 : 15;
+  const intervalSeconds = intervalMinutes * 60;
+  const morningBars = 120 / intervalMinutes;
+  const candleByTime = new Map((candles || []).map((row) => [Number(row.time), row]));
+  const volumeByTime = new Map((volumes || []).map((row) => [Number(row.time), row]));
+  const times = Array.from({ length: sessionBars + 1 }, (_, index) => {
+    if (!isChinaMarket || index < morningBars) return firstTime + index * intervalSeconds;
+    return firstTime + 210 * 60 + (index - morningBars) * intervalSeconds;
+  });
+  return {
+    candles: times.map((time) => candleByTime.get(time) || { time }),
+    volumes: times.map((time) => volumeByTime.get(time) || { time }),
+  };
+}
+
+function applyFixedIntradaySessionRange(chart, symbol, interval, showExtended) {
+  const sessionBars = fixedIntradaySessionBars(symbol, interval, showExtended);
+  if (!chart || !sessionBars) return false;
+  chart.timeScale().applyOptions({ rightOffset: 0 });
+  // Logical position 0 is the opening bar. The extra position at sessionBars
+  // is an explicit whitespace point at the closing bell.
+  chart.timeScale().setVisibleLogicalRange({ from: 0, to: sessionBars });
+  return true;
 }
 
 function formatThresholdSet(thresholds) {
@@ -2243,8 +2291,22 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
     [percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macd, macdSignal]
       .filter(Boolean)
       .forEach((lineSeries) => lineSeries.applyOptions({ crosshairMarkerVisible: false }));
-    rsi.createPriceLine({ price: 70, color: "rgba(248, 113, 113, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
-    rsi.createPriceLine({ price: 30, color: "rgba(52, 211, 153, 0.45)", lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+    rsi.createPriceLine({
+      price: 70,
+      color: "rgba(248, 113, 113, 0.78)",
+      lineWidth: 1,
+      lineStyle: 2,
+      axisLabelVisible: true,
+      title: "超买 70",
+    });
+    rsi.createPriceLine({
+      price: 30,
+      color: "rgba(52, 211, 153, 0.78)",
+      lineWidth: 1,
+      lineStyle: 2,
+      axisLabelVisible: true,
+      title: "超卖 30",
+    });
     seriesRef.current = { candle, volume, percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
     chartRef.current = chart;
     const handleCrosshairMove = (param) => {
@@ -2458,9 +2520,16 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
       wickUpColor: TERMINAL_CHART.green,
       wickDownColor: TERMINAL_CHART.coral,
     });
-    series.candle.setData(candles);
-    series.volume.setData(volumes);
-    if (rangeChanged && previousRange.last != null && nextRange.last !== previousRange.last) {
+    const displaySeries = fixedIntradaySeriesData(candles, volumes, data?.symbol, data?.interval, data?.show_extended);
+    series.candle.setData(displaySeries.candles);
+    series.volume.setData(displaySeries.volumes);
+    const usesFixedIntradayRange = applyFixedIntradaySessionRange(
+      chart,
+      data?.symbol,
+      data?.interval,
+      data?.show_extended,
+    );
+    if (!usesFixedIntradayRange && rangeChanged && previousRange.last != null && nextRange.last !== previousRange.last) {
       chart.timeScale().scrollToRealTime();
     }
     if (series.percent) series.percent.setData(percentRows);
@@ -2517,13 +2586,15 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
       });
     }
     if (!didFitContentRef.current && candles.length) {
-      applyKlineDisplayRange(
-        chart,
-        candles,
-        data?.interval === "1d" ? displayRange : "all",
-        data?.interval === "1d" && displayRange === "earnings" ? data?.earnings_anchor : "",
-        SINGLE_PROFILE_WIDTH_RATIO,
-      );
+      if (!usesFixedIntradayRange) {
+        applyKlineDisplayRange(
+          chart,
+          candles,
+          data?.interval === "1d" ? displayRange : "all",
+          data?.interval === "1d" && displayRange === "earnings" ? data?.earnings_anchor : "",
+          SINGLE_PROFILE_WIDTH_RATIO,
+        );
+      }
       requestPriceAutoscale(series.candle);
       didFitContentRef.current = true;
     }
@@ -2612,7 +2683,91 @@ function defaultKlineAvwapMode(interval, symbol) {
   return ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol) ? "year_start" : "earnings";
 }
 
-const KLINE_SWING_TARGET_PCTS = { QQQ: 3, ISRG: 1, AVGO: 0.35 };
+const KLINE_SWING_DEFAULTS = {
+  QQQ: { shares: 0, avg_cost: 0, target_pct: 3, stop_loss_min_pct: 5, stop_loss_max_pct: 7, take_profit_min_pct: 10, take_profit_max_pct: 15 },
+  ISRG: { shares: 0, avg_cost: 0, target_pct: 1, stop_loss_min_pct: 8, stop_loss_max_pct: 10, take_profit_min_pct: 15, take_profit_max_pct: 20 },
+  AVGO: { shares: 0, avg_cost: 0, target_pct: 0.35, stop_loss_min_pct: 8, stop_loss_max_pct: 12, take_profit_min_pct: 15, take_profit_max_pct: 20 },
+};
+
+function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, onSave }) {
+  const defaults = KLINE_SWING_DEFAULTS[symbol];
+  const normalized = { ...(defaults || {}), ...(position || {}) };
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [draft, setDraft] = useState({});
+
+  useEffect(() => {
+    if (!defaults || editing) return;
+    setDraft(Object.fromEntries(Object.entries(normalized).map(([key, value]) => [key, String(value ?? 0)])));
+  }, [symbol, position, editing]);
+
+  if (!defaults) return null;
+  const shares = Math.max(0, Number(normalized.shares || 0));
+  const avgCost = Math.max(0, Number(normalized.avg_cost || 0));
+  const price = Math.max(0, Number(latestPrice || 0));
+  const marketValue = shares * price;
+  const costValue = shares * avgCost;
+  const currentPct = totalAssetsUsd > 0 ? marketValue / totalAssetsUsd * 100 : 0;
+  const targetPct = Math.max(0, Number(normalized.target_pct || 0));
+  const targetAmount = totalAssetsUsd > 0 ? totalAssetsUsd * targetPct / 100 : 0;
+  const floatingPnl = marketValue - costValue;
+  const floatingPnlPct = costValue > 0 ? floatingPnl / costValue * 100 : 0;
+  const stopMin = Math.max(0, Number(normalized.stop_loss_min_pct || 0));
+  const stopMax = Math.max(stopMin, Number(normalized.stop_loss_max_pct || 0));
+  const takeMin = Math.max(0, Number(normalized.take_profit_min_pct || 0));
+  const takeMax = Math.max(takeMin, Number(normalized.take_profit_max_pct || 0));
+  const stopPrices = avgCost > 0 ? [avgCost * (1 - stopMax / 100), avgCost * (1 - stopMin / 100)] : [];
+  const takePrices = avgCost > 0 ? [avgCost * (1 + takeMin / 100), avgCost * (1 + takeMax / 100)] : [];
+  const progress = targetAmount > 0 ? Math.min(100, marketValue / targetAmount * 100) : 0;
+
+  function updateDraft(key, value) { setDraft((current) => ({ ...current, [key]: value })); }
+
+  async function save() {
+    setSaving(true);
+    setMessage("");
+    try {
+      await onSave(symbol, Object.fromEntries(Object.keys(defaults).map((key) => [key, Math.max(0, Number(draft[key] || 0))])));
+      setEditing(false);
+      setMessage("\u5df2\u4fdd\u5b58");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="swingPositionPanel" aria-label={symbol + " \u6ce2\u6bb5\u4ed3\u7ba1\u7406"}>
+      <div className="swingPositionHeader">
+        <div><span>SWING BOOK</span><h3>{symbol} {"\u6ce2\u6bb5\u4ed3\u7ba1\u7406"}</h3><small>{"\u72ec\u7acb\u4e8e\u6838\u5fc3\u4ed3\u8bb0\u5f55"}</small></div>
+        <button type="button" onClick={() => { setEditing((value) => !value); setMessage(""); }}>{editing ? "\u6536\u8d77" : "\u7f16\u8f91"}</button>
+      </div>
+      <div className="swingMetrics">
+        <div><span>{"\u5f53\u524d\u6ce2\u6bb5\u4ed3"}</span><strong>{fmtMoney(marketValue, "USD", 0)}</strong><small>{currentPct.toFixed(2)}% {"\u603b\u8d44\u4ea7"} {"\u00b7"} {shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} {"\u80a1"}</small></div>
+        <div><span>{"\u76ee\u6807\u6ce2\u6bb5\u4ed3"}</span><strong>{fmtMoney(targetAmount, "USD", 0)}</strong><small>{targetPct.toFixed(2)}% {"\u00b7"} {"\u5dee\u989d"} {fmtMoney(targetAmount - marketValue, "USD", 0)}</small></div>
+        <div className={tone(floatingPnl)}><span>{"\u6d6e\u52a8\u76c8\u4e8f"}</span><strong>{fmtSignedMoney(floatingPnl, "USD")}</strong><small>{fmtPct(floatingPnlPct)}</small></div>
+        <div><span>{"\u6ce2\u6bb5\u6210\u672c"}</span><strong>{avgCost > 0 ? fmtMoney(avgCost, "USD") : "-"}</strong><small>{"\u6210\u672c\u91d1\u989d"} {fmtMoney(costValue, "USD", 0)}</small></div>
+        <div className="risk"><span>{"\u6700\u5927\u6b62\u635f\u53c2\u8003"}</span><strong>-{stopMin.toFixed(0)}% ~ -{stopMax.toFixed(0)}%</strong><small>{stopPrices.length ? fmtMoney(stopPrices[0], "USD") + " ~ " + fmtMoney(stopPrices[1], "USD") : "-"}</small></div>
+        <div className="reward"><span>{"\u5206\u6279\u6b62\u76c8\u53c2\u8003"}</span><strong>+{takeMin.toFixed(0)}% ~ +{takeMax.toFixed(0)}%</strong><small>{takePrices.length ? fmtMoney(takePrices[0], "USD") + " ~ " + fmtMoney(takePrices[1], "USD") : "-"}</small></div>
+      </div>
+      <div className="swingProgress"><span style={{ width: progress.toFixed(2) + "%" }} /></div>
+      {editing ? (
+        <div className="swingEditor">
+          <label>{"\u6ce2\u6bb5\u6570\u91cf"}<input value={draft.shares ?? ""} onChange={(event) => updateDraft("shares", event.target.value)} inputMode="decimal" /></label>
+          <label>{"\u5e73\u5747\u6210\u672c"}<input value={draft.avg_cost ?? ""} onChange={(event) => updateDraft("avg_cost", event.target.value)} inputMode="decimal" /></label>
+          <label>{"\u76ee\u6807\u5360\u6bd4"}<input value={draft.target_pct ?? ""} onChange={(event) => updateDraft("target_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
+          <label>{"\u6b62\u635f\u4e0b\u9650"}<input value={draft.stop_loss_min_pct ?? ""} onChange={(event) => updateDraft("stop_loss_min_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
+          <label>{"\u6b62\u635f\u4e0a\u9650"}<input value={draft.stop_loss_max_pct ?? ""} onChange={(event) => updateDraft("stop_loss_max_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
+          <label>{"\u6b62\u76c8\u4e0b\u9650"}<input value={draft.take_profit_min_pct ?? ""} onChange={(event) => updateDraft("take_profit_min_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
+          <label>{"\u6b62\u76c8\u4e0a\u9650"}<input value={draft.take_profit_max_pct ?? ""} onChange={(event) => updateDraft("take_profit_max_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
+          <button className="primary" type="button" disabled={saving} onClick={save}><Save size={14} />{saving ? "\u4fdd\u5b58\u4e2d..." : "\u4fdd\u5b58"}</button>
+        </div>
+      ) : null}
+      {message ? <div className={message === "\u5df2\u4fdd\u5b58" ? "saveMessage up" : "saveMessage down"}>{message}</div> : null}
+    </section>
+  );
+}
 
 function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
@@ -2633,8 +2788,19 @@ function KlinePage({ dashboardData }) {
   const [globalColumns, setGlobalColumns] = useState(() => Number(restoredState.globalColumns) || globalKlineColumns());
   const [showCheatSheet, setShowCheatSheet] = useState(false);
   const [visibleProfileState, setVisibleProfileState] = useState(null);
+  const [swingPositions, setSwingPositions] = useState(KLINE_SWING_DEFAULTS);
+  const [swingPositionError, setSwingPositionError] = useState("");
   const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
   const loadRequestRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(API_BASE + "/api/swing-positions")
+      .then((response) => { if (!response.ok) throw new Error("HTTP " + response.status); return response.json(); })
+      .then((payload) => { if (!cancelled) setSwingPositions((current) => ({ ...current, ...(payload.positions || {}) })); })
+      .catch((error) => { if (!cancelled) setSwingPositionError(error instanceof Error ? error.message : String(error)); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     klinePageMemory = {
@@ -2758,6 +2924,18 @@ function KlinePage({ dashboardData }) {
     ? (isEtf ? "high_60d" : "earnings")
     : (isEtf && avwapMode === "earnings" ? "high_60d" : avwapMode);
 
+  async function saveSwingPosition(positionSymbol, payload) {
+    const response = await fetch(API_BASE + "/api/swing-positions/" + encodeURIComponent(positionSymbol), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await readApiError(response, "HTTP " + response.status));
+    const result = await response.json();
+    setSwingPositions((current) => ({ ...current, ...(result.positions || {}) }));
+    setSwingPositionError("");
+  }
+
   function changeDisplayRange(nextRange) {
     setDisplayRange(nextRange);
   }
@@ -2780,7 +2958,8 @@ function KlinePage({ dashboardData }) {
 
   const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.avwap_mode || avwapMode}-${displayRange}`;
   const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
-  const swingTargetPct = KLINE_SWING_TARGET_PCTS[symbol];
+  const swingPosition = swingPositions[symbol];
+  const swingTargetPct = Number(swingPosition?.target_pct || KLINE_SWING_DEFAULTS[symbol]?.target_pct || 0);
   const dashboardFx = Number(dashboardData?.summary?.fx || 0);
   const totalAssetsUsd = dashboardFx > 0
     ? Number(dashboardData?.summary?.total_assets_cny || 0) / dashboardFx
@@ -2867,6 +3046,10 @@ function KlinePage({ dashboardData }) {
         <button className="klineGuideButton" type="button" onClick={() => setShowCheatSheet(true)}><BookOpen size={16} />指标模板</button>
       </div>
       {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
+      {data && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? (
+        <SwingPositionPanel symbol={symbol} latestPrice={data.latest_price} totalAssetsUsd={totalAssetsUsd} position={swingPosition} onSave={saveSwingPosition} />
+      ) : null}
+      {swingPositionError && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? <div className="errorInline">{"\u6ce2\u6bb5\u4ed3\u8bfb\u53d6\u5931\u8d25\uff1a"}{swingPositionError}</div> : null}
       {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}{swingTargetAmount > 0 ? ` · 波段目标 ${fmtMoney(swingTargetAmount, "USD", 0)}（${swingTargetPct}%）` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
@@ -3155,9 +3338,11 @@ function EditableHoldingsPage({ data, onSaved }) {
   }, [data, editingHoldings]);
 
   useEffect(() => {
-    setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance?.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+    if (!budgetOpen && !savingBudget) {
+      setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance?.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+    }
     if (!universeOpen) setUniverseInputs(buildSatelliteUniverseDraft(data));
-  }, [data.rebalance?.future_cash_by_month, data.satellite_universe, data.satellite_targets, universeOpen]);
+  }, [data.rebalance?.future_cash_by_month, data.satellite_universe, data.satellite_targets, budgetOpen, savingBudget, universeOpen]);
 
   function resetBalanceDraft() {
     setBalanceInputs({
@@ -3342,7 +3527,7 @@ function EditableHoldingsPage({ data, onSaved }) {
         <table className="editableHoldingsTable">
           <thead>
             <tr>
-              <th>标的</th><th>实时占比</th><th>数量</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>成本</th><th>市值</th><th>盈亏</th>
+              <th>标的</th><th>实时占比</th><th>数量</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>成本</th><th>市值</th><th>盈亏</th><th>盈亏%</th>
             </tr>
           </thead>
           <tbody>
@@ -3374,15 +3559,14 @@ function EditableHoldingsPage({ data, onSaved }) {
                 ) : fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
+                <td className={tone(row.pnl_pct)}>{fmtPct(row.pnl_pct)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       {budgetOpen ? (
-        <div className="modalBackdrop" role="presentation" onClick={(event) => {
-          if (event.target === event.currentTarget) setBudgetOpen(false);
-        }}>
+        <div className="modalBackdrop" role="presentation">
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>预算</h2>
@@ -3526,7 +3710,9 @@ function Rebalance({ data, onSaved }) {
   const [tradeToast, setTradeToast] = useState(null);
 
   useEffect(() => {
-    setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+    if (!budgetOpen && !savingBudget) {
+      setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+    }
     if (!universeOpen) {
       setUniverseInputs(buildSatelliteUniverseDraft(data));
     }
@@ -3544,7 +3730,7 @@ function Rebalance({ data, onSaved }) {
       };
     });
     setInputs(next);
-  }, [data.rebalance.month_key, tradeRows, activeTradeSymbol, data.rebalance.future_cash_by_month, defaultTradeDate, data.satellite_universe, data.satellite_targets, data.holdings, universeOpen]);
+  }, [data.rebalance.month_key, tradeRows, activeTradeSymbol, data.rebalance.future_cash_by_month, defaultTradeDate, data.satellite_universe, data.satellite_targets, data.holdings, budgetOpen, savingBudget, universeOpen]);
 
   useEffect(() => {
     if (!tradeToast) return undefined;
@@ -4011,9 +4197,7 @@ function Rebalance({ data, onSaved }) {
         </div>
       ) : null}
       {budgetOpen ? (
-        <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
-          if (shouldCloseFromBackdropClick(event)) setBudgetOpen(false);
-        }}>
+        <div className="modalBackdrop" role="presentation">
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>预算设置</h2>
