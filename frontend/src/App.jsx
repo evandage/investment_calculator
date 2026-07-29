@@ -95,6 +95,51 @@ function fmtPct(value) {
   return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
 }
 
+function compareTableValues(leftValue, rightValue) {
+  const leftMissing = leftValue == null || leftValue === "";
+  const rightMissing = rightValue == null || rightValue === "";
+  if (leftMissing || rightMissing) {
+    if (leftMissing && rightMissing) return 0;
+    return leftMissing ? 1 : -1;
+  }
+  const leftNumber = Number(leftValue);
+  const rightNumber = Number(rightValue);
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+  return String(leftValue).localeCompare(String(rightValue), "zh-CN", { numeric: true });
+}
+
+function sortTableRows(rows, sort, valueFor) {
+  if (!sort?.key) return rows;
+  return rows.slice().sort((left, right) => {
+    const leftValue = valueFor(left, sort.key);
+    const rightValue = valueFor(right, sort.key);
+    const leftMissing = leftValue == null || leftValue === "";
+    const rightMissing = rightValue == null || rightValue === "";
+    if (leftMissing || rightMissing) {
+      if (leftMissing && rightMissing) return 0;
+      return leftMissing ? 1 : -1;
+    }
+    const comparison = compareTableValues(leftValue, rightValue);
+    return sort.direction === "asc" ? comparison : -comparison;
+  });
+}
+function toggleTableSort(setter, key) {
+  setter((current) => current.key === key
+    ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { key, direction: "asc" });
+}
+
+function SortableTableHeader({ label, sortKey, sort, onSort }) {
+  const active = sort.key === sortKey;
+  const mark = active ? (sort.direction === "asc" ? "\u25b2" : "\u25bc") : "\u2195";
+  return (
+    <th aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" className={`recordSortButton tableSortButton ${active ? "active" : ""}`} onClick={() => onSort(sortKey)}>
+        {label}<span aria-hidden="true">{mark}</span>
+      </button>
+    </th>
+  );
+}
 function displayAssetLabel(label, symbol = "") {
   const normalizedSymbol = String(symbol || "").trim().toUpperCase();
   const normalizedLabel = String(label || "").trim();
@@ -3314,11 +3359,25 @@ function EditableHoldingsPage({ data, onSaved }) {
   const [savingUniverse, setSavingUniverse] = useState(false);
   const [balanceMessage, setBalanceMessage] = useState("");
   const [holdingMessage, setHoldingMessage] = useState("");
+  const [holdingSort, setHoldingSort] = useState({ key: "", direction: "asc" });
   const realtimeTotalValueCny = (data.holdings || []).reduce(
     (sum, row) => sum + Math.max(0, Number(row.value_cny || 0)),
     0,
   );
 
+  const sortedHoldings = useMemo(() => sortTableRows(data.holdings || [], holdingSort, (row, key) => ({
+    symbol: row.label || row.symbol,
+    weight: row.value_cny,
+    shares: row.shares,
+    price: row.price,
+    daily_pct: row.effective_daily_pct,
+    drawdown_pct: row.drawdown_pct,
+    rebound_pct: row.rebound_pct,
+    avg_cost: row.avg_cost,
+    value: row.value_cny,
+    pnl: row.pnl_cny,
+    pnl_pct: row.pnl_pct,
+  })[key]), [data.holdings, holdingSort]);
   function resetDraft() {
     setHoldings(Object.fromEntries(data.holdings.map((row) => [row.symbol, { shares: String(row.shares ?? 0), avg_cost: String(row.avg_cost ?? 0) }])));
     setBalances({
@@ -3527,11 +3586,21 @@ function EditableHoldingsPage({ data, onSaved }) {
         <table className="editableHoldingsTable">
           <thead>
             <tr>
-              <th>标的</th><th>实时占比</th><th>数量</th><th>当前价</th><th>当日涨跌</th><th>60日回撤</th><th>60日涨幅</th><th>成本</th><th>市值</th><th>盈亏</th><th>盈亏%</th>
+              <SortableTableHeader label="标的" sortKey="symbol" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="实时占比" sortKey="weight" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="数量" sortKey="shares" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="当前价" sortKey="price" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="当日涨跌" sortKey="daily_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="60日回撤" sortKey="drawdown_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="60日涨幅" sortKey="rebound_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="成本" sortKey="avg_cost" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="市值" sortKey="value" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="盈亏" sortKey="pnl" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="盈亏%" sortKey="pnl_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
             </tr>
           </thead>
           <tbody>
-            {data.holdings.map((row) => (
+            {sortedHoldings.map((row) => (
               <tr key={row.symbol}>
                 <th>{row.label}</th>
                 <td>{realtimeTotalValueCny > 0 ? `${(Number(row.value_cny || 0) / realtimeTotalValueCny * 100).toFixed(2)}%` : "-"}</td>
@@ -3703,6 +3772,7 @@ function Rebalance({ data, onSaved }) {
   const [tradeSort, setTradeSort] = useState({ key: "trade_date", direction: "desc" });
   const [fxFilter, setFxFilter] = useState("");
   const [fxSort, setFxSort] = useState({ key: "converted_date", direction: "desc" });
+  const [rebalanceSort, setRebalanceSort] = useState({ key: "", direction: "asc" });
 
   const [balanceMessage, setBalanceMessage] = useState("");
   const [tradeMessage, setTradeMessage] = useState("");
@@ -3769,6 +3839,20 @@ function Rebalance({ data, onSaved }) {
     }));
   }, [defaultTradeDate]);
 
+  const sortedSuggestionRows = useMemo(() => sortTableRows(suggestionRows, rebalanceSort, (row, key) => {
+    if (key === "tier") {
+      const rank = { sell: -1, none: 0, normal: 1, small: 2, medium: 3, large: 4, manual_review_only: 5 }[String(row.intensity || "none").toLowerCase()] ?? 0;
+      return rank * 1000 + Number(row.signal_multiplier || 0);
+    }
+    return ({
+      symbol: row.symbol,
+      actual_gap: row.buy_difference_usd,
+      planned_buy: row.planned_buy_usd,
+      net_bought: row.net_bought_usd,
+      drawdown_pct: row.drawdown_pct,
+      valuation_factor: row.valuation_split_factor,
+    })[key];
+  }), [suggestionRows, rebalanceSort]);
   const tradeTotals = useMemo(() => Object.entries(inputs).reduce(
     (totals, item) => {
       const [symbol, value] = item;
@@ -4289,11 +4373,17 @@ function Rebalance({ data, onSaved }) {
         <table className="rebalanceTable">
           <thead>
             <tr>
-              <th>标的</th><th>档位</th><th>实际差值</th><th>计划应买</th><th>该月净买入</th><th>60日回撤</th><th>估值系数</th>
+              <SortableTableHeader label="标的" sortKey="symbol" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="档位" sortKey="tier" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="实际差值" sortKey="actual_gap" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="计划应买" sortKey="planned_buy" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="该月净买入" sortKey="net_bought" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="60日回撤" sortKey="drawdown_pct" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="估值系数" sortKey="valuation_factor" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
             </tr>
           </thead>
           <tbody>
-            {suggestionRows.map((row) => {
+            {sortedSuggestionRows.map((row) => {
               const diagnostics = row.tier_diagnostics || null;
               const realtimeHolding = realtimeHoldingBySymbol[row.symbol] || {};
               const currency = row.currency || realtimeHolding.currency || "USD";

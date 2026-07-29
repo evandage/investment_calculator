@@ -2731,6 +2731,20 @@ tbody th {
   background: transparent;
 }
 
+.tableSortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+}
+
+.tableSortButton span {
+  color: rgba(148, 163, 184, 0.52);
+  font-size: 0.7em;
+}
+
+.tableSortButton.active span {
+  color: #38bdf8;
+}
 .recordExpandToggle {
   display: grid;
   place-items: center;
