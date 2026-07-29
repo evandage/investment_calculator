@@ -481,6 +481,31 @@ class HistoricalHoldingsSnapshotTests(unittest.TestCase):
 
         self.assertEqual(status, "pending")
 
+    def test_same_day_cached_fund_estimate_is_marked(self):
+        status = fund_daily_status(
+            {
+                "quote_date": "2026-07-21",
+                "source": "新浪基金估值",
+                "cache_status": "cached",
+            },
+            "2026-07-21",
+            datetime(2026, 7, 21, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        )
+
+        self.assertEqual(status, "cached")
+
+    def test_same_day_stale_fund_estimate_is_marked(self):
+        status = fund_daily_status(
+            {
+                "quote_date": "2026-07-21",
+                "source": "新浪基金估值",
+                "cache_status": "stale",
+            },
+            "2026-07-21",
+            datetime(2026, 7, 21, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        )
+
+        self.assertEqual(status, "stale")
     def test_same_day_fund_estimate_is_used_during_session(self):
         status = fund_daily_status(
             {"quote_date": "2026-07-21", "source": "东方财富基金估算"},

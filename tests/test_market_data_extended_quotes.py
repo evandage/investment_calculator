@@ -70,6 +70,48 @@ class ExtendedQuoteStabilityTests(unittest.TestCase):
         self.assertEqual(selected["source"], "sina")
         cache.assert_called_once_with("001015", sina.return_value)
 
+    @patch("backend.market_data.cache_fund_quote")
+    @patch("backend.market_data.fetch_sina_fund_estimate")
+    @patch("backend.market_data.fetch_fund_quote")
+    def test_direct_fund_quote_retries_sina_for_same_day_stale_cache(
+        self,
+        eastmoney,
+        sina,
+        cache,
+    ):
+        eastmoney.return_value = {
+            "price": 2.30,
+            "quote_date": "2026-07-24",
+            "cache_status": "stale",
+            "cache_reason": "东方财富未返回估值",
+        }
+        sina.return_value = {
+            "price": 2.33,
+            "quote_date": "2026-07-24",
+            "source": "sina",
+        }
+        cache.side_effect = lambda _code, quote: quote
+
+        selected = fetch_direct_fund_quote("001015", "2026-07-24")
+
+        self.assertEqual(selected["source"], "sina")
+        self.assertEqual(selected["cache_status"], "live")
+
+    @patch("backend.market_data.fetch_sina_fund_estimate")
+    @patch("backend.market_data.fetch_fund_quote")
+    def test_direct_fund_quote_rate_limits_both_failed_providers(self, eastmoney, sina):
+        eastmoney.return_value = {
+            "price": 2.30,
+            "quote_date": "2026-07-24",
+            "cache_status": "stale",
+            "cache_reason": "东方财富和新浪暂未返回当日估值",
+            "cache_age_seconds": 30,
+        }
+
+        selected = fetch_direct_fund_quote("001015", "2026-07-24")
+
+        self.assertEqual(selected["cache_status"], "stale")
+        sina.assert_not_called()
     def test_same_day_official_nav_replaces_estimate_in_cache(self):
         with (
             patch("backend.market_data._load_fund_quotes_cache"),

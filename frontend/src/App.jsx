@@ -721,13 +721,32 @@ function Summary({ data }) {
   );
 }
 
+function fundQuoteClock(card) {
+  const match = String(card?.quote_time || "").match(/(?:T|\s)(\d{1,2}:\d{2})/);
+  return match ? match[1].padStart(5, "0") : "";
+}
+
+function fundQuoteMeta(card) {
+  if (card?.symbol !== "001015") return "";
+  const clock = fundQuoteClock(card);
+  const status = card.daily_status || card.cache_status;
+  const label = ["stale", "cached"].includes(status)
+    ? "缓存"
+    : ["estimated", "live"].includes(status)
+      ? "估值"
+      : status === "official"
+        ? "净值"
+        : "";
+  if (!label) return "";
+  return clock ? `${label} · 更新于 ${clock}` : label;
+}
 function DailyCards({ cards }) {
   return (
     <section className="cardGrid">
       {cards.map((card) => {
         const fundPending = card.symbol === "001015" && ["pending", "preopen"].includes(card.daily_status);
         const fundStatusText = card.daily_status === "pending" ? "待更新" : card.daily_status === "preopen" ? "未开盘" : "";
-        const fundEstimateTag = card.symbol === "001015" && card.daily_status === "estimated" ? "（估值）" : "";
+        const fundStatusMeta = fundQuoteMeta(card);
         const regularPct = Number(card.regular_pct ?? 0);
         const extendedPct = Number(card.extended_pct);
         const hasDistinctExtendedPct = card.symbol !== "001015" && card.extended_pct != null && Math.abs(extendedPct - regularPct) > 0.0001;
@@ -742,7 +761,7 @@ function DailyCards({ cards }) {
             <div className="cardTitle">{displayAssetLabel(card.label, card.symbol)}</div>
             {card.price_line ? <div className="priceLine">{fmtCardPriceLine(card.price_line)}</div> : null}
             <div className={fundPending ? "flat" : tone(regularPct)}>
-              {fundPending ? fundStatusText : `${fmtPct(regularPct)}${fundEstimateTag}`}
+              {fundPending ? fundStatusText : fmtPct(regularPct)}
               {hasDistinctExtendedPct ? <span className={tone(extendedPct)}>（{fmtPct(extendedPct)}）</span> : null}
             </div>
             <div className={fundPending ? "flat" : tone(regularUsd)}>
@@ -753,6 +772,7 @@ function DailyCards({ cards }) {
               {fundPending ? "--" : fmtMoney(regularCny, "CNY")}
               {hasDistinctExtendedCny ? <span className={tone(extendedCny)}>（{extendedCny.toFixed(2)}）</span> : null}
             </div>
+            {fundStatusMeta ? <small className="fundQuoteMeta">{fundStatusMeta}</small> : null}
           </article>
         );
       })}
@@ -820,6 +840,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
     return displayCards.map((card) => {
     const fundPending = card.symbol === "001015" && ["pending", "preopen"].includes(card.daily_status);
     const fundStatusText = card.daily_status === "pending" ? "待更新" : card.daily_status === "preopen" ? "未开盘" : "";
+    const fundStatusMeta = fundQuoteMeta(card);
     const holding = holdingsBySymbol[card.symbol] || {};
     const rawValueCny = Number(holding.value_cny ?? card.value_cny ?? 0);
     const valueCny = Number.isFinite(rawValueCny) ? Math.max(0, rawValueCny) : 0;
@@ -864,6 +885,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
         magnitude,
         fundPending,
         fundStatusText,
+        fundStatusMeta,
       };
     });
   }, [cards, holdingsBySymbol, satelliteCards, satelliteSymbols, totalValue]);
@@ -1064,6 +1086,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 {row.hasDistinctExtendedCny ? <span className={tone(row.extendedCny)}>（{fmtMoney(row.extendedCny, "CNY")}）</span> : null}
               </div>
               <span>{row.assetPct.toFixed(1)}%</span>
+              {row.fundStatusMeta ? <small className="fundQuoteMeta heatFundQuoteMeta">{row.fundStatusMeta}</small> : null}
             </article>
           );
         })}
@@ -3613,7 +3636,10 @@ function EditableHoldingsPage({ data, onSaved }) {
                     aria-label={`${row.symbol} 数量`}
                   />
                 ) : Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                <td>{fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}</td>
+                <td>
+                  {fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}
+                  {fundQuoteMeta(row) ? <small className="fundQuoteMeta">{fundQuoteMeta(row)}</small> : null}
+                </td>
                 <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
                 <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
                 <td className={tone(row.rebound_pct)}>{row.rebound_pct == null ? "-" : fmtPct(row.rebound_pct)}</td>

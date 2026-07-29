@@ -27,7 +27,7 @@ _FUND_QUOTES_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _FUND_QUOTES_DAILY_CACHE: dict[str, dict[str, dict[str, Any]]] = {}
 _FUND_QUOTES_CACHE_LOADED = False
 _FUND_QUOTES_CACHE_FILE = ROOT_DIR / ".fund_quotes_cache.json"
-_FUND_QUOTES_TTL_SECONDS = 300
+_FUND_QUOTES_TTL_SECONDS = 120
 _FX_CACHE: dict[str, Any] | None = None
 _FX_CACHE_AT = 0.0
 _FX_CACHE_FILE = ROOT_DIR / ".fx_rate_cache.json"
@@ -587,6 +587,8 @@ def cache_fund_quote(code: str, quote: dict[str, Any]) -> dict[str, Any]:
     _load_fund_quotes_cache()
     now = time.time()
     candidate = dict(quote)
+    for key in ("cache_status", "cache_age_seconds", "cache_reason"):
+        candidate.pop(key, None)
     cached = _FUND_QUOTES_CACHE.get(code)
     if cached:
         current = dict(cached[0])
@@ -832,12 +834,69 @@ def fetch_sina_us_quote(symbol: str) -> dict[str, Any] | None:
     }
 
 
+def _fund_quote_with_cache_status(
+    quote: dict[str, Any],
+    status: str,
+    fetched_at: float,
+    now: float,
+    reason: str = "",
+) -> dict[str, Any]:
+    out = dict(quote)
+    out["cache_status"] = status
+    out["cache_age_seconds"] = max(0, int(now - fetched_at))
+    if reason:
+        out["cache_reason"] = reason
+    elif status != "stale":
+        out.pop("cache_reason", None)
+    return out
+
+
+def _fund_provider_quote_is_stale(quote: dict[str, Any], now: datetime | None = None) -> bool:
+    """Reject a same-day estimate whose provider clock stopped during A-share hours."""
+    raw_time = str(quote.get("quote_time") or "").strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}", raw_time):
+        return False
+    try:
+        quote_at = datetime.fromisoformat(raw_time).replace(tzinfo=TZ_SHANGHAI)
+    except ValueError:
+        return False
+    current = now or datetime.now(TZ_SHANGHAI)
+    current = current.astimezone(TZ_SHANGHAI) if current.tzinfo else current.replace(tzinfo=TZ_SHANGHAI)
+    if quote_at.date() != current.date():
+        return True
+    minutes = current.hour * 60 + current.minute
+    if 9 * 60 + 30 <= minutes < 15 * 60:
+        return (current - quote_at).total_seconds() > 300
+    return False
+
+
+def _mark_stale_fund_cache(code: str, quote: dict[str, Any] | None, reason: str) -> dict[str, Any] | None:
+    if not quote:
+        return None
+    _load_fund_quotes_cache()
+    now = time.time()
+    stored = dict(quote)
+    stored.pop("cache_age_seconds", None)
+    stored["cache_status"] = "stale"
+    stored["cache_reason"] = reason
+    _FUND_QUOTES_CACHE[code] = (stored, now)
+    _save_fund_quotes_cache()
+    return _fund_quote_with_cache_status(stored, "stale", now, now, reason)
+
+
 def fetch_fund_quote(code: str) -> dict[str, Any] | None:
     _load_fund_quotes_cache()
     now = time.time()
     cached = _FUND_QUOTES_CACHE.get(code)
     if cached and now - cached[1] < _FUND_QUOTES_TTL_SECONDS:
-        return dict(cached[0])
+        cached_status = "stale" if cached[0].get("cache_status") == "stale" else "cached"
+        return _fund_quote_with_cache_status(
+            cached[0],
+            cached_status,
+            cached[1],
+            now,
+            str(cached[0].get("cache_reason") or ""),
+        )
 
     try:
         r = requests.get(
@@ -846,27 +905,24 @@ def fetch_fund_quote(code: str) -> dict[str, Any] | None:
             headers={**REQUEST_HEADERS, "Referer": "https://fund.eastmoney.com/"},
         )
     except requests.RequestException:
-        return dict(cached[0]) if cached else None
+        return _mark_stale_fund_cache(code, cached[0] if cached else None, "东方财富暂不可用")
     match = re.search(r"\((\{.*\})\)", r.text.strip())
     if not match:
-        return dict(cached[0]) if cached else None
+        return _mark_stale_fund_cache(code, cached[0] if cached else None, "东方财富未返回估值")
     try:
         obj = json.loads(match.group(1))
         price = float(obj.get("gsz") or obj.get("dwjz") or 0.0)
         change_pct = float(obj.get("gszzl") or 0.0)
     except (ValueError, json.JSONDecodeError, TypeError):
-        return dict(cached[0]) if cached else None
+        return _mark_stale_fund_cache(code, cached[0] if cached else None, "东方财富估值解析失败")
     if price <= 0:
-        return dict(cached[0]) if cached else None
+        return _mark_stale_fund_cache(code, cached[0] if cached else None, "东方财富估值无效")
     quote = {
         "symbol": code,
         "price": price,
         "regular_price": price,
         "change_pct": change_pct,
         "regular_change_pct": change_pct,
-        # Keep the provider timestamp with the quote.  Around the A-share open
-        # Eastmoney can still return the previous trading day's last estimate;
-        # consumers need this field to avoid treating that stale move as today.
         "quote_date": str(obj.get("gztime") or obj.get("jzrq") or "")[:10],
         "quote_time": str(obj.get("gztime") or ""),
         "extended_price": None,
@@ -874,7 +930,10 @@ def fetch_fund_quote(code: str) -> dict[str, Any] | None:
         "session": "regular",
         "source": "东方财富基金估算",
     }
-    return cache_fund_quote(code, quote)
+    saved = cache_fund_quote(code, quote)
+    if _fund_provider_quote_is_stale(saved):
+        return _mark_stale_fund_cache(code, saved, "东方财富返回的估值时间已过期")
+    return _fund_quote_with_cache_status(saved, "live", now, now)
 
 
 def _parse_sina_fund_estimate(code: str, text: str) -> dict[str, Any] | None:
@@ -922,17 +981,32 @@ def fetch_sina_fund_estimate(code: str) -> dict[str, Any] | None:
 
 
 def fetch_direct_fund_quote(code: str, today: str | None = None) -> dict[str, Any] | None:
-    """Use Eastmoney first and Sina only when Eastmoney has no quote for today."""
+    """Use Eastmoney first, then Sina, while rate-limiting the whole provider chain."""
     expected_day = today or datetime.now(TZ_SHANGHAI).date().isoformat()
     fund = fetch_fund_quote(code)
     fund_day = str((fund or {}).get("quote_date") or "")[:10]
-    if fund_day == expected_day:
+    fund_status = str((fund or {}).get("cache_status") or "")
+    fund_reason = str((fund or {}).get("cache_reason") or "")
+    fund_cache_age = int((fund or {}).get("cache_age_seconds") or 0)
+    if fund_day == expected_day and fund_status != "stale":
         return fund
-    sina_estimate = fetch_sina_fund_estimate(code)
-    if sina_estimate and str(sina_estimate.get("quote_date") or "")[:10] == expected_day:
-        return cache_fund_quote(code, sina_estimate)
-    return fund
+    if fund_status == "stale" and "新浪" in fund_reason and fund_cache_age < _FUND_QUOTES_TTL_SECONDS:
+        return fund
 
+    sina_estimate = fetch_sina_fund_estimate(code)
+    if (
+        sina_estimate
+        and str(sina_estimate.get("quote_date") or "")[:10] == expected_day
+        and not _fund_provider_quote_is_stale(sina_estimate)
+    ):
+        saved = cache_fund_quote(code, sina_estimate)
+        now = time.time()
+        return _fund_quote_with_cache_status(saved, "live", now, now)
+
+    reason = "东方财富和新浪暂未返回当日估值"
+    if sina_estimate and _fund_provider_quote_is_stale(sina_estimate):
+        reason = "东方财富和新浪返回的估值时间已过期"
+    return _mark_stale_fund_cache(code, fund, reason)
 
 def fetch_fx_usdcny() -> dict[str, Any]:
     global _FX_CACHE_AT

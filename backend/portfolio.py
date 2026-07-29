@@ -827,6 +827,9 @@ def quote_with_official_fund_nav(
         "quote_date": day,
         "quote_time": f"{day} 15:00",
         "source": "东方财富基金净值",
+        "cache_status": "official",
+        "cache_age_seconds": 0,
+        "cache_reason": "",
     }
 
 
@@ -2297,7 +2300,14 @@ def fund_daily_status(quote: dict[str, Any], investment_day: str, now: datetime)
     if quote_day != investment_day:
         return "pending"
     source = str(quote.get("source") or "")
-    return "official" if "正式" in source or ("净值" in source and "估算" not in source) else "estimated"
+    if "正式" in source or ("净值" in source and "估算" not in source):
+        return "official"
+    cache_status = str(quote.get("cache_status") or "")
+    if cache_status == "stale":
+        return "stale"
+    if cache_status == "cached":
+        return "cached"
+    return "estimated"
 
 
 def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_day: str, now: datetime) -> float:
@@ -2527,6 +2537,10 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "regular_price": quote.get("regular_price"),
                 "session": quote.get("session", "regular"),
                 "source": quote.get("source", ""),
+                "quote_time": quote.get("quote_time", ""),
+                "cache_status": quote.get("cache_status", ""),
+                "cache_age_seconds": quote.get("cache_age_seconds"),
+                "cache_reason": quote.get("cache_reason", ""),
                 "value": value,
                 "value_cny": value_cny,
                 "pnl": pnl,
@@ -2621,6 +2635,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "extended_change_usd": extended_change_cny / fx if extended_change_cny is not None and fx > 0 else None,
                 "extended_change_cny": extended_change_cny,
                 "daily_status": fund_daily_status(quote, history_day, history_now) if sym == "001015" else "live",
+                "quote_time": quote.get("quote_time", ""),
+                "quote_source": quote.get("source", ""),
+                "cache_status": quote.get("cache_status", ""),
+                "cache_age_seconds": quote.get("cache_age_seconds"),
+                "cache_reason": quote.get("cache_reason", ""),
             }
         daily_cards.append(card)
         card_by_symbol[sym] = card
