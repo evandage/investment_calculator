@@ -1724,22 +1724,45 @@ function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = 
   chart.timeScale().setVisibleLogicalRange({ from: startIndex, to: candles.length - 1 + rightOffsetBars });
 }
 
-function fixedIntradaySessionBars(symbol, interval, showExtended) {
-  if (showExtended || !["5m", "15m"].includes(interval)) return 0;
+function fixedIntradaySessionConfig(symbol, interval, showExtended) {
+  if (!["5m", "15m"].includes(interval)) return null;
   const normalizedSymbol = String(symbol || "").toUpperCase();
   const isChinaMarket = normalizedSymbol === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalizedSymbol);
-  const sessionMinutes = isChinaMarket ? 240 : 390;
+  const sessionMinutes = isChinaMarket ? 240 : showExtended ? 960 : 390;
+  const sessionStartMinutes = isChinaMarket ? 9 * 60 + 30 : showExtended ? 4 * 60 : 9 * 60 + 30;
   const intervalMinutes = interval === "5m" ? 5 : 15;
-  return Math.ceil(sessionMinutes / intervalMinutes);
+  return {
+    isChinaMarket,
+    intervalMinutes,
+    sessionStartMinutes,
+    sessionBars: Math.ceil(sessionMinutes / intervalMinutes),
+  };
+}
+
+function marketLocalMinutes(timestamp, isChinaMarket) {
+  if (!Number.isFinite(timestamp)) return null;
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: isChinaMarket ? "Asia/Shanghai" : "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date(timestamp * 1000)).map((part) => [part.type, part.value]),
+  );
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null;
 }
 
 function fixedIntradaySeriesData(candles, volumes, symbol, interval, showExtended) {
-  const sessionBars = fixedIntradaySessionBars(symbol, interval, showExtended);
-  const firstTime = Number(candles?.[0]?.time);
-  if (!sessionBars || !Number.isFinite(firstTime)) return { candles, volumes };
-  const normalizedSymbol = String(symbol || "").toUpperCase();
-  const isChinaMarket = normalizedSymbol === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalizedSymbol);
-  const intervalMinutes = interval === "5m" ? 5 : 15;
+  const config = fixedIntradaySessionConfig(symbol, interval, showExtended);
+  const referenceTime = Number(candles?.find((row) => Number.isFinite(Number(row?.time)))?.time);
+  if (!config || !Number.isFinite(referenceTime)) return { candles, volumes };
+  const localMinutes = marketLocalMinutes(referenceTime, config.isChinaMarket);
+  if (!Number.isFinite(localMinutes)) return { candles, volumes };
+  const firstTime = referenceTime - (localMinutes - config.sessionStartMinutes) * 60;
+  const { isChinaMarket, intervalMinutes, sessionBars } = config;
   const intervalSeconds = intervalMinutes * 60;
   const morningBars = 120 / intervalMinutes;
   const candleByTime = new Map((candles || []).map((row) => [Number(row.time), row]));
@@ -1755,12 +1778,12 @@ function fixedIntradaySeriesData(candles, volumes, symbol, interval, showExtende
 }
 
 function applyFixedIntradaySessionRange(chart, symbol, interval, showExtended) {
-  const sessionBars = fixedIntradaySessionBars(symbol, interval, showExtended);
-  if (!chart || !sessionBars) return false;
+  const config = fixedIntradaySessionConfig(symbol, interval, showExtended);
+  if (!chart || !config?.sessionBars) return false;
   chart.timeScale().applyOptions({ rightOffset: 0 });
-  // Logical position 0 is the opening bar. The extra position at sessionBars
-  // is an explicit whitespace point at the closing bell.
-  chart.timeScale().setVisibleLogicalRange({ from: 0, to: sessionBars });
+  // Logical position 0 is the selected session's opening time. The extra
+  // position is an explicit whitespace point at the session's closing time.
+  chart.timeScale().setVisibleLogicalRange({ from: 0, to: config.sessionBars });
   return true;
 }
 
