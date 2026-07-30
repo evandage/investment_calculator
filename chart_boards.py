@@ -2044,19 +2044,6 @@ def anchored_vwap_and_bands(
     )
     current_day = _naive_day(intraday.index[-1])
 
-    base_volume = 0.0
-    base_pv = 0.0
-    base_p2v = 0.0
-    if not daily.empty and anchor_date < current_day:
-        daily_dates = pd.DatetimeIndex([_naive_day(value) for value in daily.index])
-        base = daily.loc[(daily_dates >= anchor_date) & (daily_dates < current_day)]
-        if not base.empty:
-            base_tp = (base["High"] + base["Low"] + base["Close"]) / 3.0
-            base_vol = base["Volume"].fillna(0.0).astype(float).clip(lower=0.0)
-            base_volume = float(base_vol.sum())
-            base_pv = float((base_tp * base_vol).sum())
-            base_p2v = float(((base_tp**2) * base_vol).sum())
-
     intraday_dates = pd.DatetimeIndex([_naive_day(value) for value in intraday.index])
     active = intraday.loc[intraday_dates >= anchor_date]
     result = pd.Series(np.nan, index=intraday.index, dtype=float)
@@ -2064,6 +2051,24 @@ def anchored_vwap_and_bands(
     lower = result.copy()
     if active.empty:
         return result, upper, lower, anchor_date, label
+
+    # Only pre-aggregate completed daily bars that precede the first bar being
+    # plotted.  Using the latest day here made daily charts include the same
+    # anchor-to-current history twice: once as ``base`` and once as ``active``.
+    # Consequently, the first AVWAP point could fall outside its anchor candle.
+    active_start_day = _naive_day(active.index[0])
+    base_volume = 0.0
+    base_pv = 0.0
+    base_p2v = 0.0
+    if not daily.empty and anchor_date < active_start_day:
+        daily_dates = pd.DatetimeIndex([_naive_day(value) for value in daily.index])
+        base = daily.loc[(daily_dates >= anchor_date) & (daily_dates < active_start_day)]
+        if not base.empty:
+            base_tp = (base["High"] + base["Low"] + base["Close"]) / 3.0
+            base_vol = base["Volume"].fillna(0.0).astype(float).clip(lower=0.0)
+            base_volume = float(base_vol.sum())
+            base_pv = float((base_tp * base_vol).sum())
+            base_p2v = float(((base_tp**2) * base_vol).sum())
 
     tp = (active["High"] + active["Low"] + active["Close"]) / 3.0
     vol = active["Volume"].fillna(0.0).astype(float).clip(lower=0.0)

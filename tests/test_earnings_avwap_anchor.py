@@ -1,8 +1,9 @@
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
-from chart_boards import _avwap_anchor_date, _earnings_reaction_date_from_history
+from chart_boards import _avwap_anchor_date, _earnings_reaction_date_from_history, anchored_vwap_and_bands
 
 
 class EarningsAvwapAnchorTests(unittest.TestCase):
@@ -141,6 +142,31 @@ class EarningsAvwapAnchorTests(unittest.TestCase):
 
         self.assertEqual(anchor, pd.Timestamp("2026-07-06"))
         self.assertEqual(label, "自定义日期")
+
+    @patch("chart_boards.fetch_ohlcv")
+    def test_daily_custom_avwap_starts_at_anchor_candle_typical_price(self, fetch_ohlcv):
+        index = pd.to_datetime(["2026-07-01", "2026-07-02", "2026-07-03"])
+        daily = pd.DataFrame(
+            {
+                "High": [11.0, 13.0, 14.0],
+                "Low": [9.0, 10.0, 11.0],
+                "Close": [10.0, 12.0, 13.0],
+                "Volume": [100.0, 200.0, 300.0],
+            },
+            index=index,
+        )
+        fetch_ohlcv.return_value = daily
+
+        avwap, _, _, anchor, _ = anchored_vwap_and_bands(
+            "VOO",
+            daily,
+            "custom",
+            custom_anchor_date="2026-07-02",
+        )
+
+        anchor_typical_price = (13.0 + 10.0 + 12.0) / 3.0
+        self.assertEqual(anchor, pd.Timestamp("2026-07-02"))
+        self.assertAlmostEqual(float(avwap.loc[pd.Timestamp("2026-07-02")]), anchor_typical_price)
 
 
 if __name__ == "__main__":
