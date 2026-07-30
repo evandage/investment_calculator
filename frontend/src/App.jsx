@@ -4366,7 +4366,7 @@ function Rebalance({ data, onSaved }) {
         <button className="toolButton compactTool" onClick={() => setRulesOpen(true)}>规则</button>
       </div>
       <div className="muted rebalanceFormulaBanner">
-        共同分母：{data.rebalance.planned_total_formula || `USD ${fmtMoney(data.rebalance.planned_total_usd, "USD")}`} · VOO/QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率
+        共同分母：{data.rebalance.planned_total_formula || `USD ${fmtMoney(data.rebalance.planned_total_usd, "USD")}`} · VOO 按月买入 · QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率
       </div>
       {data.rebalance.monthly_recalculation ? (
         <div className={`monthlyRecalculationStatus ${data.rebalance.monthly_recalculation.status || ""}`}>

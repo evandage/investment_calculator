@@ -150,7 +150,7 @@ def rebalance_rules_payload(
                 "heading": "建议金额",
                 "items": [
                     "成本缺口按月初成本口径计算，即目标金额减去当前成本扣除本月已买后的金额。",
-                    "VOO/QQQ 按剩余月份折算为每周基准，再乘档位倍率计算本轮计划应买；个股按目标金额 × 0.1 × 档位倍率计算一手。",
+                    "VOO 按剩余月份折算为月度基准，QQQ 按至中期选举的剩余周数折算为每周基准；再乘档位倍率计算本轮计划应买。个股按目标金额 × 0.1 × 档位倍率计算一手。",
                     f"卫星股以10月底目标金额为 1x；{zero_target_note}",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；全部标的统一按回撤周期锚定高点定档，锚点不会因时间经过而滚动失效，近 5 日涨幅偏热时只做备注提示。",
                     "建议买入总额受 USD 现金与 SGOV 安全线以上可释放额度限制；可动用资金不足时按比例缩放计划应买。",
@@ -3229,8 +3229,8 @@ def build_rebalance_v2(
                 f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, 档位计划)",
             ]
         else:
-            weekly_core = sym in {"VOO", "QQQ"}
-            cadence_periods = weeks_until_midterm if weekly_core else build_month_count
+            weekly_cadence = sym == "QQQ"
+            cadence_periods = weeks_until_midterm if weekly_cadence else build_month_count
             base_budget = max(0.0, gap) / max(1, cadence_periods)
             planned = min(max(0.0, gap), base_budget * multiplier)
             planned_formula_parts = [
@@ -3240,10 +3240,10 @@ def build_rebalance_v2(
                 f"实际差值 {_fmt_usd_compact(actual_gap)} = 目标 {_fmt_usd_compact(target_usd)} - 当前成本 {_fmt_usd_compact(cost_usd)}",
                 (
                     f"每周基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {weeks_until_midterm}周（至 {MIDTERM_ELECTION_DATE.isoformat()} 中期选举）"
-                    if weekly_core
+                    if weekly_cadence
                     else f"月度基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {build_month_count}月"
                 ),
-                f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, {'每周' if weekly_core else '月度'}基准 x {float(multiplier):.2f}x)",
+                f"计划应买 {_fmt_usd_compact(planned)} = min(成本缺口, {'每周' if weekly_cadence else '月度'}基准 x {float(multiplier):.2f}x)",
             ]
         planned_formula = "；".join(planned_formula_parts)
 
