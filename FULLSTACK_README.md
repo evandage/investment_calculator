@@ -1,6 +1,6 @@
 # Fullstack Dashboard
 
-This branch adds a cross-platform frontend/backend version while keeping the existing Streamlit app.
+The application uses a FastAPI backend with a Vite/React frontend.
 
 ## Architecture
 

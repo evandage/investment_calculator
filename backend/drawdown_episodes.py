@@ -6,6 +6,7 @@ from typing import Any
 
 
 TIER_ORDER = ("small", "medium", "large")
+DRAWDOWN_METRIC_VERSION = "episode_peak_v2"
 
 
 def thresholds_from_rule(rule: dict[str, Any]) -> dict[str, float]:
@@ -27,7 +28,8 @@ def ensure_threshold_snapshot(
     created_at: str,
 ) -> tuple[dict[str, Any], bool]:
     snapshots = store.setdefault("threshold_snapshots", {})
-    snapshot_key = f"{symbol}:{phase}:{month_key}"
+    metric_version = str(rule.get("metric_version") or DRAWDOWN_METRIC_VERSION)
+    snapshot_key = f"{symbol}:{phase}:{month_key}:{metric_version}"
     preferred = store.setdefault("preferred_threshold_snapshots", {})
     preferred_id = preferred.get(snapshot_key)
     if preferred_id and isinstance(snapshots.get(preferred_id), dict):
@@ -44,6 +46,7 @@ def ensure_threshold_snapshot(
         "created_at": created_at,
         "mode": str(rule.get("mode") or "automatic"),
         "thresholds_pct": thresholds_from_rule(rule),
+        "metric_version": metric_version,
     }
     snapshots[snapshot_id] = snapshot
     return deepcopy(snapshot), True
@@ -63,6 +66,9 @@ def default_episode_state(symbol: str) -> dict[str, Any]:
         "recovery_streak": 0,
         "last_processed_close_date": None,
         "last_confirmed_drawdown_pct": None,
+        "anchor_date": None,
+        "anchor_price": None,
+        "metric_version": DRAWDOWN_METRIC_VERSION,
         "last_confirmed_signal": None,
         "ended_at": None,
         "end_reason": None,
@@ -142,8 +148,15 @@ def advance_episode_on_close(
     confirmed_close_date: str | None,
     confirmed_close_price: float | None,
     confirmed_drawdown_pct: float | None,
+    confirmed_anchor_date: str | None = None,
+    confirmed_anchor_price: float | None = None,
+    metric_version: str = DRAWDOWN_METRIC_VERSION,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
-    next_state = {**default_episode_state(symbol), **deepcopy(state or {})}
+    incoming_state = deepcopy(state or {})
+    if incoming_state.get("metric_version") != metric_version:
+        incoming_state = {}
+    next_state = {**default_episode_state(symbol), **incoming_state}
+    next_state["metric_version"] = metric_version
     previous_state = deepcopy(next_state)
     if not confirmed_close_date or confirmed_drawdown_pct is None:
         return next_state, _public_confirmed_signal(next_state, newly_triggered=False), False
@@ -152,6 +165,9 @@ def advance_episode_on_close(
 
     next_state["last_processed_close_date"] = confirmed_close_date
     next_state["last_confirmed_drawdown_pct"] = float(confirmed_drawdown_pct)
+    if not next_state.get("episode_active"):
+        next_state["anchor_date"] = confirmed_anchor_date
+        next_state["anchor_price"] = confirmed_anchor_price
     active_snapshot = _snapshot_for_episode(next_state, current_snapshot, snapshots)
     thresholds = dict(active_snapshot.get("thresholds_pct") or {})
     automatic = active_snapshot.get("mode") != "manual_review_only" and "small" in thresholds
@@ -159,7 +175,7 @@ def advance_episode_on_close(
     if next_state.get("episode_active") and automatic:
         small_threshold = float(thresholds["small"])
         if float(confirmed_drawdown_pct) >= -1e-9:
-            _end_episode(next_state, confirmed_close_date, "new_60d_high")
+            _end_episode(next_state, confirmed_close_date, "new_anchor_high")
         else:
             within_half = float(confirmed_drawdown_pct) >= small_threshold / 2.0
             next_state["recovery_streak"] = int(next_state.get("recovery_streak") or 0) + 1 if within_half else 0
@@ -173,6 +189,8 @@ def advance_episode_on_close(
         )
         if start_tier is not None:
             next_state["episode_active"] = True
+            next_state["anchor_date"] = confirmed_anchor_date
+            next_state["anchor_price"] = confirmed_anchor_price
             next_state["threshold_snapshot_id"] = current_snapshot.get("id")
             next_state["episode_id"] = f"{symbol}:{confirmed_close_date}:{current_snapshot.get('id')}"
             next_state["trigger_date"] = confirmed_close_date
@@ -208,6 +226,9 @@ def advance_episode_on_close(
             "trigger_date": confirmed_close_date,
             "close_price": confirmed_close_price,
             "drawdown_pct": float(confirmed_drawdown_pct),
+            "anchor_date": next_state.get("anchor_date"),
+            "anchor_price": next_state.get("anchor_price"),
+            "metric_version": next_state.get("metric_version"),
             "threshold_snapshot_id": next_state.get("threshold_snapshot_id"),
             "confirmed": True,
         }
@@ -239,6 +260,7 @@ def _end_episode(state: dict[str, Any], close_date: str, reason: str) -> None:
     ended = default_episode_state(symbol)
     ended["last_processed_close_date"] = last_processed
     ended["last_confirmed_drawdown_pct"] = last_drawdown
+    ended["metric_version"] = str(state.get("metric_version") or DRAWDOWN_METRIC_VERSION)
     ended["ended_at"] = close_date
     ended["end_reason"] = reason
     state.clear()

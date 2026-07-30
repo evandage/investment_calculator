@@ -63,6 +63,9 @@ AVWAP_MODE_LABELS = {
     "none": "无",
     "earnings": "最近财报反应日",
     "year_start": "年初",
+    "cycle_high": "周期高点",
+    "cycle_low": "周期低点",
+    "custom": "自定义日期",
     "high_60d": "最近 Swing High",
     "low_60d": "最近 Swing Low",
     "gap_60d": "最近 Gap 日",
@@ -1921,6 +1924,8 @@ def _avwap_anchor_date(
     daily: pd.DataFrame,
     intraday: pd.DataFrame,
     mode: str,
+    cycle_start_date: str | pd.Timestamp | None = None,
+    custom_anchor_date: str | pd.Timestamp | None = None,
 ) -> tuple[pd.Timestamp, str]:
     normalized_mode = mode if mode in AVWAP_MODE_LABELS else "earnings"
     current_day = _naive_day(intraday.index[-1])
@@ -1934,9 +1939,47 @@ def _avwap_anchor_date(
         anchor = _naive_day(current_year_dates.min()) if len(current_year_dates) else year_start
         return anchor, AVWAP_MODE_LABELS[normalized_mode]
 
+    if normalized_mode == "custom":
+        requested = current_day
+        if custom_anchor_date:
+            try:
+                requested = min(_naive_day(pd.Timestamp(custom_anchor_date)), current_day)
+            except (TypeError, ValueError):
+                requested = current_day
+        daily_dates = pd.DatetimeIndex([_naive_day(value) for value in daily.index])
+        eligible = daily_dates[(daily_dates >= requested) & (daily_dates <= current_day)]
+        anchor = _naive_day(eligible.min()) if len(eligible) else requested
+        return anchor, AVWAP_MODE_LABELS[normalized_mode]
+
     recent = daily.tail(60)
     if recent.empty:
         return current_day, AVWAP_MODE_LABELS["today_open"]
+
+    if normalized_mode in {"cycle_high", "cycle_low"}:
+        cycle_start = None
+        if cycle_start_date:
+            try:
+                cycle_start = _naive_day(pd.Timestamp(cycle_start_date))
+            except (TypeError, ValueError):
+                cycle_start = None
+        active_cycle = pd.DataFrame()
+        if cycle_start is not None:
+            daily_dates = pd.DatetimeIndex([_naive_day(value) for value in daily.index])
+            active_positions = np.flatnonzero((daily_dates >= cycle_start) & (daily_dates <= current_day))
+            if active_positions.size:
+                active_cycle = daily.iloc[active_positions]
+        if active_cycle.empty:
+            active_cycle = recent
+            cycle_start = None
+        if normalized_mode == "cycle_high":
+            anchor = (
+                _naive_day(active_cycle.index[0])
+                if cycle_start is not None and not active_cycle.empty
+                else _naive_day(active_cycle["High"].astype(float).idxmax())
+            )
+        else:
+            anchor = _naive_day(active_cycle["Low"].astype(float).idxmin())
+        return anchor, AVWAP_MODE_LABELS[normalized_mode]
 
     if normalized_mode == "earnings":
         if symbol in _ETF_SYMBOLS:
@@ -1979,6 +2022,8 @@ def anchored_vwap_and_bands(
     *,
     n_std: float = 1.0,
     cache_only: bool = False,
+    cycle_start_date: str | pd.Timestamp | None = None,
+    custom_anchor_date: str | pd.Timestamp | None = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series, pd.Timestamp, str]:
     if intraday.empty:
         empty = pd.Series(dtype=float)
@@ -1989,7 +2034,14 @@ def anchored_vwap_and_bands(
         return empty, empty.copy(), empty.copy(), _naive_day(intraday.index[-1]), AVWAP_MODE_LABELS["none"]
 
     daily = fetch_ohlcv(symbol, "1d", "5y", cache_only=cache_only)
-    anchor_date, label = _avwap_anchor_date(symbol, daily, intraday, mode)
+    anchor_date, label = _avwap_anchor_date(
+        symbol,
+        daily,
+        intraday,
+        mode,
+        cycle_start_date=cycle_start_date,
+        custom_anchor_date=custom_anchor_date,
+    )
     current_day = _naive_day(intraday.index[-1])
 
     base_volume = 0.0
@@ -2031,12 +2083,25 @@ def daily_anchored_vwap(
     symbol: str,
     daily: pd.DataFrame,
     mode: str,
+    cycle_start_date: str | pd.Timestamp | None = None,
+    custom_anchor_date: str | pd.Timestamp | None = None,
 ) -> tuple[pd.Series, pd.Timestamp, str]:
     if daily.empty:
         return pd.Series(dtype=float), pd.Timestamp.now().normalize(), AVWAP_MODE_LABELS["earnings"]
 
-    daily_mode = mode if mode in {"earnings", "high_60d", "selloff_60d"} else "earnings"
-    anchor_date, label = _avwap_anchor_date(symbol, daily, daily, daily_mode)
+    daily_mode = (
+        mode
+        if mode in {"earnings", "cycle_high", "cycle_low", "custom", "high_60d", "selloff_60d"}
+        else "earnings"
+    )
+    anchor_date, label = _avwap_anchor_date(
+        symbol,
+        daily,
+        daily,
+        daily_mode,
+        cycle_start_date=cycle_start_date,
+        custom_anchor_date=custom_anchor_date,
+    )
     daily_dates = pd.DatetimeIndex([_naive_day(value) for value in daily.index])
     active = daily.loc[daily_dates >= anchor_date]
     result = pd.Series(np.nan, index=daily.index, dtype=float)

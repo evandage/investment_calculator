@@ -49,6 +49,7 @@ _FUTU_SUB_KLINES: dict[tuple[str, str], dict[str, Any]] = {}
 _FUTU_SUB_KLINE_REVISIONS: dict[tuple[str, str], int] = {}
 _FUTU_SUB_KLINE_ERROR = ""
 _FUTU_SUB_TICKER_ERROR = ""
+_FUTU_SUB_SYMBOL_ERRORS: dict[str, dict[str, str]] = {}
 NY_TZ = ZoneInfo("America/New_York")
 _EXTENDED_US_SESSIONS = frozenset({"premarket", "postmarket", "overnight"})
 
@@ -62,13 +63,31 @@ def _satellite_symbols() -> tuple[str, ...]:
 
 
 def _futu_subscribe_symbols() -> tuple[str, ...]:
-    # 510330.SS is the dashboard's CSI 300 ETF benchmark; include it in the
-    # same QUOTE/K-line subscription so the single-symbol chart can be live.
+    # 510330.SS is the dashboard's CSI 300 ETF benchmark.  It is attempted
+    # separately from US symbols so a missing China ETF entitlement cannot
+    # take the entire real-time connection down.
     return tuple(
         sym
         for sym in dict.fromkeys((*_usd_symbols(), "510330.SS"))
         if sym in app_config.FUTU_US
     )
+
+
+def _futu_subscription_groups(
+    symbols: tuple[str, ...],
+) -> tuple[tuple[tuple[str, ...], bool], ...]:
+    """Return (symbols, required) groups with the US feed isolated first."""
+    us_symbols = tuple(
+        sym
+        for sym in symbols
+        if str(app_config.FUTU_US.get(sym, "")).upper().startswith("US.")
+    )
+    optional_symbols = tuple(sym for sym in symbols if sym not in us_symbols)
+    groups: list[tuple[tuple[str, ...], bool]] = []
+    if us_symbols:
+        groups.append((us_symbols, True))
+    groups.extend(((sym,), False) for sym in optional_symbols)
+    return tuple(groups)
 
 
 def futu_opend_config() -> tuple[str, int]:
@@ -350,7 +369,7 @@ def _update_futu_subscription_tickers(data: Any) -> None:
 
 
 def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
-    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR, _FUTU_SUB_KLINE_ERROR, _FUTU_SUB_TICKER_ERROR, _QUOTES_CACHE, _QUOTES_CACHE_AT
+    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR, _FUTU_SUB_KLINE_ERROR, _FUTU_SUB_TICKER_ERROR, _FUTU_SUB_SYMBOL_ERRORS, _QUOTES_CACHE, _QUOTES_CACHE_AT
     with _FUTU_SUB_LOCK:
         if _FUTU_SUB_STARTED and _FUTU_SUB_CTX is not None and not force:
             return futu_subscription_status()
@@ -364,6 +383,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         _FUTU_SUB_LAST_ERROR = ""
         _FUTU_SUB_KLINE_ERROR = ""
         _FUTU_SUB_TICKER_ERROR = ""
+        _FUTU_SUB_SYMBOL_ERRORS = {}
         _FUTU_SUB_QUOTES.clear()
         _FUTU_SUB_UPDATED_AT.clear()
         _FUTU_SUB_KLINES.clear()
@@ -420,52 +440,92 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         ctx.set_handler(KlineHandler())
         ctx.set_handler(TickerHandler())
         subscribe_symbols = _futu_subscribe_symbols()
-        ret, msg = ctx.subscribe(
-            [app_config.FUTU_US[sym] for sym in subscribe_symbols],
-            [SubType.QUOTE],
-            is_first_push=True,
-            subscribe_push=True,
-        )
-        if ret != RET_OK:
+        subscription_groups = _futu_subscription_groups(subscribe_symbols)
+        quote_symbols: list[str] = []
+        symbol_errors: dict[str, dict[str, str]] = {}
+        fatal_quote_error = ""
+        for group, required in subscription_groups:
+            ret, msg = ctx.subscribe(
+                [app_config.FUTU_US[sym] for sym in group],
+                [SubType.QUOTE],
+                is_first_push=True,
+                subscribe_push=True,
+            )
+            if ret == RET_OK:
+                quote_symbols.extend(group)
+                continue
+            error = str(msg)
+            for sym in group:
+                symbol_errors.setdefault(sym, {})["quote"] = error
+            if required:
+                fatal_quote_error = error
+                break
+        if fatal_quote_error or not quote_symbols:
             try:
                 ctx.close()
             except Exception:
                 pass
             with _FUTU_SUB_LOCK:
-                _FUTU_SUB_LAST_ERROR = str(msg)
+                _FUTU_SUB_LAST_ERROR = fatal_quote_error or "No quote subscriptions succeeded"
+                _FUTU_SUB_SYMBOL_ERRORS = symbol_errors
             return futu_subscription_status()
-        ticker_ret, ticker_msg = ctx.subscribe(
-            [app_config.FUTU_US[sym] for sym in subscribe_symbols],
-            [SubType.TICKER],
-            is_first_push=True,
-            subscribe_push=True,
-            extended_time=True,
-        )
-        if ticker_ret != RET_OK:
-            _FUTU_SUB_TICKER_ERROR = str(ticker_msg)
-        kline_ret, kline_msg = ctx.subscribe(
-            [app_config.FUTU_US[sym] for sym in subscribe_symbols],
-            [SubType.K_15M, SubType.K_5M],
-            is_first_push=True,
-            subscribe_push=True,
-            extended_time=True,
-        )
-        if kline_ret != RET_OK:
-            _FUTU_SUB_KLINE_ERROR = str(kline_msg)
-        else:
-            for sym in subscribe_symbols:
-                code = app_config.FUTU_US[sym]
-                for interval, ktype in (("15m", KLType.K_15M), ("5m", KLType.K_5M)):
-                    seed_ret, seed_data = ctx.get_cur_kline(code, 1, ktype=ktype, autype=AuType.QFQ)
-                    if seed_ret != RET_OK or seed_data is None or len(seed_data) == 0:
-                        continue
-                    seed = seed_data.copy()
-                    seed["k_type"] = {"15m": "K_15M", "5m": "K_5M"}[interval]
-                    _update_futu_subscription_klines(seed)
+
+        ticker_errors: list[str] = []
+        kline_errors: list[str] = []
+        kline_symbols: list[str] = []
+        for group, _required in subscription_groups:
+            active_group = tuple(sym for sym in group if sym in quote_symbols)
+            if not active_group:
+                continue
+            is_us_group = all(
+                str(app_config.FUTU_US.get(sym, "")).upper().startswith("US.")
+                for sym in active_group
+            )
+            subscribe_kwargs = {
+                "is_first_push": True,
+                "subscribe_push": True,
+            }
+            if is_us_group:
+                subscribe_kwargs["extended_time"] = True
+            ticker_ret, ticker_msg = ctx.subscribe(
+                [app_config.FUTU_US[sym] for sym in active_group],
+                [SubType.TICKER],
+                **subscribe_kwargs,
+            )
+            if ticker_ret != RET_OK:
+                error = str(ticker_msg)
+                ticker_errors.append(error)
+                for sym in active_group:
+                    symbol_errors.setdefault(sym, {})["ticker"] = error
+            kline_ret, kline_msg = ctx.subscribe(
+                [app_config.FUTU_US[sym] for sym in active_group],
+                [SubType.K_15M, SubType.K_5M],
+                **subscribe_kwargs,
+            )
+            if kline_ret != RET_OK:
+                error = str(kline_msg)
+                kline_errors.append(error)
+                for sym in active_group:
+                    symbol_errors.setdefault(sym, {})["kline"] = error
+            else:
+                kline_symbols.extend(active_group)
+
+        _FUTU_SUB_TICKER_ERROR = " | ".join(dict.fromkeys(ticker_errors))
+        _FUTU_SUB_KLINE_ERROR = " | ".join(dict.fromkeys(kline_errors))
+        for sym in kline_symbols:
+            code = app_config.FUTU_US[sym]
+            for interval, ktype in (("15m", KLType.K_15M), ("5m", KLType.K_5M)):
+                seed_ret, seed_data = ctx.get_cur_kline(code, 1, ktype=ktype, autype=AuType.QFQ)
+                if seed_ret != RET_OK or seed_data is None or len(seed_data) == 0:
+                    continue
+                seed = seed_data.copy()
+                seed["k_type"] = {"15m": "K_15M", "5m": "K_5M"}[interval]
+                _update_futu_subscription_klines(seed)
         with _FUTU_SUB_LOCK:
             _FUTU_SUB_CTX = ctx
             _FUTU_SUB_STARTED = True
             _FUTU_SUB_LAST_ERROR = ""
+            _FUTU_SUB_SYMBOL_ERRORS = symbol_errors
     except Exception as exc:
         try:
             if ctx is not None:
@@ -532,6 +592,10 @@ def futu_subscription_status() -> dict[str, Any]:
             "kline_symbols": sorted({symbol for symbol, _ in _FUTU_SUB_KLINES}),
             "kline_error": _FUTU_SUB_KLINE_ERROR,
             "ticker_error": _FUTU_SUB_TICKER_ERROR,
+            "symbol_errors": {
+                sym: dict(errors)
+                for sym, errors in _FUTU_SUB_SYMBOL_ERRORS.items()
+            },
         }
 
 

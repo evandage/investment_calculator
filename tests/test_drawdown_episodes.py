@@ -129,11 +129,11 @@ class DrawdownEpisodeTests(unittest.TestCase):
         self.assertFalse(created)
         self.assertEqual(same["thresholds_pct"]["small"], -5.0)
 
-    def test_episode_ends_at_new_60_day_high(self):
+    def test_episode_ends_at_new_anchor_high(self):
         state, _, _ = self.advance(None, "2026-02-02", -6.0)
         state, signal, _ = self.advance(state, "2026-02-03", 0.0)
         self.assertFalse(state["episode_active"])
-        self.assertEqual(state["end_reason"], "new_60d_high")
+        self.assertEqual(state["end_reason"], "new_anchor_high")
         self.assertFalse(signal["active"])
 
     def test_episode_ends_after_ten_recovery_closes(self):

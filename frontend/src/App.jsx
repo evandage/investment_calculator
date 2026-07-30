@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
-import { BaselineSeries, CandlestickSeries, createChart, HistogramSeries, LineSeries } from "lightweight-charts";
+import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, HistogramSeries, LineSeries } from "lightweight-charts";
 import { Activity, BookOpen, Check, CircleAlert, Gauge, Home, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
 
 const API_BASE =
@@ -34,6 +34,12 @@ const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
 const shanghaiDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SHANGHAI_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const newYorkDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -1679,6 +1685,19 @@ function candleDayKey(time) {
   return String(time || "").slice(0, 10);
 }
 
+function avwapAnchorDateFromChartTime(time, symbol) {
+  if (typeof time === "number" && Number.isFinite(time)) {
+    const formatter = String(symbol || "").endsWith(".SS") ? shanghaiDateFormatter : newYorkDateFormatter;
+    return formatPartsDate(formatter, new Date(time * 1000));
+  }
+  if (time && typeof time === "object" && "year" in time) {
+    const month = String(time.month).padStart(2, "0");
+    const day = String(time.day).padStart(2, "0");
+    return `${time.year}-${month}-${day}`;
+  }
+  return String(time || "").slice(0, 10);
+}
+
 function klineDisplayStartIndex(candles = [], mode = "250", anchorDate = "") {
   if (!candles.length) return 0;
   let startIndex = 0;
@@ -2174,7 +2193,14 @@ function drawingTimeValue(time) {
   return 0;
 }
 
-function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileChange }) {
+function SingleLightweightChart({
+  data,
+  viewKey,
+  displayRange,
+  onVisibleProfileChange,
+  customAnchorPickEnabled = false,
+  onCustomAnchorPick,
+}) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
@@ -2187,6 +2213,9 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
   const volumesRef = useRef([]);
   const profileUpdaterRef = useRef(null);
   const visibleProfileCallbackRef = useRef(onVisibleProfileChange);
+  const customAnchorPickEnabledRef = useRef(customAnchorPickEnabled);
+  const customAnchorPickCallbackRef = useRef(onCustomAnchorPick);
+  const tradeMarkerDetailsRef = useRef(new Map());
   const [profileBars, setProfileBars] = useState([]);
   const [profilePoc, setProfilePoc] = useState(null);
   const [candleTooltip, setCandleTooltip] = useState({ visible: false });
@@ -2232,6 +2261,13 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
   useEffect(() => {
     visibleProfileCallbackRef.current = onVisibleProfileChange;
   }, [onVisibleProfileChange]);
+  useEffect(() => {
+    customAnchorPickEnabledRef.current = customAnchorPickEnabled;
+    customAnchorPickCallbackRef.current = onCustomAnchorPick;
+    if (!customAnchorPickEnabled && !drawingToolRef.current) {
+      setDrawingHint((current) => current.includes("AVWAP 锚点") ? "" : current);
+    }
+  }, [customAnchorPickEnabled, onCustomAnchorPick]);
   const rawCandles = useMemo(() => {
     const out = [];
     let lastTime = null;
@@ -2344,6 +2380,7 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
       priceLineVisible: false,
       lastValueVisible: false,
     }, 0);
+    const tradeMarkers = createSeriesMarkers(candle, [], { autoScale: false, zOrder: "aboveSeries" });
     const volume = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "",
@@ -2398,7 +2435,7 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
       axisLabelVisible: true,
       title: "超卖 30",
     });
-    seriesRef.current = { candle, volume, percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
+    seriesRef.current = { candle, tradeMarkers, volume, percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
     chartRef.current = chart;
     const handleCrosshairMove = (param) => {
       if (drawingToolRef.current) {
@@ -2416,8 +2453,12 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
       const low = Number(candleRow.low);
       const close = Number(candleRow.close);
       const volumeRow = param.seriesData.get(volume);
+      const hoveredMarkerId = param?.hoveredInfo?.objectId ?? param?.hoveredObjectId;
+      const tradeMarker = hoveredMarkerId == null
+        ? null
+        : tradeMarkerDetailsRef.current.get(String(hoveredMarkerId)) || null;
       const tooltipWidth = 216;
-      const tooltipHeight = 154;
+      const tooltipHeight = tradeMarker?.action === "trade" ? 202 : (tradeMarker ? 184 : 154);
       setCandleTooltip({
         visible: true,
         left: Math.max(8, Math.min(container.clientWidth - tooltipWidth - 8, point.x + 14)),
@@ -2431,15 +2472,30 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
         changePct: open > 0 ? (close / open - 1) * 100 : 0,
         amplitudePct: low > 0 ? (high / low - 1) * 100 : 0,
         volume: Number(volumeRow?.value || 0),
+        tradeMarker,
       });
     };
     chart.subscribeCrosshairMove(handleCrosshairMove);
     const handleChartClick = (param) => {
       const activeTool = drawingToolRef.current;
-      if (!activeTool || !param?.point) return;
+      if (!param?.point) return;
       const clickedTime = param.time ?? chart.timeScale().coordinateToTime(param.point.x);
-      const clickedPrice = candle.coordinateToPrice(param.point.y);
       const mainPaneHeight = chart.panes?.()?.[0]?.getHeight?.() || container.clientHeight * 0.6;
+      if (!activeTool && customAnchorPickEnabledRef.current) {
+        const clickedCandle = param?.seriesData?.get(candle);
+        if (param.point.y > mainPaneHeight || clickedTime == null || !clickedCandle) {
+          setDrawingHint("请点击主图中的一根 K 线选择 AVWAP 锚点");
+          return;
+        }
+        const anchorDate = avwapAnchorDateFromChartTime(clickedTime, data?.symbol);
+        if (anchorDate) {
+          customAnchorPickCallbackRef.current?.(anchorDate);
+          setDrawingHint(`AVWAP 锚点已选 ${anchorDate}`);
+        }
+        return;
+      }
+      if (!activeTool) return;
+      const clickedPrice = candle.coordinateToPrice(param.point.y);
       if (param.point.y > mainPaneHeight || clickedTime == null || !Number.isFinite(Number(clickedPrice)) || Number(clickedPrice) <= 0) {
         setDrawingHint("请在主图 K 线区域内落点");
         return;
@@ -2614,6 +2670,20 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
     const displaySeries = fixedIntradaySeriesData(candles, volumes, data?.symbol, data?.interval, data?.show_extended);
     series.candle.setData(displaySeries.candles);
     series.volume.setData(displaySeries.volumes);
+    const tradeMarkerRows = (data?.trade_markers || [])
+      .map((marker) => ({
+        ...marker,
+        time: normalizeLightweightTime(marker.time),
+        id: String(marker.id || ""),
+        // The text is already a circled glyph (Ⓑ/Ⓢ/Ⓣ); hide the plugin's
+        // separate shape so the chart shows one compact, unified marker.
+        size: 0,
+      }))
+      .filter((marker) => marker.time != null && marker.id);
+    tradeMarkerDetailsRef.current = new Map(
+      tradeMarkerRows.map((marker) => [marker.id, marker]),
+    );
+    series.tradeMarkers?.setMarkers(tradeMarkerRows);
     const usesFixedIntradayRange = applyFixedIntradaySessionRange(
       chart,
       data?.symbol,
@@ -2730,13 +2800,14 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
             setDrawingHint("");
           }}><Trash2 size={15} /><span>清空</span></button>
           {drawingHint ? <em>{drawingHint}</em> : null}
+          {!drawingTool && customAnchorPickEnabled && !drawingHint ? <em>点击主图 K 线选择 AVWAP 锚点</em> : null}
         </div>
         <div className={tone(data?.latest_change_pct)}>
           <strong>{fmtChartPrice(data?.latest_price, data?.symbol)}</strong>
           <span>{data?.latest_change_pct == null ? "-" : fmtPct(data.latest_change_pct)}</span>
         </div>
       </div>
-      <div className={`singleLwCanvas ${drawingTool ? "isDrawing" : ""}`} ref={containerRef}>
+      <div className={`singleLwCanvas ${drawingTool || customAnchorPickEnabled ? "isDrawing" : ""}`} ref={containerRef}>
         {candleTooltip.visible ? (
           <div className="klineCandleTooltip" style={{ left: `${candleTooltip.left}px`, top: `${candleTooltip.top}px` }}>
             <strong>{candleTooltip.time || "-"}</strong>
@@ -2744,6 +2815,28 @@ function SingleLightweightChart({ data, viewKey, displayRange, onVisibleProfileC
             <div><span>低</span><b>{fmtChartPrice(candleTooltip.low, data?.symbol)}</b><span>收</span><b>{fmtChartPrice(candleTooltip.close, data?.symbol)}</b></div>
             <div><span>涨跌</span><b className={tone(candleTooltip.change)}>{candleTooltip.change >= 0 ? "+" : ""}{fmtChartPrice(candleTooltip.change, data?.symbol)} · {fmtPct(candleTooltip.changePct)}</b></div>
             <div><span>振幅</span><b>{Number(candleTooltip.amplitudePct || 0).toFixed(2)}%</b><span>量</span><b>{Number(candleTooltip.volume || 0).toLocaleString()}</b></div>
+            {candleTooltip.tradeMarker ? (
+              candleTooltip.tradeMarker.action === "trade" ? (
+                <>
+                  <div className="up">
+                    <span>买入 B</span>
+                    <b>{Number(candleTooltip.tradeMarker.buy_count || 0)} 笔 · {Number(candleTooltip.tradeMarker.buy_shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} 股{Number(candleTooltip.tradeMarker.buy_average_price) > 0 ? ` @ ${fmtChartPrice(candleTooltip.tradeMarker.buy_average_price, data?.symbol)}` : ""}</b>
+                  </div>
+                  <div className="down">
+                    <span>卖出 S</span>
+                    <b>{Number(candleTooltip.tradeMarker.sell_count || 0)} 笔 · {Number(candleTooltip.tradeMarker.sell_shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} 股{Number(candleTooltip.tradeMarker.sell_average_price) > 0 ? ` @ ${fmtChartPrice(candleTooltip.tradeMarker.sell_average_price, data?.symbol)}` : ""}</b>
+                  </div>
+                </>
+              ) : (
+                <div className={candleTooltip.tradeMarker.action === "sell" ? "down" : "up"}>
+                  <span>{candleTooltip.tradeMarker.action === "sell" ? "卖出 S" : "买入 B"}</span>
+                  <b>
+                    {Number(candleTooltip.tradeMarker.count || 0)} 笔 · {Number(candleTooltip.tradeMarker.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} 股
+                    {Number(candleTooltip.tradeMarker.average_price) > 0 ? ` @ ${fmtChartPrice(candleTooltip.tradeMarker.average_price, data?.symbol)}` : ""}
+                  </b>
+                </div>
+              )
+            ) : null}
           </div>
         ) : null}
         {showOpeningPercentAxis ? <div className="klinePercentAxis singleKlinePercentAxis" aria-label="以当日开盘价为零的涨跌幅坐标轴">
@@ -2869,6 +2962,7 @@ function KlinePage({ dashboardData }) {
     restoredState.avwapMode
       || defaultKlineAvwapMode(String(restoredState.interval || "1d"), String(restoredState.symbol || "VOO"))
   ));
+  const [customAnchorDate, setCustomAnchorDate] = useState(() => String(restoredState.customAnchorDate || ""));
   const [displayRange, setDisplayRange] = useState(() => String(restoredState.displayRange || "60"));
   const [showExtended, setShowExtended] = useState(() => Boolean(restoredState.showExtended));
   const [data, setData] = useState(null);
@@ -2898,12 +2992,13 @@ function KlinePage({ dashboardData }) {
       symbol,
       interval,
       avwapMode,
+      customAnchorDate,
       displayRange,
       showExtended,
       globalColumns,
     };
-  }, [symbol, interval, avwapMode, displayRange, showExtended, globalColumns]);
-  const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${showExtended}|${globalColumns}`;
+  }, [symbol, interval, avwapMode, customAnchorDate, displayRange, showExtended, globalColumns]);
+  const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${customAnchorDate}|${showExtended}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
 
@@ -2917,7 +3012,7 @@ function KlinePage({ dashboardData }) {
     const timeoutId = window.setTimeout(() => controller.abort(), scope === "global" ? 30000 : 20000);
     try {
       const isEtfSymbol = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
-      let effectiveAvwapMode = avwapMode;
+      let effectiveAvwapMode = avwapMode === "custom" && !customAnchorDate ? "none" : avwapMode;
       if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
       if (interval === "1d" && effectiveAvwapMode === "today_open") {
         effectiveAvwapMode = isEtfSymbol ? "high_60d" : "earnings";
@@ -2927,6 +3022,9 @@ function KlinePage({ dashboardData }) {
           ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
           : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
       );
+      if (scope === "single" && effectiveAvwapMode === "custom" && customAnchorDate) {
+        qs.set("custom_anchor_date", customAnchorDate);
+      }
       const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -2945,7 +3043,7 @@ function KlinePage({ dashboardData }) {
 
   useEffect(() => {
     load();
-  }, [scope, symbol, interval, avwapMode, showExtended, globalColumns]);
+  }, [scope, symbol, interval, avwapMode, customAnchorDate, showExtended, globalColumns]);
 
   useEffect(() => {
     if (interval === "1d") {
@@ -2955,13 +3053,16 @@ function KlinePage({ dashboardData }) {
     }
     setRealtimeError("");
     const isEtfSymbol = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
-    let effectiveAvwapMode = avwapMode;
+    let effectiveAvwapMode = avwapMode === "custom" && !customAnchorDate ? "none" : avwapMode;
     if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
     const qs = new URLSearchParams(
       scope === "global"
         ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
         : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
     );
+    if (scope === "single" && effectiveAvwapMode === "custom" && customAnchorDate) {
+      qs.set("custom_anchor_date", customAnchorDate);
+    }
     const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
     const signature = requestSignature;
     const socket = new WebSocket(`${WS_BASE}/ws/${endpoint}?${qs.toString()}`);
@@ -2988,7 +3089,7 @@ function KlinePage({ dashboardData }) {
     return () => {
       socket.close();
     };
-  }, [scope, symbol, interval, avwapMode, showExtended, globalColumns]);
+  }, [scope, symbol, interval, avwapMode, customAnchorDate, showExtended, globalColumns]);
 
   useEffect(() => {
     function onResize() {
@@ -3034,11 +3135,13 @@ function KlinePage({ dashboardData }) {
   function changeKlineSymbol(nextSymbol) {
     setSymbol(nextSymbol);
     setAvwapMode(defaultKlineAvwapMode(interval, nextSymbol));
+    setCustomAnchorDate("");
   }
 
   function changeKlineInterval(nextInterval) {
     setInterval(nextInterval);
     setAvwapMode(defaultKlineAvwapMode(nextInterval, symbol));
+    setCustomAnchorDate("");
   }
 
   function openSingleSymbolFromGlobal(nextSymbol) {
@@ -3047,7 +3150,7 @@ function KlinePage({ dashboardData }) {
     changeKlineSymbol(nextSymbol);
   }
 
-  const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.avwap_mode || avwapMode}-${displayRange}`;
+  const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.avwap_mode || avwapMode}-${customAnchorDate}-${displayRange}`;
   const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
   const swingPosition = swingPositions[symbol];
   const swingTargetPct = Number(swingPosition?.target_pct || KLINE_SWING_DEFAULTS[symbol]?.target_pct || 0);
@@ -3104,9 +3207,16 @@ function KlinePage({ dashboardData }) {
           ) : null}
           <label className={`klineControl klineAvwapControl ${avwapSelectValue !== "none" ? "isActive" : ""}`}>
             <span>AVWAP 锚点</span>
-            <select value={avwapSelectValue} onChange={(event) => setAvwapMode(event.target.value)} aria-label="AVWAP锚点">
+            <select value={avwapSelectValue} onChange={(event) => {
+              const nextMode = event.target.value;
+              setAvwapMode(nextMode);
+              if (nextMode === "custom") setCustomAnchorDate("");
+            }} aria-label="AVWAP锚点">
               {!isEtf ? <option value="earnings">最近财报反应日</option> : null}
               <option value="year_start">年初</option>
+              <option value="cycle_high">周期高点</option>
+              <option value="cycle_low">周期低点</option>
+              <option value="custom">自定义日期</option>
               {!isEtf ? <option value="gap_60d">最近 Gap 日</option> : null}
               <option value="high_60d">最近 Swing High</option>
               <option value="low_60d">最近 Swing Low</option>
@@ -3148,7 +3258,14 @@ function KlinePage({ dashboardData }) {
       {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
       {scope === "single" && data?.candles ? (
         <div className={`klineAnalysisLayout ${interval !== "1d" ? "withoutInsight" : ""}`}>
-          <SingleLightweightChart data={data} displayRange={displayRange} viewKey={singleViewKey} onVisibleProfileChange={setVisibleProfileState} />
+          <SingleLightweightChart
+            data={data}
+            displayRange={displayRange}
+            viewKey={singleViewKey}
+            onVisibleProfileChange={setVisibleProfileState}
+            customAnchorPickEnabled={avwapSelectValue === "custom"}
+            onCustomAnchorPick={setCustomAnchorDate}
+          />
           {interval === "1d" ? <TechnicalInsightPanel data={data} displayRange={displayRange} visibleProfile={activeVisibleProfile} /> : null}
         </div>
       ) : null}
@@ -3418,7 +3535,6 @@ function EditableHoldingsPage({ data, onSaved }) {
     price: row.price,
     daily_pct: row.effective_daily_pct,
     drawdown_pct: row.drawdown_pct,
-    rebound_pct: row.rebound_pct,
     avg_cost: row.avg_cost,
     value: row.value_cny,
     pnl: row.pnl_cny,
@@ -3637,8 +3753,7 @@ function EditableHoldingsPage({ data, onSaved }) {
               <SortableTableHeader label="数量" sortKey="shares" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="当前价" sortKey="price" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="当日涨跌" sortKey="daily_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
-              <SortableTableHeader label="60日回撤" sortKey="drawdown_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
-              <SortableTableHeader label="60日涨幅" sortKey="rebound_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="周期高点回撤" sortKey="drawdown_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="成本" sortKey="avg_cost" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="市值" sortKey="value" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="盈亏" sortKey="pnl" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
@@ -3665,7 +3780,6 @@ function EditableHoldingsPage({ data, onSaved }) {
                 </td>
                 <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
                 <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
-                <td className={tone(row.rebound_pct)}>{row.rebound_pct == null ? "-" : fmtPct(row.rebound_pct)}</td>
                 <td>{editingHoldings ? (
                   <input
                     className="holdingCellInput"
@@ -4427,7 +4541,7 @@ function Rebalance({ data, onSaved }) {
               <SortableTableHeader label="实际差值" sortKey="actual_gap" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="计划应买" sortKey="planned_buy" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="该月净买入" sortKey="net_bought" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
-              <SortableTableHeader label="60日回撤" sortKey="drawdown_pct" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="周期高点回撤" sortKey="drawdown_pct" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="估值系数" sortKey="valuation_factor" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
             </tr>
           </thead>
@@ -4484,7 +4598,7 @@ function Rebalance({ data, onSaved }) {
                       <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
                     </td>
                     <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
-                    <td className={`${tone(row.drawdown_pct)} hasDetailTooltip`} title={`正式确认：${row.confirmed_close_date || "-"}\n盘中回撤：${row.intraday_drawdown_pct == null ? "-" : fmtPct(row.intraday_drawdown_pct)}`}>
+                    <td className={`${tone(row.drawdown_pct)} hasDetailTooltip`} title={`锚点：${row.drawdown_anchor_date || "-"} @ ${row.drawdown_anchor_price == null ? "-" : fmtMoney(row.drawdown_anchor_price, "USD")}\n正式确认：${row.confirmed_close_date || "-"}\n盘中回撤：${row.intraday_drawdown_pct == null ? "-" : fmtPct(row.intraday_drawdown_pct)}`}>
                       <div>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</div>
                       {row.intraday_warning?.active ? <small className="intradayDrawdown">盘中 {fmtPct(row.intraday_drawdown_pct)}</small> : null}
                     </td>

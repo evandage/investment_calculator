@@ -152,6 +152,62 @@ def clean_thresholds(values: np.ndarray) -> np.ndarray:
     return cleaned
 
 
+def episode_peak_drawdown(
+    close: pd.Series,
+    *,
+    bootstrap_window: int = 60,
+    recovery_days: int = 10,
+) -> pd.Series:
+    """Calculate causal drawdown from a peak that does not expire with time.
+
+    The provisional small-tier threshold is estimated from the legacy rolling
+    window only to identify historical cycle boundaries. Within a cycle the
+    peak stays frozen; after a full recovery or a sustained near-recovery the
+    next close becomes the seed for a new peak.
+    """
+    values = close.to_numpy(dtype=float)
+    legacy_peak = close.rolling(bootstrap_window, min_periods=bootstrap_window).max()
+    legacy_drawdown = (1.0 - close / legacy_peak).to_numpy(dtype=float)
+    finite_legacy = legacy_drawdown[np.isfinite(legacy_drawdown)]
+    provisional_small = (
+        float(np.quantile(finite_legacy, QUANTILES[0]))
+        if finite_legacy.size
+        else 0.05
+    )
+    provisional_small = max(0.01, provisional_small)
+
+    output = np.full(len(values), np.nan, dtype=float)
+    anchor = np.nan
+    active = False
+    recovery_count = 0
+    for pos, price in enumerate(values):
+        if not np.isfinite(price) or price <= 0:
+            continue
+        if not np.isfinite(anchor):
+            anchor = price
+        if not active and price >= anchor:
+            anchor = price
+        drawdown = max(0.0, 1.0 - price / anchor)
+
+        if active:
+            if drawdown <= 1e-12:
+                active = False
+                recovery_count = 0
+                anchor = price
+            else:
+                recovery_count = recovery_count + 1 if drawdown < provisional_small / 2.0 else 0
+                if recovery_count >= recovery_days:
+                    active = False
+                    recovery_count = 0
+                    anchor = price
+                    drawdown = 0.0
+        if not active and drawdown >= provisional_small:
+            active = True
+        if pos + 1 >= bootstrap_window:
+            output[pos] = drawdown
+    return pd.Series(output, index=close.index, name="episode_peak_drawdown")
+
+
 def count_independent_episodes(dd60: pd.Series, small_threshold: float) -> int:
     active = False
     recovery_days = 0
@@ -430,8 +486,7 @@ def outcome_warnings(walk_forward: dict[str, Any]) -> list[str]:
 
 
 def analyze_ticker(ticker: str, close: pd.Series, config: Config, seed_offset: int) -> dict[str, Any]:
-    peak60 = close.rolling(config.drawdown_window, min_periods=config.drawdown_window).max()
-    dd60 = 1 - close / peak60
+    dd60 = episode_peak_drawdown(close, bootstrap_window=config.drawdown_window, recovery_days=config.recovery_days)
     log_return = np.log(close / close.shift(1))
     rv20 = log_return.rolling(config.rv_window, min_periods=config.rv_window).std(ddof=1) * np.sqrt(252)
     vol_rank = trailing_percentile_rank(
@@ -468,12 +523,15 @@ def analyze_ticker(ticker: str, close: pd.Series, config: Config, seed_offset: i
 
     return {
         "ticker": ticker,
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
         "as_of_date": close.index[-1].date().isoformat(),
         "source": "Futu OpenD QFQ daily close",
         "history_start": close.index[0].date().isoformat(),
         "history_days": int(len(close)),
         "effective_drawdown_samples": int(np.isfinite(dd60.to_numpy()).sum()),
         "current_price": float(close.iloc[-1]),
+        "current_drawdown": float(dd60.iloc[-1]),
         "current_dd60": float(dd60.iloc[-1]),
         "current_rv20": float(rv20.iloc[-1]),
         "vol_state_date": close.index[month_end].date().isoformat(),
@@ -501,7 +559,7 @@ def analyze_ticker(ticker: str, close: pd.Series, config: Config, seed_offset: i
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Calculate full-history 60-day drawdown quantiles with lagged volatility adjustment."
+        description="Calculate full-history cycle-peak drawdown quantiles with lagged volatility adjustment."
     )
     parser.add_argument("--as-of", default=date.today().isoformat())
     parser.add_argument("--bootstrap-reps", type=int, default=2000)
@@ -514,7 +572,7 @@ def main() -> None:
     ]
     payload = {
         "method": {
-            "drawdown": "1 - QFQ close / rolling 60-trading-day high",
+            "drawdown": "1 - QFQ close / cycle-bound peak (no rolling expiry)",
             "base_quantiles": QUANTILES.tolist(),
             "volatility_adjustment": {
                 "source": "previous calendar month-end RV20 percentile versus up to 756 prior observations",

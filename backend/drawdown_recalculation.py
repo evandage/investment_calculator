@@ -8,6 +8,7 @@ from typing import Any, Callable
 from analysis import drawdown_thresholds as thresholds_analysis
 
 from .config import REBALANCE_RULES, TZ_SHANGHAI
+from .drawdown_episodes import DRAWDOWN_METRIC_VERSION
 from .storage import load_drawdown_episode_store, save_drawdown_episode_store
 
 
@@ -127,7 +128,8 @@ def install_monthly_results(
             rule = phase_rules.get(symbol)
             if not isinstance(rule, dict):
                 continue
-            snapshot_key = f"{symbol}:{phase}:{effective_month}"
+            metric_version = str(result.get("metric_version") or DRAWDOWN_METRIC_VERSION)
+            snapshot_key = f"{symbol}:{phase}:{effective_month}:{metric_version}"
             snapshot_id = f"{snapshot_key}:auto:{as_of.isoformat()}"
             snapshot = {
                 "id": snapshot_id,
@@ -136,6 +138,8 @@ def install_monthly_results(
                 "effective_month": effective_month,
                 "created_at": created_at,
                 "mode": str(result.get("execution_mode") or rule.get("mode") or "automatic"),
+                "metric_version": metric_version,
+                "anchor_method": str(result.get("anchor_method") or "cycle_bound_peak"),
                 "thresholds_pct": _pct_thresholds(result.get("thresholds")),
                 "base_quantile_thresholds_pct": _pct_thresholds(result.get("base_thresholds")),
                 "threshold_ci90_pct": _threshold_ci_pct(result.get("ci90") or []),
@@ -177,7 +181,11 @@ def run_monthly_recalculation(
         store = load_drawdown_episode_store(user_id)
         runs = store.setdefault("monthly_recalculations", {})
         existing = runs.get(effective_month) or {}
-        if not force and existing.get("status") == "success":
+        if (
+            not force
+            and existing.get("status") == "success"
+            and existing.get("metric_version") == DRAWDOWN_METRIC_VERSION
+        ):
             return dict(existing)
         runs[effective_month] = {
             "effective_month": effective_month,
@@ -216,6 +224,7 @@ def run_monthly_recalculation(
                 "review_symbol_count": review_symbol_count,
                 "diagnostic_count": diagnostic_count,
                 "quantiles": list(MONTHLY_QUANTILES),
+                "metric_version": DRAWDOWN_METRIC_VERSION,
                 "validation_policy": "warning_only",
             }
             runs[effective_month] = run

@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from .drawdown_episodes import (
+    DRAWDOWN_METRIC_VERSION,
     advance_episode_on_close,
     ensure_threshold_snapshot,
     intraday_warning,
@@ -57,7 +58,7 @@ from .storage import (
 BUILD_TARGET_YEAR = 2026
 BUILD_TARGET_MONTH = 10
 MIDTERM_ELECTION_DATE = date(2026, 11, 3)
-_DRAWDOWN_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
+_DRAWDOWN_CACHE: dict[tuple[Any, ...], tuple[dict[str, Any], float]] = {}
 _DRAWDOWN_CACHE_TTL_SECONDS = 300
 _FUND_HISTORY_CACHE: dict[str, tuple[dict[str, float], float]] = {}
 _FUND_HISTORY_CACHE_TTL_SECONDS = 900
@@ -151,7 +152,7 @@ def rebalance_rules_payload(
                     "成本缺口按月初成本口径计算，即目标金额减去当前成本扣除本月已买后的金额。",
                     "VOO/QQQ 按剩余月份折算为每周基准，再乘档位倍率计算本轮计划应买；个股按目标金额 × 0.1 × 档位倍率计算一手。",
                     f"卫星股以10月底目标金额为 1x；{zero_target_note}",
-                    "估值/追高系数不改变计划应买金额，只影响本轮建议买入；全部标的统一按近 60 个交易日高点回撤定档，近 5 日涨幅偏热时只做备注提示。",
+                    "估值/追高系数不改变计划应买金额，只影响本轮建议买入；全部标的统一按回撤周期锚定高点定档，锚点不会因时间经过而滚动失效，近 5 日涨幅偏热时只做备注提示。",
                     "建议买入总额受 USD 现金与 SGOV 安全线以上可释放额度限制；可动用资金不足时按比例缩放计划应买。",
                 ],
             },
@@ -160,7 +161,7 @@ def rebalance_rules_payload(
                 "items": [
                     "盘中价格只产生预警；只有最新完整交易日收盘价可以正式触发档位。同一回撤周期每档只确认一次。",
                     "回撤周期开始时绑定当月档位快照；周期内冻结。月末生成的新快照只供下一个回撤周期使用。",
-                    "基础档位取全历史60日回撤的65% / 85% / 95%分位数；仅以上月末波动状态乘0.95 / 1.00 / 1.05，并在单次回撤周期内冻结。执行层再按独立触发频率校准档位名称。",
+                    "基础档位取全历史周期高点回撤的65% / 85% / 95%分位数；仅以上月末波动状态乘0.95 / 1.00 / 1.05，并在单次回撤周期内冻结。执行层再按独立触发频率校准档位名称。",
                     "VOO：正常 1x，小加 -3.5% / 1.5x，中加 -6.5% / 2.5x，大加 -13% / 4x。",
                     "QQQ：正常 1x，小加 -4% / 1.25x，中加 -9% / 2x，大加 -16.5% / 3x。",
                     "ISRG：正常 0.1x，小加 -8.5% / 0.2x，中加 -16% / 0.3x，大加 -25% / 0.5x；-25%过去10年独立触发4次，约2.5年一次。",
@@ -337,7 +338,7 @@ def historical_probability_note(symbol: str, item: dict[str, Any], intensity: st
     rebound = item.get("rebound_pct")
     parts = []
     if isinstance(drawdown, (int, float)):
-        parts.append(f"60日高点回撤 {float(drawdown):.2f}%")
+        parts.append(f"周期高点回撤 {float(drawdown):.2f}%")
     if isinstance(recent_5d, (int, float)):
         parts.append(f"近5日涨跌 {float(recent_5d):+.2f}%")
     if isinstance(rebound, (int, float)):
@@ -350,10 +351,31 @@ def historical_probability_note(symbol: str, item: dict[str, Any], intensity: st
     return f"{symbol} 按历史涨跌位置定档：{label}（{'；'.join(parts)}）。"
 
 
-def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+def fetch_drawdown_metrics(
+    symbol: str,
+    current_price: float | None = None,
+    episode_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return drawdown from a cycle-bound peak.
+
+    Existing installations bootstrap the first v2 anchor from the latest 60
+    completed closes.  Once persisted, that anchor has no rolling expiry.  It
+    is frozen during an active episode and rebuilt only after the episode ends.
+    """
     now = time.time()
     completed_day = completed_performance_day()
-    cached = _DRAWDOWN_CACHE.get(symbol)
+    state = dict(episode_state or {})
+    if state.get("metric_version") != DRAWDOWN_METRIC_VERSION:
+        state = {}
+    state_signature = (
+        bool(state.get("episode_active")),
+        state.get("anchor_date"),
+        state.get("anchor_price"),
+        state.get("ended_at"),
+        state.get("last_processed_close_date"),
+    )
+    cache_key = (symbol, completed_day, *state_signature)
+    cached = _DRAWDOWN_CACHE.get(cache_key)
     if (
         cached
         and now - cached[1] < _DRAWDOWN_CACHE_TTL_SECONDS
@@ -372,6 +394,10 @@ def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[s
             "prev_5d": None,
             "confirmed_close_date": None,
             "confirmed_close_price": None,
+            "anchor_date": None,
+            "anchor_price": None,
+            "anchor_method": "episode_peak",
+            "metric_version": DRAWDOWN_METRIC_VERSION,
             "expected_completed_day": completed_day,
         }
         try:
@@ -385,51 +411,81 @@ def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[s
                 if isinstance(bar, dict)
                 and str(bar.get("time") or "") <= completed_day
                 and float(bar.get("close") or 0) > 0
-            ][-60:]
-            closes = [float(bar.get("close")) for bar in completed_bars]
-            if closes:
-                peak = max(closes)
-                trough = min(closes)
-                last = closes[-1]
-                prev_5d = closes[-6] if len(closes) >= 6 else None
+            ]
+            if completed_bars:
+                recent_bars = completed_bars[-60:]
+                recent_closes = [float(bar.get("close")) for bar in recent_bars]
+                last = float(completed_bars[-1].get("close"))
+                prev_5d = (
+                    float(completed_bars[-6].get("close"))
+                    if len(completed_bars) >= 6
+                    else None
+                )
                 confirmed_date = str(completed_bars[-1].get("time") or "")
-                confirmed_drawdown = (last / peak - 1.0) * 100.0 if peak > 0 else None
+                anchor_price = float(state.get("anchor_price") or 0.0)
+                anchor_date = str(state.get("anchor_date") or "")
+                episode_active = bool(state.get("episode_active"))
+
+                if not (anchor_price > 0 and anchor_date):
+                    ended_at = str(state.get("ended_at") or "")
+                    eligible = (
+                        [bar for bar in completed_bars if str(bar.get("time") or "") >= ended_at]
+                        if ended_at
+                        else recent_bars
+                    )
+                    if not eligible:
+                        eligible = [completed_bars[-1]]
+                    anchor_bar = max(eligible, key=lambda bar: float(bar.get("close") or 0.0))
+                    anchor_price = float(anchor_bar.get("close"))
+                    anchor_date = str(anchor_bar.get("time") or "")
+                elif not episode_active:
+                    newer_bars = [
+                        bar
+                        for bar in completed_bars
+                        if str(bar.get("time") or "") >= anchor_date
+                    ]
+                    if newer_bars:
+                        anchor_bar = max(newer_bars, key=lambda bar: float(bar.get("close") or 0.0))
+                        if float(anchor_bar.get("close")) >= anchor_price:
+                            anchor_price = float(anchor_bar.get("close"))
+                            anchor_date = str(anchor_bar.get("time") or "")
+
+                confirmed_drawdown = (
+                    min(0.0, (last / anchor_price - 1.0) * 100.0)
+                    if anchor_price > 0
+                    else None
+                )
                 metrics = {
                     "drawdown_pct": confirmed_drawdown,
                     "confirmed_drawdown_pct": confirmed_drawdown,
                     "intraday_drawdown_pct": confirmed_drawdown,
-                    "rebound_pct": (last / trough - 1.0) * 100.0 if trough > 0 else None,
+                    "rebound_pct": (
+                        (last / min(recent_closes) - 1.0) * 100.0
+                        if min(recent_closes) > 0
+                        else None
+                    ),
                     "recent_5d_pct": (last / prev_5d - 1.0) * 100.0 if prev_5d and prev_5d > 0 else None,
-                    "peak": peak,
-                    "trough": trough,
+                    "peak": anchor_price,
+                    "trough": min(recent_closes),
                     "prev_5d": prev_5d,
                     "confirmed_close_date": confirmed_date,
                     "confirmed_close_price": last,
+                    "anchor_date": anchor_date,
+                    "anchor_price": anchor_price,
+                    "anchor_method": "episode_peak",
+                    "metric_version": DRAWDOWN_METRIC_VERSION,
                     "expected_completed_day": completed_day,
                 }
         except Exception:
-            metrics = {
-                "drawdown_pct": None,
-                "confirmed_drawdown_pct": None,
-                "intraday_drawdown_pct": None,
-                "rebound_pct": None,
-                "recent_5d_pct": None,
-                "peak": None,
-                "trough": None,
-                "prev_5d": None,
-                "confirmed_close_date": None,
-                "confirmed_close_price": None,
-                "expected_completed_day": completed_day,
-            }
+            pass
         if metrics.get("peak") and metrics.get("trough"):
-            _DRAWDOWN_CACHE[symbol] = (dict(metrics), now)
+            _DRAWDOWN_CACHE[cache_key] = (dict(metrics), now)
 
     price = float(current_price or 0.0)
-    peak = metrics.get("peak")
+    peak = metrics.get("anchor_price")
     trough = metrics.get("trough")
     if price > 0 and isinstance(peak, (int, float)) and peak > 0:
-        preview_peak = max(float(peak), price)
-        metrics["intraday_drawdown_pct"] = (price / preview_peak - 1.0) * 100.0
+        metrics["intraday_drawdown_pct"] = min(0.0, (price / float(peak) - 1.0) * 100.0)
     if price > 0 and isinstance(trough, (int, float)) and trough > 0:
         metrics["rebound_pct"] = (price / float(trough) - 1.0) * 100.0
     prev_5d = metrics.get("prev_5d")
@@ -437,6 +493,11 @@ def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[s
         metrics["recent_5d_pct"] = (price / float(prev_5d) - 1.0) * 100.0
     metrics["intraday_price"] = price if price > 0 else None
     return metrics
+
+
+def fetch_60d_metrics(symbol: str, current_price: float | None = None) -> dict[str, Any]:
+    """Compatibility wrapper; new code should use fetch_drawdown_metrics."""
+    return fetch_drawdown_metrics(symbol, current_price)
 
 
 def _daily_amount(value: float, pct: float) -> float:
@@ -2420,6 +2481,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     quotes = dict(market["quotes"])
     fx = float(market["fx"]["rate"])
     holdings, balances, storage_mode = load_user_state(user_id)
+    drawdown_store = load_drawdown_episode_store(user_id)
+    drawdown_states = dict(drawdown_store.get("episodes") or {})
     fx_conversions = load_fx_conversion_records(user_id)
     fx_conversion_stats = fx_conversion_summary(fx_conversions, fx)
     usd_cost_fx = float(fx_conversion_stats["avg_rate"] or fx)
@@ -2525,7 +2588,11 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         peg = metrics.get("peg") if isinstance(metrics, dict) else None
         forward_ps = metrics.get("forward_ps") if isinstance(metrics, dict) else None
         ps = metrics.get("ps") if isinstance(metrics, dict) else None
-        sixty_day = fetch_60d_metrics(sym, price) if meta["currency"] == "USD" else {}
+        sixty_day = (
+            fetch_drawdown_metrics(sym, price, drawdown_states.get(sym))
+            if meta["currency"] == "USD"
+            else {}
+        )
         rows.append(
             {
                 "symbol": sym,
@@ -2557,6 +2624,10 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
                 "drawdown_pct": sixty_day.get("drawdown_pct"),
                 "confirmed_drawdown_pct": sixty_day.get("confirmed_drawdown_pct"),
                 "intraday_drawdown_pct": sixty_day.get("intraday_drawdown_pct"),
+                "drawdown_anchor_date": sixty_day.get("anchor_date"),
+                "drawdown_anchor_price": sixty_day.get("anchor_price"),
+                "drawdown_anchor_method": sixty_day.get("anchor_method"),
+                "drawdown_metric_version": sixty_day.get("metric_version"),
                 "confirmed_close_date": sixty_day.get("confirmed_close_date"),
                 "confirmed_close_price": sixty_day.get("confirmed_close_price"),
                 "intraday_price": sixty_day.get("intraday_price"),
@@ -2997,6 +3068,11 @@ def evaluate_drawdown_episode_signals(
                 confirmed_close_date=item.get("confirmed_close_date"),
                 confirmed_close_price=item.get("confirmed_close_price"),
                 confirmed_drawdown_pct=item.get("confirmed_drawdown_pct"),
+                confirmed_anchor_date=item.get("drawdown_anchor_date"),
+                confirmed_anchor_price=item.get("drawdown_anchor_price"),
+                metric_version=str(
+                    item.get("drawdown_metric_version") or DRAWDOWN_METRIC_VERSION
+                ),
             )
             episodes[symbol] = next_state
             changed = changed or state_changed or previous_state is None
@@ -3281,6 +3357,10 @@ def build_rebalance_v2(
                 "gap_usd": gap,
                 "drawdown_pct": drawdown_pct,
                 "intraday_drawdown_pct": item.get("intraday_drawdown_pct"),
+                "drawdown_anchor_date": item.get("drawdown_anchor_date"),
+                "drawdown_anchor_price": item.get("drawdown_anchor_price"),
+                "drawdown_anchor_method": item.get("drawdown_anchor_method"),
+                "drawdown_metric_version": item.get("drawdown_metric_version"),
                 "confirmed_close_date": item.get("confirmed_close_date"),
                 "confirmed_close_price": item.get("confirmed_close_price"),
                 "recent_5d_pct": item.get("recent_5d_pct"),

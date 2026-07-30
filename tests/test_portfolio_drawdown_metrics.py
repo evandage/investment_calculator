@@ -47,6 +47,32 @@ class ConfirmedCloseMetricTests(unittest.TestCase):
         self.assertAlmostEqual(metrics["confirmed_drawdown_pct"], -10.0)
         self.assertAlmostEqual(metrics["intraday_drawdown_pct"], 0.0)
 
+    @patch("backend.ohlcv.fetch_ohlcv")
+    @patch("backend.portfolio.completed_performance_day", return_value="2026-07-16")
+    def test_active_episode_anchor_does_not_expire_after_sixty_days(self, _completed_day, fetch_ohlcv):
+        fetch_ohlcv.return_value = {
+            "bars": [
+                {"time": f"2026-05-{day:02d}", "close": 80.0}
+                for day in range(1, 29)
+            ]
+            + [
+                {"time": "2026-07-15", "close": 75.0},
+                {"time": "2026-07-16", "close": 70.0},
+            ]
+        }
+        state = {
+            "episode_active": True,
+            "anchor_date": "2026-01-05",
+            "anchor_price": 100.0,
+            "metric_version": "episode_peak_v2",
+        }
+
+        metrics = portfolio.fetch_drawdown_metrics("VOO", current_price=70.0, episode_state=state)
+
+        self.assertEqual(metrics["anchor_date"], "2026-01-05")
+        self.assertEqual(metrics["anchor_price"], 100.0)
+        self.assertAlmostEqual(metrics["confirmed_drawdown_pct"], -30.0)
+
     @patch("backend.portfolio.requests.get")
     def test_fund_history_reuses_cached_prices(self, get):
         history_response = Mock()

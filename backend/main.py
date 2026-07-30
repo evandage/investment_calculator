@@ -40,6 +40,7 @@ from .portfolio import (
 from .storage import (
     load_balances,
     load_closed_satellite_pnl,
+    load_drawdown_episode_store,
     load_holdings,
     load_portfolio_adjustments,
     load_portfolio_snapshot_ledger,
@@ -373,11 +374,104 @@ def _series_for_lightweight(series: Any, interval: str) -> list[dict[str, Any]]:
     return out
 
 
+def _trade_markers_for_chart(
+    symbol: str,
+    interval: str,
+    frame: Any,
+    candles: list[dict[str, Any]],
+    records: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Aggregate the trade ledger into one buy/sell marker per trading day."""
+    if frame is None or getattr(frame, "empty", True) or not candles:
+        return []
+
+    candle_time_by_day: dict[str, Any] = {}
+    candle_order_by_day: dict[str, int] = {}
+    for position, (idx, candle) in enumerate(zip(frame.index, candles)):
+        try:
+            day = idx.date().isoformat()
+        except AttributeError:
+            day = str(idx)[:10]
+        if day and day not in candle_time_by_day:
+            candle_time_by_day[day] = candle.get("time")
+            candle_order_by_day[day] = position
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for record in records if records is not None else load_trade_records("evan"):
+        if str(record.get("symbol") or "").upper() != symbol:
+            continue
+        trade_date = str(record.get("trade_date") or record.get("date") or "")[:10]
+        action = str(record.get("action") or "buy").lower()
+        if trade_date not in candle_time_by_day or action not in {"buy", "sell"}:
+            continue
+        group = grouped.setdefault(
+            trade_date,
+            {
+                "trade_date": trade_date,
+                "buy_count": 0,
+                "buy_shares": 0.0,
+                "buy_amount": 0.0,
+                "sell_count": 0,
+                "sell_shares": 0.0,
+                "sell_amount": 0.0,
+            },
+        )
+        group[f"{action}_count"] += 1
+        group[f"{action}_shares"] += float(record.get("shares") or 0.0)
+        group[f"{action}_amount"] += float(record.get("amount_usd") or record.get("amount") or 0.0)
+
+    markers: list[dict[str, Any]] = []
+    for trade_date, group in grouped.items():
+        buy_count = int(group["buy_count"])
+        sell_count = int(group["sell_count"])
+        action = "trade" if buy_count and sell_count else ("buy" if buy_count else "sell")
+        shares = float(group[f"{action}_shares"]) if action != "trade" else float(group["buy_shares"]) + float(group["sell_shares"])
+        amount = float(group[f"{action}_amount"]) if action != "trade" else float(group["buy_amount"]) + float(group["sell_amount"])
+        markers.append(
+            {
+                "id": f"trade-{symbol}-{trade_date}-{action}",
+                "time": candle_time_by_day[trade_date],
+                "trade_date": trade_date,
+                "action": action,
+                "position": "belowBar" if action == "buy" else "aboveBar",
+                "shape": "circle",
+                "color": "#22c55e" if action == "buy" else ("#ef4444" if action == "sell" else "#f59e0b"),
+                "text": "Ⓑ" if action == "buy" else ("Ⓢ" if action == "sell" else "Ⓣ"),
+                "count": buy_count + sell_count,
+                "shares": shares,
+                "amount": amount,
+                "average_price": amount / shares if action != "trade" and shares > 0 else None,
+                "buy_count": buy_count,
+                "buy_shares": float(group["buy_shares"]),
+                "buy_amount": float(group["buy_amount"]),
+                "buy_average_price": (
+                    float(group["buy_amount"]) / float(group["buy_shares"])
+                    if float(group["buy_shares"]) > 0
+                    else None
+                ),
+                "sell_count": sell_count,
+                "sell_shares": float(group["sell_shares"]),
+                "sell_amount": float(group["sell_amount"]),
+                "sell_average_price": (
+                    float(group["sell_amount"]) / float(group["sell_shares"])
+                    if float(group["sell_shares"]) > 0
+                    else None
+                ),
+                "_order": candle_order_by_day[trade_date],
+            }
+        )
+    markers.sort(key=lambda item: int(item["_order"]))
+    for marker in markers:
+        marker.pop("_order", None)
+    return markers
+
+
 def _build_chart_board_light(
     symbol: str = "VOO",
     interval: str = "5m",
     avwap_mode: str | None = None,
     show_extended: bool = True,
+    custom_anchor_date: str | None = None,
 ) -> dict[str, Any]:
     sym = str(symbol or "VOO").upper()
     if sym not in _chart_symbols():
@@ -398,6 +492,11 @@ def _build_chart_board_light(
     effective_avwap_mode = avwap_mode or _default_avwap_mode(key, sym)
     if sym in {"VOO", "QQQ", "SGOV", "510330.SS"} and effective_avwap_mode == "earnings":
         effective_avwap_mode = "high_60d"
+    cycle_start_date = None
+    if effective_avwap_mode in {"cycle_high", "cycle_low"}:
+        episode_store = load_drawdown_episode_store("evan")
+        episode_state = dict(episode_store.get("episodes") or {}).get(sym) or {}
+        cycle_start_date = episode_state.get("anchor_date")
 
     try:
         period = "5y" if key == "1d" else "2d"
@@ -462,6 +561,8 @@ def _build_chart_board_light(
             df,
             effective_avwap_mode,
             cache_only=False,
+            cycle_start_date=cycle_start_date,
+            custom_anchor_date=custom_anchor_date,
         )
         if key != "1d" and effective_avwap_mode == "today_open":
             atr_band = chart_api.atr_series(df, 14).reindex(avwap.index)
@@ -517,6 +618,7 @@ def _build_chart_board_light(
             }
             for item, (_, row) in zip(candles, df.iterrows())
         ]
+        trade_markers = _trade_markers_for_chart(sym, key, df, candles)
         return {
             "symbol": sym,
             "label": labels.get(sym, sym),
@@ -537,6 +639,7 @@ def _build_chart_board_light(
             "previous_close": previous_close if previous_close > 0 else None,
             "candles": candles,
             "volumes": volumes,
+            "trade_markers": trade_markers,
             "overlays": {
                 "avwap": _series_for_lightweight(avwap, key),
                 "avwap_upper": _series_for_lightweight(avwap_upper, key),
@@ -564,8 +667,15 @@ def chart_board_light(
     interval: str = "5m",
     avwap_mode: str | None = None,
     show_extended: bool = True,
+    custom_anchor_date: str | None = None,
 ) -> dict[str, Any]:
-    return _build_chart_board_light(symbol, interval, avwap_mode, show_extended)
+    return _build_chart_board_light(
+        symbol,
+        interval,
+        avwap_mode,
+        show_extended,
+        custom_anchor_date,
+    )
 
 
 @app.get("/api/chart-board-global-light")
@@ -831,6 +941,7 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
     symbol = str(websocket.query_params.get("symbol", "VOO")).upper()
     interval = str(websocket.query_params.get("interval", "5m"))
     avwap_mode = str(websocket.query_params.get("avwap_mode") or _default_avwap_mode(interval, symbol))
+    custom_anchor_date = str(websocket.query_params.get("custom_anchor_date") or "") or None
     show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
     if symbol not in _chart_labels():
         symbol = "VOO"
@@ -845,7 +956,14 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
             current = (get_futu_kline_revision(symbol, interval), get_futu_quote_revision(symbol))
             now = asyncio.get_running_loop().time()
             if last_revision is None or (current != last_revision and now - last_sent_at >= 0.75):
-                payload = await asyncio.to_thread(_build_chart_board_light, symbol, interval, avwap_mode, show_extended)
+                payload = await asyncio.to_thread(
+                    _build_chart_board_light,
+                    symbol,
+                    interval,
+                    avwap_mode,
+                    show_extended,
+                    custom_anchor_date,
+                )
                 payload["realtime"] = True
                 payload["revision"] = current[0]
                 payload["quote_revision"] = current[1]

@@ -11,10 +11,26 @@ from backend.market_data import (
     _merge_futu_subscription_quote,
     _parse_sina_fx_daily_history,
     _parse_sina_fund_estimate,
+    _futu_subscription_groups,
 )
 
 
 class ExtendedQuoteStabilityTests(unittest.TestCase):
+    @patch(
+        "backend.market_data.app_config.FUTU_US",
+        {"VOO": "US.VOO", "QQQ": "US.QQQ", "510330.SS": "SH.510330"},
+    )
+    def test_subscription_groups_isolate_optional_china_etf(self):
+        groups = _futu_subscription_groups(("VOO", "QQQ", "510330.SS"))
+
+        self.assertEqual(
+            groups,
+            (
+                (("VOO", "QQQ"), True),
+                (("510330.SS",), False),
+            ),
+        )
+
     def test_fund_cache_does_not_allow_an_older_quote_to_replace_today(self):
         with (
             patch("backend.market_data._load_fund_quotes_cache"),
