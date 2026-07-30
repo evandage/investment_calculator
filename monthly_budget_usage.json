@@ -47,7 +47,7 @@
       "updated_at": "2026-06-29T15:40:16+08:00"
     },
     "2026-07": {
-      "used_budget_usd": 2640.48,
+      "used_budget_usd": 2790.47,
       "planned_new_cash_usd": 2300.0,
       "planned_cash_by_month": {
         "2026-08": 2300.0,
@@ -63,7 +63,7 @@
         "VOO"
       ],
       "bought_amount_by_symbol": {
-        "QQQ": 1119.75,
+        "QQQ": 1269.74,
         "VOO": 1228.79,
         "PLTR": 60.989999999999995,
         "TEM": 81.0,
@@ -85,7 +85,7 @@
         "ISRG": "large",
         "GOOGL": "large"
       },
-      "updated_at": "2026-07-29T10:32:25+08:00"
+      "updated_at": "2026-07-30T10:57:43+08:00"
     }
   }
 }
