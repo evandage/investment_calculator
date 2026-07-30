@@ -4011,7 +4011,7 @@ function Rebalance({ data, onSaved }) {
       symbol: row.symbol,
       actual_gap: row.buy_difference_usd,
       planned_buy: row.planned_buy_usd,
-      net_bought: row.net_bought_usd,
+      period_net_bought: row.period_net_bought_usd,
       drawdown_pct: row.drawdown_pct,
       valuation_factor: row.valuation_split_factor,
     })[key];
@@ -4540,7 +4540,7 @@ function Rebalance({ data, onSaved }) {
               <SortableTableHeader label="档位" sortKey="tier" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="实际差值" sortKey="actual_gap" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="计划应买" sortKey="planned_buy" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
-              <SortableTableHeader label="该月净买入" sortKey="net_bought" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="该月/周净买入" sortKey="period_net_bought" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="周期高点回撤" sortKey="drawdown_pct" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="估值系数" sortKey="valuation_factor" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
             </tr>
@@ -4597,7 +4597,7 @@ function Rebalance({ data, onSaved }) {
                     <td className="planCell hasDetailTooltip" title={row.planned_buy_formula || "-"}>
                       <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
                     </td>
-                    <td>{fmtMoney(row.net_bought_usd, row.currency || "USD")}</td>
+                    <td title={row.bought_period === "month" ? "VOO：本月累计买入减卖出" : "本周累计买入减卖出（周一至今）"}>{fmtMoney(row.period_net_bought_usd, row.currency || "USD")}</td>
                     <td className={`${tone(row.drawdown_pct)} hasDetailTooltip`} title={`锚点：${row.drawdown_anchor_date || "-"} @ ${row.drawdown_anchor_price == null ? "-" : fmtMoney(row.drawdown_anchor_price, "USD")}\n正式确认：${row.confirmed_close_date || "-"}\n盘中回撤：${row.intraday_drawdown_pct == null ? "-" : fmtPct(row.intraday_drawdown_pct)}`}>
                       <div>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</div>
                       {row.intraday_warning?.active ? <small className="intradayDrawdown">盘中 {fmtPct(row.intraday_drawdown_pct)}</small> : null}

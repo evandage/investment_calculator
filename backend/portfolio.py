@@ -3135,6 +3135,26 @@ def build_rebalance_v2(
         for record in load_trade_records(user_id)
         if str(record.get("trade_date") or "")[:7] == month_key
     ]
+    week_start = now.date() - timedelta(days=now.weekday())
+    week_start_key = week_start.isoformat()
+    today_key = now.date().isoformat()
+    weekly_bought_amounts: dict[str, float] = {}
+    weekly_sold_amounts: dict[str, float] = {}
+    for record in load_trade_records(user_id):
+        trade_day = str(record.get("trade_date") or "")[:10]
+        if not week_start_key <= trade_day <= today_key:
+            continue
+        sym = str(record.get("symbol", "")).upper()
+        if sym not in USD_SYMBOLS:
+            continue
+        amount_usd = max(
+            0.0,
+            float(record.get("amount_usd", 0.0) or 0.0),
+        )
+        if str(record.get("action", "buy")).lower() == "sell":
+            weekly_sold_amounts[sym] = weekly_sold_amounts.get(sym, 0.0) + amount_usd
+        else:
+            weekly_bought_amounts[sym] = weekly_bought_amounts.get(sym, 0.0) + amount_usd
     bought_cost_by_symbol: dict[str, float] = {}
     sold_cost_by_symbol: dict[str, float] = {}
     for record in monthly_trade_records:
@@ -3189,6 +3209,12 @@ def build_rebalance_v2(
         already = float(bought_amounts.get(sym, 0.0))
         already_sold = float(sold_amounts.get(sym, 0.0))
         is_satellite = sym in SATELLITE_SYMBOLS
+        bought_period = "month" if sym == "VOO" else "week"
+        period_net_bought = (
+            already - already_sold
+            if bought_period == "month"
+            else float(weekly_bought_amounts.get(sym, 0.0)) - float(weekly_sold_amounts.get(sym, 0.0))
+        )
         bought_cost = bought_cost_by_symbol.get(sym, already)
         sold_cost = sold_cost_by_symbol.get(sym, 0.0)
         month_start_cost_usd = max(0.0, cost_usd - bought_cost + sold_cost)
@@ -3346,6 +3372,8 @@ def build_rebalance_v2(
                 "actual_bought_usd": already,
                 "actual_sold_usd": already_sold,
                 "net_bought_usd": net_bought,
+                "period_net_bought_usd": period_net_bought,
+                "bought_period": bought_period,
                 "planned_after_valuation_usd": suggested_cap if is_satellite else raw_planned * split,
                 "buy_difference_usd": actual_gap,
                 "actual_gap_usd": actual_gap,
@@ -3410,6 +3438,8 @@ def build_rebalance_v2(
                 "actual_bought_usd": float(bought_amounts.get("SGOV", 0.0)),
                 "actual_sold_usd": float(sold_amounts.get("SGOV", 0.0)),
                 "net_bought_usd": float(bought_amounts.get("SGOV", 0.0)) - float(sold_amounts.get("SGOV", 0.0)),
+                "period_net_bought_usd": float(weekly_bought_amounts.get("SGOV", 0.0)) - float(weekly_sold_amounts.get("SGOV", 0.0)),
+                "bought_period": "week",
                 "planned_after_valuation_usd": 0.0,
                 "buy_difference_usd": -sgov_available_usd,
                 "month_start_value_usd": sgov_current_usd,
