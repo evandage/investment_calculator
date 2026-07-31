@@ -142,9 +142,44 @@ def _merge_realtime_bar(
     realtime = _clean_bar({**pushed, "time": ts})
     if realtime is None:
         return bars
+    # A subscription update is only allowed to revise the active/latest bar.
+    # Providers can briefly replay an older tick while reconnecting; letting
+    # that tick overwrite a closed candle makes historical candles move.
+    latest_ts = max((bar.get("time") for bar in bars), default=None)
+    if latest_ts is not None and str(ts) < str(latest_ts):
+        return bars
     merged = [bar for bar in bars if bar.get("time") != realtime["time"]]
     merged.append(realtime)
     return sorted(merged, key=lambda bar: str(bar.get("time")))
+
+
+def _freeze_closed_intraday_bars(
+    previous: list[dict[str, Any]],
+    incoming: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep previously seen candles immutable, except for the active bar.
+
+    History providers may revise already-closed minute bars on every request.
+    We accept new timestamps and refresh only the greatest timestamp (the
+    still-forming candle), while retaining the prior value for older bars.
+    """
+    if not previous:
+        return list(incoming)
+    if not incoming:
+        return list(previous)
+    previous_by_time = {bar.get("time"): bar for bar in previous}
+    incoming_by_time = {bar.get("time"): bar for bar in incoming}
+    previous_latest = max(previous_by_time, default=None)
+    incoming_latest = max(incoming_by_time, default=None)
+    merged = dict(previous_by_time)
+    for timestamp, bar in incoming_by_time.items():
+        # Never move a closed candle. If the provider is stale, don't roll
+        # the chart backwards either; only a new/latest timestamp can change.
+        if timestamp not in merged or timestamp >= (previous_latest if previous_latest is not None else timestamp):
+            merged[timestamp] = bar
+    if incoming_latest is not None and previous_latest is not None and incoming_latest < previous_latest:
+        return sorted(previous_by_time.values(), key=lambda bar: str(bar.get("time")))
+    return sorted(merged.values(), key=lambda bar: str(bar.get("time")))
 
 
 def _latest_trading_day_bars(symbol: str, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -365,6 +400,13 @@ def fetch_ohlcv(symbol: str, interval: str, show_extended: bool = True) -> dict[
     if not bars:
         fallback_source = source
         bars, source = _fetch_tencent_ohlcv(sym, iv)  # type: ignore[arg-type]
+
+    # Keep closed intraday candles stable across history refreshes. The live
+    # subscription/quote path still updates the final forming candle below.
+    if iv != "1d":
+        previous_payload = _OHLCV_CACHE.get(key)
+        previous_bars = list((previous_payload[0].get("bars") or []) if previous_payload else [])
+        bars = _freeze_closed_intraday_bars(previous_bars, bars)
 
     payload = {
         "symbol": sym,
