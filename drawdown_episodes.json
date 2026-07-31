@@ -7921,8 +7921,8 @@
           "small": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-29",
-        "last_confirmed_drawdown_pct": -3.677266322492412,
+        "last_processed_close_date": "2026-07-30",
+        "last_confirmed_drawdown_pct": -2.10020651935352,
         "anchor_date": "2026-06-02",
         "anchor_price": 696.232316501,
         "metric_version": "episode_peak_v2",
@@ -7956,8 +7956,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-29",
-        "last_confirmed_drawdown_pct": -11.21774987840276,
+        "last_processed_close_date": "2026-07-30",
+        "last_confirmed_drawdown_pct": -8.290228536385246,
         "anchor_date": "2026-06-02",
         "anchor_price": 745.340424571,
         "metric_version": "episode_peak_v2",
@@ -7991,8 +7991,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-29",
-        "last_confirmed_drawdown_pct": -22.137202584400974,
+        "last_processed_close_date": "2026-07-30",
+        "last_confirmed_drawdown_pct": -22.16586914816203,
         "anchor_date": "2026-05-07",
         "anchor_price": 453.49,
         "metric_version": "episode_peak_v2",
@@ -8023,8 +8023,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-29",
-        "last_confirmed_drawdown_pct": -32.54870129870131,
+        "last_processed_close_date": "2026-07-30",
+        "last_confirmed_drawdown_pct": -28.100649350649356,
         "anchor_date": "2026-07-01",
         "anchor_price": 61.6,
         "metric_version": "episode_peak_v2",
@@ -8045,8 +8045,8 @@
           "small": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-29",
-        "last_confirmed_drawdown_pct": -23.436041083099912,
+        "last_processed_close_date": "2026-07-30",
+        "last_confirmed_drawdown_pct": -23.896669779022716,
         "anchor_date": "2026-06-01",
         "anchor_price": 160.65,
         "metric_version": "episode_peak_v2",
@@ -8080,8 +8080,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-29",
-        "last_confirmed_drawdown_pct": -16.320320693498193,
+        "last_processed_close_date": "2026-07-30",
+        "last_confirmed_drawdown_pct": -17.078311314165305,
         "anchor_date": "2026-05-13",
         "anchor_price": 402.379649146,
         "metric_version": "episode_peak_v2",
@@ -8114,9 +8114,9 @@
           "small": "2026-07-29",
           "medium": "2026-07-29"
         },
-        "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-29",
-        "last_confirmed_drawdown_pct": -15.19586554329887,
+        "recovery_streak": 1,
+        "last_processed_close_date": "2026-07-30",
+        "last_confirmed_drawdown_pct": -2.0455137670459367,
         "anchor_date": "2026-06-01",
         "anchor_price": 460.52,
         "metric_version": "episode_peak_v2",
@@ -8151,8 +8151,8 @@
           "large": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-29",
-        "last_confirmed_drawdown_pct": -22.97981766238474,
+        "last_processed_close_date": "2026-07-30",
+        "last_confirmed_drawdown_pct": -19.335959392361456,
         "anchor_date": "2026-06-02",
         "anchor_price": 480.809040904,
         "metric_version": "episode_peak_v2",
@@ -8173,6 +8173,6 @@
         "end_reason": null
       }
     },
-    "updated_at": "2026-07-30T09:47:22+08:00"
+    "updated_at": "2026-07-31T04:12:56+08:00"
   }
 }
