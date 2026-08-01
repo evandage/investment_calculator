@@ -1,10 +1,21 @@
 import unittest
 from unittest.mock import patch
 
-from backend.ohlcv import _freeze_closed_intraday_bars, _merge_realtime_bar
+from backend.ohlcv import _freeze_closed_intraday_bars, _merge_realtime_bar, _trading_day_bars
 
 
 class TestOhlcvFreeze(unittest.TestCase):
+    def test_requested_market_date_is_selected(self):
+        bars = [
+            {"time": 1785457800, "open": 10, "high": 11, "low": 9, "close": 10, "volume": 1},
+            {"time": 1785544200, "open": 12, "high": 13, "low": 11, "close": 12, "volume": 2},
+        ]
+
+        selected = _trading_day_bars("VOO", bars, "2026-07-31")
+
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]["close"], 12)
+
     def test_closed_bars_are_kept_and_latest_bar_can_update(self):
         previous = [
             {"time": 100, "open": 10, "high": 11, "low": 9, "close": 10, "volume": 1},

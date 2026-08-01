@@ -13,7 +13,7 @@ from .market_data import futu_opend_config, get_futu_subscription_kline, is_futu
 
 Interval = Literal["1d", "15m", "5m"]
 
-_OHLCV_CACHE: dict[tuple[str, str, bool], tuple[dict[str, Any], float]] = {}
+_OHLCV_CACHE: dict[tuple[str, str, bool, str], tuple[dict[str, Any], float]] = {}
 _OHLCV_TTL_SECONDS = {"1d": 300, "15m": 45, "5m": 30}
 _TZ_NEW_YORK = ZoneInfo("America/New_York")
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -25,11 +25,11 @@ _FUTU_HISTORY_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 )
 _FUTU_HISTORY_LOCK = threading.Lock()
 _FUTU_HISTORY_INFLIGHT: dict[
-    tuple[str, Interval],
+    tuple[str, Interval, str],
     concurrent.futures.Future[tuple[list[dict[str, Any]], str]],
 ] = {}
 _FUTU_HISTORY_RESULTS: dict[
-    tuple[str, Interval],
+    tuple[str, Interval, str],
     tuple[tuple[list[dict[str, Any]], str], float],
 ] = {}
 
@@ -182,7 +182,11 @@ def _freeze_closed_intraday_bars(
     return sorted(merged.values(), key=lambda bar: str(bar.get("time")))
 
 
-def _latest_trading_day_bars(symbol: str, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _trading_day_bars(
+    symbol: str,
+    bars: list[dict[str, Any]],
+    selected_date: str = "",
+) -> list[dict[str, Any]]:
     if not bars:
         return bars
     tz = _market_tz(symbol)
@@ -195,8 +199,20 @@ def _latest_trading_day_bars(symbol: str, bars: list[dict[str, Any]]) -> list[di
         dated.append((bar, trading_day))
     if not dated:
         return []
-    latest_day = max(day for _, day in dated)
-    return [bar for bar, day in dated if day == latest_day]
+    available_days = {day for _, day in dated}
+    target_day = None
+    if selected_date:
+        try:
+            target_day = datetime.fromisoformat(selected_date[:10]).date()
+        except ValueError:
+            target_day = None
+    if target_day is None:
+        target_day = max(available_days)
+    return [bar for bar, day in dated if day == target_day]
+
+
+def _latest_trading_day_bars(symbol: str, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return _trading_day_bars(symbol, bars)
 
 
 def _in_regular_session(symbol: str, local_time: datetime) -> bool:
@@ -232,7 +248,11 @@ def _latest_regular_session_bars(
     return [bar for bar, day in regular if day in selected]
 
 
-def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
+def _fetch_futu_ohlcv_sync(
+    symbol: str,
+    interval: Interval,
+    selected_date: str = "",
+) -> tuple[list[dict[str, Any]], str]:
     if symbol not in FUTU_US or not is_futu_opend_available():
         return [], "futu_unavailable"
     try:
@@ -244,6 +264,13 @@ def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[s
     code = FUTU_US[symbol]
     end = datetime.now()
     start = end - (timedelta(days=365 * 3 + 30) if interval == "1d" else timedelta(days=7))
+    if interval != "1d" and selected_date:
+        try:
+            selected = datetime.fromisoformat(selected_date[:10])
+            start = selected
+            end = selected
+        except ValueError:
+            pass
     ctx = None
     bars: list[dict[str, Any]] = []
     try:
@@ -294,7 +321,7 @@ def _fetch_futu_ohlcv_sync(symbol: str, interval: Interval) -> tuple[list[dict[s
 
 
 def _remember_futu_history_result(
-    key: tuple[str, Interval],
+    key: tuple[str, Interval, str],
     future: concurrent.futures.Future[tuple[list[dict[str, Any]], str]],
 ) -> None:
     try:
@@ -307,14 +334,20 @@ def _remember_futu_history_result(
         _FUTU_HISTORY_RESULTS[key] = (result, time.time())
 
 
-def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, Any]], str]:
-    key = (symbol, interval)
+def _fetch_futu_ohlcv(
+    symbol: str,
+    interval: Interval,
+    selected_date: str = "",
+) -> tuple[list[dict[str, Any]], str]:
+    selected_day = selected_date[:10] if interval != "1d" else ""
+    key = (symbol, interval, selected_day)
     now = time.time()
     created = False
 
     def _with_realtime(result: tuple[list[dict[str, Any]], str]) -> tuple[list[dict[str, Any]], str]:
         bars, source = result
-        return _merge_realtime_bar([dict(bar) for bar in bars], symbol, interval), source
+        copied = [dict(bar) for bar in bars]
+        return (_merge_realtime_bar(copied, symbol, interval) if not selected_day else copied), source
 
     with _FUTU_HISTORY_LOCK:
         cached = _FUTU_HISTORY_RESULTS.get(key)
@@ -322,7 +355,7 @@ def _fetch_futu_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str, A
             return _with_realtime(cached[0])
         future = _FUTU_HISTORY_INFLIGHT.get(key)
         if future is None:
-            future = _FUTU_HISTORY_EXECUTOR.submit(_fetch_futu_ohlcv_sync, symbol, interval)
+            future = _FUTU_HISTORY_EXECUTOR.submit(_fetch_futu_ohlcv_sync, symbol, interval, selected_day)
             _FUTU_HISTORY_INFLIGHT[key] = future
             created = True
     if created:
@@ -371,31 +404,43 @@ def _fetch_tencent_ohlcv(symbol: str, interval: Interval) -> tuple[list[dict[str
     return bars, "tencent"
 
 
-def fetch_ohlcv(symbol: str, interval: str, show_extended: bool = True) -> dict[str, Any]:
+def fetch_ohlcv(
+    symbol: str,
+    interval: str,
+    show_extended: bool = True,
+    selected_date: str = "",
+) -> dict[str, Any]:
     sym = str(symbol or "VOO").upper()
     if sym not in FUTU_US:
         sym = "VOO"
     iv = interval if interval in {"1d", "15m", "5m"} else "1d"
-    key = (sym, iv, show_extended)
+    selected_day = selected_date[:10] if iv != "1d" else ""
+    key = (sym, iv, show_extended, selected_day)
     now = time.time()
     cached = _OHLCV_CACHE.get(key)
     ttl = _OHLCV_TTL_SECONDS[iv]  # type: ignore[index]
     if cached and now - cached[1] < ttl:
         payload = dict(cached[0])
-        merged = _merge_realtime_bar(list(payload.get("bars") or []), sym, iv)  # type: ignore[arg-type]
+        merged = list(payload.get("bars") or [])
+        if not selected_day:
+            merged = _merge_realtime_bar(merged, sym, iv)  # type: ignore[arg-type]
         payload["bars"] = (
             merged
             if iv == "1d"
             else (
-                _latest_trading_day_bars(sym, merged)
+                _trading_day_bars(sym, merged, selected_day)
                 if show_extended
-                else _latest_regular_session_bars(sym, merged, 12 if iv == "5m" else 4)
+                else [
+                    bar
+                    for bar in _trading_day_bars(sym, merged, selected_day)
+                    if _in_regular_session(sym, datetime.fromtimestamp(int(bar["time"]), _market_tz(sym)))
+                ]
             )
         )
         payload["source"] = "futu-subscribe"
         return payload
 
-    bars, source = _fetch_futu_ohlcv(sym, iv)  # type: ignore[arg-type]
+    bars, source = _fetch_futu_ohlcv(sym, iv, selected_day)  # type: ignore[arg-type]
     fallback_source = ""
     if not bars:
         fallback_source = source
@@ -417,11 +462,16 @@ def fetch_ohlcv(symbol: str, interval: str, show_extended: bool = True) -> dict[
             bars[-1200:]
             if iv == "1d"
             else (
-                _latest_trading_day_bars(sym, bars)
+                _trading_day_bars(sym, bars, selected_day)
                 if show_extended
-                else _latest_regular_session_bars(sym, bars, 12 if iv == "5m" else 4)
+                else [
+                    bar
+                    for bar in _trading_day_bars(sym, bars, selected_day)
+                    if _in_regular_session(sym, datetime.fromtimestamp(int(bar["time"]), _market_tz(sym)))
+                ]
             )
         ),
+        "selected_date": selected_day,
     }
     if bars:
         _OHLCV_CACHE[key] = (dict(payload), now)

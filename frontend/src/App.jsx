@@ -1492,7 +1492,11 @@ function LightweightKlineCard({ item, displayRange, onOpenSymbol }) {
       });
       lastTime = time;
     }
-    const patchedCandles = patchLatestCandle(nextCandles, item?.latest_price, item?.interval);
+    const patchedCandles = styleIntradaySessionCandles(
+      patchLatestCandle(nextCandles, item?.latest_price, item?.interval, item?.selected_date),
+      item?.symbol,
+      item?.interval,
+    );
     if (patchedCandles !== nextCandles && nextVolumes.length) {
       const lastIndex = nextVolumes.length - 1;
       const lastCandle = patchedCandles[patchedCandles.length - 1];
@@ -1663,9 +1667,9 @@ function normalizeLightweightTime(value) {
   return value;
 }
 
-function patchLatestCandle(candles = [], latestPrice, interval) {
+function patchLatestCandle(candles = [], latestPrice, interval, selectedDate = "") {
   const price = Number(latestPrice);
-  if (!candles.length || !Number.isFinite(price) || price <= 0 || interval === "1d") return candles;
+  if (!candles.length || !Number.isFinite(price) || price <= 0 || interval === "1d" || selectedDate) return candles;
   const last = candles[candles.length - 1];
   if (!last) return candles;
   const next = candles.slice();
@@ -1676,6 +1680,27 @@ function patchLatestCandle(candles = [], latestPrice, interval) {
     low: Math.min(Number(last.low), price),
   };
   return next;
+}
+
+function styleIntradaySessionCandles(candles = [], symbol = "", interval = "") {
+  if (!['5m', '15m'].includes(interval) || String(symbol || '').endsWith('.SS') || String(symbol || '').endsWith('.SZ')) {
+    return candles;
+  }
+  return candles.map((candle) => {
+    const timestamp = Number(candle?.time);
+    const minutes = marketLocalMinutes(timestamp, false);
+    const isExtended = Number.isFinite(minutes) && (minutes < 9 * 60 + 30 || minutes >= 16 * 60);
+    if (!isExtended) return candle;
+    const isUp = Number(candle.close) >= Number(candle.open);
+    return {
+      ...candle,
+      // Lightweight Charts accepts per-bar colors. A transparent body with
+      // a colored border makes pre/post-market candles visibly hollow.
+      color: 'rgba(11, 27, 46, 0)',
+      borderColor: isUp ? 'rgba(74, 222, 128, 0.9)' : 'rgba(248, 113, 113, 0.9)',
+      wickColor: isUp ? 'rgba(74, 222, 128, 0.68)' : 'rgba(248, 113, 113, 0.68)',
+    };
+  });
 }
 
 function candleDayKey(time) {
@@ -1790,6 +1815,14 @@ function fixedIntradaySeriesData(candles, volumes, symbol, interval, showExtende
     if (!isChinaMarket || index < morningBars) return firstTime + index * intervalSeconds;
     return firstTime + 210 * 60 + (index - morningBars) * intervalSeconds;
   });
+  // Some providers return bars with a slightly different session anchor (or
+  // a daylight-saving/session boundary timestamp).  Mapping those bars onto
+  // the fixed grid would turn every real candle into whitespace.  Keep the
+  // provider timestamps when the grid cannot match a meaningful portion of
+  // the payload; the chart's native time scale can still render them.
+  const matchedCandleCount = times.reduce((count, time) => count + (candleByTime.has(time) ? 1 : 0), 0);
+  const minimumMatches = Math.max(2, Math.ceil((candles?.length || 0) * 0.25));
+  if (matchedCandleCount < minimumMatches) return { candles, volumes };
   return {
     candles: times.map((time) => candleByTime.get(time) || { time }),
     volumes: times.map((time) => volumeByTime.get(time) || { time }),
@@ -2283,7 +2316,11 @@ function SingleLightweightChart({
       out.push({ time, open, high, low, close });
       lastTime = time;
     }
-    return patchLatestCandle(out, data?.latest_price, data?.interval);
+    return styleIntradaySessionCandles(
+      patchLatestCandle(out, data?.latest_price, data?.interval, data?.selected_date),
+      data?.symbol,
+      data?.interval,
+    );
   }, [data]);
   const rawVolumes = useMemo(() => {
     const volumeRows = (data?.volumes || []).map((row) => ({
@@ -2965,6 +3002,7 @@ function KlinePage({ dashboardData }) {
   const [customAnchorDate, setCustomAnchorDate] = useState(() => String(restoredState.customAnchorDate || ""));
   const [displayRange, setDisplayRange] = useState(() => String(restoredState.displayRange || "60"));
   const [showExtended, setShowExtended] = useState(() => Boolean(restoredState.showExtended));
+  const [selectedDate, setSelectedDate] = useState(() => String(restoredState.selectedDate || ""));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -2995,10 +3033,11 @@ function KlinePage({ dashboardData }) {
       customAnchorDate,
       displayRange,
       showExtended,
+      selectedDate,
       globalColumns,
     };
-  }, [symbol, interval, avwapMode, customAnchorDate, displayRange, showExtended, globalColumns]);
-  const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${customAnchorDate}|${showExtended}|${globalColumns}`;
+  }, [symbol, interval, avwapMode, customAnchorDate, displayRange, showExtended, selectedDate, globalColumns]);
+  const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${customAnchorDate}|${showExtended}|${selectedDate}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
 
@@ -3025,6 +3064,7 @@ function KlinePage({ dashboardData }) {
       if (scope === "single" && effectiveAvwapMode === "custom" && customAnchorDate) {
         qs.set("custom_anchor_date", customAnchorDate);
       }
+      if (interval !== "1d" && selectedDate) qs.set("selected_date", selectedDate);
       const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -3043,10 +3083,10 @@ function KlinePage({ dashboardData }) {
 
   useEffect(() => {
     load();
-  }, [scope, symbol, interval, avwapMode, customAnchorDate, showExtended, globalColumns]);
+  }, [scope, symbol, interval, avwapMode, customAnchorDate, showExtended, selectedDate, globalColumns]);
 
   useEffect(() => {
-    if (interval === "1d") {
+    if (interval === "1d" || selectedDate) {
       setRealtimeConnected(false);
       setRealtimeError("");
       return undefined;
@@ -3089,7 +3129,7 @@ function KlinePage({ dashboardData }) {
     return () => {
       socket.close();
     };
-  }, [scope, symbol, interval, avwapMode, customAnchorDate, showExtended, globalColumns]);
+  }, [scope, symbol, interval, avwapMode, customAnchorDate, showExtended, selectedDate, globalColumns]);
 
   useEffect(() => {
     function onResize() {
@@ -3150,7 +3190,7 @@ function KlinePage({ dashboardData }) {
     changeKlineSymbol(nextSymbol);
   }
 
-  const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.avwap_mode || avwapMode}-${customAnchorDate}-${displayRange}`;
+  const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.selected_date || selectedDate}-${data?.avwap_mode || avwapMode}-${customAnchorDate}-${displayRange}`;
   const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
   const swingPosition = swingPositions[symbol];
   const swingTargetPct = Number(swingPosition?.target_pct || KLINE_SWING_DEFAULTS[symbol]?.target_pct || 0);
@@ -3161,6 +3201,7 @@ function KlinePage({ dashboardData }) {
   const swingTargetAmount = swingTargetPct && totalAssetsUsd > 0
     ? totalAssetsUsd * swingTargetPct / 100
     : 0;
+  const todayDate = formatPartsDate(shanghaiDateFormatter, new Date());
 
   return (
     <section className="chartPanel technicalPanel">
@@ -3180,6 +3221,26 @@ function KlinePage({ dashboardData }) {
               <option value="5m">5 min</option>
             </select>
           </label>
+          {interval !== "1d" ? (
+            <div className="klineDatePicker">
+              <label className="klineControl klineDateControl">
+                <span>交易日期</span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={todayDate}
+                  onChange={(event) => setSelectedDate(event.target.value)}
+                  aria-label="分钟K线交易日期"
+                />
+              </label>
+              <button
+                className={`klineLiveButton ${selectedDate ? "" : "active"}`}
+                type="button"
+                onClick={() => setSelectedDate("")}
+                title="切回最新实时分钟K线"
+              >实时</button>
+            </div>
+          ) : null}
           {scope === "single" ? <label className="klineControl klineSymbolControl">
             <span>标的</span>
             <select value={symbol} onChange={(event) => changeKlineSymbol(event.target.value)} aria-label="标的">
@@ -3246,16 +3307,16 @@ function KlinePage({ dashboardData }) {
         ) : null}
         <button className="klineGuideButton" type="button" onClick={() => setShowCheatSheet(true)}><BookOpen size={16} />指标模板</button>
       </div>
-      {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 手动刷新</div> : null}
+      {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : "实时"}</div> : null}
       {data && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? (
         <SwingPositionPanel symbol={symbol} latestPrice={data.latest_price} totalAssetsUsd={totalAssetsUsd} position={swingPosition} onSave={saveSwingPosition} />
       ) : null}
       {swingPositionError && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? <div className="errorInline">{"\u6ce2\u6bb5\u4ed3\u8bfb\u53d6\u5931\u8d25\uff1a"}{swingPositionError}</div> : null}
-      {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {realtimeConnected ? "实时订阅中" : "实时连接中"}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}{swingTargetAmount > 0 ? ` · 波段目标 ${fmtMoney(swingTargetAmount, "USD", 0)}（${swingTargetPct}%）` : ""}</div> : null}
+      {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : (realtimeConnected ? "实时订阅中" : "实时连接中")}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}{swingTargetAmount > 0 ? ` · 波段目标 ${fmtMoney(swingTargetAmount, "USD", 0)}（${swingTargetPct}%）` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {realtimeError && !(error || data?.error) ? <div className="muted">{realtimeError}</div> : null}
-      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
+      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.selected_date}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
       {scope === "single" && data?.candles ? (
         <div className={`klineAnalysisLayout ${interval !== "1d" ? "withoutInsight" : ""}`}>
           <SingleLightweightChart

@@ -7842,6 +7842,3870 @@
         "execution_overrides": {},
         "calculation_kind": "monthly_auto",
         "validation_policy": "warning_only"
+      },
+      "VOO:建仓期:2026-08:episode_peak_v2": {
+        "id": "VOO:建仓期:2026-08:episode_peak_v2",
+        "symbol": "VOO",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T00:10:19+08:00",
+        "mode": "automatic",
+        "thresholds_pct": {
+          "large": -13.0,
+          "medium": -6.5,
+          "small": -3.5
+        },
+        "metric_version": "episode_peak_v2"
+      },
+      "QQQ:建仓期:2026-08:episode_peak_v2": {
+        "id": "QQQ:建仓期:2026-08:episode_peak_v2",
+        "symbol": "QQQ",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T00:10:19+08:00",
+        "mode": "automatic",
+        "thresholds_pct": {
+          "large": -16.5,
+          "medium": -9.0,
+          "small": -4.0
+        },
+        "metric_version": "episode_peak_v2"
+      },
+      "ISRG:建仓期:2026-08:episode_peak_v2": {
+        "id": "ISRG:建仓期:2026-08:episode_peak_v2",
+        "symbol": "ISRG",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T00:10:19+08:00",
+        "mode": "automatic",
+        "thresholds_pct": {
+          "large": -25.0,
+          "medium": -16.0,
+          "small": -8.5
+        },
+        "metric_version": "episode_peak_v2"
+      },
+      "TEM:建仓期:2026-08:episode_peak_v2": {
+        "id": "TEM:建仓期:2026-08:episode_peak_v2",
+        "symbol": "TEM",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T00:10:19+08:00",
+        "mode": "manual_review_only",
+        "thresholds_pct": {},
+        "metric_version": "episode_peak_v2"
+      },
+      "PLTR:建仓期:2026-08:episode_peak_v2": {
+        "id": "PLTR:建仓期:2026-08:episode_peak_v2",
+        "symbol": "PLTR",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T00:10:19+08:00",
+        "mode": "automatic",
+        "thresholds_pct": {
+          "large": -40.5,
+          "medium": -31.0,
+          "small": -20.5
+        },
+        "metric_version": "episode_peak_v2"
+      },
+      "GOOGL:建仓期:2026-08:episode_peak_v2": {
+        "id": "GOOGL:建仓期:2026-08:episode_peak_v2",
+        "symbol": "GOOGL",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T00:10:19+08:00",
+        "mode": "automatic",
+        "thresholds_pct": {
+          "large": -20.0,
+          "medium": -14.0,
+          "small": -6.5
+        },
+        "metric_version": "episode_peak_v2"
+      },
+      "MSFT:建仓期:2026-08:episode_peak_v2": {
+        "id": "MSFT:建仓期:2026-08:episode_peak_v2",
+        "symbol": "MSFT",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T00:10:19+08:00",
+        "mode": "automatic",
+        "thresholds_pct": {
+          "large": -18.5,
+          "medium": -11.5,
+          "small": -5.5
+        },
+        "metric_version": "episode_peak_v2"
+      },
+      "AVGO:建仓期:2026-08:episode_peak_v2": {
+        "id": "AVGO:建仓期:2026-08:episode_peak_v2",
+        "symbol": "AVGO",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T00:10:19+08:00",
+        "mode": "automatic",
+        "thresholds_pct": {
+          "large": -22.0,
+          "medium": -14.5,
+          "small": -8.0
+        },
+        "metric_version": "episode_peak_v2"
+      },
+      "VOO:建仓期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "VOO:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "VOO",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -3.5,
+          "medium": -11.0,
+          "large": -18.0
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -4.0,
+          "medium": -11.0,
+          "large": -18.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -5.7,
+            -2.97
+          ],
+          "medium": [
+            -14.0,
+            -8.36
+          ],
+          "large": [
+            -20.07,
+            -15.99
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-10-08",
+              "2019-05-09",
+              "2019-08-02",
+              "2020-01-27",
+              "2020-02-24",
+              "2020-09-03",
+              "2021-01-29",
+              "2021-02-26",
+              "2021-05-12",
+              "2021-07-19",
+              "2021-09-20",
+              "2021-11-30",
+              "2021-12-20",
+              "2022-01-10",
+              "2024-04-19",
+              "2024-07-25",
+              "2025-02-27",
+              "2025-11-20",
+              "2026-03-12",
+              "2026-06-10"
+            ],
+            "medium": [
+              "2018-10-15",
+              "2019-05-31",
+              "2019-08-14",
+              "2020-03-02",
+              "2020-09-18",
+              "2022-01-21",
+              "2025-04-03"
+            ],
+            "large": [
+              "2018-10-29",
+              "2020-03-09",
+              "2022-03-08"
+            ]
+          },
+          "event_counts": {
+            "small": 20,
+            "medium": 7,
+            "large": 3
+          },
+          "annual_frequency": {
+            "small": 2.5008045190003427,
+            "medium": 0.8752815816501199,
+            "large": 0.3751206778500514
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 20,
+              "forward_sample_count": {
+                "20": 20,
+                "60": 19,
+                "120": 18
+              },
+              "forward_return_median_pct": {
+                "20": 2.6594759733718054,
+                "60": 4.154133550547345,
+                "120": 10.221831263945337
+              },
+              "forward_return_win_rate": {
+                "20": 0.6,
+                "60": 0.5789473684210527,
+                "120": 0.7777777777777778
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -0.7022067779705377,
+                  4.47508920663704
+                ],
+                "60": [
+                  -0.6922482783256245,
+                  8.944135478450587
+                ],
+                "120": [
+                  2.9579231506972836,
+                  12.258735693048717
+                ]
+              },
+              "mae_120d_median_pct": -4.099892320984272,
+              "mae_120d_ci90_pct": [
+                -11.784888112868973,
+                -2.443487410702777
+              ]
+            },
+            "medium": {
+              "sample_count": 7,
+              "forward_sample_count": {
+                "20": 7,
+                "60": 7,
+                "120": 7
+              },
+              "forward_return_median_pct": {
+                "20": 5.032582260594776,
+                "60": 5.130753485580075,
+                "120": 14.418274433783541
+              },
+              "forward_return_win_rate": {
+                "20": 0.5714285714285714,
+                "60": 0.7142857142857143,
+                "120": 0.8571428571428571
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -0.8443219349872133,
+                  6.171086464671505
+                ],
+                "60": [
+                  -1.2364814779234456,
+                  10.30742463135239
+                ],
+                "120": [
+                  5.765681536699341,
+                  19.80071171122999
+                ]
+              },
+              "mae_120d_median_pct": -7.572446171155578,
+              "mae_120d_ci90_pct": [
+                -16.013557182295234,
+                -0.29659508860666595
+              ]
+            },
+            "large": {
+              "sample_count": 3,
+              "forward_sample_count": {
+                "20": 3,
+                "60": 3,
+                "120": 3
+              },
+              "forward_return_median_pct": {
+                "20": 1.6783505155749667,
+                "60": 0.5857993574526876,
+                "120": 11.89356737383247
+              },
+              "forward_return_win_rate": {
+                "20": 0.6666666666666666,
+                "60": 1.0,
+                "120": 0.6666666666666666
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.949803096350412,
+                  8.716036912833625
+                ],
+                "60": [
+                  0.5123632719543192,
+                  14.381585493723703
+                ],
+                "120": [
+                  -2.5822811830104153,
+                  28.215656188035343
+                ]
+              },
+              "mae_120d_median_pct": -11.626598750296491,
+              "mae_120d_ci90_pct": [
+                -18.59547603370467,
+                -10.831192637913766
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "large档walk-forward独立样本仅3个，结果置信度低",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档walk-forward独立样本仅3个，结果置信度低",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 5
+        },
+        "execution_overrides": {
+          "small": 0.035
+        },
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "VOO:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "VOO:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "VOO",
+        "phase": "长期定投期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -3.5,
+          "medium": -11.0,
+          "large": -18.0
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -4.0,
+          "medium": -11.0,
+          "large": -18.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -5.7,
+            -2.97
+          ],
+          "medium": [
+            -14.0,
+            -8.36
+          ],
+          "large": [
+            -20.07,
+            -15.99
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-10-08",
+              "2019-05-09",
+              "2019-08-02",
+              "2020-01-27",
+              "2020-02-24",
+              "2020-09-03",
+              "2021-01-29",
+              "2021-02-26",
+              "2021-05-12",
+              "2021-07-19",
+              "2021-09-20",
+              "2021-11-30",
+              "2021-12-20",
+              "2022-01-10",
+              "2024-04-19",
+              "2024-07-25",
+              "2025-02-27",
+              "2025-11-20",
+              "2026-03-12",
+              "2026-06-10"
+            ],
+            "medium": [
+              "2018-10-15",
+              "2019-05-31",
+              "2019-08-14",
+              "2020-03-02",
+              "2020-09-18",
+              "2022-01-21",
+              "2025-04-03"
+            ],
+            "large": [
+              "2018-10-29",
+              "2020-03-09",
+              "2022-03-08"
+            ]
+          },
+          "event_counts": {
+            "small": 20,
+            "medium": 7,
+            "large": 3
+          },
+          "annual_frequency": {
+            "small": 2.5008045190003427,
+            "medium": 0.8752815816501199,
+            "large": 0.3751206778500514
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 20,
+              "forward_sample_count": {
+                "20": 20,
+                "60": 19,
+                "120": 18
+              },
+              "forward_return_median_pct": {
+                "20": 2.6594759733718054,
+                "60": 4.154133550547345,
+                "120": 10.221831263945337
+              },
+              "forward_return_win_rate": {
+                "20": 0.6,
+                "60": 0.5789473684210527,
+                "120": 0.7777777777777778
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -0.7022067779705377,
+                  4.47508920663704
+                ],
+                "60": [
+                  -0.6922482783256245,
+                  8.944135478450587
+                ],
+                "120": [
+                  2.9579231506972836,
+                  12.258735693048717
+                ]
+              },
+              "mae_120d_median_pct": -4.099892320984272,
+              "mae_120d_ci90_pct": [
+                -11.784888112868973,
+                -2.443487410702777
+              ]
+            },
+            "medium": {
+              "sample_count": 7,
+              "forward_sample_count": {
+                "20": 7,
+                "60": 7,
+                "120": 7
+              },
+              "forward_return_median_pct": {
+                "20": 5.032582260594776,
+                "60": 5.130753485580075,
+                "120": 14.418274433783541
+              },
+              "forward_return_win_rate": {
+                "20": 0.5714285714285714,
+                "60": 0.7142857142857143,
+                "120": 0.8571428571428571
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -0.8443219349872133,
+                  6.171086464671505
+                ],
+                "60": [
+                  -1.2364814779234456,
+                  10.30742463135239
+                ],
+                "120": [
+                  5.765681536699341,
+                  19.80071171122999
+                ]
+              },
+              "mae_120d_median_pct": -7.572446171155578,
+              "mae_120d_ci90_pct": [
+                -16.013557182295234,
+                -0.29659508860666595
+              ]
+            },
+            "large": {
+              "sample_count": 3,
+              "forward_sample_count": {
+                "20": 3,
+                "60": 3,
+                "120": 3
+              },
+              "forward_return_median_pct": {
+                "20": 1.6783505155749667,
+                "60": 0.5857993574526876,
+                "120": 11.89356737383247
+              },
+              "forward_return_win_rate": {
+                "20": 0.6666666666666666,
+                "60": 1.0,
+                "120": 0.6666666666666666
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.949803096350412,
+                  8.716036912833625
+                ],
+                "60": [
+                  0.5123632719543192,
+                  14.381585493723703
+                ],
+                "120": [
+                  -2.5822811830104153,
+                  28.215656188035343
+                ]
+              },
+              "mae_120d_median_pct": -11.626598750296491,
+              "mae_120d_ci90_pct": [
+                -18.59547603370467,
+                -10.831192637913766
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "large档walk-forward独立样本仅3个，结果置信度低",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档walk-forward独立样本仅3个，结果置信度低",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 5
+        },
+        "execution_overrides": {
+          "small": 0.035
+        },
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "QQQ:建仓期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "QQQ:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "QQQ",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -5.5,
+          "medium": -14.0,
+          "large": -28.5
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -5.5,
+          "medium": -14.0,
+          "large": -28.5
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -7.52,
+            -4.25
+          ],
+          "medium": [
+            -21.03,
+            -11.01
+          ],
+          "large": [
+            -31.22,
+            -23.38
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-01",
+              "2018-09-05",
+              "2019-05-07",
+              "2019-08-01",
+              "2020-01-27",
+              "2020-02-21",
+              "2020-06-11",
+              "2020-07-24",
+              "2020-08-11",
+              "2020-09-03",
+              "2021-01-29",
+              "2021-02-22",
+              "2021-05-04",
+              "2021-09-20",
+              "2021-11-26",
+              "2022-01-05",
+              "2024-04-19",
+              "2024-07-24",
+              "2025-02-27",
+              "2025-11-18",
+              "2026-02-05",
+              "2026-06-05"
+            ],
+            "medium": [
+              "2018-10-10",
+              "2019-05-28",
+              "2020-02-28",
+              "2020-09-11",
+              "2021-03-03",
+              "2021-10-04",
+              "2022-01-18",
+              "2025-04-03"
+            ],
+            "large": [
+              "2018-10-24",
+              "2020-03-06",
+              "2022-01-25"
+            ]
+          },
+          "event_counts": {
+            "small": 22,
+            "medium": 8,
+            "large": 3
+          },
+          "annual_frequency": {
+            "small": 2.7508849709003766,
+            "medium": 1.000321807600137,
+            "large": 0.3751206778500514
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 22,
+              "forward_sample_count": {
+                "20": 22,
+                "60": 21,
+                "120": 21
+              },
+              "forward_return_median_pct": {
+                "20": 0.86955490717745,
+                "60": 3.107222126580589,
+                "120": 14.256005936270677
+              },
+              "forward_return_win_rate": {
+                "20": 0.6363636363636364,
+                "60": 0.7142857142857143,
+                "120": 0.7619047619047619
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -1.066719429420282,
+                  2.8742828775310203
+                ],
+                "60": [
+                  0.05424081316867113,
+                  8.271021129775601
+                ],
+                "120": [
+                  9.671391989907164,
+                  18.68160555249718
+                ]
+              },
+              "mae_120d_median_pct": -6.679588650163465,
+              "mae_120d_ci90_pct": [
+                -12.70004824277871,
+                -5.5563374599247375
+              ]
+            },
+            "medium": {
+              "sample_count": 8,
+              "forward_sample_count": {
+                "20": 8,
+                "60": 8,
+                "120": 8
+              },
+              "forward_return_median_pct": {
+                "20": 3.8989261303099987,
+                "60": 9.66062995931335,
+                "120": 14.279587874152188
+              },
+              "forward_return_win_rate": {
+                "20": 0.75,
+                "60": 0.75,
+                "120": 0.875
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -0.819776442740322,
+                  7.137329111041179
+                ],
+                "60": [
+                  0.06196931885344448,
+                  13.907179098234735
+                ],
+                "120": [
+                  4.837850657986942,
+                  26.51076438180041
+                ]
+              },
+              "mae_120d_median_pct": -8.666004442302816,
+              "mae_120d_ci90_pct": [
+                -17.036923134012138,
+                -3.578194627819231
+              ]
+            },
+            "large": {
+              "sample_count": 3,
+              "forward_sample_count": {
+                "20": 3,
+                "60": 3,
+                "120": 3
+              },
+              "forward_return_median_pct": {
+                "20": -4.5463765175988495,
+                "60": -1.6567271513129422,
+                "120": 13.93180129654812
+              },
+              "forward_return_win_rate": {
+                "20": 0.0,
+                "60": 0.3333333333333333,
+                "120": 0.6666666666666666
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -11.71824468673427,
+                  -3.019951040189528
+                ],
+                "60": [
+                  -3.0561838122970753,
+                  13.496382512594396
+                ],
+                "120": [
+                  -13.290528518532552,
+                  40.91983958034362
+                ]
+              },
+              "mae_120d_median_pct": -18.681790377999974,
+              "mae_120d_ci90_pct": [
+                -21.264155992351853,
+                -13.021531431837897
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "large档walk-forward独立样本仅3个，结果置信度低",
+          "large档触发后60日中位收益为-1.66%",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档walk-forward独立样本仅3个，结果置信度低",
+            "large档触发后60日中位收益为-1.66%",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 6
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "QQQ:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "QQQ:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "QQQ",
+        "phase": "长期定投期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -5.5,
+          "medium": -14.0,
+          "large": -28.5
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -5.5,
+          "medium": -14.0,
+          "large": -28.5
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -7.52,
+            -4.25
+          ],
+          "medium": [
+            -21.03,
+            -11.01
+          ],
+          "large": [
+            -31.22,
+            -23.38
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-01",
+              "2018-09-05",
+              "2019-05-07",
+              "2019-08-01",
+              "2020-01-27",
+              "2020-02-21",
+              "2020-06-11",
+              "2020-07-24",
+              "2020-08-11",
+              "2020-09-03",
+              "2021-01-29",
+              "2021-02-22",
+              "2021-05-04",
+              "2021-09-20",
+              "2021-11-26",
+              "2022-01-05",
+              "2024-04-19",
+              "2024-07-24",
+              "2025-02-27",
+              "2025-11-18",
+              "2026-02-05",
+              "2026-06-05"
+            ],
+            "medium": [
+              "2018-10-10",
+              "2019-05-28",
+              "2020-02-28",
+              "2020-09-11",
+              "2021-03-03",
+              "2021-10-04",
+              "2022-01-18",
+              "2025-04-03"
+            ],
+            "large": [
+              "2018-10-24",
+              "2020-03-06",
+              "2022-01-25"
+            ]
+          },
+          "event_counts": {
+            "small": 22,
+            "medium": 8,
+            "large": 3
+          },
+          "annual_frequency": {
+            "small": 2.7508849709003766,
+            "medium": 1.000321807600137,
+            "large": 0.3751206778500514
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 22,
+              "forward_sample_count": {
+                "20": 22,
+                "60": 21,
+                "120": 21
+              },
+              "forward_return_median_pct": {
+                "20": 0.86955490717745,
+                "60": 3.107222126580589,
+                "120": 14.256005936270677
+              },
+              "forward_return_win_rate": {
+                "20": 0.6363636363636364,
+                "60": 0.7142857142857143,
+                "120": 0.7619047619047619
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -1.066719429420282,
+                  2.8742828775310203
+                ],
+                "60": [
+                  0.05424081316867113,
+                  8.271021129775601
+                ],
+                "120": [
+                  9.671391989907164,
+                  18.68160555249718
+                ]
+              },
+              "mae_120d_median_pct": -6.679588650163465,
+              "mae_120d_ci90_pct": [
+                -12.70004824277871,
+                -5.5563374599247375
+              ]
+            },
+            "medium": {
+              "sample_count": 8,
+              "forward_sample_count": {
+                "20": 8,
+                "60": 8,
+                "120": 8
+              },
+              "forward_return_median_pct": {
+                "20": 3.8989261303099987,
+                "60": 9.66062995931335,
+                "120": 14.279587874152188
+              },
+              "forward_return_win_rate": {
+                "20": 0.75,
+                "60": 0.75,
+                "120": 0.875
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -0.819776442740322,
+                  7.137329111041179
+                ],
+                "60": [
+                  0.06196931885344448,
+                  13.907179098234735
+                ],
+                "120": [
+                  4.837850657986942,
+                  26.51076438180041
+                ]
+              },
+              "mae_120d_median_pct": -8.666004442302816,
+              "mae_120d_ci90_pct": [
+                -17.036923134012138,
+                -3.578194627819231
+              ]
+            },
+            "large": {
+              "sample_count": 3,
+              "forward_sample_count": {
+                "20": 3,
+                "60": 3,
+                "120": 3
+              },
+              "forward_return_median_pct": {
+                "20": -4.5463765175988495,
+                "60": -1.6567271513129422,
+                "120": 13.93180129654812
+              },
+              "forward_return_win_rate": {
+                "20": 0.0,
+                "60": 0.3333333333333333,
+                "120": 0.6666666666666666
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -11.71824468673427,
+                  -3.019951040189528
+                ],
+                "60": [
+                  -3.0561838122970753,
+                  13.496382512594396
+                ],
+                "120": [
+                  -13.290528518532552,
+                  40.91983958034362
+                ]
+              },
+              "mae_120d_median_pct": -18.681790377999974,
+              "mae_120d_ci90_pct": [
+                -21.264155992351853,
+                -13.021531431837897
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "large档walk-forward独立样本仅3个，结果置信度低",
+          "large档触发后60日中位收益为-1.66%",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档walk-forward独立样本仅3个，结果置信度低",
+            "large档触发后60日中位收益为-1.66%",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 6
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "ISRG:建仓期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "ISRG:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "ISRG",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -13.0,
+          "medium": -25.0,
+          "large": -25.0
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -13.0,
+          "medium": -25.0,
+          "large": -36.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -16.09,
+            -10.64
+          ],
+          "medium": [
+            -28.64,
+            -20.72
+          ],
+          "large": [
+            -41.99,
+            -31.38
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "normal",
+        "vol_multiplier": 1.0,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-01",
+              "2018-09-05",
+              "2018-10-04",
+              "2019-04-17",
+              "2020-01-27",
+              "2020-02-25",
+              "2020-09-08",
+              "2021-01-22",
+              "2021-05-12",
+              "2021-09-28",
+              "2021-11-23",
+              "2025-03-06"
+            ],
+            "medium": [
+              "2018-10-11",
+              "2019-04-25",
+              "2020-03-09",
+              "2020-09-18",
+              "2021-03-04",
+              "2021-12-01",
+              "2025-04-04"
+            ],
+            "large": [
+              "2018-10-24",
+              "2019-05-07",
+              "2020-03-16",
+              "2022-01-18",
+              "2026-07-14"
+            ]
+          },
+          "event_counts": {
+            "small": 12,
+            "medium": 7,
+            "large": 5
+          },
+          "annual_frequency": {
+            "small": 1.5004827114002055,
+            "medium": 0.8752815816501199,
+            "large": 0.6252011297500857
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 12,
+              "forward_sample_count": {
+                "20": 12,
+                "60": 12,
+                "120": 12
+              },
+              "forward_return_median_pct": {
+                "20": 0.16924989583751993,
+                "60": -0.29402877700163144,
+                "120": 3.375955004732345
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.5,
+                "120": 0.6666666666666666
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -6.337142857142874,
+                  5.402619785046792
+                ],
+                "60": [
+                  -4.616509335011532,
+                  8.22709134650015
+                ],
+                "120": [
+                  -4.8036451066404195,
+                  15.301160166102033
+                ]
+              },
+              "mae_120d_median_pct": -17.56234045719185,
+              "mae_120d_ci90_pct": [
+                -21.562297092561867,
+                -12.052739049771583
+              ]
+            },
+            "medium": {
+              "sample_count": 7,
+              "forward_sample_count": {
+                "20": 7,
+                "60": 7,
+                "120": 7
+              },
+              "forward_return_median_pct": {
+                "20": 6.257132737790716,
+                "60": 12.493635687149961,
+                "120": 11.962109309455894
+              },
+              "forward_return_win_rate": {
+                "20": 0.7142857142857143,
+                "60": 0.8571428571428571,
+                "120": 0.7142857142857143
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.040496612227305,
+                  14.813063440517404
+                ],
+                "60": [
+                  1.749242454055322,
+                  18.755728527715476
+                ],
+                "120": [
+                  -2.3163116169892306,
+                  38.916304390396746
+                ]
+              },
+              "mae_120d_median_pct": -11.493298312024402,
+              "mae_120d_ci90_pct": [
+                -27.985352289194367,
+                -3.422310588434363
+              ]
+            },
+            "large": {
+              "sample_count": 5,
+              "forward_sample_count": {
+                "20": 4,
+                "60": 4,
+                "120": 4
+              },
+              "forward_return_median_pct": {
+                "20": 0.2446971661972941,
+                "60": 8.169488936444047,
+                "120": 10.550665825409444
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.75,
+                "120": 0.75
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.091441334732147,
+                  14.296421346787605
+                ],
+                "60": [
+                  1.5839402318677864,
+                  27.243809578219857
+                ],
+                "120": [
+                  -11.145339303065555,
+                  83.43515793118803
+                ]
+              },
+              "mae_120d_median_pct": -9.981163710128138,
+              "mae_120d_ci90_pct": [
+                -35.45974483062032,
+                -6.724878386354849
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "small档年均独立触发1.50次，不在目标2-4次内",
+          "large档年均独立触发0.63次，不在目标0.25-0.5次内",
+          "small档触发后60日中位收益为-0.29%",
+          "small档120日收益90%置信区间跨越0，方向不稳定",
+          "medium档120日收益90%置信区间跨越0，方向不稳定",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发1.50次，不在目标2-4次内",
+            "large档年均独立触发0.63次，不在目标0.25-0.5次内",
+            "small档触发后60日中位收益为-0.29%",
+            "small档120日收益90%置信区间跨越0，方向不稳定",
+            "medium档120日收益90%置信区间跨越0，方向不稳定",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 9
+        },
+        "execution_overrides": {
+          "large": 0.25
+        },
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "ISRG:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "ISRG:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "ISRG",
+        "phase": "长期定投期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -13.0,
+          "medium": -25.0,
+          "large": -25.0
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -13.0,
+          "medium": -25.0,
+          "large": -36.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -16.09,
+            -10.64
+          ],
+          "medium": [
+            -28.64,
+            -20.72
+          ],
+          "large": [
+            -41.99,
+            -31.38
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "normal",
+        "vol_multiplier": 1.0,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-01",
+              "2018-09-05",
+              "2018-10-04",
+              "2019-04-17",
+              "2020-01-27",
+              "2020-02-25",
+              "2020-09-08",
+              "2021-01-22",
+              "2021-05-12",
+              "2021-09-28",
+              "2021-11-23",
+              "2025-03-06"
+            ],
+            "medium": [
+              "2018-10-11",
+              "2019-04-25",
+              "2020-03-09",
+              "2020-09-18",
+              "2021-03-04",
+              "2021-12-01",
+              "2025-04-04"
+            ],
+            "large": [
+              "2018-10-24",
+              "2019-05-07",
+              "2020-03-16",
+              "2022-01-18",
+              "2026-07-14"
+            ]
+          },
+          "event_counts": {
+            "small": 12,
+            "medium": 7,
+            "large": 5
+          },
+          "annual_frequency": {
+            "small": 1.5004827114002055,
+            "medium": 0.8752815816501199,
+            "large": 0.6252011297500857
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 12,
+              "forward_sample_count": {
+                "20": 12,
+                "60": 12,
+                "120": 12
+              },
+              "forward_return_median_pct": {
+                "20": 0.16924989583751993,
+                "60": -0.29402877700163144,
+                "120": 3.375955004732345
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.5,
+                "120": 0.6666666666666666
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -6.337142857142874,
+                  5.402619785046792
+                ],
+                "60": [
+                  -4.616509335011532,
+                  8.22709134650015
+                ],
+                "120": [
+                  -4.8036451066404195,
+                  15.301160166102033
+                ]
+              },
+              "mae_120d_median_pct": -17.56234045719185,
+              "mae_120d_ci90_pct": [
+                -21.562297092561867,
+                -12.052739049771583
+              ]
+            },
+            "medium": {
+              "sample_count": 7,
+              "forward_sample_count": {
+                "20": 7,
+                "60": 7,
+                "120": 7
+              },
+              "forward_return_median_pct": {
+                "20": 6.257132737790716,
+                "60": 12.493635687149961,
+                "120": 11.962109309455894
+              },
+              "forward_return_win_rate": {
+                "20": 0.7142857142857143,
+                "60": 0.8571428571428571,
+                "120": 0.7142857142857143
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.040496612227305,
+                  14.813063440517404
+                ],
+                "60": [
+                  1.749242454055322,
+                  18.755728527715476
+                ],
+                "120": [
+                  -2.3163116169892306,
+                  38.916304390396746
+                ]
+              },
+              "mae_120d_median_pct": -11.493298312024402,
+              "mae_120d_ci90_pct": [
+                -27.985352289194367,
+                -3.422310588434363
+              ]
+            },
+            "large": {
+              "sample_count": 5,
+              "forward_sample_count": {
+                "20": 4,
+                "60": 4,
+                "120": 4
+              },
+              "forward_return_median_pct": {
+                "20": 0.2446971661972941,
+                "60": 8.169488936444047,
+                "120": 10.550665825409444
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.75,
+                "120": 0.75
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.091441334732147,
+                  14.296421346787605
+                ],
+                "60": [
+                  1.5839402318677864,
+                  27.243809578219857
+                ],
+                "120": [
+                  -11.145339303065555,
+                  83.43515793118803
+                ]
+              },
+              "mae_120d_median_pct": -9.981163710128138,
+              "mae_120d_ci90_pct": [
+                -35.45974483062032,
+                -6.724878386354849
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "small档年均独立触发1.50次，不在目标2-4次内",
+          "large档年均独立触发0.63次，不在目标0.25-0.5次内",
+          "small档触发后60日中位收益为-0.29%",
+          "small档120日收益90%置信区间跨越0，方向不稳定",
+          "medium档120日收益90%置信区间跨越0，方向不稳定",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发1.50次，不在目标2-4次内",
+            "large档年均独立触发0.63次，不在目标0.25-0.5次内",
+            "small档触发后60日中位收益为-0.29%",
+            "small档120日收益90%置信区间跨越0，方向不稳定",
+            "medium档120日收益90%置信区间跨越0，方向不稳定",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 9
+        },
+        "execution_overrides": {
+          "large": 0.25
+        },
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "TEM:建仓期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "TEM:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "TEM",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "manual_review_only",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {},
+        "base_quantile_thresholds_pct": {
+          "small": -43.5,
+          "medium": -52.0,
+          "large": -57.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -48.98,
+            -35.75
+          ],
+          "medium": [
+            -54.32,
+            -48.08
+          ],
+          "large": [
+            -56.26,
+            -53.18
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "normal",
+        "vol_multiplier": 1.0,
+        "history_days": 533,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "low"
+        },
+        "walk_forward": {
+          "test_start": "2026-07-01",
+          "test_years": 0.08213721020965523,
+          "events": {
+            "small": [
+              "2026-07-08"
+            ],
+            "medium": [
+              "2026-07-20"
+            ],
+            "large": [
+              "2026-07-27"
+            ]
+          },
+          "event_counts": {
+            "small": 1,
+            "medium": 1,
+            "large": 1
+          },
+          "annual_frequency": {
+            "small": 12.174750000000001,
+            "medium": 12.174750000000001,
+            "large": 12.174750000000001
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 0,
+                "60": 0,
+                "120": 0
+              },
+              "forward_return_median_pct": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_win_rate": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  null,
+                  null
+                ],
+                "60": [
+                  null,
+                  null
+                ],
+                "120": [
+                  null,
+                  null
+                ]
+              },
+              "mae_120d_median_pct": -27.44892613933998,
+              "mae_120d_ci90_pct": [
+                -27.44892613933998,
+                -27.44892613933998
+              ]
+            },
+            "medium": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 0,
+                "60": 0,
+                "120": 0
+              },
+              "forward_return_median_pct": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_win_rate": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  null,
+                  null
+                ],
+                "60": [
+                  null,
+                  null
+                ],
+                "120": [
+                  null,
+                  null
+                ]
+              },
+              "mae_120d_median_pct": -14.170625903738898,
+              "mae_120d_ci90_pct": [
+                -14.170625903738898,
+                -14.170625903738898
+              ]
+            },
+            "large": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 0,
+                "60": 0,
+                "120": 0
+              },
+              "forward_return_median_pct": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_win_rate": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  null,
+                  null
+                ],
+                "60": [
+                  null,
+                  null
+                ],
+                "120": [
+                  null,
+                  null
+                ]
+              },
+              "mae_120d_median_pct": -3.1694243766021923,
+              "mae_120d_ci90_pct": [
+                -3.1694243766021923,
+                -3.1694243766021923
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "历史不足3年，未配置同行组；各档置信度下调为low",
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "small档年均独立触发12.17次，不在目标2-4次内",
+          "medium档年均独立触发12.17次，不在目标0.8-1.5次内",
+          "large档年均独立触发12.17次，不在目标0.25-0.5次内",
+          "small档walk-forward独立样本仅1个，结果置信度低",
+          "medium档walk-forward独立样本仅1个，结果置信度低",
+          "large档walk-forward独立样本仅1个，结果置信度低"
+        ],
+        "validation": {
+          "status": "review",
+          "alerts": [],
+          "review_message": "历史与同行样本不足，继续人工复核",
+          "diagnostics": [
+            "历史不足3年，未配置同行组；各档置信度下调为low",
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发12.17次，不在目标2-4次内",
+            "medium档年均独立触发12.17次，不在目标0.8-1.5次内",
+            "large档年均独立触发12.17次，不在目标0.25-0.5次内",
+            "small档walk-forward独立样本仅1个，结果置信度低",
+            "medium档walk-forward独立样本仅1个，结果置信度低",
+            "large档walk-forward独立样本仅1个，结果置信度低"
+          ],
+          "diagnostic_count": 9
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "TEM:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "TEM:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "TEM",
+        "phase": "长期定投期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "manual_review_only",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {},
+        "base_quantile_thresholds_pct": {
+          "small": -43.5,
+          "medium": -52.0,
+          "large": -57.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -48.98,
+            -35.75
+          ],
+          "medium": [
+            -54.32,
+            -48.08
+          ],
+          "large": [
+            -56.26,
+            -53.18
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "normal",
+        "vol_multiplier": 1.0,
+        "history_days": 533,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "low"
+        },
+        "walk_forward": {
+          "test_start": "2026-07-01",
+          "test_years": 0.08213721020965523,
+          "events": {
+            "small": [
+              "2026-07-08"
+            ],
+            "medium": [
+              "2026-07-20"
+            ],
+            "large": [
+              "2026-07-27"
+            ]
+          },
+          "event_counts": {
+            "small": 1,
+            "medium": 1,
+            "large": 1
+          },
+          "annual_frequency": {
+            "small": 12.174750000000001,
+            "medium": 12.174750000000001,
+            "large": 12.174750000000001
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 0,
+                "60": 0,
+                "120": 0
+              },
+              "forward_return_median_pct": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_win_rate": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  null,
+                  null
+                ],
+                "60": [
+                  null,
+                  null
+                ],
+                "120": [
+                  null,
+                  null
+                ]
+              },
+              "mae_120d_median_pct": -27.44892613933998,
+              "mae_120d_ci90_pct": [
+                -27.44892613933998,
+                -27.44892613933998
+              ]
+            },
+            "medium": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 0,
+                "60": 0,
+                "120": 0
+              },
+              "forward_return_median_pct": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_win_rate": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  null,
+                  null
+                ],
+                "60": [
+                  null,
+                  null
+                ],
+                "120": [
+                  null,
+                  null
+                ]
+              },
+              "mae_120d_median_pct": -14.170625903738898,
+              "mae_120d_ci90_pct": [
+                -14.170625903738898,
+                -14.170625903738898
+              ]
+            },
+            "large": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 0,
+                "60": 0,
+                "120": 0
+              },
+              "forward_return_median_pct": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_win_rate": {
+                "20": null,
+                "60": null,
+                "120": null
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  null,
+                  null
+                ],
+                "60": [
+                  null,
+                  null
+                ],
+                "120": [
+                  null,
+                  null
+                ]
+              },
+              "mae_120d_median_pct": -3.1694243766021923,
+              "mae_120d_ci90_pct": [
+                -3.1694243766021923,
+                -3.1694243766021923
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "历史不足3年，未配置同行组；各档置信度下调为low",
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "small档年均独立触发12.17次，不在目标2-4次内",
+          "medium档年均独立触发12.17次，不在目标0.8-1.5次内",
+          "large档年均独立触发12.17次，不在目标0.25-0.5次内",
+          "small档walk-forward独立样本仅1个，结果置信度低",
+          "medium档walk-forward独立样本仅1个，结果置信度低",
+          "large档walk-forward独立样本仅1个，结果置信度低"
+        ],
+        "validation": {
+          "status": "review",
+          "alerts": [],
+          "review_message": "历史与同行样本不足，继续人工复核",
+          "diagnostics": [
+            "历史不足3年，未配置同行组；各档置信度下调为low",
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发12.17次，不在目标2-4次内",
+            "medium档年均独立触发12.17次，不在目标0.8-1.5次内",
+            "large档年均独立触发12.17次，不在目标0.25-0.5次内",
+            "small档walk-forward独立样本仅1个，结果置信度低",
+            "medium档walk-forward独立样本仅1个，结果置信度低",
+            "large档walk-forward独立样本仅1个，结果置信度低"
+          ],
+          "diagnostic_count": 9
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "PLTR:建仓期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "PLTR:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "PLTR",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -54.0,
+          "medium": -76.5,
+          "large": -81.5
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -54.0,
+          "medium": -76.5,
+          "large": -81.5
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -62.05,
+            -43.53
+          ],
+          "medium": [
+            -79.16,
+            -65.67
+          ],
+          "large": [
+            -81.72,
+            -79.26
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "normal",
+        "vol_multiplier": 1.0,
+        "history_days": 1465,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "high",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2022-10-03",
+          "test_years": 3.824856088762945,
+          "events": {
+            "small": [
+              "2022-10-03"
+            ],
+            "medium": [
+              "2022-10-10"
+            ],
+            "large": [
+              "2022-10-17"
+            ]
+          },
+          "event_counts": {
+            "small": 1,
+            "medium": 1,
+            "large": 1
+          },
+          "annual_frequency": {
+            "small": 0.2614477451682176,
+            "medium": 0.2614477451682176,
+            "large": 0.2614477451682176
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 1,
+                "60": 1,
+                "120": 1
+              },
+              "forward_return_median_pct": {
+                "20": 6.674757281553378,
+                "60": -26.334951456310673,
+                "120": -2.4271844660194275
+              },
+              "forward_return_win_rate": {
+                "20": 1.0,
+                "60": 0.0,
+                "120": 0.0
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  6.674757281553378,
+                  6.674757281553378
+                ],
+                "60": [
+                  -26.334951456310673,
+                  -26.334951456310673
+                ],
+                "120": [
+                  -2.4271844660194275,
+                  -2.4271844660194275
+                ]
+              },
+              "mae_120d_median_pct": -27.184466019417474,
+              "mae_120d_ci90_pct": [
+                -27.184466019417474,
+                -27.184466019417474
+              ]
+            },
+            "medium": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 1,
+                "60": 1,
+                "120": 1
+              },
+              "forward_return_median_pct": {
+                "20": -12.903225806451623,
+                "60": -21.58808933002482,
+                "120": 3.970223325062028
+              },
+              "forward_return_win_rate": {
+                "20": 0.0,
+                "60": 0.0,
+                "120": 1.0
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -12.903225806451623,
+                  -12.903225806451623
+                ],
+                "60": [
+                  -21.58808933002482,
+                  -21.58808933002482
+                ],
+                "120": [
+                  3.970223325062028,
+                  3.970223325062028
+                ]
+              },
+              "mae_120d_median_pct": -25.55831265508686,
+              "mae_120d_ci90_pct": [
+                -25.55831265508686,
+                -25.55831265508686
+              ]
+            },
+            "large": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 1,
+                "60": 1,
+                "120": 1
+              },
+              "forward_return_median_pct": {
+                "20": 2.015113350125941,
+                "60": -11.712846347607064,
+                "120": 8.438287153652379
+              },
+              "forward_return_win_rate": {
+                "20": 1.0,
+                "60": 0.0,
+                "120": 1.0
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  2.015113350125941,
+                  2.015113350125941
+                ],
+                "60": [
+                  -11.712846347607064,
+                  -11.712846347607064
+                ],
+                "120": [
+                  8.438287153652379,
+                  8.438287153652379
+                ]
+              },
+              "mae_120d_median_pct": -24.43324937027708,
+              "mae_120d_ci90_pct": [
+                -24.43324937027708,
+                -24.43324937027708
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "small档年均独立触发0.26次，不在目标2-4次内",
+          "medium档年均独立触发0.26次，不在目标0.8-1.5次内",
+          "small档walk-forward独立样本仅1个，结果置信度低",
+          "small档触发后60日中位收益为-26.33%",
+          "small档触发后120日中位收益为-2.43%",
+          "medium档walk-forward独立样本仅1个，结果置信度低",
+          "medium档触发后60日中位收益为-21.59%",
+          "large档walk-forward独立样本仅1个，结果置信度低",
+          "large档触发后60日中位收益为-11.71%",
+          "大加档深于60%"
+        ],
+        "validation": {
+          "status": "attention",
+          "alerts": [
+            "小加、中加、大加独立触发样本不足3个"
+          ],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发0.26次，不在目标2-4次内",
+            "medium档年均独立触发0.26次，不在目标0.8-1.5次内",
+            "small档walk-forward独立样本仅1个，结果置信度低",
+            "small档触发后60日中位收益为-26.33%",
+            "small档触发后120日中位收益为-2.43%",
+            "medium档walk-forward独立样本仅1个，结果置信度低",
+            "medium档触发后60日中位收益为-21.59%",
+            "large档walk-forward独立样本仅1个，结果置信度低",
+            "large档触发后60日中位收益为-11.71%",
+            "大加档深于60%"
+          ],
+          "diagnostic_count": 12
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "PLTR:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "PLTR:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "PLTR",
+        "phase": "长期定投期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -54.0,
+          "medium": -76.5,
+          "large": -81.5
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -54.0,
+          "medium": -76.5,
+          "large": -81.5
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -62.05,
+            -43.53
+          ],
+          "medium": [
+            -79.16,
+            -65.67
+          ],
+          "large": [
+            -81.72,
+            -79.26
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "normal",
+        "vol_multiplier": 1.0,
+        "history_days": 1465,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "high",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2022-10-03",
+          "test_years": 3.824856088762945,
+          "events": {
+            "small": [
+              "2022-10-03"
+            ],
+            "medium": [
+              "2022-10-10"
+            ],
+            "large": [
+              "2022-10-17"
+            ]
+          },
+          "event_counts": {
+            "small": 1,
+            "medium": 1,
+            "large": 1
+          },
+          "annual_frequency": {
+            "small": 0.2614477451682176,
+            "medium": 0.2614477451682176,
+            "large": 0.2614477451682176
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 1,
+                "60": 1,
+                "120": 1
+              },
+              "forward_return_median_pct": {
+                "20": 6.674757281553378,
+                "60": -26.334951456310673,
+                "120": -2.4271844660194275
+              },
+              "forward_return_win_rate": {
+                "20": 1.0,
+                "60": 0.0,
+                "120": 0.0
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  6.674757281553378,
+                  6.674757281553378
+                ],
+                "60": [
+                  -26.334951456310673,
+                  -26.334951456310673
+                ],
+                "120": [
+                  -2.4271844660194275,
+                  -2.4271844660194275
+                ]
+              },
+              "mae_120d_median_pct": -27.184466019417474,
+              "mae_120d_ci90_pct": [
+                -27.184466019417474,
+                -27.184466019417474
+              ]
+            },
+            "medium": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 1,
+                "60": 1,
+                "120": 1
+              },
+              "forward_return_median_pct": {
+                "20": -12.903225806451623,
+                "60": -21.58808933002482,
+                "120": 3.970223325062028
+              },
+              "forward_return_win_rate": {
+                "20": 0.0,
+                "60": 0.0,
+                "120": 1.0
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -12.903225806451623,
+                  -12.903225806451623
+                ],
+                "60": [
+                  -21.58808933002482,
+                  -21.58808933002482
+                ],
+                "120": [
+                  3.970223325062028,
+                  3.970223325062028
+                ]
+              },
+              "mae_120d_median_pct": -25.55831265508686,
+              "mae_120d_ci90_pct": [
+                -25.55831265508686,
+                -25.55831265508686
+              ]
+            },
+            "large": {
+              "sample_count": 1,
+              "forward_sample_count": {
+                "20": 1,
+                "60": 1,
+                "120": 1
+              },
+              "forward_return_median_pct": {
+                "20": 2.015113350125941,
+                "60": -11.712846347607064,
+                "120": 8.438287153652379
+              },
+              "forward_return_win_rate": {
+                "20": 1.0,
+                "60": 0.0,
+                "120": 1.0
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  2.015113350125941,
+                  2.015113350125941
+                ],
+                "60": [
+                  -11.712846347607064,
+                  -11.712846347607064
+                ],
+                "120": [
+                  8.438287153652379,
+                  8.438287153652379
+                ]
+              },
+              "mae_120d_median_pct": -24.43324937027708,
+              "mae_120d_ci90_pct": [
+                -24.43324937027708,
+                -24.43324937027708
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "small档年均独立触发0.26次，不在目标2-4次内",
+          "medium档年均独立触发0.26次，不在目标0.8-1.5次内",
+          "small档walk-forward独立样本仅1个，结果置信度低",
+          "small档触发后60日中位收益为-26.33%",
+          "small档触发后120日中位收益为-2.43%",
+          "medium档walk-forward独立样本仅1个，结果置信度低",
+          "medium档触发后60日中位收益为-21.59%",
+          "large档walk-forward独立样本仅1个，结果置信度低",
+          "large档触发后60日中位收益为-11.71%",
+          "大加档深于60%"
+        ],
+        "validation": {
+          "status": "attention",
+          "alerts": [
+            "小加、中加、大加独立触发样本不足3个"
+          ],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发0.26次，不在目标2-4次内",
+            "medium档年均独立触发0.26次，不在目标0.8-1.5次内",
+            "small档walk-forward独立样本仅1个，结果置信度低",
+            "small档触发后60日中位收益为-26.33%",
+            "small档触发后120日中位收益为-2.43%",
+            "medium档walk-forward独立样本仅1个，结果置信度低",
+            "medium档触发后60日中位收益为-21.59%",
+            "large档walk-forward独立样本仅1个，结果置信度低",
+            "large档触发后60日中位收益为-11.71%",
+            "大加档深于60%"
+          ],
+          "diagnostic_count": 12
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "GOOGL:建仓期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "GOOGL:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "GOOGL",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -11.5,
+          "medium": -20.0,
+          "large": -33.0
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -11.5,
+          "medium": -20.0,
+          "large": -33.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -13.79,
+            -9.4
+          ],
+          "medium": [
+            -24.72,
+            -17.11
+          ],
+          "large": [
+            -37.52,
+            -27.22
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "low"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-17",
+              "2019-04-30",
+              "2020-02-25",
+              "2020-09-04",
+              "2021-05-12",
+              "2021-09-29",
+              "2022-01-05",
+              "2024-03-04",
+              "2024-07-25",
+              "2025-02-12",
+              "2026-02-13",
+              "2026-06-10"
+            ],
+            "medium": [
+              "2018-09-07",
+              "2019-05-14",
+              "2020-03-05",
+              "2020-09-18",
+              "2022-01-21",
+              "2024-09-06",
+              "2025-03-11",
+              "2026-03-27",
+              "2026-07-23"
+            ],
+            "large": [
+              "2018-10-10",
+              "2019-06-03",
+              "2020-03-12",
+              "2022-04-22"
+            ]
+          },
+          "event_counts": {
+            "small": 12,
+            "medium": 9,
+            "large": 4
+          },
+          "annual_frequency": {
+            "small": 1.5004827114002055,
+            "medium": 1.1253620335501542,
+            "large": 0.5001609038000685
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 12,
+              "forward_sample_count": {
+                "20": 12,
+                "60": 11,
+                "120": 10
+              },
+              "forward_return_median_pct": {
+                "20": -1.031159964545264,
+                "60": 1.7241879874120736,
+                "120": 7.791775681762836
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.6363636363636364,
+                "120": 0.8
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -6.22181746901359,
+                  4.527457806707769
+                ],
+                "60": [
+                  -2.3317913070849663,
+                  13.543425604338765
+                ],
+                "120": [
+                  3.7907853468369446,
+                  24.34202011811084
+                ]
+              },
+              "mae_120d_median_pct": -10.939736829226138,
+              "mae_120d_ci90_pct": [
+                -19.01385861751297,
+                -8.559943553698337
+              ]
+            },
+            "medium": {
+              "sample_count": 9,
+              "forward_sample_count": {
+                "20": 8,
+                "60": 8,
+                "120": 7
+              },
+              "forward_return_median_pct": {
+                "20": -0.3946514133540635,
+                "60": 8.182870358495098,
+                "120": 13.102963923989508
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.75,
+                "120": 0.7142857142857143
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -7.928934583791808,
+                  9.438661636368595
+                ],
+                "60": [
+                  1.1396559058866051,
+                  17.267631612171684
+                ],
+                "120": [
+                  -2.0524970494368855,
+                  28.996499023130596
+                ]
+              },
+              "mae_120d_median_pct": -7.65606386561497,
+              "mae_120d_ci90_pct": [
+                -16.382611945985104,
+                -1.366772763641888
+              ]
+            },
+            "large": {
+              "sample_count": 4,
+              "forward_sample_count": {
+                "20": 4,
+                "60": 4,
+                "120": 4
+              },
+              "forward_return_median_pct": {
+                "20": 3.6849207247481086,
+                "60": 6.046850710584034,
+                "120": 18.492787417706026
+              },
+              "forward_return_win_rate": {
+                "20": 0.75,
+                "60": 0.5,
+                "120": 0.75
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -8.96682004949646,
+                  7.289248878457032
+                ],
+                "60": [
+                  -2.7079242810140958,
+                  21.49377385290532
+                ],
+                "120": [
+                  -2.771802007552571,
+                  48.898385138455566
+                ]
+              },
+              "mae_120d_median_pct": -7.503862036286107,
+              "mae_120d_ci90_pct": [
+                -20.048814296846363,
+                -2.298881842296768
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "large档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "small档年均独立触发1.50次，不在目标2-4次内",
+          "large档年均独立触发0.50次，不在目标0.25-0.5次内",
+          "medium档120日收益90%置信区间跨越0，方向不稳定",
+          "large档walk-forward独立样本仅4个，结果置信度低",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发1.50次，不在目标2-4次内",
+            "large档年均独立触发0.50次，不在目标0.25-0.5次内",
+            "medium档120日收益90%置信区间跨越0，方向不稳定",
+            "large档walk-forward独立样本仅4个，结果置信度低",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 9
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "GOOGL:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "GOOGL:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "GOOGL",
+        "phase": "长期定投期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -11.5,
+          "medium": -20.0,
+          "large": -33.0
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -11.5,
+          "medium": -20.0,
+          "large": -33.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -13.79,
+            -9.4
+          ],
+          "medium": [
+            -24.72,
+            -17.11
+          ],
+          "large": [
+            -37.52,
+            -27.22
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "low"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-17",
+              "2019-04-30",
+              "2020-02-25",
+              "2020-09-04",
+              "2021-05-12",
+              "2021-09-29",
+              "2022-01-05",
+              "2024-03-04",
+              "2024-07-25",
+              "2025-02-12",
+              "2026-02-13",
+              "2026-06-10"
+            ],
+            "medium": [
+              "2018-09-07",
+              "2019-05-14",
+              "2020-03-05",
+              "2020-09-18",
+              "2022-01-21",
+              "2024-09-06",
+              "2025-03-11",
+              "2026-03-27",
+              "2026-07-23"
+            ],
+            "large": [
+              "2018-10-10",
+              "2019-06-03",
+              "2020-03-12",
+              "2022-04-22"
+            ]
+          },
+          "event_counts": {
+            "small": 12,
+            "medium": 9,
+            "large": 4
+          },
+          "annual_frequency": {
+            "small": 1.5004827114002055,
+            "medium": 1.1253620335501542,
+            "large": 0.5001609038000685
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 12,
+              "forward_sample_count": {
+                "20": 12,
+                "60": 11,
+                "120": 10
+              },
+              "forward_return_median_pct": {
+                "20": -1.031159964545264,
+                "60": 1.7241879874120736,
+                "120": 7.791775681762836
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.6363636363636364,
+                "120": 0.8
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -6.22181746901359,
+                  4.527457806707769
+                ],
+                "60": [
+                  -2.3317913070849663,
+                  13.543425604338765
+                ],
+                "120": [
+                  3.7907853468369446,
+                  24.34202011811084
+                ]
+              },
+              "mae_120d_median_pct": -10.939736829226138,
+              "mae_120d_ci90_pct": [
+                -19.01385861751297,
+                -8.559943553698337
+              ]
+            },
+            "medium": {
+              "sample_count": 9,
+              "forward_sample_count": {
+                "20": 8,
+                "60": 8,
+                "120": 7
+              },
+              "forward_return_median_pct": {
+                "20": -0.3946514133540635,
+                "60": 8.182870358495098,
+                "120": 13.102963923989508
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.75,
+                "120": 0.7142857142857143
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -7.928934583791808,
+                  9.438661636368595
+                ],
+                "60": [
+                  1.1396559058866051,
+                  17.267631612171684
+                ],
+                "120": [
+                  -2.0524970494368855,
+                  28.996499023130596
+                ]
+              },
+              "mae_120d_median_pct": -7.65606386561497,
+              "mae_120d_ci90_pct": [
+                -16.382611945985104,
+                -1.366772763641888
+              ]
+            },
+            "large": {
+              "sample_count": 4,
+              "forward_sample_count": {
+                "20": 4,
+                "60": 4,
+                "120": 4
+              },
+              "forward_return_median_pct": {
+                "20": 3.6849207247481086,
+                "60": 6.046850710584034,
+                "120": 18.492787417706026
+              },
+              "forward_return_win_rate": {
+                "20": 0.75,
+                "60": 0.5,
+                "120": 0.75
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -8.96682004949646,
+                  7.289248878457032
+                ],
+                "60": [
+                  -2.7079242810140958,
+                  21.49377385290532
+                ],
+                "120": [
+                  -2.771802007552571,
+                  48.898385138455566
+                ]
+              },
+              "mae_120d_median_pct": -7.503862036286107,
+              "mae_120d_ci90_pct": [
+                -20.048814296846363,
+                -2.298881842296768
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "large档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "small档年均独立触发1.50次，不在目标2-4次内",
+          "large档年均独立触发0.50次，不在目标0.25-0.5次内",
+          "medium档120日收益90%置信区间跨越0，方向不稳定",
+          "large档walk-forward独立样本仅4个，结果置信度低",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "large档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "small档年均独立触发1.50次，不在目标2-4次内",
+            "large档年均独立触发0.50次，不在目标0.25-0.5次内",
+            "medium档120日收益90%置信区间跨越0，方向不稳定",
+            "large档walk-forward独立样本仅4个，结果置信度低",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 9
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "MSFT:建仓期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "MSFT:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "MSFT",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -8.0,
+          "medium": -18.5,
+          "large": -28.5
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -8.0,
+          "medium": -18.5,
+          "large": -28.5
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -10.28,
+            -6.07
+          ],
+          "medium": [
+            -23.81,
+            -13.3
+          ],
+          "large": [
+            -30.72,
+            -26.06
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-01",
+              "2018-09-05",
+              "2018-10-04",
+              "2019-03-22",
+              "2019-05-02",
+              "2019-06-25",
+              "2019-07-31",
+              "2019-09-24",
+              "2019-10-18",
+              "2020-01-27",
+              "2020-02-13",
+              "2020-06-11",
+              "2020-06-26",
+              "2020-07-13",
+              "2020-08-10",
+              "2020-09-03",
+              "2021-02-22",
+              "2021-04-29",
+              "2021-09-20",
+              "2021-11-26",
+              "2023-06-26",
+              "2023-07-26",
+              "2024-04-18",
+              "2024-07-17",
+              "2025-09-05",
+              "2025-11-06"
+            ],
+            "medium": [
+              "2018-10-11",
+              "2019-05-13",
+              "2020-02-24",
+              "2020-07-24",
+              "2020-09-11",
+              "2021-03-04",
+              "2021-05-12",
+              "2021-09-28",
+              "2021-12-20",
+              "2024-08-05",
+              "2026-01-14"
+            ],
+            "large": [
+              "2018-10-24",
+              "2020-03-03",
+              "2020-09-18",
+              "2022-01-18",
+              "2026-02-05"
+            ]
+          },
+          "event_counts": {
+            "small": 26,
+            "medium": 11,
+            "large": 5
+          },
+          "annual_frequency": {
+            "small": 3.2510458747004454,
+            "medium": 1.3754424854501883,
+            "large": 0.6252011297500857
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 26,
+              "forward_sample_count": {
+                "20": 26,
+                "60": 26,
+                "120": 26
+              },
+              "forward_return_median_pct": {
+                "20": 2.2306944473889034,
+                "60": 2.6639636681126344,
+                "120": 10.316879604190131
+              },
+              "forward_return_win_rate": {
+                "20": 0.5769230769230769,
+                "60": 0.6153846153846154,
+                "120": 0.8076923076923077
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -0.8872405347544521,
+                  4.368771954752237
+                ],
+                "60": [
+                  -0.47707763055309105,
+                  6.648132969805964
+                ],
+                "120": [
+                  6.405574810099191,
+                  16.16808461188586
+                ]
+              },
+              "mae_120d_median_pct": -5.079149410906935,
+              "mae_120d_ci90_pct": [
+                -9.244505075931281,
+                -3.429630015164081
+              ]
+            },
+            "medium": {
+              "sample_count": 11,
+              "forward_sample_count": {
+                "20": 11,
+                "60": 11,
+                "120": 11
+              },
+              "forward_return_median_pct": {
+                "20": 5.773660736295172,
+                "60": 7.455088068243065,
+                "120": 14.07202733522903
+              },
+              "forward_return_win_rate": {
+                "20": 0.7272727272727273,
+                "60": 0.7272727272727273,
+                "120": 0.8181818181818182
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -5.1827076367790825,
+                  6.8892515324242565
+                ],
+                "60": [
+                  5.303642252630025,
+                  10.376453530256358
+                ],
+                "120": [
+                  5.927983598261699,
+                  17.04895343544306
+                ]
+              },
+              "mae_120d_median_pct": -2.3257311284296422,
+              "mae_120d_ci90_pct": [
+                -20.756041898129883,
+                0.2910951350820312
+              ]
+            },
+            "large": {
+              "sample_count": 5,
+              "forward_sample_count": {
+                "20": 5,
+                "60": 5,
+                "120": 5
+              },
+              "forward_return_median_pct": {
+                "20": 1.207429103342128,
+                "60": 5.307510843377705,
+                "120": 18.225263522052405
+              },
+              "forward_return_win_rate": {
+                "20": 0.6,
+                "60": 0.8,
+                "120": 0.8
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -4.133487325755947,
+                  9.616248315949495
+                ],
+                "60": [
+                  -4.769630885724585,
+                  10.573952830041144
+                ],
+                "120": [
+                  -15.814785381524166,
+                  30.16208055686551
+                ]
+              },
+              "mae_120d_median_pct": -9.975039295137423,
+              "mae_120d_ci90_pct": [
+                -19.60141091405909,
+                0.09980537992941851
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "large档年均独立触发0.63次，不在目标0.25-0.5次内",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档年均独立触发0.63次，不在目标0.25-0.5次内",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 5
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "MSFT:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "MSFT:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "MSFT",
+        "phase": "长期定投期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -8.0,
+          "medium": -18.5,
+          "large": -28.5
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -8.0,
+          "medium": -18.5,
+          "large": -28.5
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -10.28,
+            -6.07
+          ],
+          "medium": [
+            -23.81,
+            -13.3
+          ],
+          "large": [
+            -30.72,
+            -26.06
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "low",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-01",
+              "2018-09-05",
+              "2018-10-04",
+              "2019-03-22",
+              "2019-05-02",
+              "2019-06-25",
+              "2019-07-31",
+              "2019-09-24",
+              "2019-10-18",
+              "2020-01-27",
+              "2020-02-13",
+              "2020-06-11",
+              "2020-06-26",
+              "2020-07-13",
+              "2020-08-10",
+              "2020-09-03",
+              "2021-02-22",
+              "2021-04-29",
+              "2021-09-20",
+              "2021-11-26",
+              "2023-06-26",
+              "2023-07-26",
+              "2024-04-18",
+              "2024-07-17",
+              "2025-09-05",
+              "2025-11-06"
+            ],
+            "medium": [
+              "2018-10-11",
+              "2019-05-13",
+              "2020-02-24",
+              "2020-07-24",
+              "2020-09-11",
+              "2021-03-04",
+              "2021-05-12",
+              "2021-09-28",
+              "2021-12-20",
+              "2024-08-05",
+              "2026-01-14"
+            ],
+            "large": [
+              "2018-10-24",
+              "2020-03-03",
+              "2020-09-18",
+              "2022-01-18",
+              "2026-02-05"
+            ]
+          },
+          "event_counts": {
+            "small": 26,
+            "medium": 11,
+            "large": 5
+          },
+          "annual_frequency": {
+            "small": 3.2510458747004454,
+            "medium": 1.3754424854501883,
+            "large": 0.6252011297500857
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 26,
+              "forward_sample_count": {
+                "20": 26,
+                "60": 26,
+                "120": 26
+              },
+              "forward_return_median_pct": {
+                "20": 2.2306944473889034,
+                "60": 2.6639636681126344,
+                "120": 10.316879604190131
+              },
+              "forward_return_win_rate": {
+                "20": 0.5769230769230769,
+                "60": 0.6153846153846154,
+                "120": 0.8076923076923077
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -0.8872405347544521,
+                  4.368771954752237
+                ],
+                "60": [
+                  -0.47707763055309105,
+                  6.648132969805964
+                ],
+                "120": [
+                  6.405574810099191,
+                  16.16808461188586
+                ]
+              },
+              "mae_120d_median_pct": -5.079149410906935,
+              "mae_120d_ci90_pct": [
+                -9.244505075931281,
+                -3.429630015164081
+              ]
+            },
+            "medium": {
+              "sample_count": 11,
+              "forward_sample_count": {
+                "20": 11,
+                "60": 11,
+                "120": 11
+              },
+              "forward_return_median_pct": {
+                "20": 5.773660736295172,
+                "60": 7.455088068243065,
+                "120": 14.07202733522903
+              },
+              "forward_return_win_rate": {
+                "20": 0.7272727272727273,
+                "60": 0.7272727272727273,
+                "120": 0.8181818181818182
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -5.1827076367790825,
+                  6.8892515324242565
+                ],
+                "60": [
+                  5.303642252630025,
+                  10.376453530256358
+                ],
+                "120": [
+                  5.927983598261699,
+                  17.04895343544306
+                ]
+              },
+              "mae_120d_median_pct": -2.3257311284296422,
+              "mae_120d_ci90_pct": [
+                -20.756041898129883,
+                0.2910951350820312
+              ]
+            },
+            "large": {
+              "sample_count": 5,
+              "forward_sample_count": {
+                "20": 5,
+                "60": 5,
+                "120": 5
+              },
+              "forward_return_median_pct": {
+                "20": 1.207429103342128,
+                "60": 5.307510843377705,
+                "120": 18.225263522052405
+              },
+              "forward_return_win_rate": {
+                "20": 0.6,
+                "60": 0.8,
+                "120": 0.8
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -4.133487325755947,
+                  9.616248315949495
+                ],
+                "60": [
+                  -4.769630885724585,
+                  10.573952830041144
+                ],
+                "120": [
+                  -15.814785381524166,
+                  30.16208055686551
+                ]
+              },
+              "mae_120d_median_pct": -9.975039295137423,
+              "mae_120d_ci90_pct": [
+                -19.60141091405909,
+                0.09980537992941851
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "medium档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "large档年均独立触发0.63次，不在目标0.25-0.5次内",
+          "large档120日收益90%置信区间跨越0，方向不稳定"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "medium档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档年均独立触发0.63次，不在目标0.25-0.5次内",
+            "large档120日收益90%置信区间跨越0，方向不稳定"
+          ],
+          "diagnostic_count": 5
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "AVGO:建仓期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "AVGO:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "AVGO",
+        "phase": "建仓期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -10.5,
+          "medium": -19.0,
+          "large": -26.0
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -10.5,
+          "medium": -19.0,
+          "large": -26.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -12.79,
+            -8.63
+          ],
+          "medium": [
+            -21.26,
+            -16.58
+          ],
+          "large": [
+            -28.57,
+            -23.47
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "medium",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-01",
+              "2019-05-13",
+              "2020-02-24",
+              "2021-03-04",
+              "2021-05-04",
+              "2022-01-07",
+              "2023-08-11",
+              "2023-09-21",
+              "2024-03-13",
+              "2024-06-21",
+              "2024-11-01",
+              "2024-12-18",
+              "2025-09-26",
+              "2025-11-13",
+              "2025-12-12",
+              "2026-06-04"
+            ],
+            "medium": [
+              "2018-08-08",
+              "2019-05-20",
+              "2020-03-03",
+              "2022-01-19",
+              "2024-07-24",
+              "2025-01-27",
+              "2025-12-19",
+              "2026-06-11"
+            ],
+            "large": [
+              "2018-08-15",
+              "2019-05-28",
+              "2020-03-11",
+              "2022-05-24",
+              "2024-08-07",
+              "2025-03-03",
+              "2026-03-27",
+              "2026-07-02"
+            ]
+          },
+          "event_counts": {
+            "small": 16,
+            "medium": 8,
+            "large": 8
+          },
+          "annual_frequency": {
+            "small": 2.000643615200274,
+            "medium": 1.000321807600137,
+            "large": 1.000321807600137
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 16,
+              "forward_sample_count": {
+                "20": 16,
+                "60": 15,
+                "120": 15
+              },
+              "forward_return_median_pct": {
+                "20": 1.346302264314675,
+                "60": 2.2638715445272517,
+                "120": 13.818516917431435
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.6,
+                "120": 0.8666666666666667
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.0070689252553784,
+                  6.217165236133648
+                ],
+                "60": [
+                  -1.7346284715814009,
+                  7.311274315224314
+                ],
+                "120": [
+                  10.630512086941168,
+                  23.437095985582566
+                ]
+              },
+              "mae_120d_median_pct": -13.126711116165087,
+              "mae_120d_ci90_pct": [
+                -15.985326270863487,
+                -5.14463227421178
+              ]
+            },
+            "medium": {
+              "sample_count": 8,
+              "forward_sample_count": {
+                "20": 8,
+                "60": 7,
+                "120": 7
+              },
+              "forward_return_median_pct": {
+                "20": -0.016869659448887075,
+                "60": 2.439934168413882,
+                "120": 23.641730460187205
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.7142857142857143,
+                "120": 0.8571428571428571
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.4134329555383136,
+                  3.960784969721076
+                ],
+                "60": [
+                  -5.849106544947114,
+                  5.621612704395873
+                ],
+                "120": [
+                  16.206875630928906,
+                  43.35453431005298
+                ]
+              },
+              "mae_120d_median_pct": -11.702900616063715,
+              "mae_120d_ci90_pct": [
+                -20.837969484439295,
+                -7.099801117270621
+              ]
+            },
+            "large": {
+              "sample_count": 8,
+              "forward_sample_count": {
+                "20": 8,
+                "60": 7,
+                "120": 6
+              },
+              "forward_return_median_pct": {
+                "20": 8.912411191247182,
+                "60": 24.99331089563075,
+                "120": 39.08967911655107
+              },
+              "forward_return_win_rate": {
+                "20": 0.75,
+                "60": 1.0,
+                "120": 0.8333333333333334
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  1.735939295782868,
+                  13.169710240352494
+                ],
+                "60": [
+                  14.24398385473895,
+                  28.17126739135518
+                ],
+                "120": [
+                  16.355659811979322,
+                  57.75402123260651
+                ]
+              },
+              "mae_120d_median_pct": -1.7742836193722133,
+              "mae_120d_ci90_pct": [
+                -19.423709343578636,
+                0.02238787633465633
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "large档年均独立触发1.00次，不在目标0.25-0.5次内"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档年均独立触发1.00次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 3
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
+      },
+      "AVGO:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31": {
+        "id": "AVGO:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+        "symbol": "AVGO",
+        "phase": "长期定投期",
+        "effective_month": "2026-08",
+        "created_at": "2026-08-01T07:45:35+08:00",
+        "mode": "automatic",
+        "metric_version": "episode_peak_v2",
+        "anchor_method": "cycle_bound_peak",
+        "thresholds_pct": {
+          "small": -10.5,
+          "medium": -19.0,
+          "large": -26.0
+        },
+        "base_quantile_thresholds_pct": {
+          "small": -10.5,
+          "medium": -19.0,
+          "large": -26.0
+        },
+        "threshold_ci90_pct": {
+          "small": [
+            -12.79,
+            -8.63
+          ],
+          "medium": [
+            -21.26,
+            -16.58
+          ],
+          "large": [
+            -28.57,
+            -23.47
+          ]
+        },
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "vol_regime": "high",
+        "vol_multiplier": 1.05,
+        "history_days": 2519,
+        "as_of_date": "2026-07-31",
+        "confidence_by_tier": {
+          "small": "low",
+          "medium": "medium",
+          "large": "medium"
+        },
+        "walk_forward": {
+          "test_start": "2018-08-01",
+          "test_years": 7.99742636741343,
+          "events": {
+            "small": [
+              "2018-08-01",
+              "2019-05-13",
+              "2020-02-24",
+              "2021-03-04",
+              "2021-05-04",
+              "2022-01-07",
+              "2023-08-11",
+              "2023-09-21",
+              "2024-03-13",
+              "2024-06-21",
+              "2024-11-01",
+              "2024-12-18",
+              "2025-09-26",
+              "2025-11-13",
+              "2025-12-12",
+              "2026-06-04"
+            ],
+            "medium": [
+              "2018-08-08",
+              "2019-05-20",
+              "2020-03-03",
+              "2022-01-19",
+              "2024-07-24",
+              "2025-01-27",
+              "2025-12-19",
+              "2026-06-11"
+            ],
+            "large": [
+              "2018-08-15",
+              "2019-05-28",
+              "2020-03-11",
+              "2022-05-24",
+              "2024-08-07",
+              "2025-03-03",
+              "2026-03-27",
+              "2026-07-02"
+            ]
+          },
+          "event_counts": {
+            "small": 16,
+            "medium": 8,
+            "large": 8
+          },
+          "annual_frequency": {
+            "small": 2.000643615200274,
+            "medium": 1.000321807600137,
+            "large": 1.000321807600137
+          },
+          "statistics": {
+            "small": {
+              "sample_count": 16,
+              "forward_sample_count": {
+                "20": 16,
+                "60": 15,
+                "120": 15
+              },
+              "forward_return_median_pct": {
+                "20": 1.346302264314675,
+                "60": 2.2638715445272517,
+                "120": 13.818516917431435
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.6,
+                "120": 0.8666666666666667
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.0070689252553784,
+                  6.217165236133648
+                ],
+                "60": [
+                  -1.7346284715814009,
+                  7.311274315224314
+                ],
+                "120": [
+                  10.630512086941168,
+                  23.437095985582566
+                ]
+              },
+              "mae_120d_median_pct": -13.126711116165087,
+              "mae_120d_ci90_pct": [
+                -15.985326270863487,
+                -5.14463227421178
+              ]
+            },
+            "medium": {
+              "sample_count": 8,
+              "forward_sample_count": {
+                "20": 8,
+                "60": 7,
+                "120": 7
+              },
+              "forward_return_median_pct": {
+                "20": -0.016869659448887075,
+                "60": 2.439934168413882,
+                "120": 23.641730460187205
+              },
+              "forward_return_win_rate": {
+                "20": 0.5,
+                "60": 0.7142857142857143,
+                "120": 0.8571428571428571
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  -2.4134329555383136,
+                  3.960784969721076
+                ],
+                "60": [
+                  -5.849106544947114,
+                  5.621612704395873
+                ],
+                "120": [
+                  16.206875630928906,
+                  43.35453431005298
+                ]
+              },
+              "mae_120d_median_pct": -11.702900616063715,
+              "mae_120d_ci90_pct": [
+                -20.837969484439295,
+                -7.099801117270621
+              ]
+            },
+            "large": {
+              "sample_count": 8,
+              "forward_sample_count": {
+                "20": 8,
+                "60": 7,
+                "120": 6
+              },
+              "forward_return_median_pct": {
+                "20": 8.912411191247182,
+                "60": 24.99331089563075,
+                "120": 39.08967911655107
+              },
+              "forward_return_win_rate": {
+                "20": 0.75,
+                "60": 1.0,
+                "120": 0.8333333333333334
+              },
+              "forward_return_ci90_pct": {
+                "20": [
+                  1.735939295782868,
+                  13.169710240352494
+                ],
+                "60": [
+                  14.24398385473895,
+                  28.17126739135518
+                ],
+                "120": [
+                  16.355659811979322,
+                  57.75402123260651
+                ]
+              },
+              "mae_120d_median_pct": -1.7742836193722133,
+              "mae_120d_ci90_pct": [
+                -19.423709343578636,
+                0.02238787633465633
+              ]
+            }
+          }
+        },
+        "warnings": [
+          "small档Bootstrap 90%区间相对宽度超过30%",
+          "独立大档事件少于30次，大档置信度不得为high",
+          "large档年均独立触发1.00次，不在目标0.25-0.5次内"
+        ],
+        "validation": {
+          "status": "ok",
+          "alerts": [],
+          "review_message": null,
+          "diagnostics": [
+            "small档Bootstrap 90%区间相对宽度超过30%",
+            "独立大档事件少于30次，大档置信度不得为high",
+            "large档年均独立触发1.00次，不在目标0.25-0.5次内"
+          ],
+          "diagnostic_count": 3
+        },
+        "execution_overrides": {},
+        "calculation_kind": "monthly_auto",
+        "validation_policy": "warning_only"
       }
     },
     "preferred_threshold_snapshots": {
@@ -7876,7 +11740,23 @@
       "MSFT:建仓期:2026-07:episode_peak_v2": "MSFT:建仓期:2026-07:episode_peak_v2:auto:2026-06-30",
       "MSFT:长期定投期:2026-07:episode_peak_v2": "MSFT:长期定投期:2026-07:episode_peak_v2:auto:2026-06-30",
       "AVGO:建仓期:2026-07:episode_peak_v2": "AVGO:建仓期:2026-07:episode_peak_v2:auto:2026-06-30",
-      "AVGO:长期定投期:2026-07:episode_peak_v2": "AVGO:长期定投期:2026-07:episode_peak_v2:auto:2026-06-30"
+      "AVGO:长期定投期:2026-07:episode_peak_v2": "AVGO:长期定投期:2026-07:episode_peak_v2:auto:2026-06-30",
+      "VOO:建仓期:2026-08:episode_peak_v2": "VOO:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "VOO:长期定投期:2026-08:episode_peak_v2": "VOO:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "QQQ:建仓期:2026-08:episode_peak_v2": "QQQ:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "QQQ:长期定投期:2026-08:episode_peak_v2": "QQQ:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "ISRG:建仓期:2026-08:episode_peak_v2": "ISRG:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "ISRG:长期定投期:2026-08:episode_peak_v2": "ISRG:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "TEM:建仓期:2026-08:episode_peak_v2": "TEM:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "TEM:长期定投期:2026-08:episode_peak_v2": "TEM:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "PLTR:建仓期:2026-08:episode_peak_v2": "PLTR:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "PLTR:长期定投期:2026-08:episode_peak_v2": "PLTR:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "GOOGL:建仓期:2026-08:episode_peak_v2": "GOOGL:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "GOOGL:长期定投期:2026-08:episode_peak_v2": "GOOGL:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "MSFT:建仓期:2026-08:episode_peak_v2": "MSFT:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "MSFT:长期定投期:2026-08:episode_peak_v2": "MSFT:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "AVGO:建仓期:2026-08:episode_peak_v2": "AVGO:建仓期:2026-08:episode_peak_v2:auto:2026-07-31",
+      "AVGO:长期定投期:2026-08:episode_peak_v2": "AVGO:长期定投期:2026-08:episode_peak_v2:auto:2026-07-31"
     },
     "monthly_recalculations": {
       "2026-07": {
@@ -7905,6 +11785,33 @@
         ],
         "metric_version": "episode_peak_v2",
         "validation_policy": "warning_only"
+      },
+      "2026-08": {
+        "effective_month": "2026-08",
+        "as_of_date": "2026-07-31",
+        "status": "success",
+        "completed_at": "2026-08-01T07:45:58+08:00",
+        "symbols": [
+          "VOO",
+          "QQQ",
+          "ISRG",
+          "TEM",
+          "PLTR",
+          "GOOGL",
+          "MSFT",
+          "AVGO"
+        ],
+        "warning_count": 1,
+        "attention_symbol_count": 1,
+        "review_symbol_count": 1,
+        "diagnostic_count": 58,
+        "quantiles": [
+          0.65,
+          0.85,
+          0.95
+        ],
+        "metric_version": "episode_peak_v2",
+        "validation_policy": "warning_only"
       }
     },
     "episodes": {
@@ -7920,9 +11827,9 @@
         "trigger_dates": {
           "small": "2026-07-29"
         },
-        "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-30",
-        "last_confirmed_drawdown_pct": -2.10020651935352,
+        "recovery_streak": 1,
+        "last_processed_close_date": "2026-07-31",
+        "last_confirmed_drawdown_pct": -1.3705650075187537,
         "anchor_date": "2026-06-02",
         "anchor_price": 696.232316501,
         "metric_version": "episode_peak_v2",
@@ -7956,8 +11863,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-30",
-        "last_confirmed_drawdown_pct": -8.290228536385246,
+        "last_processed_close_date": "2026-07-31",
+        "last_confirmed_drawdown_pct": -7.694527585030619,
         "anchor_date": "2026-06-02",
         "anchor_price": 745.340424571,
         "metric_version": "episode_peak_v2",
@@ -7991,8 +11898,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-30",
-        "last_confirmed_drawdown_pct": -22.16586914816203,
+        "last_processed_close_date": "2026-07-31",
+        "last_confirmed_drawdown_pct": -22.08648481774681,
         "anchor_date": "2026-05-07",
         "anchor_price": 453.49,
         "metric_version": "episode_peak_v2",
@@ -8023,8 +11930,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-30",
-        "last_confirmed_drawdown_pct": -28.100649350649356,
+        "last_processed_close_date": "2026-07-31",
+        "last_confirmed_drawdown_pct": -28.782467532467535,
         "anchor_date": "2026-07-01",
         "anchor_price": 61.6,
         "metric_version": "episode_peak_v2",
@@ -8038,25 +11945,27 @@
         "episode_id": "PLTR:2026-07-29:PLTR:建仓期:2026-07:episode_peak_v2",
         "threshold_snapshot_id": "PLTR:建仓期:2026-07:episode_peak_v2",
         "small_triggered": true,
-        "medium_triggered": false,
-        "large_triggered": false,
+        "medium_triggered": true,
+        "large_triggered": true,
         "trigger_date": "2026-07-29",
         "trigger_dates": {
-          "small": "2026-07-29"
+          "small": "2026-07-29",
+          "medium": "2024-11-25",
+          "large": "2024-11-25"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-30",
-        "last_confirmed_drawdown_pct": -23.896669779022716,
+        "last_processed_close_date": "2026-07-31",
+        "last_confirmed_drawdown_pct": -23.398692810457522,
         "anchor_date": "2026-06-01",
         "anchor_price": 160.65,
         "metric_version": "episode_peak_v2",
         "last_confirmed_signal": {
-          "id": "PLTR:2026-07-29:PLTR:建仓期:2026-07:episode_peak_v2:small",
+          "id": "PLTR:2026-07-29:PLTR:建仓期:2026-07:episode_peak_v2:large",
           "symbol": "PLTR",
-          "tier": "small",
-          "trigger_date": "2026-07-29",
-          "close_price": 123.0,
-          "drawdown_pct": -23.436041083099912,
+          "tier": "large",
+          "trigger_date": "2024-11-25",
+          "close_price": 64.65,
+          "drawdown_pct": -59.757236227824464,
           "anchor_date": "2026-06-01",
           "anchor_price": 160.65,
           "metric_version": "episode_peak_v2",
@@ -8080,8 +11989,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-30",
-        "last_confirmed_drawdown_pct": -17.078311314165305,
+        "last_processed_close_date": "2026-07-31",
+        "last_confirmed_drawdown_pct": -11.494032872725812,
         "anchor_date": "2026-05-13",
         "anchor_price": 402.379649146,
         "metric_version": "episode_peak_v2",
@@ -8103,38 +12012,23 @@
       },
       "MSFT": {
         "symbol": "MSFT",
-        "episode_active": true,
-        "episode_id": "MSFT:2026-07-29:MSFT:建仓期:2026-07:episode_peak_v2",
-        "threshold_snapshot_id": "MSFT:建仓期:2026-07:episode_peak_v2",
-        "small_triggered": true,
-        "medium_triggered": true,
+        "episode_active": false,
+        "episode_id": null,
+        "threshold_snapshot_id": null,
+        "small_triggered": false,
+        "medium_triggered": false,
         "large_triggered": false,
-        "trigger_date": "2026-07-29",
-        "trigger_dates": {
-          "small": "2026-07-29",
-          "medium": "2026-07-29"
-        },
-        "recovery_streak": 1,
-        "last_processed_close_date": "2026-07-30",
-        "last_confirmed_drawdown_pct": -2.0455137670459367,
-        "anchor_date": "2026-06-01",
-        "anchor_price": 460.52,
+        "trigger_date": null,
+        "trigger_dates": {},
+        "recovery_streak": 0,
+        "last_processed_close_date": "2026-07-31",
+        "last_confirmed_drawdown_pct": 0.0,
+        "anchor_date": null,
+        "anchor_price": null,
         "metric_version": "episode_peak_v2",
-        "last_confirmed_signal": {
-          "id": "MSFT:2026-07-29:MSFT:建仓期:2026-07:episode_peak_v2:medium",
-          "symbol": "MSFT",
-          "tier": "medium",
-          "trigger_date": "2026-07-29",
-          "close_price": 390.54,
-          "drawdown_pct": -15.19586554329887,
-          "anchor_date": "2026-06-01",
-          "anchor_price": 460.52,
-          "metric_version": "episode_peak_v2",
-          "threshold_snapshot_id": "MSFT:建仓期:2026-07:episode_peak_v2",
-          "confirmed": true
-        },
-        "ended_at": null,
-        "end_reason": null
+        "last_confirmed_signal": null,
+        "ended_at": "2026-07-31",
+        "end_reason": "new_anchor_high"
       },
       "AVGO": {
         "symbol": "AVGO",
@@ -8151,8 +12045,8 @@
           "large": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-30",
-        "last_confirmed_drawdown_pct": -19.335959392361456,
+        "last_processed_close_date": "2026-07-31",
+        "last_confirmed_drawdown_pct": -19.036464192085578,
         "anchor_date": "2026-06-02",
         "anchor_price": 480.809040904,
         "metric_version": "episode_peak_v2",
@@ -8173,6 +12067,6 @@
         "end_reason": null
       }
     },
-    "updated_at": "2026-07-31T04:12:56+08:00"
+    "updated_at": "2026-08-01T07:45:58+08:00"
   }
 }

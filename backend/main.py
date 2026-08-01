@@ -8,6 +8,7 @@ import threading
 from datetime import datetime
 from typing import Any
 
+import pandas as pd
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -217,8 +218,13 @@ def dashboard(user_id: str = "evan") -> dict[str, Any]:
 
 
 @app.get("/api/ohlcv")
-def ohlcv(symbol: str = "VOO", interval: str = "1d", show_extended: bool = True) -> dict[str, Any]:
-    return fetch_ohlcv(symbol, interval, show_extended)
+def ohlcv(
+    symbol: str = "VOO",
+    interval: str = "1d",
+    show_extended: bool = True,
+    selected_date: str = "",
+) -> dict[str, Any]:
+    return fetch_ohlcv(symbol, interval, show_extended, selected_date)
 
 
 def _timestamp_for_lightweight(value: Any, interval: str = "5m") -> int | str:
@@ -273,10 +279,12 @@ def _build_global_chart_board_light(
     interval: str = "5m",
     show_extended: bool = True,
     columns: int = 1,
+    selected_date: str = "",
 ) -> dict[str, Any]:
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
     key = interval if interval in {"1d", "15m", "5m"} else "5m"
+    selected_day = selected_date[:10] if key != "1d" else ""
     cols = min(5, max(1, int(columns or 1)))
     labels = _chart_labels()
     full_labels = _chart_full_labels()
@@ -289,7 +297,7 @@ def _build_global_chart_board_light(
     # stable display order below.
     def load_bars(sym: str) -> list[dict[str, Any]]:
         try:
-            return fetch_ohlcv(sym, key, show_extended).get("bars") or []
+            return fetch_ohlcv(sym, key, show_extended, selected_day).get("bars") or []
         except Exception:
             return []
 
@@ -304,13 +312,12 @@ def _build_global_chart_board_light(
         bars = bars_by_symbol.get(sym) or []
         quote = quotes.get(sym) or {}
         last_close = float(bars[-1].get("close") or 0.0) if bars else 0.0
-        latest_price = float(quote.get("price") or last_close or 0.0)
+        latest_price = last_close if selected_day else float(quote.get("price") or last_close or 0.0)
         fallback_open = float(bars[0].get("open") or 0.0) if bars else None
-        latest_change_pct = _kline_header_change_pct(
-            quote,
-            latest_price,
-            key,
-            fallback_open=fallback_open,
+        latest_change_pct = (
+            (last_close / fallback_open - 1.0) * 100.0
+            if selected_day and last_close > 0 and fallback_open and fallback_open > 0
+            else _kline_header_change_pct(quote, latest_price, key, fallback_open=fallback_open)
         )
         candles = [
             {
@@ -340,6 +347,7 @@ def _build_global_chart_board_light(
                 "volumes": volumes,
                 "latest_price": latest_price,
                 "latest_change_pct": latest_change_pct,
+                "selected_date": selected_day,
                 "source": "lightweight",
             }
         )
@@ -351,6 +359,7 @@ def _build_global_chart_board_light(
         "source": "lightweight-global",
         "market_provider": chart_api.get_market_provider(),
         "show_extended": show_extended if key != "1d" else None,
+        "selected_date": selected_day,
         "columns": cols,
         "charts": charts,
         "error": "",
@@ -472,11 +481,13 @@ def _build_chart_board_light(
     avwap_mode: str | None = None,
     show_extended: bool = True,
     custom_anchor_date: str | None = None,
+    selected_date: str = "",
 ) -> dict[str, Any]:
     sym = str(symbol or "VOO").upper()
     if sym not in _chart_symbols():
         sym = "VOO"
     key = interval if interval in {"1d", "15m", "5m"} else "5m"
+    selected_day = selected_date[:10] if key != "1d" else ""
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
     labels = _chart_labels()
@@ -500,9 +511,19 @@ def _build_chart_board_light(
 
     try:
         period = "5y" if key == "1d" else "2d"
-        df = chart_api.fetch_ohlcv(sym, key, period, cache_only=False)
+        if selected_day:
+            selected_bars = fetch_ohlcv(sym, key, show_extended, selected_day).get("bars") or []
+            df = pd.DataFrame(selected_bars).rename(
+                columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}
+            )
+            if not df.empty:
+                df.index = pd.to_datetime(df.pop("time"), unit="s", utc=True, errors="coerce")
+                df = df.loc[~df.index.isna(), ["Open", "High", "Low", "Close", "Volume"]]
+                df = chart_api._normalize_plot_time_index(df, sym)
+        else:
+            df = chart_api.fetch_ohlcv(sym, key, period, cache_only=False)
         full_df = df.copy()
-        if key != "1d":
+        if key != "1d" and not selected_day:
             if show_extended:
                 df, _ = chart_api.slice_intraday_today_or_yesterday(
                     df,
@@ -530,11 +551,12 @@ def _build_chart_board_light(
                 "source": "lightweight-single",
                 "market_provider": chart_api.get_market_provider(),
                 "show_extended": show_extended,
+                "selected_date": selected_day,
                 "user_avg_cost": user_avg_cost,
-                "latest_price": latest_price if latest_price > 0 else None,
+                "latest_price": None if selected_day else (latest_price if latest_price > 0 else None),
                 "latest_change_pct": latest_change_pct,
-                "session_open": session_open if session_open > 0 else None,
-                "previous_close": previous_close if previous_close > 0 else None,
+                "session_open": None if selected_day else (session_open if session_open > 0 else None),
+                "previous_close": None if selected_day else (previous_close if previous_close > 0 else None),
                 "candles": [],
                 "volumes": [],
                 "overlays": {},
@@ -598,7 +620,16 @@ def _build_chart_board_light(
         rsi_ma = chart_api.ema(rsi_series, 9)
         macd_line, macd_signal, macd_hist = chart_api.macd_series(close)
         last_close = float(close.iloc[-1]) if len(close) else 0.0
-        if latest_price <= 0:
+        if selected_day:
+            latest_price = last_close
+            previous_close = 0.0
+            session_open = float(df.iloc[0]["Open"]) if len(df) else 0.0
+            latest_change_pct = (
+                (last_close / session_open - 1.0) * 100.0
+                if last_close > 0 and session_open > 0
+                else None
+            )
+        elif latest_price <= 0:
             latest_price = last_close
         candles = [
             {
@@ -626,6 +657,7 @@ def _build_chart_board_light(
             "source": "lightweight-single",
             "market_provider": chart_api.get_market_provider(),
             "show_extended": show_extended if key != "1d" else None,
+            "selected_date": selected_day,
             "user_avg_cost": user_avg_cost,
             "avwap_mode": effective_avwap_mode,
             "avwap_label": avwap_label,
@@ -668,6 +700,7 @@ def chart_board_light(
     avwap_mode: str | None = None,
     show_extended: bool = True,
     custom_anchor_date: str | None = None,
+    selected_date: str = "",
 ) -> dict[str, Any]:
     return _build_chart_board_light(
         symbol,
@@ -675,6 +708,7 @@ def chart_board_light(
         avwap_mode,
         show_extended,
         custom_anchor_date,
+        selected_date,
     )
 
 
@@ -683,8 +717,9 @@ def chart_board_global_light(
     interval: str = "5m",
     show_extended: bool = True,
     columns: int = 1,
+    selected_date: str = "",
 ) -> dict[str, Any]:
-    return _build_global_chart_board_light(interval, show_extended, columns)
+    return _build_global_chart_board_light(interval, show_extended, columns, selected_date)
 
 
 @app.get("/api/holdings")
@@ -942,6 +977,7 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
     interval = str(websocket.query_params.get("interval", "5m"))
     avwap_mode = str(websocket.query_params.get("avwap_mode") or _default_avwap_mode(interval, symbol))
     custom_anchor_date = str(websocket.query_params.get("custom_anchor_date") or "") or None
+    selected_date = str(websocket.query_params.get("selected_date") or "")[:10]
     show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
     if symbol not in _chart_labels():
         symbol = "VOO"
@@ -963,6 +999,7 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
                     avwap_mode,
                     show_extended,
                     custom_anchor_date,
+                    selected_date,
                 )
                 payload["realtime"] = True
                 payload["revision"] = current[0]
@@ -980,6 +1017,7 @@ async def chart_board_global_light_ws(websocket: WebSocket) -> None:
     await websocket.accept()
     interval = str(websocket.query_params.get("interval", "5m"))
     show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
+    selected_date = str(websocket.query_params.get("selected_date") or "")[:10]
     try:
         columns = int(websocket.query_params.get("columns", "1"))
     except Exception:
@@ -996,7 +1034,13 @@ async def chart_board_global_light_ws(websocket: WebSocket) -> None:
             current = _light_revision_snapshot(symbols, interval)
             now = asyncio.get_running_loop().time()
             if last_revision is None or (current != last_revision and now - last_sent_at >= 0.75):
-                payload = await asyncio.to_thread(_build_global_chart_board_light, interval, show_extended, columns)
+                payload = await asyncio.to_thread(
+                    _build_global_chart_board_light,
+                    interval,
+                    show_extended,
+                    columns,
+                    selected_date,
+                )
                 payload["realtime"] = True
                 payload["revisions"] = current
                 await websocket.send_json(payload)
