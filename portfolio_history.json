@@ -2601,6 +2601,7 @@
       "calculation_version": "2026-07-eod-v7-cash-cost-basis",
       "price_source": "historical_daily_close",
       "fx_source": "Sina fx_susdcny daily close",
+      "revised_at": "2026-08-01T06:36:29+08:00",
       "voo_dividend_usd": 7.98,
       "sgov_dividend_usd": 11.61,
       "closing_prices": {
@@ -2705,9 +2706,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-31T08:00:00+08:00",
-      "revised_at": "2026-08-01T06:36:29+08:00",
-      "total_pnl_pct": -0.13562474487232487
+      "updated_at": "2026-07-31T08:00:00+08:00"
     }
   ]
 }

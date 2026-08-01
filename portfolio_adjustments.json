@@ -1225,6 +1225,34 @@
         "sgov_dividend_usd": 11.61
       },
       "reconstruct_from_date": "2026-07-31"
+    },
+    {
+      "id": "adj-20260801T141547+0800-39",
+      "kind": "balances",
+      "effective_date": "2026-08-01",
+      "recorded_at": "2026-08-01T14:15:47+08:00",
+      "reason": "manual_edit",
+      "before": {
+        "cash_usd": 20.085000000000264,
+        "cash_cny": 10039.67,
+        "cash_cost_basis_usd": -9.703280602822133,
+        "cash_cost_basis_cny": 8882.821160969588,
+        "realized_usd": 10.198280602822413,
+        "realized_cny": 1156.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "after": {
+        "cash_usd": 20.085000000000264,
+        "cash_cny": 15553.0,
+        "cash_cost_basis_usd": -9.703280602822133,
+        "cash_cost_basis_cny": 14396.151160969588,
+        "realized_usd": 10.198280602822413,
+        "realized_cny": 1156.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "reconstruct_from_date": "2026-08-01"
     }
   ]
 }
