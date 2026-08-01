@@ -1690,15 +1690,19 @@ function styleIntradaySessionCandles(candles = [], symbol = "", interval = "") {
     const timestamp = Number(candle?.time);
     const minutes = marketLocalMinutes(timestamp, false);
     const isExtended = Number.isFinite(minutes) && (minutes < 9 * 60 + 30 || minutes >= 16 * 60);
-    if (!isExtended) return candle;
     const isUp = Number(candle.close) >= Number(candle.open);
+    const color = isUp ? TERMINAL_CHART.green : TERMINAL_CHART.coral;
+    if (!isExtended) {
+      // 09:30–16:00 ET is the regular session: keep the body fully filled.
+      return { ...candle, color, borderColor: color, wickColor: color };
+    }
     return {
       ...candle,
-      // Lightweight Charts accepts per-bar colors. A transparent body with
-      // a colored border makes pre/post-market candles visibly hollow.
+      // Pre-market and after-hours have no body fill. Their coloured outline
+      // and wick make them distinct without changing the up/down convention.
       color: 'rgba(11, 27, 46, 0)',
-      borderColor: isUp ? 'rgba(74, 222, 128, 0.9)' : 'rgba(248, 113, 113, 0.9)',
-      wickColor: isUp ? 'rgba(74, 222, 128, 0.68)' : 'rgba(248, 113, 113, 0.68)',
+      borderColor: isUp ? 'rgba(74, 222, 128, 0.96)' : 'rgba(248, 113, 113, 0.96)',
+      wickColor: isUp ? 'rgba(74, 222, 128, 0.78)' : 'rgba(248, 113, 113, 0.78)',
     };
   });
 }

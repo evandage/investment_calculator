@@ -1,7 +1,10 @@
 import unittest
+from datetime import datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
-from backend.ohlcv import _freeze_closed_intraday_bars, _merge_realtime_bar, _trading_day_bars
+from backend.main import _timestamp_for_lightweight
+from backend.ohlcv import _displayed_intraday_bars, _freeze_closed_intraday_bars, _merge_realtime_bar, _trading_day_bars
 
 
 class TestOhlcvFreeze(unittest.TestCase):
@@ -15,6 +18,37 @@ class TestOhlcvFreeze(unittest.TestCase):
 
         self.assertEqual(len(selected), 1)
         self.assertEqual(selected[0]["close"], 12)
+
+    def test_extended_session_excludes_overnight_bars_for_selected_day(self):
+        ny = ZoneInfo("America/New_York")
+
+        def bar(hour, minute):
+            return {
+                "time": int(datetime(2026, 7, 30, hour, minute, tzinfo=ny).timestamp()),
+                "open": 10,
+                "high": 11,
+                "low": 9,
+                "close": 10,
+                "volume": 1,
+            }
+
+        selected = _displayed_intraday_bars(
+            "VOO",
+            [bar(0, 0), bar(3, 55), bar(4, 0), bar(9, 30), bar(15, 55), bar(19, 55), bar(20, 0)],
+            True,
+            "2026-07-30",
+        )
+
+        self.assertEqual(
+            [datetime.fromtimestamp(row["time"], ny).strftime("%H:%M") for row in selected],
+            ["04:00", "09:30", "15:55", "19:55"],
+        )
+
+    def test_naive_us_chart_timestamp_uses_new_york_timezone(self):
+        timestamp = _timestamp_for_lightweight(datetime(2026, 7, 30, 9, 30), "5m", "VOO")
+        rendered = datetime.fromtimestamp(timestamp, ZoneInfo("America/New_York"))
+
+        self.assertEqual(rendered.strftime("%F %R"), "2026-07-30 09:30")
 
     def test_closed_bars_are_kept_and_latest_bar_can_update(self):
         previous = [

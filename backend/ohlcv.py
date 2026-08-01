@@ -222,6 +222,33 @@ def _in_regular_session(symbol: str, local_time: datetime) -> bool:
     return 9 * 60 + 30 <= minutes < 16 * 60
 
 
+def _in_displayed_intraday_session(symbol: str, local_time: datetime, show_extended: bool) -> bool:
+    """Keep only the session range that the minute-chart time scale renders."""
+    if not show_extended or FUTU_US.get(symbol, "").startswith(("SH.", "SZ.")):
+        return _in_regular_session(symbol, local_time)
+    minutes = local_time.hour * 60 + local_time.minute
+    # The board intentionally shows US pre-market and after-hours, not the
+    # overnight feed: 04:00–20:00 ET is exactly its fixed intraday window.
+    return 4 * 60 <= minutes < 20 * 60
+
+
+def _displayed_intraday_bars(
+    symbol: str,
+    bars: list[dict[str, Any]],
+    show_extended: bool,
+    selected_date: str = "",
+) -> list[dict[str, Any]]:
+    return [
+        bar
+        for bar in _trading_day_bars(symbol, bars, selected_date)
+        if _in_displayed_intraday_session(
+            symbol,
+            datetime.fromtimestamp(int(bar["time"]), _market_tz(symbol)),
+            show_extended,
+        )
+    ]
+
+
 def _latest_regular_session_bars(
     symbol: str,
     bars: list[dict[str, Any]],
@@ -427,15 +454,7 @@ def fetch_ohlcv(
         payload["bars"] = (
             merged
             if iv == "1d"
-            else (
-                _trading_day_bars(sym, merged, selected_day)
-                if show_extended
-                else [
-                    bar
-                    for bar in _trading_day_bars(sym, merged, selected_day)
-                    if _in_regular_session(sym, datetime.fromtimestamp(int(bar["time"]), _market_tz(sym)))
-                ]
-            )
+            else _displayed_intraday_bars(sym, merged, show_extended, selected_day)
         )
         payload["source"] = "futu-subscribe"
         return payload
@@ -461,15 +480,7 @@ def fetch_ohlcv(
         "bars": (
             bars[-1200:]
             if iv == "1d"
-            else (
-                _trading_day_bars(sym, bars, selected_day)
-                if show_extended
-                else [
-                    bar
-                    for bar in _trading_day_bars(sym, bars, selected_day)
-                    if _in_regular_session(sym, datetime.fromtimestamp(int(bar["time"]), _market_tz(sym)))
-                ]
-            )
+            else _displayed_intraday_bars(sym, bars, show_extended, selected_day)
         ),
         "selected_date": selected_day,
     }

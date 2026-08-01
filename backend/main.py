@@ -7,6 +7,7 @@ import sys
 import threading
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -58,6 +59,7 @@ from .storage import (
 from .drawdown_recalculation import start_monthly_drawdown_scheduler
 
 TZ_SHANGHAI = config_module.TZ_SHANGHAI
+TZ_NEW_YORK = ZoneInfo("America/New_York")
 
 
 class HoldingPayload(BaseModel):
@@ -227,14 +229,17 @@ def ohlcv(
     return fetch_ohlcv(symbol, interval, show_extended, selected_date)
 
 
-def _timestamp_for_lightweight(value: Any, interval: str = "5m") -> int | str:
+def _timestamp_for_lightweight(value: Any, interval: str = "5m", symbol: str = "") -> int | str:
     if hasattr(value, "to_pydatetime"):
         value = value.to_pydatetime()
     if isinstance(value, datetime):
         if interval == "1d":
             return value.date().isoformat()
         if value.tzinfo is None:
-            value = value.replace(tzinfo=TZ_SHANGHAI)
+            # Chart-board frames use naive timestamps in the local market
+            # timezone. Treating a US historical frame as Shanghai time moves
+            # it back twelve hours, which breaks selected-date minute charts.
+            value = value.replace(tzinfo=TZ_SHANGHAI if str(symbol).endswith((".SS", ".SZ")) else TZ_NEW_YORK)
         return int(value.timestamp())
     text = str(value)
     if interval == "1d" or (" " not in text and "T" not in text):
@@ -242,7 +247,7 @@ def _timestamp_for_lightweight(value: Any, interval: str = "5m") -> int | str:
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=TZ_SHANGHAI)
+            parsed = parsed.replace(tzinfo=TZ_SHANGHAI if str(symbol).endswith((".SS", ".SZ")) else TZ_NEW_YORK)
         return int(parsed.timestamp())
     except Exception:
         return text
@@ -321,7 +326,7 @@ def _build_global_chart_board_light(
         )
         candles = [
             {
-                "time": _timestamp_for_lightweight(bar.get("time"), key),
+                "time": _timestamp_for_lightweight(bar.get("time"), key, sym),
                 "open": float(bar.get("open") or 0.0),
                 "high": float(bar.get("high") or 0.0),
                 "low": float(bar.get("low") or 0.0),
@@ -366,7 +371,7 @@ def _build_global_chart_board_light(
     }
 
 
-def _series_for_lightweight(series: Any, interval: str) -> list[dict[str, Any]]:
+def _series_for_lightweight(series: Any, interval: str, symbol: str = "") -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     try:
         clean = series.replace([float("inf"), float("-inf")], float("nan")).dropna()
@@ -379,7 +384,7 @@ def _series_for_lightweight(series: Any, interval: str) -> list[dict[str, Any]]:
             continue
         if numeric != numeric:
             continue
-        out.append({"time": _timestamp_for_lightweight(idx, interval), "value": numeric})
+        out.append({"time": _timestamp_for_lightweight(idx, interval, symbol), "value": numeric})
     return out
 
 
@@ -633,7 +638,7 @@ def _build_chart_board_light(
             latest_price = last_close
         candles = [
             {
-                "time": _timestamp_for_lightweight(idx, key),
+                "time": _timestamp_for_lightweight(idx, key, sym),
                 "open": float(row["Open"]),
                 "high": float(row["High"]),
                 "low": float(row["Low"]),
@@ -673,20 +678,20 @@ def _build_chart_board_light(
             "volumes": volumes,
             "trade_markers": trade_markers,
             "overlays": {
-                "avwap": _series_for_lightweight(avwap, key),
-                "avwap_upper": _series_for_lightweight(avwap_upper, key),
-                "avwap_lower": _series_for_lightweight(avwap_lower, key),
-                "ema20": _series_for_lightweight(daily_ema20, key),
-                "ma50": _series_for_lightweight(daily_ma50, key),
-                "ma200": _series_for_lightweight(daily_ma200, key),
+                "avwap": _series_for_lightweight(avwap, key, sym),
+                "avwap_upper": _series_for_lightweight(avwap_upper, key, sym),
+                "avwap_lower": _series_for_lightweight(avwap_lower, key, sym),
+                "ema20": _series_for_lightweight(daily_ema20, key, sym),
+                "ma50": _series_for_lightweight(daily_ma50, key, sym),
+                "ma200": _series_for_lightweight(daily_ma200, key, sym),
             },
             "volume_profile": volume_profile,
             "indicators": {
-                "rsi": _series_for_lightweight(rsi_series, key),
-                "rsi_ma": _series_for_lightweight(rsi_ma, key),
-                "macd": _series_for_lightweight(macd_line, key),
-                "macd_signal": _series_for_lightweight(macd_signal, key),
-                "macd_hist": _series_for_lightweight(macd_hist, key),
+                "rsi": _series_for_lightweight(rsi_series, key, sym),
+                "rsi_ma": _series_for_lightweight(rsi_ma, key, sym),
+                "macd": _series_for_lightweight(macd_line, key, sym),
+                "macd_signal": _series_for_lightweight(macd_signal, key, sym),
+                "macd_hist": _series_for_lightweight(macd_hist, key, sym),
             },
             "error": "",
         }
