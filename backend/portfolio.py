@@ -3620,19 +3620,42 @@ def add_fx_conversion_record(user_id: str, payload: dict[str, Any]) -> dict[str,
     usd_amount = max(0.0, float(payload.get("usd_amount", 0.0) or 0.0))
     if cny_amount <= 0 or usd_amount <= 0:
         raise ValueError("请填写人民币金额和美元金额")
+    holdings, balances, _ = load_user_state(user_id)
+    available_cny = float(balances.get("cash_cny", 0.0) or 0.0)
+    if cny_amount > available_cny + 1e-8:
+        raise ValueError(f"人民币现金不足：可用 {available_cny:.2f}，换汇需要 {cny_amount:.2f}")
+    balances_before = dict(balances)
+    balances["cash_cny"] = max(0.0, available_cny - cny_amount)
+    balances["cash_usd"] = float(balances.get("cash_usd", 0.0) or 0.0) + usd_amount
+    # A currency conversion transfers principal between cash ledgers; it is
+    # neither realized P&L nor new capital.
+    balances["cash_cost_basis_cny"] = float(balances.get("cash_cost_basis_cny", 0.0) or 0.0) - cny_amount
+    balances["cash_cost_basis_usd"] = float(balances.get("cash_cost_basis_usd", 0.0) or 0.0) + usd_amount
     records = load_fx_conversion_records(user_id)
+    record_id = f"{now.strftime('%Y%m%d%H%M%S')}-{len(records)}-FX"
     records.append(
         {
-            "id": f"{now.strftime('%Y%m%d%H%M%S')}-{len(records)}-FX",
+            "id": record_id,
             "converted_date": converted_date,
             "cny_amount": cny_amount,
             "usd_amount": usd_amount,
             "rate": cny_amount / usd_amount,
             "note": str(payload.get("note") or ""),
             "created_at": now.isoformat(timespec="seconds"),
+            "balance_applied": True,
         }
     )
+    save_user_state(user_id, holdings, balances)
     save_fx_conversion_records(user_id, records)
+    record_portfolio_adjustment(
+        user_id,
+        "balances",
+        performance_history_date(now),
+        balances_before,
+        dict(balances),
+        "fx_conversion_cash_anchor",
+        {"reconstruct_from_date": converted_date, "fx_conversion_id": record_id},
+    )
     invalidate_performance_history_from(user_id, converted_date)
     return {"saved": True, "records": load_fx_conversion_records(user_id)}
 
@@ -3642,6 +3665,28 @@ def delete_fx_conversion_record(user_id: str, record_id: str) -> dict[str, Any]:
     target = next((record for record in records if str(record.get("id")) == str(record_id)), None)
     if target is None:
         raise ValueError("购汇记录不存在")
+    if bool(target.get("balance_applied", False)):
+        holdings, balances, _ = load_user_state(user_id)
+        balances_before = dict(balances)
+        cny_amount = float(target.get("cny_amount", 0.0) or 0.0)
+        usd_amount = float(target.get("usd_amount", 0.0) or 0.0)
+        available_usd = float(balances.get("cash_usd", 0.0) or 0.0)
+        if usd_amount > available_usd + 1e-8:
+            raise ValueError(f"美元现金不足，无法撤销：可用 {available_usd:.2f}，需退回 {usd_amount:.2f}")
+        balances["cash_cny"] = float(balances.get("cash_cny", 0.0) or 0.0) + cny_amount
+        balances["cash_usd"] = max(0.0, available_usd - usd_amount)
+        balances["cash_cost_basis_cny"] = float(balances.get("cash_cost_basis_cny", 0.0) or 0.0) + cny_amount
+        balances["cash_cost_basis_usd"] = float(balances.get("cash_cost_basis_usd", 0.0) or 0.0) - usd_amount
+        save_user_state(user_id, holdings, balances)
+        record_portfolio_adjustment(
+            user_id,
+            "balances",
+            performance_history_date(),
+            balances_before,
+            dict(balances),
+            "fx_conversion_delete_cash_anchor",
+            {"reconstruct_from_date": str(target.get("converted_date") or "")[:10], "fx_conversion_id": record_id},
+        )
     remaining = [record for record in records if str(record.get("id")) != str(record_id)]
     save_fx_conversion_records(user_id, remaining)
     converted_date = str(target.get("converted_date") or "")[:10]

@@ -817,6 +817,9 @@ def load_fx_conversion_records(user_id: str = "evan") -> list[dict[str, Any]]:
                 "rate": cny_amount / usd_amount,
                 "note": str(item.get("note") or ""),
                 "created_at": str(item.get("created_at") or ""),
+                # Imported historical records are informational unless they
+                # explicitly say they have already been posted to cash.
+                "balance_applied": bool(item.get("balance_applied", False)),
             }
         )
     return sorted(out, key=lambda row: (row["converted_date"], row["created_at"], row["id"]))
@@ -854,6 +857,7 @@ def load_fx_conversion_records_from_rows(rows: list[dict[str, Any]]) -> list[dic
                 "rate": cny_amount / usd_amount,
                 "note": str(item.get("note") or ""),
                 "created_at": str(item.get("created_at") or ""),
+                "balance_applied": bool(item.get("balance_applied", False)),
             }
         )
     return normalized
