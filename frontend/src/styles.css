@@ -1569,9 +1569,28 @@ h2 {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 140ms ease, border-color 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
-.performanceStat:nth-child(-n + 2) {
+.performanceStat:not(.is-selected) {
+  opacity: 0.54;
+}
+
+.performanceStat:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.performanceStat:focus-visible {
+  outline: 2px solid var(--series-color);
+  outline-offset: 2px;
+}
+
+.performanceStat.is-selected {
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.3), rgba(255, 255, 255, 0.1)),
     rgba(37, 99, 235, 0.08);
@@ -1579,7 +1598,7 @@ h2 {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
-.performanceStat:first-child {
+.performanceStat.is-selected.is-primary {
   background:
     linear-gradient(135deg, rgba(250, 204, 21, 0.22), rgba(255, 255, 255, 0.1)),
     rgba(255, 255, 255, 0.08);
@@ -4029,7 +4048,7 @@ tbody th {
   background: #0d1d31;
 }
 
-.performanceStat:first-child {
+.performanceStat.is-selected.is-primary {
   border-color: rgba(250, 204, 21, 0.48);
   background: #2d2914;
   box-shadow: none;

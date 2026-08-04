@@ -11817,37 +11817,23 @@
     "episodes": {
       "VOO": {
         "symbol": "VOO",
-        "episode_active": true,
-        "episode_id": "VOO:2026-07-29:VOO:建仓期:2026-07:episode_peak_v2",
-        "threshold_snapshot_id": "VOO:建仓期:2026-07:episode_peak_v2",
-        "small_triggered": true,
+        "episode_active": false,
+        "episode_id": null,
+        "threshold_snapshot_id": null,
+        "small_triggered": false,
         "medium_triggered": false,
         "large_triggered": false,
-        "trigger_date": "2026-07-29",
-        "trigger_dates": {
-          "small": "2026-07-29"
-        },
-        "recovery_streak": 1,
-        "last_processed_close_date": "2026-07-31",
-        "last_confirmed_drawdown_pct": -1.3705650075187537,
-        "anchor_date": "2026-06-02",
-        "anchor_price": 696.232316501,
+        "trigger_date": null,
+        "trigger_dates": {},
+        "recovery_streak": 0,
+        "last_processed_close_date": "2026-08-03",
+        "last_confirmed_drawdown_pct": 0.0,
+        "anchor_date": null,
+        "anchor_price": null,
         "metric_version": "episode_peak_v2",
-        "last_confirmed_signal": {
-          "id": "VOO:2026-07-29:VOO:建仓期:2026-07:episode_peak_v2:small",
-          "symbol": "VOO",
-          "tier": "small",
-          "trigger_date": "2026-07-29",
-          "close_price": 670.63,
-          "drawdown_pct": -3.677266322492412,
-          "anchor_date": "2026-06-02",
-          "anchor_price": 696.232316501,
-          "metric_version": "episode_peak_v2",
-          "threshold_snapshot_id": "VOO:建仓期:2026-07:episode_peak_v2",
-          "confirmed": true
-        },
-        "ended_at": null,
-        "end_reason": null
+        "last_confirmed_signal": null,
+        "ended_at": "2026-08-03",
+        "end_reason": "new_anchor_high"
       },
       "QQQ": {
         "symbol": "QQQ",
@@ -11863,8 +11849,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-31",
-        "last_confirmed_drawdown_pct": -7.694527585030619,
+        "last_processed_close_date": "2026-08-03",
+        "last_confirmed_drawdown_pct": -6.073791663327066,
         "anchor_date": "2026-06-02",
         "anchor_price": 745.340424571,
         "metric_version": "episode_peak_v2",
@@ -11898,8 +11884,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-31",
-        "last_confirmed_drawdown_pct": -22.08648481774681,
+        "last_processed_close_date": "2026-08-03",
+        "last_confirmed_drawdown_pct": -17.217579218946387,
         "anchor_date": "2026-05-07",
         "anchor_price": 453.49,
         "metric_version": "episode_peak_v2",
@@ -11930,8 +11916,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-31",
-        "last_confirmed_drawdown_pct": -28.782467532467535,
+        "last_processed_close_date": "2026-08-03",
+        "last_confirmed_drawdown_pct": -25.243506493506494,
         "anchor_date": "2026-07-01",
         "anchor_price": 61.6,
         "metric_version": "episode_peak_v2",
@@ -11954,8 +11940,8 @@
           "large": "2024-11-25"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-31",
-        "last_confirmed_drawdown_pct": -23.398692810457522,
+        "last_processed_close_date": "2026-08-03",
+        "last_confirmed_drawdown_pct": -21.786492374727672,
         "anchor_date": "2026-06-01",
         "anchor_price": 160.65,
         "metric_version": "episode_peak_v2",
@@ -11989,8 +11975,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-31",
-        "last_confirmed_drawdown_pct": -11.494032872725812,
+        "last_processed_close_date": "2026-08-03",
+        "last_confirmed_drawdown_pct": -7.17472894249801,
         "anchor_date": "2026-05-13",
         "anchor_price": 402.379649146,
         "metric_version": "episode_peak_v2",
@@ -12021,10 +12007,10 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-31",
+        "last_processed_close_date": "2026-08-03",
         "last_confirmed_drawdown_pct": 0.0,
-        "anchor_date": null,
-        "anchor_price": null,
+        "anchor_date": "2026-08-03",
+        "anchor_price": 487.65,
         "metric_version": "episode_peak_v2",
         "last_confirmed_signal": null,
         "ended_at": "2026-07-31",
@@ -12045,8 +12031,8 @@
           "large": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-07-31",
-        "last_confirmed_drawdown_pct": -19.036464192085578,
+        "last_processed_close_date": "2026-08-03",
+        "last_confirmed_drawdown_pct": -18.422914997075935,
         "anchor_date": "2026-06-02",
         "anchor_price": 480.809040904,
         "metric_version": "episode_peak_v2",
@@ -12067,6 +12053,6 @@
         "end_reason": null
       }
     },
-    "updated_at": "2026-08-03T22:21:26+08:00"
+    "updated_at": "2026-08-04T11:57:34+08:00"
   }
 }

@@ -1213,6 +1213,10 @@ function withUsdPerformanceFallback(points) {
 
 function PerformanceChart({ history }) {
   const [expanded, setExpanded] = useState(false);
+  const [selectedSeriesKeys, setSelectedSeriesKeys] = useState(() => new Set([
+    "portfolio_return_pct",
+    "usd_return_pct",
+  ]));
   const points = useMemo(() => withUsdPerformanceFallback(history?.points || []), [history?.points]);
   const latest = points[points.length - 1];
   const series = useMemo(() => [
@@ -1222,6 +1226,35 @@ function PerformanceChart({ history }) {
     ["VOO_return_pct", "VOO", TERMINAL_CHART.violet, 2],
     ["QQQ_return_pct", "QQQ", TERMINAL_CHART.cyan, 2],
   ], []);
+  const visibleSeries = useMemo(
+    () => series.filter(([key]) => selectedSeriesKeys.has(key)),
+    [selectedSeriesKeys, series],
+  );
+  const toggleSeries = (key) => {
+    setSelectedSeriesKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const renderSeriesButtons = () => series.map(([key, name, color]) => {
+    const selected = selectedSeriesKeys.has(key);
+    return (
+      <button
+        className={`performanceStat${selected ? " is-selected" : ""}${key === "portfolio_return_pct" ? " is-primary" : ""}`}
+        key={key}
+        type="button"
+        data-series-key={key}
+        style={{ "--series-color": color }}
+        aria-pressed={selected}
+        onClick={() => toggleSeries(key)}
+      >
+        <span>{name}</span>
+        <strong className={tone(latest?.[key])}>{latest?.[key] == null ? "-" : fmtPct(latest[key])}</strong>
+      </button>
+    );
+  });
 
   useEffect(() => {
     if (!expanded) return undefined;
@@ -1246,12 +1279,7 @@ function PerformanceChart({ history }) {
         </span>
       </div>
       <div className="performanceStats">
-        {series.map(([key, name, color]) => (
-          <div className="performanceStat" key={key} style={{ "--series-color": color }}>
-            <span>{name}</span>
-            <strong className={tone(latest?.[key])}>{latest?.[key] == null ? "-" : fmtPct(latest[key])}</strong>
-          </div>
-        ))}
+        {renderSeriesButtons()}
       </div>
       <div
         className="performancePlot performancePlotExpandable"
@@ -1266,7 +1294,7 @@ function PerformanceChart({ history }) {
           }
         }}
       >
-        <PerformanceLightweightChart points={points} series={series} />
+        <PerformanceLightweightChart points={points} series={visibleSeries} />
       </div>
       {expanded ? createPortal((
         <div className="performanceModalBackdrop" role="presentation" onClick={() => setExpanded(false)}>
@@ -1276,14 +1304,9 @@ function PerformanceChart({ history }) {
               <button className="iconButton" type="button" onClick={() => setExpanded(false)} aria-label="关闭放大图"><X size={18} /></button>
             </div>
             <div className="performanceStats">
-              {series.map(([key, name, color]) => (
-                <div className="performanceStat" key={key} style={{ "--series-color": color }}>
-                  <span>{name}</span>
-                  <strong className={tone(latest?.[key])}>{latest?.[key] == null ? "-" : fmtPct(latest[key])}</strong>
-                </div>
-              ))}
+              {renderSeriesButtons()}
             </div>
-            <div className="performanceModalPlot"><PerformanceLightweightChart points={points} series={series} /></div>
+            <div className="performanceModalPlot"><PerformanceLightweightChart points={points} series={visibleSeries} /></div>
           </section>
         </div>
       ), document.body) : null}
@@ -1335,16 +1358,16 @@ function PerformanceLightweightChart({ points, series }) {
       },
     });
     chartRef.current = chart;
-    lineSeriesRef.current = series.map(([, , color, width], index) => {
-      if (index <= 1) {
+    lineSeriesRef.current = series.map(([key, , color, width]) => {
+      if (key === "portfolio_return_pct" || key === "usd_return_pct") {
         const portfolioSeries = chart.addSeries(BaselineSeries, {
           baseValue: { type: "price", price: 0 },
           topLineColor: color,
-          topFillColor1: index === 0 ? "rgba(250, 204, 21, 0.52)" : "rgba(37, 99, 235, 0.42)",
-          topFillColor2: index === 0 ? "rgba(250, 204, 21, 0.10)" : "rgba(37, 99, 235, 0.08)",
+          topFillColor1: key === "portfolio_return_pct" ? "rgba(250, 204, 21, 0.52)" : "rgba(37, 99, 235, 0.42)",
+          topFillColor2: key === "portfolio_return_pct" ? "rgba(250, 204, 21, 0.10)" : "rgba(37, 99, 235, 0.08)",
           bottomLineColor: color,
-          bottomFillColor1: index === 0 ? "rgba(250, 204, 21, 0.24)" : "rgba(37, 99, 235, 0.22)",
-          bottomFillColor2: index === 0 ? "rgba(250, 204, 21, 0.04)" : "rgba(37, 99, 235, 0.04)",
+          bottomFillColor1: key === "portfolio_return_pct" ? "rgba(250, 204, 21, 0.24)" : "rgba(37, 99, 235, 0.22)",
+          bottomFillColor2: key === "portfolio_return_pct" ? "rgba(250, 204, 21, 0.04)" : "rgba(37, 99, 235, 0.04)",
           lineWidth: width,
           priceLineVisible: false,
           lastValueVisible: true,
