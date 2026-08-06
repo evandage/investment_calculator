@@ -1253,6 +1253,62 @@
         "sgov_dividend_usd": 11.61
       },
       "reconstruct_from_date": "2026-08-01"
+    },
+    {
+      "id": "adj-20260806T093355+0800-40",
+      "kind": "balances",
+      "effective_date": "2026-08-06",
+      "recorded_at": "2026-08-06T09:33:55+08:00",
+      "reason": "manual_edit",
+      "before": {
+        "cash_usd": 2310.1050000000005,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": 2280.316719397178,
+        "cash_cost_basis_cny": -1156.848839030412,
+        "realized_usd": 10.198280602822413,
+        "realized_cny": 1156.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "after": {
+        "cash_usd": 2311.01,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": 2281.221719397178,
+        "cash_cost_basis_cny": -1156.848839030412,
+        "realized_usd": 10.198280602822413,
+        "realized_cny": 1156.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "reconstruct_from_date": "2026-08-06"
+    },
+    {
+      "id": "adj-20260806T093409+0800-41",
+      "kind": "balances",
+      "effective_date": "2026-08-06",
+      "recorded_at": "2026-08-06T09:34:09+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": 2311.01,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": 2281.221719397178,
+        "cash_cost_basis_cny": -1156.848839030412,
+        "realized_usd": 10.198280602822413,
+        "realized_cny": 1156.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "after": {
+        "cash_usd": 0.7700000000004366,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -29.01828060282196,
+        "cash_cost_basis_cny": -1156.848839030412,
+        "realized_usd": 10.198280602822413,
+        "realized_cny": 1156.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 11.61
+      },
+      "reconstruct_from_date": "2026-08-05"
     }
   ]
 }

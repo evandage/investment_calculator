@@ -719,6 +719,21 @@
       "new_avg_cost": 663.4198994521332,
       "intensity": "small",
       "created_at": "2026-07-31T21:35:20+08:00"
+    },
+    {
+      "id": "20260806093409-48-SGOV",
+      "trade_date": "2026-08-05",
+      "symbol": "SGOV",
+      "action": "buy",
+      "amount_usd": 2310.24,
+      "shares": 23.0,
+      "price": 100.44521739130434,
+      "cost_basis": 2310.24,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 100.59500000000001,
+      "new_avg_cost": 100.49930555555555,
+      "intensity": "normal",
+      "created_at": "2026-08-06T09:34:09+08:00"
     }
   ]
 }
