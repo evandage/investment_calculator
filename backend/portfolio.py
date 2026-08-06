@@ -2973,6 +2973,18 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
         else 0.0
     )
 
+    # The chart's latest point is a live view of the same investment day as
+    # the homepage cards.  Keep its displayed daily P&L on that exact live
+    # basis (including FX) rather than the adjacent-snapshot reconciliation
+    # used for historical points.  The cumulative curve remains unchanged.
+    latest_history_point = (performance_history.get("points") or [])[-1:]
+    if latest_history_point and str(latest_history_point[0].get("date") or "") == history_day:
+        point = latest_history_point[0]
+        point["total_daily_pnl_cny"] = weighted_daily_change_cny
+        point["total_daily_basis_cny"] = weighted_daily_basis_cny
+        point["total_daily_pnl_pct"] = weighted_daily_pct
+        point["portfolio_daily_pct"] = weighted_daily_pct
+
     return {
         "user_id": user_id,
         "storage_mode": storage_mode,
