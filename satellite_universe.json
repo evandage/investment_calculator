@@ -20,11 +20,6 @@
     "target_pct": 32.5
   },
   {
-    "symbol": "MSFT",
-    "label": "MSFT",
-    "target_pct": 0.0
-  },
-  {
     "symbol": "AVGO",
     "label": "AVGO",
     "target_pct": 7.5
