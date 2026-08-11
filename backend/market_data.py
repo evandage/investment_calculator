@@ -948,11 +948,11 @@ def _mark_stale_fund_cache(code: str, quote: dict[str, Any] | None, reason: str)
     return _fund_quote_with_cache_status(stored, "stale", now, now, reason)
 
 
-def fetch_fund_quote(code: str) -> dict[str, Any] | None:
+def fetch_fund_quote(code: str, force_refresh: bool = False) -> dict[str, Any] | None:
     _load_fund_quotes_cache()
     now = time.time()
     cached = _FUND_QUOTES_CACHE.get(code)
-    if cached and now - cached[1] < _FUND_QUOTES_TTL_SECONDS:
+    if not force_refresh and cached and now - cached[1] < _FUND_QUOTES_TTL_SECONDS:
         cached_status = "stale" if cached[0].get("cache_status") == "stale" else "cached"
         return _fund_quote_with_cache_status(
             cached[0],
@@ -1044,10 +1044,10 @@ def fetch_sina_fund_estimate(code: str) -> dict[str, Any] | None:
     return _parse_sina_fund_estimate(code, response.text)
 
 
-def fetch_direct_fund_quote(code: str, today: str | None = None) -> dict[str, Any] | None:
+def fetch_direct_fund_quote(code: str, today: str | None = None, force_refresh: bool = False) -> dict[str, Any] | None:
     """Use Eastmoney first, then Sina, while rate-limiting the whole provider chain."""
     expected_day = today or datetime.now(TZ_SHANGHAI).date().isoformat()
-    fund = fetch_fund_quote(code)
+    fund = fetch_fund_quote(code, force_refresh=force_refresh)
     fund_day = str((fund or {}).get("quote_date") or "")[:10]
     fund_status = str((fund or {}).get("cache_status") or "")
     fund_reason = str((fund or {}).get("cache_reason") or "")
@@ -1258,10 +1258,10 @@ def fetch_forward_pe(symbols: tuple[str, ...] | None = None) -> dict[str, float]
     }
 
 
-def fetch_quotes() -> dict[str, Any]:
+def fetch_quotes(force_refresh: bool = False) -> dict[str, Any]:
     global _QUOTES_CACHE, _QUOTES_CACHE_AT
     now = time.time()
-    if _QUOTES_CACHE is not None and now - _QUOTES_CACHE_AT < _QUOTES_CACHE_TTL_SECONDS:
+    if not force_refresh and _QUOTES_CACHE is not None and now - _QUOTES_CACHE_AT < _QUOTES_CACHE_TTL_SECONDS:
         return dict(_QUOTES_CACHE)
     futu_available = is_futu_opend_available()
     subscription_quotes = get_futu_subscription_quotes() if futu_available else {}
@@ -1290,7 +1290,7 @@ def fetch_quotes() -> dict[str, Any]:
             if fallback:
                 quotes[sym] = fallback
     for sym, code in app_config.FUND_CODES.items():
-        fund = fetch_direct_fund_quote(code)
+        fund = fetch_direct_fund_quote(code, force_refresh=force_refresh)
         if fund:
             fund["symbol"] = sym
             quotes[sym] = fund

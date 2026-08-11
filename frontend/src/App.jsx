@@ -413,12 +413,12 @@ function useDashboard() {
   const [error, setError] = useState("");
   const loadingRef = useRef(false);
 
-  async function load() {
+  async function load(forceRefresh = false) {
     if (loadingRef.current) return;
     loadingRef.current = true;
     try {
       setError("");
-      const response = await fetch(`${API_BASE}/api/dashboard?user_id=evan`);
+      const response = await fetch(`${API_BASE}/api/dashboard?user_id=evan${forceRefresh ? "&refresh=1" : ""}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setData(await response.json());
     } catch (err) {
@@ -430,7 +430,7 @@ function useDashboard() {
   }
 
   useEffect(() => {
-    load();
+    load(true);
     const id = window.setInterval(load, 1000);
     return () => window.clearInterval(id);
   }, []);
@@ -1124,15 +1124,18 @@ function BarList({ title, rows, valueKey, formatValue }) {
   );
 }
 
-function CompareBars({ title, rows, amountKey = "current_usd", className = "", alertThresholdPct = null }) {
-  const max = Math.max(1, ...rows.flatMap((row) => [Number(row.current_pct || 0), Number(row.target_pct || 0)]));
+function CompareBars({ title, rows, amountKey = "current_usd", className = "", alertThresholdPct = null, sortByTarget = false }) {
+  const displayRows = sortByTarget
+    ? [...rows].sort((a, b) => Number(b.target_pct || 0) - Number(a.target_pct || 0))
+    : rows;
+  const max = Math.max(1, ...displayRows.flatMap((row) => [Number(row.current_pct || 0), Number(row.target_pct || 0)]));
   const currentTotal = rows.reduce((sum, row) => sum + Number(row.current_pct || 0), 0);
   const targetTotal = rows.reduce((sum, row) => sum + Number(row.target_pct || 0), 0);
   return (
     <section className={`chartPanel verticalChartPanel ${className}`}>
       <h2>{title}</h2>
       <div className="verticalBars">
-        {rows.map((row) => (
+        {displayRows.map((row) => (
           <div
             className={`verticalGroup ${Number.isFinite(alertThresholdPct) && Math.abs(Number(row.current_pct || 0) - Number(row.target_pct || 0)) > alertThresholdPct ? "allocationDeviationAlert" : ""}`}
             key={row.key || row.symbol}
@@ -1166,7 +1169,7 @@ function Visualizations({ data }) {
       <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value, row) => row.symbol === "001015" ? fmtMoney(row.pnl_cny, "CNY") : fmtMoney(value, "USD")} />
       <BarList title="卫星仓位浮盈亏排名" rows={viz.satellite_pnl_rank || []} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} />
       <CompareBars title="美元资产配置占比" rows={viz.allocation_compare || []} />
-      <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" alertThresholdPct={2.5} />
+      <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" alertThresholdPct={2.5} sortByTarget />
     </section>
   );
 }

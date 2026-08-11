@@ -2458,6 +2458,50 @@ def closed_display_daily_pct(
     return treemap_daily_pct(quote, regular_pct) if symbol in USD_SYMBOLS else regular_pct
 
 
+_A_SHARE_MORNING_QUOTES: dict[str, tuple[str, dict[str, Any]]] = {}
+
+
+def is_china_lunch_break(now: datetime | None = None) -> bool:
+    current = now or datetime.now(TZ_SHANGHAI)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=TZ_SHANGHAI)
+    current = current.astimezone(TZ_SHANGHAI)
+    return current.weekday() < 5 and 11 * 60 + 30 <= current.hour * 60 + current.minute < 13 * 60
+
+
+def remember_fund_morning_quote(quote: dict[str, Any], now: datetime) -> None:
+    current = now.astimezone(TZ_SHANGHAI) if now.tzinfo else now.replace(tzinfo=TZ_SHANGHAI)
+    day = current.date().isoformat()
+    price = coerce_optional_float(quote.get("regular_price") or quote.get("price"))
+    quote_day = str(quote.get("quote_date") or quote.get("quote_time") or "")[:10]
+    if current.hour * 60 + current.minute < 11 * 60 + 30 and price and price > 0 and quote_day == day:
+        _A_SHARE_MORNING_QUOTES["001015"] = (day, dict(quote))
+
+
+def freeze_fund_at_morning_close(
+    quote: dict[str, Any],
+    now: datetime,
+) -> dict[str, Any]:
+    """Keep the A-share fund at the last valid pre-lunch quote during the midday break."""
+    current = now.astimezone(TZ_SHANGHAI) if now.tzinfo else now.replace(tzinfo=TZ_SHANGHAI)
+    day = current.date().isoformat()
+    morning = _A_SHARE_MORNING_QUOTES.get("001015")
+    source_quote = morning[1] if morning and morning[0] == day else quote
+    frozen_price = coerce_optional_float(source_quote.get("regular_price") or source_quote.get("price"))
+    if not frozen_price or frozen_price <= 0:
+        return dict(quote)
+    return {
+        **quote,
+        "price": frozen_price,
+        "regular_price": frozen_price,
+        "change_pct": source_quote.get("change_pct", quote.get("change_pct", 0.0)),
+        "regular_change_pct": source_quote.get("regular_change_pct", quote.get("regular_change_pct", 0.0)),
+        "quote_date": source_quote.get("quote_date", quote.get("quote_date", day)),
+        "quote_time": source_quote.get("quote_time", quote.get("quote_time", "")),
+        "cache_reason": "午间休盘沿用上午收盘价",
+    }
+
+
 def is_china_daily_close_ready(investment_day: str, now: datetime | None = None) -> bool:
     """Whether the A-share daily benchmark can be confirmed for this date."""
     current = now or datetime.now(TZ_SHANGHAI)
@@ -2475,8 +2519,8 @@ def daily_pct_for_current_history_quote(symbol: str, investment_day: str, now: d
     return history_daily_pct_for_symbol(symbol, quote, investment_day, now)
 
 
-def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
-    market = fetch_quotes()
+def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[str, Any]:
+    market = fetch_quotes(force_refresh=force_refresh)
     target_weights = effective_target_weights()
     quotes = dict(market["quotes"])
     fx = float(market["fx"]["rate"])
@@ -2490,6 +2534,12 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
     history_now = datetime.now(TZ_SHANGHAI)
     history_day = performance_history_date(history_now)
     china_minutes = history_now.hour * 60 + history_now.minute
+    if (
+        is_weekday(history_day)
+        and history_now.date().isoformat() == history_day
+        and china_minutes < 11 * 60 + 30
+    ):
+        remember_fund_morning_quote(quotes.get("001015") or {}, history_now)
     finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
     completed_day = completed_performance_day(history_now)
     latest_completed_row = max(
@@ -2535,6 +2585,8 @@ def build_dashboard(user_id: str = "evan") -> dict[str, Any]:
             official_fund_prices,
             history_day,
         )
+    if is_china_lunch_break(history_now):
+        quotes["001015"] = freeze_fund_at_morning_close(quotes.get("001015") or {}, history_now)
     # Keep the public market payload consistent with the direct provider quote
     # used by cards, weights and P&L calculations.
     market = {**market, "quotes": quotes}

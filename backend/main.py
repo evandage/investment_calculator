@@ -215,8 +215,8 @@ def quotes() -> dict[str, Any]:
 
 
 @app.get("/api/dashboard")
-def dashboard(user_id: str = "evan") -> dict[str, Any]:
-    return build_dashboard(user_id)
+def dashboard(user_id: str = "evan", refresh: bool = False) -> dict[str, Any]:
+    return build_dashboard(user_id, force_refresh=refresh)
 
 
 @app.get("/api/ohlcv")
