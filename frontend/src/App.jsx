@@ -1487,7 +1487,7 @@ function PerformanceLightweightChart({ points, series }) {
     </div>
   );
 }
-function LightweightKlineCard({ item, displayRange, onOpenSymbol }) {
+function LightweightKlineCard({ item, displayRange, onOpenSymbol, isGlobal = false }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
@@ -1628,6 +1628,13 @@ function LightweightKlineCard({ item, displayRange, onOpenSymbol }) {
       item?.interval,
       item?.show_extended,
     );
+    if (isGlobal && usesFixedIntradayRange && rangeChanged && previousRange.last != null && nextRange.last !== previousRange.last) {
+      let lastDataIndex = -1;
+      displaySeries.candles.forEach((bar, index) => {
+        if (Number.isFinite(Number(bar.open))) lastDataIndex = index;
+      });
+      chart.timeScale().setVisibleLogicalRange({ from: 0, to: Math.max(4, lastDataIndex + 2) });
+    }
     // Non-fixed views keep following the newest bar. Regular 5m/15m views
     // instead reserve the complete opening-to-closing session from the start.
     if (!usesFixedIntradayRange && rangeChanged && previousRange.last != null && nextRange.last !== previousRange.last) {
@@ -1640,7 +1647,7 @@ function LightweightKlineCard({ item, displayRange, onOpenSymbol }) {
       requestPriceAutoscale(candleSeries);
       didFitContentRef.current = true;
     }
-  }, [candles, volumes]);
+  }, [candles, volumes, isGlobal]);
 
   function openSymbol() {
     onOpenSymbol?.(item.symbol);
@@ -1679,7 +1686,7 @@ function GlobalLightweightBoard({ data, viewKey, displayRange, onOpenSymbol }) {
   const charts = data?.charts || [];
   return (
     <div className="lwChartGrid" style={{ "--lw-cols": columns }}>
-      {charts.map((item) => <LightweightKlineCard item={item} displayRange={displayRange} onOpenSymbol={onOpenSymbol} key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
+      {charts.map((item) => <LightweightKlineCard item={item} displayRange={displayRange} onOpenSymbol={onOpenSymbol} isGlobal key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
     </div>
   );
 }
