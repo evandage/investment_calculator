@@ -3024,14 +3024,14 @@ function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
   const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState(() => String(restoredState.symbol || "VOO"));
-  const [interval, setInterval] = useState(() => String(restoredState.interval || "1d"));
+  const [interval, setInterval] = useState(() => String(restoredState.interval || "15m"));
   const [avwapMode, setAvwapMode] = useState(() => String(
     restoredState.avwapMode
-      || defaultKlineAvwapMode(String(restoredState.interval || "1d"), String(restoredState.symbol || "VOO"))
+      || defaultKlineAvwapMode(String(restoredState.interval || "15m"), String(restoredState.symbol || "VOO"))
   ));
   const [customAnchorDate, setCustomAnchorDate] = useState(() => String(restoredState.customAnchorDate || ""));
   const [displayRange, setDisplayRange] = useState(() => String(restoredState.displayRange || "60"));
-  const [showExtended, setShowExtended] = useState(() => Boolean(restoredState.showExtended));
+  const [showExtended, setShowExtended] = useState(() => restoredState.showExtended == null ? true : Boolean(restoredState.showExtended));
   const [selectedDate, setSelectedDate] = useState(() => String(restoredState.selectedDate || ""));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -3094,7 +3094,7 @@ function KlinePage({ dashboardData }) {
       if (scope === "single" && effectiveAvwapMode === "custom" && customAnchorDate) {
         qs.set("custom_anchor_date", customAnchorDate);
       }
-      if (interval !== "1d" && selectedDate) qs.set("selected_date", selectedDate);
+      if (["5m", "15m"].includes(interval) && selectedDate) qs.set("selected_date", selectedDate);
       const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);

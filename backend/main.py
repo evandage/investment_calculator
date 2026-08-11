@@ -281,20 +281,23 @@ def _default_avwap_mode(interval: str, symbol: str) -> str:
 
 
 def _build_global_chart_board_light(
-    interval: str = "5m",
+    interval: str = "15m",
     show_extended: bool = True,
     columns: int = 1,
     selected_date: str = "",
 ) -> dict[str, Any]:
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
-    key = interval if interval in {"1d", "15m", "5m"} else "5m"
+    key = interval if interval in {"1d", "15m", "5m"} else "15m"
     selected_day = selected_date[:10] if key != "1d" else ""
     cols = min(5, max(1, int(columns or 1)))
     labels = _chart_labels()
     full_labels = _chart_full_labels()
     symbols = list(labels.keys())
     quotes = get_futu_subscription_quotes()
+    if not futu_subscription_status().get("started"):
+        start_futu_quote_subscription(force=True)
+        quotes = get_futu_subscription_quotes()
     # A single Futu history request can take several seconds when OpenD is
     # busy. Fetching the board symbols serially made the 9-symbol board exceed
     # the browser's 30s request deadline (9 × 8s history timeout). Run the
@@ -482,7 +485,7 @@ def _trade_markers_for_chart(
 
 def _build_chart_board_light(
     symbol: str = "VOO",
-    interval: str = "5m",
+    interval: str = "15m",
     avwap_mode: str | None = None,
     show_extended: bool = True,
     custom_anchor_date: str | None = None,
@@ -491,7 +494,7 @@ def _build_chart_board_light(
     sym = str(symbol or "VOO").upper()
     if sym not in _chart_symbols():
         sym = "VOO"
-    key = interval if interval in {"1d", "15m", "5m"} else "5m"
+    key = interval if interval in {"1d", "15m", "5m"} else "15m"
     selected_day = selected_date[:10] if key != "1d" else ""
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
@@ -701,7 +704,7 @@ def _build_chart_board_light(
 @app.get("/api/chart-board-light")
 def chart_board_light(
     symbol: str = "VOO",
-    interval: str = "5m",
+    interval: str = "15m",
     avwap_mode: str | None = None,
     show_extended: bool = True,
     custom_anchor_date: str | None = None,
@@ -719,7 +722,7 @@ def chart_board_light(
 
 @app.get("/api/chart-board-global-light")
 def chart_board_global_light(
-    interval: str = "5m",
+    interval: str = "15m",
     show_extended: bool = True,
     columns: int = 1,
     selected_date: str = "",
@@ -979,7 +982,7 @@ def _light_revision_snapshot(symbols: list[str], interval: str) -> dict[str, tup
 async def chart_board_light_ws(websocket: WebSocket) -> None:
     await websocket.accept()
     symbol = str(websocket.query_params.get("symbol", "VOO")).upper()
-    interval = str(websocket.query_params.get("interval", "5m"))
+    interval = str(websocket.query_params.get("interval", "15m"))
     avwap_mode = str(websocket.query_params.get("avwap_mode") or _default_avwap_mode(interval, symbol))
     custom_anchor_date = str(websocket.query_params.get("custom_anchor_date") or "") or None
     selected_date = str(websocket.query_params.get("selected_date") or "")[:10]
@@ -1020,7 +1023,7 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
 @app.websocket("/ws/chart-board-global-light")
 async def chart_board_global_light_ws(websocket: WebSocket) -> None:
     await websocket.accept()
-    interval = str(websocket.query_params.get("interval", "5m"))
+    interval = str(websocket.query_params.get("interval", "15m"))
     show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
     selected_date = str(websocket.query_params.get("selected_date") or "")[:10]
     try:
