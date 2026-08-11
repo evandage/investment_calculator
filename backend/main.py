@@ -271,7 +271,15 @@ def _kline_header_change_pct(
     value = quote.get("extended_change_pct")
     if value is None:
         value = quote.get("change_pct")
-    return float(value) if value is not None else None
+    if value is not None:
+        return float(value)
+    try:
+        previous_close = float(quote.get("prev_close") or 0.0)
+        if price > 0 and previous_close > 0:
+            return (price / previous_close - 1.0) * 100.0
+    except (TypeError, ValueError):
+        pass
+    return None
 
 
 def _default_avwap_mode(interval: str, symbol: str) -> str:
