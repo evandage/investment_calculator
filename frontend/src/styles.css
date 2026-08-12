@@ -3351,7 +3351,7 @@ tbody th {
 }
 
 .dashboardInsights .performanceStats {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 4px;
   margin: 4px 0;
 }

@@ -587,6 +587,9 @@ def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
             "usd_daily_pct",
             "usd_daily_pnl_usd",
             "usd_daily_basis_usd",
+            "satellite_daily_pct",
+            "satellite_daily_pnl_usd",
+            "satellite_daily_basis_usd",
             "cash_flow_cny",
         ):
             if key in item:

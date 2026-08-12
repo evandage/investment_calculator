@@ -1767,7 +1767,7 @@ def ensure_completed_performance_history(
             snapshot_changed = not holdings_snapshots_match(row.get("holdings_snapshot") or {}, expected_snapshot)
             needs_pnl_repair = (
                 snapshot_changed
-                or str(row.get("calculation_version") or "") != "2026-08-eod-v8-fund-redemption-basis"
+                or str(row.get("calculation_version") or "") != "2026-08-eod-v9-satellite-performance"
                 or int(row.get("pnl_basis_version", 0) or 0) < 2
                 or int(row.get("snapshot_schema_version", 0) or 0) < 7
                 or (
@@ -1798,6 +1798,9 @@ def ensure_completed_performance_history(
                 usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
                     row["holdings_snapshot"], day, histories, row_fx, trades, set(USD_SYMBOLS), True
                 )
+                satellite_daily_pct, _, satellite_daily_pnl_usd, satellite_daily_basis_usd = completed_portfolio_daily_pct(
+                    row["holdings_snapshot"], day, histories, row_fx, trades, set(SATELLITE_SYMBOLS), True
+                )
                 row.update(
                     {
                         "portfolio_daily_pct": portfolio_daily_pct,
@@ -1822,9 +1825,12 @@ def ensure_completed_performance_history(
                         "usd_daily_pct": usd_daily_pct,
                         "usd_daily_pnl_usd": holding_daily_pnl_usd,
                         "usd_daily_basis_usd": holding_daily_basis_usd,
+                        "satellite_daily_pct": satellite_daily_pct,
+                        "satellite_daily_pnl_usd": satellite_daily_pnl_usd,
+                        "satellite_daily_basis_usd": satellite_daily_basis_usd,
                         "pnl_basis_version": 2,
                         "snapshot_schema_version": 7,
-                        "calculation_version": "2026-08-eod-v8-fund-redemption-basis",
+                        "calculation_version": "2026-08-eod-v9-satellite-performance",
                         "fx_rate": row_fx,
                         "closing_prices": holding_prices,
                         "price_source": "historical_daily_close",
@@ -1947,6 +1953,15 @@ def ensure_completed_performance_history(
             set(USD_SYMBOLS),
             True,
         )
+        satellite_daily_pct, _, satellite_daily_pnl_usd, satellite_daily_basis_usd = completed_portfolio_daily_pct(
+            holdings_snapshot,
+            day,
+            histories,
+            day_fx,
+            trades,
+            set(SATELLITE_SYMBOLS),
+            True,
+        )
         benchmark_daily_pct = {
             sym: daily_pct
             for sym in ("001015", "VOO", "QQQ")
@@ -1991,9 +2006,12 @@ def ensure_completed_performance_history(
             "usd_daily_pct": usd_daily_pct,
             "usd_daily_pnl_usd": holding_daily_pnl_usd,
             "usd_daily_basis_usd": holding_daily_basis_usd,
+            "satellite_daily_pct": satellite_daily_pct,
+            "satellite_daily_pnl_usd": satellite_daily_pnl_usd,
+            "satellite_daily_basis_usd": satellite_daily_basis_usd,
             "pnl_basis_version": 2,
             "snapshot_schema_version": 7,
-            "calculation_version": "2026-08-eod-v8-fund-redemption-basis",
+            "calculation_version": "2026-08-eod-v9-satellite-performance",
             "closing_prices": holding_prices,
             "price_source": "historical_daily_close",
             "fx_source": "Sina fx_susdcny daily close",
@@ -2066,6 +2084,10 @@ def build_performance_history(
     usd_daily_pct: float,
     usd_daily_pnl_usd: float,
     usd_daily_basis_usd: float,
+    satellite_daily_pct: float,
+    satellite_daily_pnl_usd: float,
+    satellite_daily_basis_usd: float,
+    satellite_return_pct: float,
     cash_flow_cny: float,
 ) -> dict[str, Any]:
     now = datetime.now(TZ_SHANGHAI)
@@ -2143,6 +2165,9 @@ def build_performance_history(
         "usd_daily_pct": usd_daily_pct,
         "usd_daily_pnl_usd": usd_daily_pnl_usd,
         "usd_daily_basis_usd": usd_daily_basis_usd,
+        "satellite_daily_pct": satellite_daily_pct,
+        "satellite_daily_pnl_usd": satellite_daily_pnl_usd,
+        "satellite_daily_basis_usd": satellite_daily_basis_usd,
         "cash_flow_cny": cash_flow_cny,
         "cash_flow_flag": cash_flow_cny > 0,
         "total_assets_cny": total_assets_cny,
@@ -2214,6 +2239,10 @@ def build_performance_history(
             "usd_cost_usd": coerce_optional_float(baseline_row.get("usd_cost_usd")),
             "usd_daily_pnl_usd": coerce_optional_float(baseline_row.get("usd_daily_pnl_usd")),
             "usd_daily_basis_usd": coerce_optional_float(baseline_row.get("usd_daily_basis_usd")),
+            "satellite_daily_pct": coerce_optional_float(baseline_row.get("satellite_daily_pct")),
+            "satellite_daily_pnl_usd": coerce_optional_float(baseline_row.get("satellite_daily_pnl_usd")),
+            "satellite_daily_basis_usd": coerce_optional_float(baseline_row.get("satellite_daily_basis_usd")),
+            "satellite_return_pct": None,
             "cash_flow_cny": coerce_optional_float(baseline_row.get("cash_flow_cny")) or 0.0,
             "cash_flow_flag": bool(baseline_row.get("cash_flow_flag")),
             "market_open_symbols": list(benchmark_symbols),
@@ -2268,6 +2297,9 @@ def build_performance_history(
             "usd_cost_usd": coerce_optional_float(row.get("usd_cost_usd")),
             "usd_daily_pnl_usd": coerce_optional_float(row.get("usd_daily_pnl_usd")),
             "usd_daily_basis_usd": coerce_optional_float(row.get("usd_daily_basis_usd")),
+            "satellite_daily_pct": coerce_optional_float(row.get("satellite_daily_pct")),
+            "satellite_daily_pnl_usd": coerce_optional_float(row.get("satellite_daily_pnl_usd")),
+            "satellite_daily_basis_usd": coerce_optional_float(row.get("satellite_daily_basis_usd")),
             "cash_flow_cny": coerce_optional_float(row.get("cash_flow_cny")) or 0.0,
             "cash_flow_flag": bool(row.get("cash_flow_flag")),
             "market_open_symbols": row.get("market_open_symbols") or [],
@@ -2276,6 +2308,7 @@ def build_performance_history(
             "symbol_position_pct": row.get("symbol_position_pct") or {},
             "holdings_snapshot": row.get("holdings_snapshot") or {},
         }
+        point["satellite_return_pct"] = None
         daily_pcts = row.get("benchmark_daily_pct") or {}
         if isinstance(daily_pcts, dict):
             for sym in benchmark_symbols:
@@ -2298,6 +2331,21 @@ def build_performance_history(
                 point[f"{sym}_return_pct"] = (cumulative[sym] - 1.0) * 100.0
                 point[f"{sym}_daily_pct"] = daily_pct
         points.append(point)
+
+    # Anchor the satellite series to its live cumulative holding return, then
+    # reverse each trade-aware daily return to derive historical levels. This
+    # preserves the real return on the chart's first day rather than forcing
+    # an arbitrary zero at the chart start.
+    if points and satellite_return_pct is not None:
+        running_factor = 1.0 + satellite_return_pct / 100.0
+        for index in range(len(points) - 1, -1, -1):
+            point = points[index]
+            point["satellite_return_pct"] = (running_factor - 1.0) * 100.0
+            if index == 0:
+                continue
+            daily_pct = coerce_optional_float(point.get("satellite_daily_pct"))
+            if daily_pct is not None and 1.0 + daily_pct / 100.0 > 0:
+                running_factor /= 1.0 + daily_pct / 100.0
 
     return {
         "points": points,
@@ -2909,6 +2957,29 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
         if usd_value_usd - usd_daily_pnl_usd > 0
         else 0.0
     )
+    satellite_daily_pnl_usd = sum(
+        _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, accounting_daily_pct(s))
+        for s in SATELLITE_SYMBOLS
+    )
+    satellite_value_usd = sum(value_cny_by_symbol.get(s, 0.0) / fx for s in SATELLITE_SYMBOLS) if fx > 0 else 0.0
+    satellite_daily_basis_usd = satellite_value_usd - satellite_daily_pnl_usd
+    satellite_daily_pct = (
+        satellite_daily_pnl_usd / satellite_daily_basis_usd * 100.0
+        if satellite_daily_basis_usd > 0
+        else 0.0
+    )
+    satellite_cost_usd = sum(
+        float(holdings[s].get("shares", 0.0) or 0.0) * float(holdings[s].get("avg_cost", 0.0) or 0.0)
+        for s in SATELLITE_SYMBOLS
+    )
+    satellite_value_usd = sum(
+        value_cny_by_symbol.get(s, 0.0) / fx for s in SATELLITE_SYMBOLS
+    ) if fx > 0 else 0.0
+    satellite_return_pct = (
+        (satellite_value_usd - satellite_cost_usd) / satellite_cost_usd * 100.0
+        if satellite_cost_usd > 0
+        else 0.0
+    )
     holding_pnl_cny = (
         sum(float(row.get("pnl_cny", 0.0)) for row in rows)
         + archived_pnl_cny
@@ -2962,6 +3033,10 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
         usd_daily_pct,
         usd_daily_pnl_usd,
         usd_daily_basis_usd,
+        satellite_daily_pct,
+        satellite_daily_pnl_usd,
+        satellite_daily_basis_usd,
+        satellite_return_pct,
         today_cash_flow_cny,
     )
 

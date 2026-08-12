@@ -30,6 +30,7 @@ const TERMINAL_CHART = {
 };
 const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
 const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"];
+const SATELLITE_PERFORMANCE_SYMBOLS = ["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA"];
 
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
 const shanghaiDateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -1214,17 +1215,59 @@ function withUsdPerformanceFallback(points) {
   });
 }
 
+function withSatellitePerformanceFallback(points) {
+  let cumulativeSatellite = 1;
+  return (points || []).map((point, index) => {
+    const explicitReturn = Number(point?.satellite_return_pct);
+    const explicitDaily = Number(point?.satellite_daily_pct);
+    if (Number.isFinite(explicitReturn)) {
+      if (index > 0) cumulativeSatellite = 1 + explicitReturn / 100;
+      return point;
+    }
+    if (index === 0) {
+      cumulativeSatellite = 1;
+      return { ...point, satellite_return_pct: 0, satellite_daily_pct: 0 };
+    }
+    const snapshot = point?.holdings_snapshot || {};
+    const symbolDailyPct = point?.symbol_position_pct || point?.symbol_daily_pct || {};
+    let basis = 0;
+    let pnl = 0;
+    SATELLITE_PERFORMANCE_SYMBOLS.forEach((symbol) => {
+      const holding = snapshot[symbol];
+      const dailyPct = Number(symbolDailyPct[symbol]);
+      if (!holding || !Number.isFinite(dailyPct)) return;
+      const value = Number(holding.shares || 0) * Number(holding.avg_cost || 0);
+      if (!Number.isFinite(value) || value <= 0) return;
+      basis += value;
+      pnl += value * dailyPct / 100;
+    });
+    if (basis <= 0) return point;
+    const fallbackDaily = Number.isFinite(explicitDaily) ? explicitDaily : pnl / basis * 100;
+    cumulativeSatellite *= 1 + fallbackDaily / 100;
+    return {
+      ...point,
+      satellite_daily_pct: fallbackDaily,
+      satellite_return_pct: (cumulativeSatellite - 1) * 100,
+    };
+  });
+}
+
 function PerformanceChart({ history }) {
   const [expanded, setExpanded] = useState(false);
   const [selectedSeriesKeys, setSelectedSeriesKeys] = useState(() => new Set([
     "portfolio_return_pct",
     "usd_return_pct",
+    "satellite_return_pct",
   ]));
-  const points = useMemo(() => withUsdPerformanceFallback(history?.points || []), [history?.points]);
+  const points = useMemo(
+    () => withSatellitePerformanceFallback(withUsdPerformanceFallback(history?.points || [])),
+    [history?.points],
+  );
   const latest = points[points.length - 1];
   const series = useMemo(() => [
     ["portfolio_return_pct", "总资产", TERMINAL_CHART.yellow, 4],
     ["usd_return_pct", "美元资产", TERMINAL_CHART.deepBlue, 3],
+    ["satellite_return_pct", "卫星仓位", TERMINAL_CHART.green, 3],
     ["001015_return_pct", "沪深300", TERMINAL_CHART.coral, 2],
     ["VOO_return_pct", "VOO", TERMINAL_CHART.violet, 2],
     ["QQQ_return_pct", "QQQ", TERMINAL_CHART.cyan, 2],
