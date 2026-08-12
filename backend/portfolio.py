@@ -1561,7 +1561,14 @@ def apply_trade_to_holdings(
         if cost_basis <= 0:
             cost_basis = sell_shares * old_cost
         realized = amount - cost_basis
-        remaining_cost = max(0.0, old_shares * old_cost - cost_basis)
+        # 001015 uses the user's net-invested-capital convention: proceeds
+        # from a partial redemption reduce the cost left in the position.  It
+        # is deliberately different from the FIFO/average-cost convention
+        # used for US securities, where selling leaves the remaining average
+        # cost unchanged.  Replaying the trade ledger must use this exact
+        # rule, otherwise historical snapshots diverge from the live book.
+        cost_reduction = amount if sym == "001015" else cost_basis
+        remaining_cost = max(0.0, old_shares * old_cost - cost_reduction)
         holdings[sym] = {"shares": new_shares, "avg_cost": remaining_cost / new_shares if new_shares > 1e-9 else 0.0}
         return holdings, realized
     price = amount / shares
@@ -1659,11 +1666,29 @@ def holdings_snapshot_for_day(
         event_day = str(adjustment.get("effective_date") or "")[:10]
         if adjustment.get("kind") == "holdings" and (not start_date or event_day > start_date) and event_day <= day:
             events.append((event_day, str(adjustment.get("recorded_at") or ""), "adjustment", adjustment))
+    fund_redemption_applied = False
     for _, _, event_type, event in sorted(events, key=lambda item: (item[0], item[1], item[2])):
         if event_type == "trade":
             snapshot, _ = apply_trade_to_holdings(snapshot, event, allow_oversell=True)
+            if (
+                str(event.get("symbol") or "").upper() == "001015"
+                and str(event.get("action") or "").lower() == "sell"
+            ):
+                fund_redemption_applied = True
             continue
         for sym, holding in (event.get("after") or {}).items():
+            # Legacy holdings anchors created after the 2026-07-21 fund
+            # redemption still carry the pre-redemption average cost.  The
+            # redemption itself is the authoritative event for 001015's
+            # remaining net-invested cost, so do not overwrite it with one
+            # of those stale anchors during historical reconstruction.
+            if (
+                str(sym).upper() == "001015"
+                and str(event.get("effective_date") or "")[:10] >= "2026-07-21"
+                and str(event.get("reason") or "") == "exact_holdings_anchor_reconciliation"
+                and "001015" in snapshot
+            ):
+                continue
             if isinstance(holding, dict):
                 snapshot[str(sym).upper()] = {
                     "shares": float(holding.get("shares", 0.0) or 0.0),
@@ -1728,14 +1753,21 @@ def ensure_completed_performance_history(
         if day:
             historical_fx = close_on(fx_history, day) or close_on_or_before(fx_history, day)
             row_fx = historical_fx or coerce_optional_float(row.get("fx_rate")) or fx
+            # The 2026-07-21 001015 redemption established the net-invested
+            # cost convention.  Treat that date and every later snapshot as
+            # reconstructible even when the older history is otherwise a
+            # trusted anchor, so a former replay rule cannot preserve the
+            # stale cost basis indefinitely.
+            rebuild_from_fund_redemption = day >= "2026-07-21"
             expected_snapshot = (
                 holdings_snapshot_for_day(day, holdings, repaired_snapshot_rows, trades, adjustments)
-                if repaired_snapshot_rows
+                if repaired_snapshot_rows or rebuild_from_fund_redemption
                 else row.get("holdings_snapshot") or {}
             )
             snapshot_changed = not holdings_snapshots_match(row.get("holdings_snapshot") or {}, expected_snapshot)
             needs_pnl_repair = (
                 snapshot_changed
+                or str(row.get("calculation_version") or "") != "2026-08-eod-v8-fund-redemption-basis"
                 or int(row.get("pnl_basis_version", 0) or 0) < 2
                 or int(row.get("snapshot_schema_version", 0) or 0) < 7
                 or (
@@ -1792,7 +1824,7 @@ def ensure_completed_performance_history(
                         "usd_daily_basis_usd": holding_daily_basis_usd,
                         "pnl_basis_version": 2,
                         "snapshot_schema_version": 7,
-                        "calculation_version": "2026-07-eod-v7-cash-cost-basis",
+                        "calculation_version": "2026-08-eod-v8-fund-redemption-basis",
                         "fx_rate": row_fx,
                         "closing_prices": holding_prices,
                         "price_source": "historical_daily_close",
@@ -1961,7 +1993,7 @@ def ensure_completed_performance_history(
             "usd_daily_basis_usd": holding_daily_basis_usd,
             "pnl_basis_version": 2,
             "snapshot_schema_version": 7,
-            "calculation_version": "2026-07-eod-v7-cash-cost-basis",
+            "calculation_version": "2026-08-eod-v8-fund-redemption-basis",
             "closing_prices": holding_prices,
             "price_source": "historical_daily_close",
             "fx_source": "Sina fx_susdcny daily close",
