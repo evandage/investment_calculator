@@ -33,6 +33,9 @@
       "usd_daily_pct": -0.599571860434993,
       "usd_daily_pnl_usd": -47.66930002799993,
       "usd_daily_basis_usd": 7950.556584396,
+      "satellite_daily_pct": -0.44661459725082203,
+      "satellite_daily_pnl_usd": -2.6984149999999776,
+      "satellite_daily_basis_usd": 604.193194,
       "cash_flow_cny": 9116.465232,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -133,11 +136,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-07T08:00:00+08:00",
-      "satellite_daily_pct": -0.44661459725082203,
-      "satellite_daily_pnl_usd": -2.6984149999999776,
-      "satellite_daily_basis_usd": 604.193194,
-      "total_pnl_pct": 1.6317344073298459
+      "updated_at": "2026-07-07T08:00:00+08:00"
     },
     {
       "date": "2026-07-08",
@@ -172,6 +171,9 @@
       "usd_daily_pct": -0.017235142990479412,
       "usd_daily_pnl_usd": -1.0575619999998649,
       "usd_daily_basis_usd": 6136.07906,
+      "satellite_daily_pct": -0.06934316642351211,
+      "satellite_daily_pnl_usd": -0.31654099999997143,
+      "satellite_daily_basis_usd": 456.48477899999995,
       "cash_flow_cny": 25047.220097999998,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -272,11 +274,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-08T08:00:00+08:00",
-      "satellite_daily_pct": -0.06934316642351211,
-      "satellite_daily_pnl_usd": -0.31654099999997143,
-      "satellite_daily_basis_usd": 456.48477899999995,
-      "total_pnl_pct": 1.3910881866710207
+      "updated_at": "2026-07-08T08:00:00+08:00"
     },
     {
       "date": "2026-07-09",
@@ -311,6 +309,9 @@
       "usd_daily_pct": 1.1019765280793192,
       "usd_daily_pnl_usd": 61.10800499999998,
       "usd_daily_basis_usd": 5545.309128000001,
+      "satellite_daily_pct": 0.2632470649697443,
+      "satellite_daily_pnl_usd": 1.3989629999999877,
+      "satellite_daily_basis_usd": 531.425868,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -411,11 +412,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-09T08:00:00+08:00",
-      "satellite_daily_pct": 0.2632470649697443,
-      "satellite_daily_pnl_usd": 1.3989629999999877,
-      "satellite_daily_basis_usd": 531.425868,
-      "total_pnl_pct": 2.590947235294165
+      "updated_at": "2026-07-09T08:00:00+08:00"
     },
     {
       "date": "2026-07-10",
@@ -450,6 +447,9 @@
       "usd_daily_pct": 0.2653665732514528,
       "usd_daily_pnl_usd": 14.957166999999881,
       "usd_daily_basis_usd": 5636.417133,
+      "satellite_daily_pct": -0.8562216402993089,
+      "satellite_daily_pnl_usd": -4.819028000000014,
+      "satellite_daily_basis_usd": 562.824831,
       "cash_flow_cny": 203.427,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -550,11 +550,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-10T08:00:00+08:00",
-      "satellite_daily_pct": -0.8562216402993089,
-      "satellite_daily_pnl_usd": -4.819028000000014,
-      "satellite_daily_basis_usd": 562.824831,
-      "total_pnl_pct": 1.8915892802977623
+      "updated_at": "2026-07-10T08:00:00+08:00"
     },
     {
       "date": "2026-07-13",
@@ -589,6 +585,9 @@
       "usd_daily_pct": -1.285929328742014,
       "usd_daily_pnl_usd": -72.865569,
       "usd_daily_basis_usd": 5666.3743,
+      "satellite_daily_pct": -1.2596532115748904,
+      "satellite_daily_pnl_usd": -7.21788599999999,
+      "satellite_daily_basis_usd": 573.005803,
       "cash_flow_cny": 101.7765,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -689,11 +688,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-13T08:00:00+08:00",
-      "satellite_daily_pct": -1.2596532115748904,
-      "satellite_daily_pnl_usd": -7.21788599999999,
-      "satellite_daily_basis_usd": 573.005803,
-      "total_pnl_pct": 0.9446746334641719
+      "updated_at": "2026-07-13T08:00:00+08:00"
     },
     {
       "date": "2026-07-14",
@@ -728,6 +723,9 @@
       "usd_daily_pct": 0.42928311803856867,
       "usd_daily_pnl_usd": 24.054917000000234,
       "usd_daily_basis_usd": 5603.508731,
+      "satellite_daily_pct": -2.063535487494435,
+      "satellite_daily_pnl_usd": -11.881588000000002,
+      "satellite_daily_basis_usd": 575.787917,
       "cash_flow_cny": 67.766,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -828,11 +826,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-14T08:00:00+08:00",
-      "satellite_daily_pct": -2.063535487494435,
-      "satellite_daily_pnl_usd": -11.881588000000002,
-      "satellite_daily_basis_usd": 575.787917,
-      "total_pnl_pct": 1.7050496185664694
+      "updated_at": "2026-07-14T08:00:00+08:00"
     },
     {
       "date": "2026-07-15",
@@ -867,6 +861,9 @@
       "usd_daily_pct": 0.2714611500738656,
       "usd_daily_pnl_usd": 15.276648999999589,
       "usd_daily_basis_usd": 5627.563648,
+      "satellite_daily_pct": 1.9208463255251047,
+      "satellite_daily_pnl_usd": 10.831774000000008,
+      "satellite_daily_basis_usd": 563.906329,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -967,11 +964,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-15T08:00:00+08:00",
-      "satellite_daily_pct": 1.9208463255251047,
-      "satellite_daily_pnl_usd": 10.831774000000008,
-      "satellite_daily_basis_usd": 563.906329,
-      "total_pnl_pct": 1.7283606056709804
+      "updated_at": "2026-07-15T08:00:00+08:00"
     },
     {
       "date": "2026-07-16",
@@ -1006,6 +999,9 @@
       "usd_daily_pct": -1.0211338965349381,
       "usd_daily_pnl_usd": -57.62095499999977,
       "usd_daily_basis_usd": 5642.840297,
+      "satellite_daily_pct": -0.8825339704334915,
+      "satellite_daily_pnl_usd": -5.07225900000003,
+      "satellite_daily_basis_usd": 574.738103,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -1106,11 +1102,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-16T08:00:00+08:00",
-      "satellite_daily_pct": -0.8825339704334915,
-      "satellite_daily_pnl_usd": -5.07225900000003,
-      "satellite_daily_basis_usd": 574.738103,
-      "total_pnl_pct": 0.9658216303497915
+      "updated_at": "2026-07-16T08:00:00+08:00"
     },
     {
       "date": "2026-07-17",
@@ -1145,6 +1137,9 @@
       "usd_daily_pct": -1.8394594757790497,
       "usd_daily_pnl_usd": -104.59570050000013,
       "usd_daily_basis_usd": 5686.219342,
+      "satellite_daily_pct": -6.872538889057989,
+      "satellite_daily_pnl_usd": -42.65550149999998,
+      "satellite_daily_basis_usd": 620.6658439999999,
       "cash_flow_cny": 684.2952,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -1245,11 +1240,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-17T08:00:00+08:00",
-      "satellite_daily_pct": -6.872538889057989,
-      "satellite_daily_pnl_usd": -42.65550149999998,
-      "satellite_daily_basis_usd": 620.6658439999999,
-      "total_pnl_pct": -0.9851939515640609
+      "updated_at": "2026-07-17T08:00:00+08:00"
     },
     {
       "date": "2026-07-20",
@@ -1284,6 +1275,9 @@
       "usd_daily_pct": 0.056059934178082,
       "usd_daily_pnl_usd": 3.1626905000000125,
       "usd_daily_basis_usd": 5641.6236415,
+      "satellite_daily_pct": 0.716692065223068,
+      "satellite_daily_pnl_usd": 4.57256950000002,
+      "satellite_daily_basis_usd": 638.0103425,
       "cash_flow_cny": 406.29600000000005,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -1384,11 +1378,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-20T08:00:00+08:00",
-      "satellite_daily_pct": 0.716692065223068,
-      "satellite_daily_pnl_usd": 4.57256950000002,
-      "satellite_daily_basis_usd": 638.0103425,
-      "total_pnl_pct": -0.4235266464650977
+      "updated_at": "2026-07-20T08:00:00+08:00"
     },
     {
       "date": "2026-07-21",
@@ -1423,6 +1413,9 @@
       "usd_daily_pct": 0.6828789467885967,
       "usd_daily_pnl_usd": 56.40755144199997,
       "usd_daily_basis_usd": 8260.256331999999,
+      "satellite_daily_pct": -0.11677154589508099,
+      "satellite_daily_pnl_usd": -0.7503540000000278,
+      "satellite_daily_basis_usd": 642.582912,
       "cash_flow_cny": 27748.928916999997,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -1531,11 +1524,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-21T08:00:00+08:00",
-      "satellite_daily_pct": -0.11677154589508099,
-      "satellite_daily_pnl_usd": -0.7503540000000278,
-      "satellite_daily_basis_usd": 642.582912,
-      "total_pnl_pct": 1.0296942686334905
+      "updated_at": "2026-07-21T08:00:00+08:00"
     },
     {
       "date": "2026-07-22",
@@ -1570,6 +1559,9 @@
       "usd_daily_pct": -0.3040700799737932,
       "usd_daily_pnl_usd": -21.572622000000106,
       "usd_daily_basis_usd": 7094.6217404419995,
+      "satellite_daily_pct": -1.4876651747295755,
+      "satellite_daily_pnl_usd": -10.882363999999997,
+      "satellite_daily_basis_usd": 731.506268,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -1678,11 +1670,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-22T08:00:00+08:00",
-      "satellite_daily_pct": -1.4876651747295755,
-      "satellite_daily_pnl_usd": -10.882363999999997,
-      "satellite_daily_basis_usd": 731.506268,
-      "total_pnl_pct": 0.9152248363089459
+      "updated_at": "2026-07-22T08:00:00+08:00"
     },
     {
       "date": "2026-07-23",
@@ -1717,6 +1705,9 @@
       "usd_daily_pct": -1.105614135732195,
       "usd_daily_pnl_usd": -78.76449408999956,
       "usd_daily_basis_usd": 7124.049118442,
+      "satellite_daily_pct": -2.9303678751766604,
+      "satellite_daily_pnl_usd": -22.61141899999999,
+      "satellite_daily_basis_usd": 771.6239039999999,
       "cash_flow_cny": 277.57410000000004,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -1825,11 +1816,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-23T08:00:00+08:00",
-      "satellite_daily_pct": -2.9303678751766604,
-      "satellite_daily_pnl_usd": -22.61141899999999,
-      "satellite_daily_basis_usd": 771.6239039999999,
-      "total_pnl_pct": 0.204098448627817
+      "updated_at": "2026-07-23T08:00:00+08:00"
     },
     {
       "date": "2026-07-24",
@@ -1864,6 +1851,9 @@
       "usd_daily_pct": -0.27452244264268016,
       "usd_daily_pnl_usd": -19.478011402000302,
       "usd_daily_basis_usd": 7095.234624352,
+      "satellite_daily_pct": -0.6393469150181668,
+      "satellite_daily_pnl_usd": -5.108141999999982,
+      "satellite_daily_basis_usd": 798.9624849999999,
       "cash_flow_cny": 1019.490567,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -1972,11 +1962,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-24T08:00:00+08:00",
-      "satellite_daily_pct": -0.6393469150181668,
-      "satellite_daily_pnl_usd": -5.108141999999982,
-      "satellite_daily_basis_usd": 798.9624849999999,
-      "total_pnl_pct": -0.3596952244221923
+      "updated_at": "2026-07-24T08:00:00+08:00"
     },
     {
       "date": "2026-07-27",
@@ -2011,6 +1997,9 @@
       "usd_daily_pct": 0.31329682244433055,
       "usd_daily_pnl_usd": 21.852834375000086,
       "usd_daily_basis_usd": 6975.12161295,
+      "satellite_daily_pct": 3.242432094372253,
+      "satellite_daily_pnl_usd": 25.740187999999986,
+      "satellite_daily_basis_usd": 793.854343,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -2119,11 +2108,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-27T08:00:00+08:00",
-      "satellite_daily_pct": 3.242432094372253,
-      "satellite_daily_pnl_usd": 25.740187999999986,
-      "satellite_daily_basis_usd": 793.854343,
-      "total_pnl_pct": 0.08905956570558721
+      "updated_at": "2026-07-27T08:00:00+08:00"
     },
     {
       "date": "2026-07-28",
@@ -2158,6 +2143,9 @@
       "usd_daily_pct": -0.04443967797784272,
       "usd_daily_pnl_usd": -3.2426852869997322,
       "usd_daily_basis_usd": 7296.824447325001,
+      "satellite_daily_pct": 0.468162469961627,
+      "satellite_daily_pnl_usd": 3.8370340000000125,
+      "satellite_daily_basis_usd": 819.594531,
       "cash_flow_cny": 4342.796904,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -2266,11 +2254,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-28T08:00:00+08:00",
-      "satellite_daily_pct": 0.468162469961627,
-      "satellite_daily_pnl_usd": 3.8370340000000125,
-      "satellite_daily_basis_usd": 819.594531,
-      "total_pnl_pct": -0.6217437420873213
+      "updated_at": "2026-07-28T08:00:00+08:00"
     },
     {
       "date": "2026-07-29",
@@ -2305,6 +2289,9 @@
       "usd_daily_pct": -1.1729676373902875,
       "usd_daily_pnl_usd": -83.76867746000028,
       "usd_daily_basis_usd": 7141.601762038,
+      "satellite_daily_pct": -1.564494555172901,
+      "satellite_daily_pnl_usd": -12.882542000000008,
+      "satellite_daily_basis_usd": 823.431565,
       "cash_flow_cny": 1014.38237,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -2413,11 +2400,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-29T08:00:00+08:00",
-      "satellite_daily_pct": -1.564494555172901,
-      "satellite_daily_pnl_usd": -12.882542000000008,
-      "satellite_daily_basis_usd": 823.431565,
-      "total_pnl_pct": -1.277952305929229
+      "updated_at": "2026-07-29T08:00:00+08:00"
     },
     {
       "date": "2026-07-30",
@@ -2452,6 +2435,9 @@
       "usd_daily_pct": 1.5125942948970401,
       "usd_daily_pnl_usd": 114.62111461699978,
       "usd_daily_basis_usd": 7577.783084578,
+      "satellite_daily_pct": 1.3128952320987683,
+      "satellite_daily_pnl_usd": 10.772949000000027,
+      "satellite_daily_basis_usd": 820.549023,
       "cash_flow_cny": 7115.725024,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -2560,11 +2546,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-30T08:00:00+08:00",
-      "satellite_daily_pct": 1.3128952320987683,
-      "satellite_daily_pnl_usd": 10.772949000000027,
-      "satellite_daily_basis_usd": 820.549023,
-      "total_pnl_pct": -0.6500208112373698
+      "updated_at": "2026-07-30T08:00:00+08:00"
     },
     {
       "date": "2026-07-31",
@@ -2599,6 +2581,9 @@
       "usd_daily_pct": 0.6352039011684109,
       "usd_daily_pnl_usd": 48.20514257000022,
       "usd_daily_basis_usd": 7588.924199194999,
+      "satellite_daily_pct": 1.7684659488345558,
+      "satellite_daily_pnl_usd": 14.701645999999938,
+      "satellite_daily_basis_usd": 831.321972,
       "cash_flow_cny": 5421.135087000001,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -2707,11 +2692,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-07-31T08:00:00+08:00",
-      "satellite_daily_pct": 1.7684659488345558,
-      "satellite_daily_pnl_usd": 14.701645999999938,
-      "satellite_daily_basis_usd": 831.321972,
-      "total_pnl_pct": 0.05925026556346584
+      "updated_at": "2026-07-31T08:00:00+08:00"
     },
     {
       "date": "2026-08-03",
@@ -2746,6 +2727,9 @@
       "usd_daily_pct": 1.6020479161026648,
       "usd_daily_pnl_usd": 115.89646123500013,
       "usd_daily_basis_usd": 7234.269341765,
+      "satellite_daily_pct": 4.314324591349655,
+      "satellite_daily_pnl_usd": 36.50020500000006,
+      "satellite_daily_basis_usd": 846.0236179999999,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -2854,11 +2838,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-08-03T08:00:00+08:00",
-      "satellite_daily_pct": 4.314324591349655,
-      "satellite_daily_pnl_usd": 36.50020500000006,
-      "satellite_daily_basis_usd": 846.0236179999999,
-      "total_pnl_pct": 0.7407260510638454
+      "updated_at": "2026-08-03T08:00:00+08:00"
     },
     {
       "date": "2026-08-04",
@@ -2893,6 +2873,9 @@
       "usd_daily_pct": 2.1102278799846017,
       "usd_daily_pnl_usd": 155.10524800000007,
       "usd_daily_basis_usd": 7350.165803,
+      "satellite_daily_pct": 3.171445491959253,
+      "satellite_daily_pnl_usd": 27.988761999999955,
+      "satellite_daily_basis_usd": 882.523823,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -3001,11 +2984,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-08-04T08:00:00+08:00",
-      "satellite_daily_pct": 3.171445491959253,
-      "satellite_daily_pnl_usd": 27.988761999999955,
-      "satellite_daily_basis_usd": 882.523823,
-      "total_pnl_pct": 2.3607012991513527
+      "updated_at": "2026-08-04T08:00:00+08:00"
     },
     {
       "date": "2026-08-05",
@@ -3040,6 +3019,9 @@
       "usd_daily_pct": -0.32477700686559974,
       "usd_daily_pnl_usd": -31.878522999999966,
       "usd_daily_basis_usd": 9815.511051,
+      "satellite_daily_pct": -0.7002623692455593,
+      "satellite_daily_pnl_usd": -6.3759769999999865,
+      "satellite_daily_basis_usd": 910.512585,
       "cash_flow_cny": 15604.054031999998,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -3148,11 +3130,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-08-05T08:00:00+08:00",
-      "satellite_daily_pct": -0.7002623692455593,
-      "satellite_daily_pnl_usd": -6.3759769999999865,
-      "satellite_daily_basis_usd": 910.512585,
-      "total_pnl_pct": 2.1083790835087752
+      "updated_at": "2026-08-05T08:00:00+08:00"
     },
     {
       "date": "2026-08-06",
@@ -3187,6 +3165,9 @@
       "usd_daily_pct": -0.20900860551251152,
       "usd_daily_pnl_usd": -20.82472400000049,
       "usd_daily_basis_usd": 9963.572528,
+      "satellite_daily_pct": -0.765791436387785,
+      "satellite_daily_pnl_usd": -7.3831990000000305,
+      "satellite_daily_basis_usd": 964.126608,
       "cash_flow_cny": 2405.698344,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -3295,11 +3276,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-08-06T08:00:00+08:00",
-      "satellite_daily_pct": -0.765791436387785,
-      "satellite_daily_pnl_usd": -7.3831990000000305,
-      "satellite_daily_basis_usd": 964.126608,
-      "total_pnl_pct": 1.9459226149514963
+      "updated_at": "2026-08-06T08:00:00+08:00"
     },
     {
       "date": "2026-08-07",
@@ -3334,6 +3311,9 @@
       "usd_daily_pct": 0.6971318414265087,
       "usd_daily_pnl_usd": 68.55446600000063,
       "usd_daily_basis_usd": 9833.787804,
+      "satellite_daily_pct": 2.621222680709481,
+      "satellite_daily_pnl_usd": 22.222291000000027,
+      "satellite_daily_basis_usd": 847.783409,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -3442,11 +3422,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-08-07T08:00:00+08:00",
-      "satellite_daily_pct": 2.621222680709481,
-      "satellite_daily_pnl_usd": 22.222291000000027,
-      "satellite_daily_basis_usd": 847.783409,
-      "total_pnl_pct": 2.7490902741337275
+      "updated_at": "2026-08-07T08:00:00+08:00"
     },
     {
       "date": "2026-08-10",
@@ -3481,6 +3457,9 @@
       "usd_daily_pct": 0.1496613992519537,
       "usd_daily_pnl_usd": 14.819983999999677,
       "usd_daily_basis_usd": 9902.342270000001,
+      "satellite_daily_pct": 2.4445497311109543,
+      "satellite_daily_pnl_usd": 21.267721999999978,
+      "satellite_daily_basis_usd": 870.0057,
       "cash_flow_cny": 0.0,
       "cash_flow_flag": false,
       "pnl_basis_version": 2,
@@ -3589,11 +3568,7 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-08-10T08:00:00+08:00",
-      "satellite_daily_pct": 2.4445497311109543,
-      "satellite_daily_pnl_usd": 21.267721999999978,
-      "satellite_daily_basis_usd": 870.0057,
-      "total_pnl_pct": 2.799821073148061
+      "updated_at": "2026-08-10T08:00:00+08:00"
     },
     {
       "date": "2026-08-11",
@@ -3628,6 +3603,9 @@
       "usd_daily_pct": -0.22121447187954643,
       "usd_daily_pnl_usd": -21.982440999999728,
       "usd_daily_basis_usd": 9937.162253999999,
+      "satellite_daily_pct": -0.5334093898329408,
+      "satellite_daily_pnl_usd": -4.86081799999996,
+      "satellite_daily_basis_usd": 911.273422,
       "cash_flow_cny": 813.46822686,
       "cash_flow_flag": true,
       "pnl_basis_version": 2,
@@ -3736,11 +3714,156 @@
       },
       "finalized": true,
       "estimated_symbols": [],
-      "updated_at": "2026-08-11T08:00:00+08:00",
-      "satellite_daily_pct": -0.5334093898329408,
-      "satellite_daily_pnl_usd": -4.86081799999996,
-      "satellite_daily_basis_usd": 911.273422,
-      "total_pnl_pct": 2.53013581417912
+      "updated_at": "2026-08-11T08:00:00+08:00"
+    },
+    {
+      "date": "2026-08-12",
+      "portfolio_daily_pct": 0.7884256470180666,
+      "portfolio_return_pct": 0.0,
+      "holding_pnl_pct": 2.571553464647262,
+      "holding_pnl_cny": 2145.5028418863703,
+      "holding_cost_cny": 83432.16936306893,
+      "fx_rate": 6.7501,
+      "holding_daily_pnl_pct": 0.7884256470180666,
+      "holding_daily_pnl_cny": 668.2143142896997,
+      "holding_daily_basis_cny": 84752.9905726656,
+      "security_daily_pnl_pct": 0.7884256470180666,
+      "security_daily_pnl_cny": 668.2143142896997,
+      "security_daily_basis_cny": 84752.9905726656,
+      "usd_return_pct": 3.0945676557761708,
+      "usd_pnl_usd": 295.9196536179258,
+      "usd_cost_usd": 9562.552399382073,
+      "usd_value_usd": 9858.472053,
+      "usd_daily_pct": 0.8081364023193002,
+      "usd_daily_pnl_usd": 78.84539700000008,
+      "usd_daily_basis_usd": 9756.446656,
+      "satellite_daily_pct": 6.63870176724021,
+      "satellite_daily_pnl_usd": 56.16889699999998,
+      "satellite_daily_basis_usd": 846.082547,
+      "pnl_basis_version": 2,
+      "snapshot_schema_version": 7,
+      "calculation_version": "2026-08-eod-v9-satellite-performance",
+      "closing_prices": {
+        "VOO": 710.17,
+        "QQQ": 723.7,
+        "ISRG": 401.27,
+        "TEM": 54.61,
+        "GOOGL": 343.54,
+        "AVGO": 416.05,
+        "001015": 2.379,
+        "PLTR": 171.04,
+        "SGOV": 100.52
+      },
+      "price_source": "historical_daily_close",
+      "fx_source": "Sina fx_susdcny daily close",
+      "voo_dividend_usd": 7.98,
+      "sgov_dividend_usd": 15.2,
+      "cash_flow_cny": 0,
+      "cash_flow_flag": false,
+      "total_assets_cny": 0.0,
+      "total_cost_cny": 0.0,
+      "benchmark_prices": {
+        "001015": 2.379,
+        "VOO": 710.17,
+        "QQQ": 723.7
+      },
+      "benchmark_daily_pct": {
+        "001015": 0.7197290431837366,
+        "VOO": 0.24702859885379347,
+        "QQQ": 0.7307397870415455
+      },
+      "market_open_symbols": [
+        "001015",
+        "VOO",
+        "QQQ"
+      ],
+      "symbol_position_pct": {
+        "VOO": 0.24702859885378736,
+        "QQQ": 0.7307397870415477,
+        "ISRG": 0.009969344266371812,
+        "TEM": 5.643579315193246,
+        "GOOGL": -0.07562536358347613,
+        "AVGO": -0.007210151893860005,
+        "001015": 0.7197290431837385,
+        "PLTR": 164.56303170920336,
+        "SGOV": -0.04971661529282803
+      },
+      "symbol_market_pct": {
+        "SGOV": -0.04971661529282745,
+        "VOO": 0.24702859885379347,
+        "AVGO": -0.007210151893854988,
+        "001015": 0.7197290431837366,
+        "PLTR": 164.56303170920336,
+        "ISRG": 0.009969344266380631,
+        "GOOGL": -0.07562536358347582,
+        "QQQ": 0.7307397870415455
+      },
+      "symbol_daily_pct": {
+        "SGOV": -0.04971661529282745,
+        "VOO": 0.24702859885379347,
+        "AVGO": -0.007210151893854988,
+        "001015": 0.7197290431837366,
+        "PLTR": 164.56303170920336,
+        "ISRG": 0.009969344266380631,
+        "GOOGL": -0.07562536358347582,
+        "QQQ": 0.7307397870415455
+      },
+      "holdings_snapshot": {
+        "VOO": {
+          "shares": 4.3667,
+          "avg_cost": 663.4198994521332
+        },
+        "QQQ": {
+          "shares": 3.1971,
+          "avg_cost": 709.1850517656627
+        },
+        "ISRG": {
+          "shares": 0.8466,
+          "avg_cost": 395.73790928419555
+        },
+        "TEM": {
+          "shares": 1.9537999999999998,
+          "avg_cost": 51.69268246494011
+        },
+        "GOOGL": {
+          "shares": 0.8533999999999999,
+          "avg_cost": 353.3538692289665
+        },
+        "MSFT": {
+          "shares": 0.3036,
+          "avg_cost": 422.83
+        },
+        "AVGO": {
+          "shares": 0.19519999999999998,
+          "avg_cost": 421.22999999999996
+        },
+        "001015": {
+          "shares": 8000.0,
+          "avg_cost": 2.3604980514999996
+        },
+        "PLTR": {
+          "shares": 0.47619999999999996,
+          "avg_cost": 128.05614447711048
+        },
+        "SGOV": {
+          "shares": 35.0,
+          "avg_cost": 100.49930555555555
+        }
+      },
+      "estimated_symbols": [],
+      "finalized": true,
+      "updated_at": "2026-08-12T08:00:00+08:00",
+      "total_pnl_cny": 2388.1393136548922,
+      "total_return_basis_cny": 83708.21578661042,
+      "total_pnl_pct": 2.85293300211147,
+      "fx_pnl_cny": -1039.653438189646,
+      "realized_pnl_cny": 1282.2899099581682,
+      "realized_usd": 18.583587047266867,
+      "realized_cny": 1156.8488390304121,
+      "cash_usd": 81.0031,
+      "cash_cny": 0.0,
+      "cash_cost_basis_usd": 39.239512952733165,
+      "cash_cost_basis_cny": -1156.848839030412
     }
   ]
 }

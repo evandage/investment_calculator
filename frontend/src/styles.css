@@ -4920,3 +4920,50 @@ tbody tr:hover th {
 .swingEditor button { align-self:end; min-height:30px; }
 .swingPositionPanel .saveMessage { margin:8px 0 0; }
 @media (max-width:720px) { .swingPositionHeader > div { display:grid; gap:2px; } .swingMetrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .swingEditor { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+/* Mobile app shell: keep the dense terminal useful without making it feel cramped. */
+@media (max-width: 720px) {
+  :root { --mobile-gutter: 12px; }
+  html { background: #07111f; }
+  body { min-width: 0; overflow-x: hidden; padding-bottom: calc(74px + env(safe-area-inset-bottom)); }
+  .appShell, .dashboardShell { width: 100%; max-width: none; padding: max(10px, env(safe-area-inset-top)) var(--mobile-gutter) 18px; }
+  .topbar { min-height: 62px; margin: 0 0 12px; padding: 13px 14px; border-radius: 14px; }
+  .topbar h1, .dashboardShell .topbar h1 { max-width: calc(100vw - 82px); overflow: hidden; font-size: 1.2rem; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .muted, .dashboardShell .topbar .muted { max-width: calc(100vw - 82px); margin-top: 4px; overflow: hidden; font-size: .66rem; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .iconButton { width: 38px; height: 38px; border-radius: 11px; }
+  .pageNav, .dashboardShell .pageNav { position: fixed; z-index: 50; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); left: 10px; width: auto; height: 60px; margin: 0; padding: 5px; border: 1px solid rgba(96,165,250,.28); border-radius: 18px; background: rgba(9,24,42,.94); box-shadow: 0 14px 36px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.035); backdrop-filter: blur(18px); }
+  .pageNav::before { top: 5px; bottom: 5px; left: 5px; border-radius: 13px; background: linear-gradient(180deg, rgba(37,99,235,.95), rgba(29,78,216,.72)); }
+  .pageNav button, .dashboardShell .pageNav button { display: inline-flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; min-height: 48px; padding: 5px 2px; border-radius: 13px; color: #7890a8; font-size: .66rem; font-weight: 700; }
+  .pageNav button.active { color: #fff; }
+  .summaryGrid, .dashboardPage .summaryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .summaryRowLabel, .dashboardPage .summaryRowLabel { grid-column: 1 / -1; min-height: 35px; padding: 8px; border-radius: 10px; font-size: .76rem; }
+  .summaryItem, .dashboardPage .summaryItem, .fxSummaryItem { min-height: 76px; padding: 10px 8px; border-radius: 12px; }
+  .summaryItem span, .dashboardPage .summaryItem span { font-size: .68rem; }
+  .summaryItem strong, .dashboardPage .summaryItem strong { font-size: .9rem; }
+  .dashboardTopGrid, .dashboardWorkspace { gap: 10px; margin-top: 10px; }
+  .dashboardInsights .visualGrid { grid-template-columns: 1fr; gap: 10px; }
+  .dashboardInsights .performancePlot { height: 230px; }
+  .heatmapPanel { margin-bottom: 0; }
+  .cardGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .dailyCard { min-height: 108px; padding: 10px 7px; border-radius: 12px; }
+  .wideCard { grid-column: span 2; }
+  .priceLine { font-size: .95rem; }
+  .fundQuoteMeta { max-width: 100%; overflow: hidden; font-size: .58rem; text-overflow: ellipsis; }
+  .sectionHeader, .actions { flex-wrap: wrap; gap: 8px; }
+  .sectionHeader h2 { font-size: 1rem; }
+  .tableWrap { margin-right: calc(var(--mobile-gutter) * -1); margin-left: calc(var(--mobile-gutter) * -1); padding: 0 var(--mobile-gutter); border-right: 0; border-left: 0; border-radius: 0; -webkit-overflow-scrolling: touch; }
+  .tableWrap::after { content: "左右滑动查看更多"; display: block; padding: 6px 0 8px; color: #71869d; font-size: .62rem; text-align: right; }
+  .tableWrap table { min-width: 760px; }
+  th, td { padding: 9px 8px; font-size: .72rem; }
+  .modalBackdrop { align-items: end; padding: 0; }
+  .modalPanel, .performanceModal, .cheatSheetModal { width: 100%; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top)); margin: 0; padding: 16px 14px calc(18px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; }
+  .fxConversionEditor { grid-template-columns: 1fr; }
+  .fxConversionEditor button { grid-column: auto; }
+  .klineToolbar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .klineAnalysisLayout { gap: 8px; }
+  .technicalInsightPanel { border-radius: 12px; }
+}
+
+@media (min-width: 721px) {
+  .pageNav button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+}

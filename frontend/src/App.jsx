@@ -494,7 +494,11 @@ function PageNav({ page, setPage }) {
     <nav className="pageNav" style={{ "--active-index": activeIndex }}>
       {items.map(([key, label]) => (
         <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
-          {label}
+          {key === "dashboard" ? <Home size={17} aria-hidden="true" /> : null}
+          {key === "holdings" ? <Activity size={17} aria-hidden="true" /> : null}
+          {key === "rebalance" ? <Gauge size={17} aria-hidden="true" /> : null}
+          {key === "kline" ? <TrendingUp size={17} aria-hidden="true" /> : null}
+          <span>{label}</span>
         </button>
       ))}
     </nav>
