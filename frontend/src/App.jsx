@@ -1850,14 +1850,14 @@ function GlobalSparklineRow({ item, marketCard, showExtended = false, onOpenSymb
     points.length ? points[points.length - 1].value : 0
   ));
   const latestQuotePrice = Number(item?.latest_price || 0);
-  const extendedPrice = isChina ? 0 : Number(marketCard?.extended_price || item?.extended_price || (
+  const extendedPrice = isChina ? 0 : Number(item?.extended_price ?? marketCard?.extended_price ?? (
     latestQuotePrice > 0 && Math.abs(latestQuotePrice - regularPrice) > 0.0001 ? latestQuotePrice : 0
   ));
-  const extendedChange = marketCard?.extended_pct != null
-    ? Number(marketCard.extended_pct)
-    : item?.extended_change_pct == null
-    ? (extendedPrice > 0 && item?.latest_change_pct != null ? Number(item.latest_change_pct) : null)
-    : Number(item.extended_change_pct);
+  const extendedChange = item?.extended_change_pct != null
+    ? Number(item.extended_change_pct)
+    : marketCard?.extended_pct != null
+      ? Number(marketCard.extended_pct)
+      : (extendedPrice > 0 && item?.latest_change_pct != null ? Number(item.latest_change_pct) : null);
   const regularChange = marketCard?.regular_pct != null
     ? Number(marketCard.regular_pct)
     : (item?.regular_change_pct == null ? null : Number(item.regular_change_pct));
@@ -3463,7 +3463,7 @@ function KlinePage({ dashboardData }) {
   const todayDate = formatPartsDate(shanghaiDateFormatter, new Date());
 
   return (
-    <section className="chartPanel technicalPanel">
+    <section className={`chartPanel technicalPanel ${scope === "global" ? "globalTechnicalPanel" : ""}`}>
       <div className="toolbarRow klineToolbar">
         <div className="klineControlGroup">
           {scope === "single" ? (

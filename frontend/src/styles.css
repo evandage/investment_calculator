@@ -5082,6 +5082,7 @@ tbody tr:hover th {
   background: rgba(148, 163, 184, .12);
 }
 .globalBoardMeta { display: none; }
+.globalTechnicalPanel .klineToolbar { display: none; }
 .singleChartMeta { display: none; }
 .globalQuoteRow {
   display: grid;
