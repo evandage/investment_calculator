@@ -11,10 +11,10 @@ from zoneinfo import ZoneInfo
 from .config import FUTU_US
 from .market_data import futu_opend_config, get_futu_subscription_kline, is_futu_opend_available
 
-Interval = Literal["1d", "15m", "5m"]
+Interval = Literal["1d", "15m", "5m", "1m"]
 
 _OHLCV_CACHE: dict[tuple[str, str, bool, str], tuple[dict[str, Any], float]] = {}
-_OHLCV_TTL_SECONDS = {"1d": 300, "15m": 45, "5m": 30}
+_OHLCV_TTL_SECONDS = {"1d": 300, "15m": 45, "5m": 30, "1m": 15}
 _TZ_NEW_YORK = ZoneInfo("America/New_York")
 _TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 _FUTU_HISTORY_TIMEOUT_SECONDS = float(os.environ.get("FUTU_HISTORY_TIMEOUT_SECONDS", "8"))
@@ -49,11 +49,12 @@ def _futu_ktype(interval: Interval) -> str:
 
         return {
             "1d": KLType.K_DAY,
+            "1m": KLType.K_1M,
             "15m": KLType.K_15M,
             "5m": KLType.K_5M,
         }[interval]
     except Exception:
-        return {"1d": "K_DAY", "15m": "K_15M", "5m": "K_5M"}[interval]
+        return {"1d": "K_DAY", "1m": "K_1M", "15m": "K_15M", "5m": "K_5M"}[interval]
 
 
 def _row_value(row: Any, key: str, default: Any = None) -> Any:
@@ -107,7 +108,7 @@ def _futu_ts_to_lightweight(
     if code.startswith(("SH.", "SZ.")) and (ts.hour, ts.minute) in {(9, 30), (13, 0)}:
         return None
 
-    minutes = 15 if interval == "15m" else 5
+    minutes = {"1m": 1, "5m": 5, "15m": 15}.get(interval, 1)
     ts -= timedelta(minutes=minutes)
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=_market_tz(symbol))
@@ -440,7 +441,7 @@ def fetch_ohlcv(
     sym = str(symbol or "VOO").upper()
     if sym not in FUTU_US:
         sym = "VOO"
-    iv = interval if interval in {"1d", "15m", "5m"} else "1d"
+    iv = interval if interval in {"1d", "15m", "5m", "1m"} else "1d"
     selected_day = selected_date[:10] if iv != "1d" else ""
     key = (sym, iv, show_extended, selected_day)
     now = time.time()

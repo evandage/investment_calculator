@@ -324,14 +324,15 @@ def _update_futu_subscription_quotes(data: Any) -> None:
         return
     with _FUTU_SUB_LOCK:
         for sym, quote in next_quotes.items():
-            _FUTU_SUB_QUOTES[sym] = _merge_futu_subscription_quote(_FUTU_SUB_QUOTES.get(sym), quote)
+            merged_quote = _merge_futu_subscription_quote(_FUTU_SUB_QUOTES.get(sym), quote)
+            _FUTU_SUB_QUOTES[sym] = merged_quote
             _FUTU_SUB_UPDATED_AT[sym] = now
             _FUTU_SUB_QUOTE_REVISIONS[sym] = _FUTU_SUB_QUOTE_REVISIONS.get(sym, 0) + 1
 
 
 def _update_futu_subscription_klines(data: Any) -> None:
     code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
-    interval_by_type = {"K_15M": "15m", "K_5M": "5m"}
+    interval_by_type = {"K_1M": "1m", "K_15M": "15m", "K_5M": "5m"}
     with _FUTU_SUB_LOCK:
         for i in range(len(data)):
             row = data.iloc[i] if hasattr(data, "iloc") else data[i]
@@ -499,7 +500,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
                     symbol_errors.setdefault(sym, {})["ticker"] = error
             kline_ret, kline_msg = ctx.subscribe(
                 [app_config.FUTU_US[sym] for sym in active_group],
-                [SubType.K_15M, SubType.K_5M],
+                [SubType.K_1M, SubType.K_15M, SubType.K_5M],
                 **subscribe_kwargs,
             )
             if kline_ret != RET_OK:
@@ -514,12 +515,12 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         _FUTU_SUB_KLINE_ERROR = " | ".join(dict.fromkeys(kline_errors))
         for sym in kline_symbols:
             code = app_config.FUTU_US[sym]
-            for interval, ktype in (("15m", KLType.K_15M), ("5m", KLType.K_5M)):
+            for interval, ktype in (("1m", KLType.K_1M), ("15m", KLType.K_15M), ("5m", KLType.K_5M)):
                 seed_ret, seed_data = ctx.get_cur_kline(code, 1, ktype=ktype, autype=AuType.QFQ)
                 if seed_ret != RET_OK or seed_data is None or len(seed_data) == 0:
                     continue
                 seed = seed_data.copy()
-                seed["k_type"] = {"15m": "K_15M", "5m": "K_5M"}[interval]
+                seed["k_type"] = {"1m": "K_1M", "15m": "K_15M", "5m": "K_5M"}[interval]
                 _update_futu_subscription_klines(seed)
         with _FUTU_SUB_LOCK:
             _FUTU_SUB_CTX = ctx

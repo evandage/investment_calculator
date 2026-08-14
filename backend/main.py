@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import copy
 import importlib
 import sys
 import threading
+import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -60,6 +62,12 @@ from .drawdown_recalculation import start_monthly_drawdown_scheduler
 
 TZ_SHANGHAI = config_module.TZ_SHANGHAI
 TZ_NEW_YORK = ZoneInfo("America/New_York")
+_GLOBAL_BOARD_CACHE_LOCK = threading.RLock()
+_GLOBAL_BOARD_CACHE_TTL_SECONDS = 60.0
+_GLOBAL_BOARD_CACHE: dict[
+    tuple[str, bool, str, int],
+    tuple[dict[str, Any], float, dict[str, int]],
+] = {}
 
 
 class HoldingPayload(BaseModel):
@@ -283,9 +291,56 @@ def _kline_header_change_pct(
 
 
 def _default_avwap_mode(interval: str, symbol: str) -> str:
-    if interval in {"5m", "15m"}:
+    if interval in {"1m", "5m", "15m"}:
         return "today_open"
     return "year_start" if symbol in {"VOO", "QQQ", "SGOV", "510330.SS"} else "earnings"
+
+
+def _refresh_global_chart_board_realtime(
+    payload: dict[str, Any],
+    show_extended: bool,
+    selected_day: str,
+) -> dict[str, Any]:
+    """Refresh only quote-dependent fields without refetching historical bars."""
+    if selected_day:
+        return payload
+    quotes = get_futu_subscription_quotes()
+    for chart in payload.get("charts") or []:
+        symbol = str(chart.get("symbol") or "")
+        quote = quotes.get(symbol) or {}
+        if not quote:
+            continue
+        regular_price = float(quote.get("regular_price") or chart.get("regular_price") or 0.0)
+        latest_price = float(
+            (quote.get("price") if show_extended else quote.get("regular_price"))
+            or regular_price
+            or chart.get("latest_price")
+            or 0.0
+        )
+        if latest_price > 0:
+            chart["latest_price"] = latest_price
+        if regular_price > 0:
+            chart["regular_price"] = regular_price
+        prev_close = float(quote.get("prev_close") or chart.get("previous_close") or 0.0)
+        if prev_close > 0:
+            chart["previous_close"] = prev_close
+        if quote.get("regular_change_pct") is not None:
+            chart["regular_change_pct"] = float(quote["regular_change_pct"])
+        chart["extended_price"] = quote.get("extended_price")
+        chart["extended_change_pct"] = quote.get("extended_change_pct")
+        live_close = latest_price if show_extended else regular_price
+        candles = chart.get("candles") or []
+        if live_close > 0 and candles:
+            last = dict(candles[-1])
+            last["close"] = live_close
+            last["high"] = max(float(last.get("high") or live_close), live_close)
+            last["low"] = min(float(last.get("low") or live_close), live_close)
+            candles[-1] = last
+    return payload
+
+
+def _global_kline_revision_snapshot(symbols: list[str], interval: str) -> dict[str, int]:
+    return {symbol: get_futu_kline_revision(symbol, interval) for symbol in symbols}
 
 
 def _build_global_chart_board_light(
@@ -294,9 +349,39 @@ def _build_global_chart_board_light(
     columns: int = 1,
     selected_date: str = "",
 ) -> dict[str, Any]:
+    key = interval if interval in {"1d", "1m", "15m", "5m"} else "15m"
+    selected_day = selected_date[:10] if key != "1d" else ""
+    cache_key = (key, bool(show_extended), selected_day, min(5, max(1, int(columns or 1))))
+    now = time.monotonic()
+    with _GLOBAL_BOARD_CACHE_LOCK:
+        cached = _GLOBAL_BOARD_CACHE.get(cache_key)
+        current_revisions = (
+            _global_kline_revision_snapshot(list(cached[0].get("symbols") or []), key)
+            if cached and not selected_day
+            else {}
+        )
+        if (
+            cached
+            and now - cached[1] < _GLOBAL_BOARD_CACHE_TTL_SECONDS
+            and current_revisions == cached[2]
+        ):
+            refreshed = _refresh_global_chart_board_realtime(cached[0], bool(show_extended), selected_day)
+            return copy.deepcopy(refreshed)
+        payload = _build_global_chart_board_light_uncached(key, show_extended, columns, selected_day)
+        revisions = _global_kline_revision_snapshot(list(payload.get("symbols") or []), key) if not selected_day else {}
+        _GLOBAL_BOARD_CACHE[cache_key] = (payload, now, revisions)
+        return copy.deepcopy(payload)
+
+
+def _build_global_chart_board_light_uncached(
+    interval: str = "15m",
+    show_extended: bool = True,
+    columns: int = 1,
+    selected_date: str = "",
+) -> dict[str, Any]:
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
-    key = interval if interval in {"1d", "15m", "5m"} else "15m"
+    key = interval if interval in {"1d", "1m", "15m", "5m"} else "15m"
     selected_day = selected_date[:10] if key != "1d" else ""
     cols = min(5, max(1, int(columns or 1)))
     labels = _chart_labels()
@@ -346,6 +431,15 @@ def _build_global_chart_board_light(
             for bar in bars
             if bar.get("time") is not None
         ]
+        if candles and not selected_day and key != "1d":
+            realtime_value = quote.get("price") if show_extended else quote.get("regular_price")
+            realtime_close = float(realtime_value or quote.get("regular_price") or quote.get("price") or 0.0)
+            if realtime_close > 0:
+                latest_candle = dict(candles[-1])
+                latest_candle["close"] = realtime_close
+                latest_candle["high"] = max(float(latest_candle.get("high") or realtime_close), realtime_close)
+                latest_candle["low"] = min(float(latest_candle.get("low") or realtime_close), realtime_close)
+                candles[-1] = latest_candle
         volumes = [
             {
                 "time": item["time"],
@@ -363,6 +457,14 @@ def _build_global_chart_board_light(
                 "volumes": volumes,
                 "latest_price": latest_price,
                 "latest_change_pct": latest_change_pct,
+                "regular_price": float(quote.get("regular_price") or last_close or 0.0),
+                "regular_change_pct": quote.get("regular_change_pct") if quote.get("regular_change_pct") is not None else (
+                    ((float(quote.get("regular_price") or last_close) / float(quote.get("prev_close")) - 1.0) * 100.0)
+                    if float(quote.get("prev_close") or 0.0) > 0 and float(quote.get("regular_price") or last_close or 0.0) > 0 else None
+                ),
+                "extended_price": quote.get("extended_price"),
+                "extended_change_pct": quote.get("extended_change_pct"),
+                "previous_close": quote.get("prev_close"),
                 "selected_date": selected_day,
                 "source": "lightweight",
             }
@@ -502,7 +604,7 @@ def _build_chart_board_light(
     sym = str(symbol or "VOO").upper()
     if sym not in _chart_symbols():
         sym = "VOO"
-    key = interval if interval in {"1d", "15m", "5m"} else "15m"
+    key = interval if interval in {"1d", "1m", "15m", "5m"} else "15m"
     selected_day = selected_date[:10] if key != "1d" else ""
     chart_api = importlib.import_module("chart_boards")
     chart_api.configure_market_provider("futu")
@@ -544,7 +646,7 @@ def _build_chart_board_light(
                 df, _ = chart_api.slice_intraday_today_or_yesterday(
                     df,
                     sym,
-                    min_current_bars=12 if key == "5m" else 4,
+                    min_current_bars=30 if key == "1m" else 12 if key == "5m" else 4,
                     # Do not add yesterday's bars while today's extended
                     # session has only produced a few candles.
                     include_previous_context=False,
@@ -553,7 +655,7 @@ def _build_chart_board_light(
                 df, _ = chart_api.slice_regular_intraday_with_context(
                     df,
                     sym,
-                    min_current_bars=12 if key == "5m" else 4,
+                    min_current_bars=30 if key == "1m" else 12 if key == "5m" else 4,
                     # Intraday boards should show the active trading day only.
                     # Adding yesterday's bars at the open makes it look as if
                     # the board has not refreshed yet.
@@ -631,7 +733,7 @@ def _build_chart_board_light(
         daily_ema20 = chart_api.ema(full_df["Close"], 20).reindex(df.index) if key == "1d" and not full_df.empty else close.iloc[0:0]
         daily_ma50 = full_df["Close"].rolling(50).mean().reindex(df.index) if key == "1d" and not full_df.empty else close.iloc[0:0]
         daily_ma200 = full_df["Close"].rolling(200).mean().reindex(df.index) if key == "1d" and not full_df.empty else close.iloc[0:0]
-        rsi_period = 7 if key == "5m" else 14
+        rsi_period = 7 if key in {"1m", "5m"} else 14
         rsi_series = chart_api.rsi(close, rsi_period)
         rsi_ma = chart_api.ema(rsi_series, 9)
         macd_line, macd_signal, macd_hist = chart_api.macd_series(close)
@@ -997,7 +1099,7 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
     show_extended = str(websocket.query_params.get("show_extended", "true")).lower() not in {"0", "false", "no"}
     if symbol not in _chart_labels():
         symbol = "VOO"
-    if interval not in {"15m", "5m"}:
+    if interval not in {"1m", "15m", "5m"}:
         await websocket.close()
         return
 
@@ -1038,7 +1140,7 @@ async def chart_board_global_light_ws(websocket: WebSocket) -> None:
         columns = int(websocket.query_params.get("columns", "1"))
     except Exception:
         columns = 1
-    if interval not in {"15m", "5m"}:
+    if interval not in {"1m", "15m", "5m"}:
         await websocket.close()
         return
 

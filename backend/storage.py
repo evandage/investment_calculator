@@ -285,8 +285,6 @@ def save_satellite_targets(targets: dict[str, float]) -> None:
 
 SWING_POSITION_DEFAULTS: dict[str, dict[str, float]] = {
     "QQQ": {"shares": 0.0, "avg_cost": 0.0, "target_pct": 3.0, "stop_loss_min_pct": 5.0, "stop_loss_max_pct": 7.0, "take_profit_min_pct": 10.0, "take_profit_max_pct": 15.0},
-    "ISRG": {"shares": 0.0, "avg_cost": 0.0, "target_pct": 1.0, "stop_loss_min_pct": 8.0, "stop_loss_max_pct": 10.0, "take_profit_min_pct": 15.0, "take_profit_max_pct": 20.0},
-    "AVGO": {"shares": 0.0, "avg_cost": 0.0, "target_pct": 0.35, "stop_loss_min_pct": 8.0, "stop_loss_max_pct": 12.0, "take_profit_min_pct": 15.0, "take_profit_max_pct": 20.0},
 }
 
 

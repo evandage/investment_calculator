@@ -2039,6 +2039,22 @@ h2 {
   box-shadow: 0 16px 34px rgba(4, 13, 30, 0.22);
 }
 
+.singleLwWrap.isFullscreen {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.singleLwWrap.isFullscreen .singleLwCanvas {
+  height: calc(100dvh - 72px);
+}
+
 .singleLwHeader {
   display: flex;
   align-items: center;
@@ -2149,12 +2165,75 @@ h2 {
   color: var(--text-soft);
 }
 
+.klineExpandButton {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 30px;
+  padding: 0 7px;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.16);
+  color: #bfdbfe;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.klineExpandButton:hover {
+  border-color: rgba(125, 211, 252, 0.82);
+  background: rgba(37, 99, 235, 0.3);
+  color: #eff6ff;
+}
+
+.singleLwLegend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  min-height: 24px;
+  padding: 3px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  background: #0d2035;
+  color: #a9bfd4;
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.singleLwLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.singleLwLegend i {
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.singleLwLegend .legendLatest { color: #facc15; }
+.singleLwLegend .legendEma { color: #f59e0b; }
+.singleLwLegend .legendMa50 { color: #c084fc; }
+.singleLwLegend .legendMa200 { color: #9ca3af; }
+.singleLwLegend .legendCost { color: #b45309; }
+.singleLwLegend .legendAvwap { color: #22d3ee; }
+.singleLwLegend .legendRsi { color: #a78bfa; }
+.singleLwLegend .legendRsiEma { color: #facc15; }
+.singleLwLegend .legendMacd { color: #22d3ee; }
+.singleLwLegend .legendSignal { color: #fb7185; }
+
+.singleLwCanvas { height: calc(100% - 72px); }
+
 .singleLwCanvas {
   position: relative;
   width: 100%;
   height: calc(100% - 48px);
   --single-profile-width: 15%;
-  --single-profile-label-gutter: 5%;
+  --single-profile-label-gutter: 0%;
   --single-price-axis-width: 62px;
 }
 
@@ -4876,6 +4955,29 @@ tbody tr:hover th {
     display: none;
   }
 
+  .klineExpandButton {
+    width: 30px;
+    min-height: 30px;
+    padding: 0;
+  }
+  .klineExpandButton span { display: none; }
+
+  .singleLwWrap.isFullscreen .singleLwHeader {
+    height: 42px;
+    padding: 5px 7px;
+  }
+  .singleLwWrap.isFullscreen .singleLwCanvas {
+    height: calc(100dvh - 66px);
+  }
+
+  .singleLwLegend {
+    gap: 2px 7px;
+    min-height: 24px;
+    padding: 3px 7px;
+    font-size: 8px;
+  }
+  .singleLwLegend i { width: 9px; }
+
   .klineControl {
     flex: 0 0 126px;
     min-width: 126px;
@@ -4935,11 +5037,15 @@ tbody tr:hover th {
   .pageNav::before { top: 5px; bottom: 5px; left: 5px; border-radius: 13px; background: linear-gradient(180deg, rgba(37,99,235,.95), rgba(29,78,216,.72)); }
   .pageNav button, .dashboardShell .pageNav button { display: inline-flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; min-height: 48px; padding: 5px 2px; border-radius: 13px; color: #7890a8; font-size: .66rem; font-weight: 700; }
   .pageNav button.active { color: #fff; }
-  .summaryGrid, .dashboardPage .summaryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .summaryRowLabel, .dashboardPage .summaryRowLabel { grid-column: 1 / -1; min-height: 35px; padding: 8px; border-radius: 10px; font-size: .76rem; }
-  .summaryItem, .dashboardPage .summaryItem, .fxSummaryItem { min-height: 76px; padding: 10px 8px; border-radius: 12px; }
-  .summaryItem span, .dashboardPage .summaryItem span { font-size: .68rem; }
-  .summaryItem strong, .dashboardPage .summaryItem strong { font-size: .9rem; }
+  .summaryGrid, .dashboardPage .summaryGrid { display: grid; grid-template-columns: 1fr; gap: 7px; }
+  .summaryAssetGroup, .dashboardPage .summaryAssetGroup { display: block; min-width: 0; }
+  .summaryRowLabel, .dashboardPage .summaryRowLabel { display: flex; align-items: center; justify-content: space-between; min-height: 29px; margin-bottom: 4px; padding: 5px 9px; border-radius: 9px; font-size: .7rem; }
+  .summaryAssetMetrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .summaryAssetMetrics .summaryItem:first-child { grid-column: auto; }
+  .summaryItem, .dashboardPage .summaryItem, .fxSummaryItem { min-height: 68px; padding: 7px 4px; border-radius: 10px; }
+  .summaryItem span, .dashboardPage .summaryItem span { font-size: .58rem; line-height: 1.2; text-align: center; }
+  .summaryItem strong, .dashboardPage .summaryItem strong { max-width: 100%; font-size: .68rem; line-height: 1.15; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+  .dashboardPage .fxSummaryItem { grid-column: auto; grid-row: auto; min-height: 62px; }
   .dashboardTopGrid, .dashboardWorkspace { gap: 10px; margin-top: 10px; }
   .dashboardInsights .visualGrid { grid-template-columns: 1fr; gap: 10px; }
   .dashboardInsights .performancePlot { height: 230px; }
@@ -4964,6 +5070,256 @@ tbody tr:hover th {
   .technicalInsightPanel { border-radius: 12px; }
 }
 
+/* Global board: quote-list rows with lightweight sparklines. */
+.globalQuoteList {
+  display: grid;
+  width: 100%;
+  gap: 1px;
+  margin: 12px auto 0;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, .2);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, .12);
+}
+.globalBoardMeta { display: none; }
+.singleChartMeta { display: none; }
+.globalQuoteRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(320px, 2.6fr) minmax(130px, .8fr) 100px;
+  align-items: center;
+  gap: 14px;
+  min-height: 74px;
+  padding: 9px 12px;
+  background: #0b1b2e;
+}
+.globalQuoteRow.isClickable { cursor: pointer; }
+.globalQuoteRow.isClickable:hover,
+.globalQuoteRow.isClickable:focus-visible { background: #102b47; outline: none; }
+.globalQuoteIdentity, .globalQuotePrice { display: grid; min-width: 0; gap: 3px; }
+.globalQuoteIdentity strong { color: #f8fafc; font-size: 1rem; }
+.globalQuoteIdentity span { overflow: hidden; color: #8fa5ba; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.globalQuoteSparkline { position: relative; width: 100%; height: 52px; min-width: 0; overflow: hidden; }
+.globalQuoteSparkline canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.globalQuoteSparkline > span { display: grid; height: 100%; place-items: center; color: #71869d; }
+.globalQuotePrice { text-align: right; }
+.globalQuotePrice strong { color: #f8fafc; font-size: 1.04rem; font-variant-numeric: tabular-nums; }
+.globalQuoteSubValue { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; color: #8fa5ba; font-size: .7rem; font-variant-numeric: tabular-nums; }
+.globalQuoteChange .globalQuoteSubValue { justify-content: center; min-height: 13px; line-height: 13px; }
+.globalQuotePrice .globalQuoteSubValue { min-height: 13px; line-height: 13px; }
+.globalQuoteSubBadge { display: inline-grid; min-width: 21px; height: 13px; padding: 0 3px; place-items: center; border: 1px solid rgba(148, 163, 184, .3); border-radius: 4px; color: #9fb4c8; font-size: .48rem; font-style: normal; font-weight: 800; letter-spacing: .04em; line-height: 1; }
+.globalQuoteChange { display: grid; justify-self: end; min-width: 78px; padding: 6px 9px; border-radius: 6px; gap: 2px; font-size: .9rem; font-variant-numeric: tabular-nums; text-align: center; }
+.globalQuoteChange strong { color: inherit; font-size: inherit; font-weight: 700; }
+.globalQuoteChange span { color: #94a3b8; font-size: .62rem; font-weight: 600; }
+.globalQuoteChange.up { color: #86efac; background: rgba(34, 197, 94, .16); }
+.globalQuoteChange.down { color: #fda4af; background: rgba(239, 68, 68, .16); }
+.globalQuoteChange.flat { color: #cbd5e1; background: rgba(148, 163, 184, .16); }
+@media (max-width: 720px) {
+  .globalQuoteList { width: 100%; margin-top: 10px; border-radius: 12px; }
+  .globalQuoteRow { grid-template-columns: minmax(58px, .65fr) minmax(150px, 2.4fr) minmax(62px, .7fr) 58px; gap: 4px; min-height: 62px; padding: 6px 7px; }
+  .globalQuoteIdentity strong { font-size: .9rem; }
+  .globalQuoteIdentity span { font-size: .56rem; }
+  .globalQuoteSparkline { height: 48px; }
+  .globalQuotePrice strong { font-size: .76rem; }
+  .globalQuoteSubValue { font-size: .62rem; }
+  .globalQuoteChange { min-width: 54px; padding: 5px 2px; font-size: .68rem; }
+}
+
+.rebalancePage .sectionHeader > .muted,
+.rebalancePage .rulesToolbar > .muted,
+.rebalancePage .rebalanceFormulaBanner {
+  display: none;
+}
+
+.rebalanceRuleSummary {
+  display: grid;
+  gap: 7px;
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.06);
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.rebalanceRuleSummary p { margin: 0; }
+
+/* Keep chart controls reachable while browsing long boards. */
+.technicalPanel { overflow: visible; }
+.klineToolbar {
+  position: sticky;
+  top: 8px;
+  z-index: 15;
+  background: rgba(9, 24, 42, 0.96);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(125, 211, 252, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 720px) {
+  .klineToolbar {
+    top: 6px;
+    margin-right: -4px;
+    margin-left: -4px;
+    border-radius: 12px;
+  }
+
+  /* Compact chart controls: the native selects stay interactive, labels become visual cues. */
+  .klineToolbar .klineControl {
+    flex: 0 0 48px;
+    min-width: 48px;
+    width: 48px;
+    height: 42px;
+  }
+  .klineToolbar .klineControl > span { display: none; }
+  .klineToolbar .klineControl::before {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #9ddcff;
+    font-size: 17px;
+    font-weight: 800;
+    pointer-events: none;
+  }
+  .klineToolbar .klineControl select,
+  .klineToolbar .klineDateControl input {
+    position: relative;
+    z-index: 2;
+    padding: 0;
+    color: transparent;
+    font-size: 0;
+    cursor: pointer;
+  }
+  .klineToolbar .klineControl::after { top: 5px; right: 5px; font-size: 10px; }
+  .klineToolbar .klineControl:not(.klineDateControl)::before { content: "◷"; }
+  .klineToolbar .klineSymbolControl::before { content: "◉"; }
+  .klineToolbar .klineRangeControl::before { content: "▥"; }
+  .klineToolbar .klineAvwapControl::before { content: "⌁"; }
+  .klineToolbar .klineDateControl::before { content: "▣"; }
+  .klineToolbar .klineLiveButton { min-width: 42px; width: 42px; padding: 0; font-size: 0; }
+  .klineToolbar .klineLiveButton::before { content: "●"; font-size: 13px; color: #64748b; }
+  .klineToolbar .klineLiveButton.active::before { color: #4ade80; }
+  .klineToolbar .klineHomeButton { flex: 0 0 44px; width: 44px; min-height: 42px; padding: 0; }
+  .klineToolbar .klineHomeButton span { display: none; }
+  .klineToolbar .klineGuideButton { flex: 0 0 44px; width: 44px; min-height: 42px; padding: 0; font-size: 0; }
+  .klineToolbar .klineAnalysisControls { padding-left: 4px; gap: 4px; }
+}
+
+@media (max-width: 720px) {
+  /* Restore readable icon + label controls; selections must remain visible. */
+  .klineToolbar .klineControl {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 82px;
+    height: 42px;
+  }
+  .klineToolbar .klineControl > span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    top: 5px;
+    left: 8px;
+    font-size: 8px;
+  }
+  .klineToolbar .klineControl > span::before {
+    content: "◷";
+    color: #9ddcff;
+    font-size: 11px;
+  }
+  .klineToolbar .klineSymbolControl > span::before { content: "◉"; }
+  .klineToolbar .klineRangeControl > span::before { content: "▥"; }
+  .klineToolbar .klineAvwapControl > span::before { content: "⌁"; }
+  .klineToolbar .klineDateControl > span::before { content: "▣"; }
+  .klineToolbar .klineControl::before { display: none; }
+  .klineToolbar .klineControl select,
+  .klineToolbar .klineDateControl input {
+    z-index: auto;
+    padding: 17px 20px 3px 8px;
+    color: #e5f2ff;
+    font-size: 11px;
+  }
+  .klineToolbar .klineDateControl { min-width: 118px; }
+  .klineToolbar .klineSymbolControl { min-width: 96px; }
+  .klineToolbar .klineRangeControl { min-width: 118px; }
+  .klineToolbar .klineAvwapControl { min-width: 112px; }
+  .klineToolbar .klineLiveButton {
+    min-width: 44px;
+    width: auto;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+  .klineToolbar .klineLiveButton::before { display: none; }
+  .klineToolbar .klineHomeButton {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 58px;
+    padding: 0 8px;
+  }
+  .klineToolbar .klineHomeButton span { display: inline; font-size: 10px; }
+  .klineToolbar .klineGuideButton {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 68px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Single-symbol toolbar: keep controls compact so the chart remains the focus. */
+  .klineToolbar { gap: 3px; padding: 5px 3px; }
+  .klineToolbar .klineControlGroup { gap: 3px; }
+  .klineToolbar .klineAnalysisControls { gap: 3px; padding-left: 3px; }
+  .klineToolbar .klineControl { min-width: 72px; height: 36px; border-radius: 6px; }
+  .klineToolbar .klineControl > span { top: 4px; left: 6px; gap: 3px; font-size: 7px; }
+  .klineToolbar .klineControl > span::before { font-size: 9px; }
+  .klineToolbar .klineControl select,
+  .klineToolbar .klineDateControl input { padding: 14px 16px 2px 6px; font-size: 10px; }
+  .klineToolbar .klineDatePicker { gap: 3px; }
+  .klineToolbar .klineDateControl { min-width: 96px; }
+  .klineToolbar .klineSymbolControl { min-width: 82px; }
+  .klineToolbar .klineRangeControl { min-width: 92px; }
+  .klineToolbar .klineAvwapControl { min-width: 88px; }
+  .klineToolbar .klineLiveButton { min-width: 38px; min-height: 36px; padding: 0 5px; border-radius: 6px; font-size: 9px; }
+  .klineToolbar .klineHomeButton { min-width: 42px; min-height: 36px; padding: 0 5px; border-radius: 6px; }
+  .klineToolbar .klineHomeButton svg { width: 15px; height: 15px; }
+  .klineToolbar .klineHomeButton span { font-size: 9px; }
+  .klineToolbar .klineGuideButton { min-width: 48px; min-height: 36px; padding: 0 5px; border-radius: 6px; font-size: 9px; }
+  .klineToolbar .klineGuideButton svg { width: 14px; height: 14px; }
+}
+
+@media (max-width: 390px) {
+  .klineToolbar .klineControl { min-width: 64px; }
+  .klineToolbar .klineDateControl { min-width: 88px; }
+  .klineToolbar .klineSymbolControl { min-width: 74px; }
+  .klineToolbar .klineRangeControl { min-width: 82px; }
+  .klineToolbar .klineAvwapControl { min-width: 78px; }
+  .klineToolbar .klineControl select,
+  .klineToolbar .klineDateControl input { font-size: 9px; }
+}
+
 @media (min-width: 721px) {
   .pageNav button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+}
+
+/* Holdings metrics need breathing room on narrow screens. */
+@media (max-width: 720px) {
+  .assetSections { gap: 18px; }
+  .assetMetricBlock { min-width: 0; }
+  .assetMetricBlock h2 { margin: 0 0 9px; font-size: 1rem; }
+  .assetMetricTitleRow { align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+  .assetMetricTitleRow > .actions,
+  .assetMetricTitleRow > button { margin-left: auto; }
+  .assetMetricGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .assetMetricCard { min-height: 82px; padding: 9px 5px; border-radius: 12px; justify-items: center; gap: 3px; text-align: center; }
+  .assetMetricCard span { font-size: .64rem; line-height: 1.25; }
+  .assetMetricCard strong { max-width: 100%; font-size: .78rem; line-height: 1.2; overflow-wrap: anywhere; }
+  .assetMetricCard em { font-size: .62rem; padding: 2px 5px; }
+  .assetDetailPanel { min-height: 0; margin-top: 9px; padding: 11px 12px; border-radius: 11px; }
+  .assetDetailGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+  .assetDetailItem span { font-size: .66rem; }
+  .assetDetailItem strong { font-size: .78rem; }
+  .assetDetailPanel p { margin: 0; font-size: .66rem; line-height: 1.5; }
 }

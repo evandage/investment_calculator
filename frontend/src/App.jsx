@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, HistogramSeries, LineSeries } from "lightweight-charts";
-import { Activity, BookOpen, Check, CircleAlert, Gauge, Home, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
+import { Activity, BookOpen, Check, CircleAlert, Gauge, Home, Maximize2, Minimize2, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -273,6 +273,20 @@ function tone(value) {
   if (num > 0) return "up";
   if (num < 0) return "down";
   return "flat";
+}
+
+function globalCompositeChange(item, marketCard) {
+  const symbol = String(item?.symbol || "").toUpperCase();
+  const isChina = symbol.endsWith(".SS") || symbol.endsWith(".SZ");
+  const regular = Number(marketCard?.regular_pct ?? item?.regular_change_pct ?? item?.latest_change_pct ?? 0);
+  const extended = isChina
+    ? null
+    : marketCard?.extended_pct != null
+      ? Number(marketCard.extended_pct)
+      : item?.extended_change_pct == null ? null : Number(item.extended_change_pct);
+  if (!Number.isFinite(regular)) return 0;
+  if (extended == null || !Number.isFinite(extended)) return regular;
+  return ((1 + regular / 100) * (1 + extended / 100) - 1) * 100;
 }
 
 function TreemapPriceLine({ priceLine = "", regularPrice, extendedPrice, currency = "USD", regularPct = 0, extendedPct = null }) {
@@ -1728,13 +1742,134 @@ function LightweightKlineCard({ item, displayRange, onOpenSymbol, isGlobal = fal
   );
 }
 
-function GlobalLightweightBoard({ data, viewKey, displayRange, onOpenSymbol }) {
-  const columns = Math.min(5, Math.max(1, Number(data?.columns || 1)));
+function GlobalLightweightBoard({ data, viewKey, displayRange, onOpenSymbol, marketCards = [] }) {
   const charts = data?.charts || [];
+  const marketCardBySymbol = Object.fromEntries((marketCards || []).flatMap((card) => [
+    [card.symbol, card],
+    ...(card.symbol === "001015" ? [["510330.SS", card]] : []),
+  ]));
   return (
-    <div className="lwChartGrid" style={{ "--lw-cols": columns }}>
-      {charts.map((item) => <LightweightKlineCard item={item} displayRange={displayRange} onOpenSymbol={onOpenSymbol} isGlobal key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
+    <div className="globalQuoteList">
+      {charts.map((item) => <GlobalSparklineRow item={item} marketCard={marketCardBySymbol[item.symbol]} showExtended={Boolean(data?.show_extended)} onOpenSymbol={onOpenSymbol} key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
     </div>
+  );
+}
+
+function GlobalSparklineRow({ item, marketCard, showExtended = false, onOpenSymbol }) {
+  const containerRef = useRef(null);
+  const canvasRef = useRef(null);
+  const points = useMemo(() => {
+    const rows = [];
+    let lastTime = null;
+    for (const raw of item?.candles || []) {
+      const time = normalizeLightweightTime(raw.time);
+      const close = Number(raw.close);
+      if (time == null || !Number.isFinite(close) || close <= 0) continue;
+      if (lastTime != null && typeof time === typeof lastTime && time <= lastTime) continue;
+      rows.push({ time, value: close });
+      lastTime = time;
+    }
+    const latestTime = rows.length ? Number(rows[rows.length - 1].time) : NaN;
+    if (rows.length > 2 && Number.isFinite(latestTime) && item?.interval !== "1d") {
+      const isChina = String(item?.symbol || "").toUpperCase().endsWith(".SS") || String(item?.symbol || "").toUpperCase().endsWith(".SZ");
+      const latestDay = candleDayKey(latestTime);
+      const latestMinutes = marketLocalMinutes(latestTime, isChina);
+      let start = isChina ? 570 : 570;
+      let end = isChina ? 900 : 960;
+      if (!isChina && Number.isFinite(latestMinutes) && latestMinutes < 570) { start = 240; end = 570; }
+      if (!isChina && Number.isFinite(latestMinutes) && latestMinutes >= 960) { start = 960; end = 1200; }
+      const sessionRows = rows.filter((row) => {
+        const time = Number(row.time);
+        const day = candleDayKey(time);
+        const minutes = marketLocalMinutes(time, isChina);
+        if (day !== latestDay || !Number.isFinite(minutes)) return false;
+        return isChina ? ((minutes >= 570 && minutes <= 690) || (minutes >= 780 && minutes <= 900)) : minutes >= start && minutes <= end;
+      });
+      if (sessionRows.length >= 2) rows.splice(0, rows.length, ...sessionRows);
+    }
+    return rows;
+  }, [item]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || !points.length) return undefined;
+    const draw = () => {
+      const width = Math.max(1, container.clientWidth);
+      const height = Math.max(1, container.clientHeight);
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      const seriesPoints = points.filter((point) => Number.isFinite(Number(point.value)));
+      const values = seriesPoints.map((point) => Number(point.value));
+      if (values.length < 2) return;
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = Math.max(max - min, Math.abs(max) * 0.001, 0.0001);
+      const pad = 5;
+      const color = globalCompositeChange(item, marketCard) >= 0 ? "#34d399" : "#fb7185";
+      const latestTime = Number(seriesPoints[seriesPoints.length - 1]?.time);
+      const isChina = String(item?.symbol || "").toUpperCase().endsWith(".SS") || String(item?.symbol || "").toUpperCase().endsWith(".SZ");
+      const latestMinutes = marketLocalMinutes(latestTime, isChina);
+      let sessionStart = isChina ? 570 : 570;
+      let sessionEnd = isChina ? 900 : 960;
+      if (!isChina && Number.isFinite(latestMinutes) && latestMinutes < 570) { sessionStart = 240; sessionEnd = 570; }
+      if (!isChina && Number.isFinite(latestMinutes) && latestMinutes >= 960) { sessionStart = 960; sessionEnd = 1200; }
+      const xFor = (point, index) => {
+        const minutes = marketLocalMinutes(Number(point.time), isChina);
+        if (!Number.isFinite(minutes)) return pad + (width - pad * 2) * index / Math.max(1, values.length - 1);
+        return pad + (width - pad * 2) * Math.max(0, Math.min(1, (minutes - sessionStart) / (sessionEnd - sessionStart)));
+      };
+      ctx.beginPath();
+      values.forEach((value, index) => {
+        const x = xFor(seriesPoints[index], index);
+        const y = height - pad - (value - min) / range * (height - pad * 2);
+        if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.stroke();
+    };
+    draw();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(draw) : null;
+    observer?.observe(container);
+    return () => observer?.disconnect();
+  }, [item, marketCard, points]);
+
+  const openSymbol = () => onOpenSymbol?.(item.symbol);
+  const isChina = String(item?.symbol || "").toUpperCase().endsWith(".SS") || String(item?.symbol || "").toUpperCase().endsWith(".SZ");
+  const regularPrice = Number(item?.regular_price || item?.latest_price || marketCard?.regular_price || (
+    points.length ? points[points.length - 1].value : 0
+  ));
+  const latestQuotePrice = Number(item?.latest_price || 0);
+  const extendedPrice = isChina ? 0 : Number(marketCard?.extended_price || item?.extended_price || (
+    latestQuotePrice > 0 && Math.abs(latestQuotePrice - regularPrice) > 0.0001 ? latestQuotePrice : 0
+  ));
+  const extendedChange = marketCard?.extended_pct != null
+    ? Number(marketCard.extended_pct)
+    : item?.extended_change_pct == null
+    ? (extendedPrice > 0 && item?.latest_change_pct != null ? Number(item.latest_change_pct) : null)
+    : Number(item.extended_change_pct);
+  const regularChange = marketCard?.regular_pct != null
+    ? Number(marketCard.regular_pct)
+    : (item?.regular_change_pct == null ? null : Number(item.regular_change_pct));
+  const hasExtended = !isChina && extendedPrice > 0 && extendedChange != null;
+  const compositeChange = globalCompositeChange(item, marketCard);
+  return (
+    <article className={`globalQuoteRow ${onOpenSymbol ? "isClickable" : ""}`} role={onOpenSymbol ? "button" : undefined} tabIndex={onOpenSymbol ? 0 : undefined} onClick={onOpenSymbol ? openSymbol : undefined} onKeyDown={onOpenSymbol ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openSymbol(); } } : undefined}>
+      <div className="globalQuoteIdentity"><strong>{item.symbol}</strong><span>{item.full_label || item.label || "-"}</span></div>
+      <div className="globalQuoteSparkline" ref={containerRef}>{points.length ? <canvas data-sparkline="true" ref={canvasRef} aria-hidden="true" /> : <span>-</span>}</div>
+      <div className="globalQuotePrice"><strong>{fmtChartPrice(regularPrice, item.symbol)}</strong>{hasExtended ? <span className="globalQuoteSubValue"><i className="globalQuoteSubBadge" aria-hidden="true">EXT</i>{fmtChartPrice(extendedPrice, item.symbol)}</span> : null}</div>
+      <div className={`globalQuoteChange ${tone(compositeChange)}`}><strong>{regularChange == null ? "-" : fmtPct(regularChange)}</strong>{hasExtended ? <span className="globalQuoteSubValue">{fmtPct(extendedChange)}</span> : null}</div>
+    </article>
   );
 }
 
@@ -1763,7 +1898,7 @@ function patchLatestCandle(candles = [], latestPrice, interval, selectedDate = "
 }
 
 function styleIntradaySessionCandles(candles = [], symbol = "", interval = "") {
-  if (!['5m', '15m'].includes(interval) || String(symbol || '').endsWith('.SS') || String(symbol || '').endsWith('.SZ')) {
+  if (!['1m', '5m', '15m'].includes(interval) || String(symbol || '').endsWith('.SS') || String(symbol || '').endsWith('.SZ')) {
     return candles;
   }
   return candles.map((candle) => {
@@ -1853,12 +1988,12 @@ function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = 
 }
 
 function fixedIntradaySessionConfig(symbol, interval, showExtended) {
-  if (!["5m", "15m"].includes(interval)) return null;
+  if (!["1m", "5m", "15m"].includes(interval)) return null;
   const normalizedSymbol = String(symbol || "").toUpperCase();
   const isChinaMarket = normalizedSymbol === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalizedSymbol);
   const sessionMinutes = isChinaMarket ? 240 : showExtended ? 960 : 390;
   const sessionStartMinutes = isChinaMarket ? 9 * 60 + 30 : showExtended ? 4 * 60 : 9 * 60 + 30;
-  const intervalMinutes = interval === "5m" ? 5 : 15;
+  const intervalMinutes = interval === "1m" ? 1 : interval === "5m" ? 5 : 15;
   return {
     isChinaMarket,
     intervalMinutes,
@@ -1887,6 +2022,10 @@ function fixedIntradaySeriesData(candles, volumes, symbol, interval, showExtende
   const config = fixedIntradaySessionConfig(symbol, interval, showExtended);
   const referenceTime = Number(candles?.find((row) => Number.isFinite(Number(row?.time)))?.time);
   if (!config || !Number.isFinite(referenceTime)) return { candles, volumes };
+  // Futu already returns the complete extended-hours minute timeline. Keep
+  // those timestamps intact; remapping them onto a synthetic grid can make
+  // pre-market, regular and post-market candles appear out of order.
+  if (showExtended) return { candles, volumes };
   const localMinutes = marketLocalMinutes(referenceTime, config.isChinaMarket);
   if (!Number.isFinite(localMinutes)) return { candles, volumes };
   const firstTime = referenceTime - (localMinutes - config.sessionStartMinutes) * 60;
@@ -2345,6 +2484,7 @@ function SingleLightweightChart({
   const [drawingDraft, setDrawingDraft] = useState(null);
   const drawingDraftRef = useRef(null);
   const [drawingHint, setDrawingHint] = useState("");
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const commitDrawingRef = useRef(null);
   drawingKeyRef.current = drawingKey;
   drawingToolRef.current = drawingTool;
@@ -2367,6 +2507,7 @@ function SingleLightweightChart({
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key !== "Escape") return;
+      setIsFullscreen(false);
       setDrawingTool("");
       setDrawingDraft(null);
       setDrawingHint("");
@@ -2374,6 +2515,15 @@ function SingleLightweightChart({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!isFullscreen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isFullscreen]);
 
   useEffect(() => {
     visibleProfileCallbackRef.current = onVisibleProfileChange;
@@ -2424,7 +2574,7 @@ function SingleLightweightChart({
   }, [data, rawCandles]);
   const candles = rawCandles;
   const volumes = rawVolumes;
-  const showOpeningPercentAxis = data?.interval === "5m" || data?.interval === "15m";
+  const showOpeningPercentAxis = ["1m", "5m", "15m"].includes(data?.interval);
   const previousClose = Number(data?.previous_close);
   const percentReference = useMemo(() => percentReferencePrice(candles, previousClose), [candles, previousClose]);
   const percentRows = useMemo(
@@ -2434,7 +2584,7 @@ function SingleLightweightChart({
   const overlays = data?.overlays || {};
   const indicators = data?.indicators || {};
   const isDaily = data?.interval === "1d";
-  const rsiPeriod = Number(data?.rsi_period) || (data?.interval === "5m" ? 7 : 14);
+  const rsiPeriod = Number(data?.rsi_period) || (["1m", "5m"].includes(data?.interval) ? 7 : 14);
   const avwapValue = Number(data?.avwap_value);
   const avwapSkewsIntradayScale = useMemo(() => {
     if (isDaily || !Number.isFinite(avwapValue) || !candles.length) return false;
@@ -2529,14 +2679,14 @@ function SingleLightweightChart({
     const avwapUpper = chart.addSeries(LineSeries, { color: "rgba(45, 212, 191, 0.52)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }, 0);
     const avwapLower = chart.addSeries(LineSeries, { color: "rgba(45, 212, 191, 0.52)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false }, 0);
     const avwap = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 2, lastValueVisible: false, priceLineVisible: false }, 0);
-    const ema20 = chart.addSeries(LineSeries, { color: "rgba(245, 158, 11, 0.96)", lineWidth: 1, title: "EMA20", lastValueVisible: false, priceLineVisible: false }, 0);
-    const ma50 = chart.addSeries(LineSeries, { color: "rgba(192, 132, 252, 0.96)", lineWidth: 1, title: "MA50", lastValueVisible: false, priceLineVisible: false }, 0);
-    const ma200 = chart.addSeries(LineSeries, { color: "rgba(156, 163, 175, 0.95)", lineWidth: 1, title: "MA200", lastValueVisible: false, priceLineVisible: false }, 0);
-    const rsi = chart.addSeries(LineSeries, { color: TERMINAL_CHART.violet, lineWidth: 1, title: `RSI(${rsiPeriod})` }, 1);
-    const rsiMa = chart.addSeries(LineSeries, { color: TERMINAL_CHART.yellow, lineWidth: 1, title: "RSI EMA" }, 1);
+    const ema20 = chart.addSeries(LineSeries, { color: "rgba(245, 158, 11, 0.96)", lineWidth: 1, lastValueVisible: false, priceLineVisible: false }, 0);
+    const ma50 = chart.addSeries(LineSeries, { color: "rgba(192, 132, 252, 0.96)", lineWidth: 1, lastValueVisible: false, priceLineVisible: false }, 0);
+    const ma200 = chart.addSeries(LineSeries, { color: "rgba(156, 163, 175, 0.95)", lineWidth: 1, lastValueVisible: false, priceLineVisible: false }, 0);
+    const rsi = chart.addSeries(LineSeries, { color: TERMINAL_CHART.violet, lineWidth: 1 }, 1);
+    const rsiMa = chart.addSeries(LineSeries, { color: TERMINAL_CHART.yellow, lineWidth: 1 }, 1);
     const macdHist = chart.addSeries(HistogramSeries, { color: "rgba(148, 163, 184, 0.35)", priceLineVisible: false, lastValueVisible: false }, 2);
-    const macd = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 1, title: "MACD" }, 2);
-    const macdSignal = chart.addSeries(LineSeries, { color: TERMINAL_CHART.coral, lineWidth: 1, title: "Signal" }, 2);
+    const macd = chart.addSeries(LineSeries, { color: TERMINAL_CHART.cyan, lineWidth: 1 }, 2);
+    const macdSignal = chart.addSeries(LineSeries, { color: TERMINAL_CHART.coral, lineWidth: 1 }, 2);
     [percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macd, macdSignal]
       .filter(Boolean)
       .forEach((lineSeries) => lineSeries.applyOptions({ crosshairMarkerVisible: false }));
@@ -2545,7 +2695,7 @@ function SingleLightweightChart({
       color: "rgba(248, 113, 113, 0.78)",
       lineWidth: 1,
       lineStyle: 2,
-      axisLabelVisible: true,
+      axisLabelVisible: false,
       title: "超买 70",
     });
     rsi.createPriceLine({
@@ -2553,7 +2703,7 @@ function SingleLightweightChart({
       color: "rgba(52, 211, 153, 0.78)",
       lineWidth: 1,
       lineStyle: 2,
-      axisLabelVisible: true,
+      axisLabelVisible: false,
       title: "超卖 30",
     });
     seriesRef.current = { candle, tradeMarkers, volume, percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
@@ -2843,7 +2993,7 @@ function SingleLightweightChart({
         color: TERMINAL_CHART.yellow,
         lineWidth: 1,
         lineStyle: 2,
-        axisLabelVisible: true,
+        axisLabelVisible: false,
         title: "Latest",
       });
     }
@@ -2853,7 +3003,7 @@ function SingleLightweightChart({
         color: "rgba(180, 83, 9, 0.96)",
         lineWidth: 1,
         lineStyle: 2,
-        axisLabelVisible: true,
+        axisLabelVisible: false,
         title: "Cost",
       });
     }
@@ -2863,7 +3013,7 @@ function SingleLightweightChart({
         color: TERMINAL_CHART.cyan,
         lineWidth: 1,
         lineStyle: 2,
-        axisLabelVisible: true,
+        axisLabelVisible: false,
         title: "AVWAP",
       });
     }
@@ -2889,8 +3039,12 @@ function SingleLightweightChart({
     });
   }, [candles, volumes, percentRows, overlays, indicators, data, isDaily, showOpeningPercentAxis, avwapSkewsIntradayScale, previousClose, displayRange, viewKey]);
 
+  const openFullscreen = () => {
+    if (drawingToolRef.current || customAnchorPickEnabledRef.current) return;
+    setIsFullscreen(true);
+  };
   return (
-    <div className="singleLwWrap">
+    <div className={`singleLwWrap ${isFullscreen ? "isFullscreen" : ""}`}>
       <div className="singleLwHeader">
         <div>
           <strong>{data?.symbol}</strong>
@@ -2923,12 +3077,28 @@ function SingleLightweightChart({
           {drawingHint ? <em>{drawingHint}</em> : null}
           {!drawingTool && customAnchorPickEnabled && !drawingHint ? <em>点击主图 K 线选择 AVWAP 锚点</em> : null}
         </div>
+        <button type="button" className="klineExpandButton" onClick={() => setIsFullscreen((current) => !current)} title={isFullscreen ? "退出全屏" : "全屏查看 K 线"} aria-label={isFullscreen ? "退出全屏" : "全屏查看 K 线"}>
+          {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          <span>{isFullscreen ? "退出" : "全屏"}</span>
+        </button>
         <div className={tone(data?.latest_change_pct)}>
           <strong>{fmtChartPrice(data?.latest_price, data?.symbol)}</strong>
           <span>{data?.latest_change_pct == null ? "-" : fmtPct(data.latest_change_pct)}</span>
         </div>
       </div>
-      <div className={`singleLwCanvas ${drawingTool || customAnchorPickEnabled ? "isDrawing" : ""}`} ref={containerRef}>
+      <div className="singleLwLegend" aria-label="K线指标图例">
+        <span><i className="legendLatest" />Latest</span>
+        <span><i className="legendEma" />EMA20</span>
+        <span><i className="legendMa50" />MA50</span>
+        <span><i className="legendMa200" />MA200</span>
+        {Number(data?.user_avg_cost) > 0 ? <span><i className="legendCost" />Cost</span> : null}
+        {Number.isFinite(avwapValue) && avwapValue > 0 ? <span><i className="legendAvwap" />AVWAP</span> : null}
+        <span><i className="legendRsi" />RSI({rsiPeriod})</span>
+        <span><i className="legendRsiEma" />RSI EMA</span>
+        <span><i className="legendMacd" />MACD</span>
+        <span><i className="legendSignal" />Signal</span>
+      </div>
+      <div className={`singleLwCanvas ${drawingTool || customAnchorPickEnabled ? "isDrawing" : ""}`} ref={containerRef} onClick={openFullscreen}>
         {candleTooltip.visible ? (
           <div className="klineCandleTooltip" style={{ left: `${candleTooltip.left}px`, top: `${candleTooltip.top}px` }}>
             <strong>{candleTooltip.time || "-"}</strong>
@@ -2984,14 +3154,12 @@ function SingleLightweightChart({
 let klinePageMemory = {};
 
 function defaultKlineAvwapMode(interval, symbol) {
-  if (interval === "5m" || interval === "15m") return "today_open";
+  if (["1m", "5m", "15m"].includes(interval)) return "today_open";
   return ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol) ? "year_start" : "earnings";
 }
 
 const KLINE_SWING_DEFAULTS = {
   QQQ: { shares: 0, avg_cost: 0, target_pct: 3, stop_loss_min_pct: 5, stop_loss_max_pct: 7, take_profit_min_pct: 10, take_profit_max_pct: 15 },
-  ISRG: { shares: 0, avg_cost: 0, target_pct: 1, stop_loss_min_pct: 8, stop_loss_max_pct: 10, take_profit_min_pct: 15, take_profit_max_pct: 20 },
-  AVGO: { shares: 0, avg_cost: 0, target_pct: 0.35, stop_loss_min_pct: 8, stop_loss_max_pct: 12, take_profit_min_pct: 15, take_profit_max_pct: 20 },
 };
 
 function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, onSave }) {
@@ -3078,14 +3246,14 @@ function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
   const [scope, setScope] = useState("global");
   const [symbol, setSymbol] = useState(() => String(restoredState.symbol || "VOO"));
-  const [interval, setInterval] = useState(() => String(restoredState.interval || "15m"));
+  const [interval, setInterval] = useState(() => String(restoredState.interval || "1m"));
   const [avwapMode, setAvwapMode] = useState(() => String(
     restoredState.avwapMode
-      || defaultKlineAvwapMode(String(restoredState.interval || "15m"), String(restoredState.symbol || "VOO"))
+      || defaultKlineAvwapMode(String(restoredState.interval || "1m"), String(restoredState.symbol || "VOO"))
   ));
   const [customAnchorDate, setCustomAnchorDate] = useState(() => String(restoredState.customAnchorDate || ""));
   const [displayRange, setDisplayRange] = useState(() => String(restoredState.displayRange || "60"));
-  const [showExtended, setShowExtended] = useState(() => restoredState.showExtended == null ? true : Boolean(restoredState.showExtended));
+  const [showExtended, setShowExtended] = useState(() => restoredState.showExtended == null ? false : Boolean(restoredState.showExtended));
   const [selectedDate, setSelectedDate] = useState(() => String(restoredState.selectedDate || ""));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -3099,6 +3267,10 @@ function KlinePage({ dashboardData }) {
   const [swingPositionError, setSwingPositionError] = useState("");
   const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
   const loadRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (scope === "global" && interval !== "1m") setInterval("1m");
+  }, [scope, interval]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3148,7 +3320,7 @@ function KlinePage({ dashboardData }) {
       if (scope === "single" && effectiveAvwapMode === "custom" && customAnchorDate) {
         qs.set("custom_anchor_date", customAnchorDate);
       }
-      if (["5m", "15m"].includes(interval) && selectedDate) qs.set("selected_date", selectedDate);
+      if (["1m", "5m", "15m"].includes(interval) && selectedDate) qs.set("selected_date", selectedDate);
       const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
       const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -3270,8 +3442,11 @@ function KlinePage({ dashboardData }) {
 
   function openSingleSymbolFromGlobal(nextSymbol) {
     setScope("single");
+    setInterval("1d");
+    setAvwapMode(defaultKlineAvwapMode("1d", nextSymbol));
+    setCustomAnchorDate("");
     setDisplayRange("60");
-    changeKlineSymbol(nextSymbol);
+    setSymbol(nextSymbol);
   }
 
   const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.selected_date || selectedDate}-${data?.avwap_mode || avwapMode}-${customAnchorDate}-${displayRange}`;
@@ -3297,14 +3472,15 @@ function KlinePage({ dashboardData }) {
               setDisplayRange("60");
             }} aria-label="返回全局 K 线看板" title="返回全局 K 线看板"><Home size={18} /><span>全局</span></button>
           ) : null}
-          <label className="klineControl">
+          {scope === "single" ? <label className="klineControl">
             <span>周期</span>
             <select value={interval} onChange={(event) => changeKlineInterval(event.target.value)} aria-label="K线周期">
               <option value="1d">日线</option>
+              <option value="1m">1 min</option>
               <option value="15m">15 min</option>
               <option value="5m">5 min</option>
             </select>
-          </label>
+          </label> : null}
           {interval !== "1d" ? (
             <div className="klineDatePicker">
               <label className="klineControl klineDateControl">
@@ -3332,7 +3508,7 @@ function KlinePage({ dashboardData }) {
                 .filter((row) => row.currency === "USD" && row.symbol !== "SGOV")
                 .map((row) => row.symbol)
                 , "510330.SS"]
-                .map((item) => <option key={item} value={item}>{item === "510330.SS" ? "510330 沪深300ETF" : item}</option>)}
+                .map((item) => <option key={item} value={item}>{item === "510330.SS" ? "510330" : item}</option>)}
             </select>
           </label> : null}
         </div>
@@ -3391,16 +3567,13 @@ function KlinePage({ dashboardData }) {
         ) : null}
         <button className="klineGuideButton" type="button" onClick={() => setShowCheatSheet(true)}><BookOpen size={16} />指标模板</button>
       </div>
-      {data && scope === "global" ? <div className="muted">全局看板：{data.symbols?.join(" / ")} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : "实时"}</div> : null}
-      {data && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? (
-        <SwingPositionPanel symbol={symbol} latestPrice={data.latest_price} totalAssetsUsd={totalAssetsUsd} position={swingPosition} onSave={saveSwingPosition} />
-      ) : null}
+      {data && scope === "global" ? <div className="muted globalBoardMeta">全局看板：{data.symbols?.join(" / ")} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : "实时"}</div> : null}
       {swingPositionError && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? <div className="errorInline">{"\u6ce2\u6bb5\u4ed3\u8bfb\u53d6\u5931\u8d25\uff1a"}{swingPositionError}</div> : null}
-      {data && scope === "single" ? <div className="muted">行情源 {data.market_provider || "-"} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : (realtimeConnected ? "实时订阅中" : "实时连接中")}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}{swingTargetAmount > 0 ? ` · 波段目标 ${fmtMoney(swingTargetAmount, "USD", 0)}（${swingTargetPct}%）` : ""}</div> : null}
+      {data && scope === "single" ? <div className="muted singleChartMeta">行情源 {data.market_provider || "-"} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : (realtimeConnected ? "实时订阅中" : "实时连接中")}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}{swingTargetAmount > 0 ? ` · 波段目标 ${fmtMoney(swingTargetAmount, "USD", 0)}（${swingTargetPct}%）` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {realtimeError && !(error || data?.error) ? <div className="muted">{realtimeError}</div> : null}
-      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.selected_date}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
+      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} marketCards={dashboardData?.daily_cards || []} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.selected_date}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
       {scope === "single" && data?.candles ? (
         <div className={`klineAnalysisLayout ${interval !== "1d" ? "withoutInsight" : ""}`}>
           <SingleLightweightChart
@@ -3413,6 +3586,9 @@ function KlinePage({ dashboardData }) {
           />
           {interval === "1d" ? <TechnicalInsightPanel data={data} displayRange={displayRange} visibleProfile={activeVisibleProfile} /> : null}
         </div>
+      ) : null}
+      {data && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? (
+        <SwingPositionPanel symbol={symbol} latestPrice={data.latest_price} totalAssetsUsd={totalAssetsUsd} position={swingPosition} onSave={saveSwingPosition} />
       ) : null}
       {showCheatSheet ? <TechnicalCheatSheetModal onClose={() => setShowCheatSheet(false)} /> : null}
     </section>
@@ -4480,7 +4656,7 @@ function Rebalance({ data, onSaved }) {
   }
 
   return (
-    <section>
+    <section className="rebalancePage">
       {tradeToast ? (
         <div className={`toastNotice ${tradeToast.status}`} role="status" aria-live="polite" key={tradeToast.id}>
           <strong>{tradeToast.status === "down" ? "操作失败" : "操作完成"}</strong>
@@ -4617,6 +4793,11 @@ function Rebalance({ data, onSaved }) {
         }}>
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader"><h2>{data.rebalance.rules?.title || "算法规则"}</h2><button onClick={() => setRulesOpen(false)}>关闭</button></div>
+            <div className="rebalanceRuleSummary">
+              <p>{data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} · 待买 {fmtMoney(tradeTotals.buy_USD, "USD")} · 待卖 {fmtMoney(tradeTotals.sell_USD, "USD")}</p>
+              <p>建仓到 {data.rebalance.build_target} · 未来入金 {data.rebalance.future_cash_months} 个月 · 缩放 {Number(data.rebalance.suggestion_scale || 1).toFixed(2)}</p>
+              <p>共同分母：{data.rebalance.planned_total_formula || `USD ${fmtMoney(data.rebalance.planned_total_usd, "USD")}`} · VOO 按月买入 · QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率</p>
+            </div>
             {(data.rebalance.rules?.sections || []).map((section) => (
               <section className="ruleSection" key={section.heading}>
                 <h3>{section.heading}</h3>
