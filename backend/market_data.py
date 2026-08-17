@@ -534,7 +534,7 @@ def _futu_subscribe_dynamic(symbols: list[str], types: list[str]) -> None:
         valid_types = [name for name in dict.fromkeys(types) if name in _FUTU_SUB_TYPE_ENUMS]
         if not valid_symbols or not valid_types:
             return
-        grouped: dict[str, list[str]] = {}
+        grouped: dict[tuple[str, bool], list[str]] = {}
         for symbol in valid_symbols:
             for name in valid_types:
                 key = (symbol, name)
@@ -542,10 +542,11 @@ def _futu_subscribe_dynamic(symbols: list[str], types: list[str]) -> None:
                 if timer is not None:
                     timer.cancel()
                 if key not in _FUTU_ACTIVE_SUBSCRIPTIONS:
-                    grouped.setdefault(name, []).append(symbol)
-        for name, group in grouped.items():
+                    is_us = str(app_config.FUTU_US[symbol]).upper().startswith("US.")
+                    grouped.setdefault((name, is_us), []).append(symbol)
+        for (name, is_us), group in grouped.items():
             kwargs: dict[str, Any] = {"is_first_push": True, "subscribe_push": True}
-            if all(str(app_config.FUTU_US[sym]).upper().startswith("US.") for sym in group):
+            if is_us:
                 kwargs["extended_time"] = True
             ret, message = ctx.subscribe(
                 [app_config.FUTU_US[sym] for sym in group],

@@ -822,6 +822,7 @@ def chart_board_light(
     custom_anchor_date: str | None = None,
     selected_date: str = "",
 ) -> dict[str, Any]:
+    ensure_futu_realtime_subscriptions([str(symbol or "VOO").upper()], interval)
     return _build_chart_board_light(
         symbol,
         interval,
@@ -839,6 +840,7 @@ def chart_board_global_light(
     columns: int = 1,
     selected_date: str = "",
 ) -> dict[str, Any]:
+    ensure_futu_realtime_subscriptions(list(_chart_labels().keys()), interval)
     return _build_global_chart_board_light(interval, show_extended, columns, selected_date)
 
 

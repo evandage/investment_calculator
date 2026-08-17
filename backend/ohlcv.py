@@ -239,15 +239,22 @@ def _displayed_intraday_bars(
     show_extended: bool,
     selected_date: str = "",
 ) -> list[dict[str, Any]]:
-    return [
+    trading_day_bars = _trading_day_bars(symbol, bars, selected_date)
+    displayed = [
         bar
-        for bar in _trading_day_bars(symbol, bars, selected_date)
+        for bar in trading_day_bars
         if _in_displayed_intraday_session(
             symbol,
             datetime.fromtimestamp(int(bar["time"]), _market_tz(symbol)),
             show_extended,
         )
     ]
+    # Before the regular session opens (or after it closes with no current-day
+    # bars), keep the sparkline useful by showing the latest completed regular
+    # session instead of returning an empty chart.
+    if displayed or show_extended or selected_date:
+        return displayed
+    return _latest_regular_session_bars(symbol, bars)
 
 
 def _latest_regular_session_bars(
