@@ -1148,6 +1148,7 @@ h2 {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
+
 .heatmapToolbar {
   display: flex;
   align-items: center;
@@ -1574,6 +1575,10 @@ h2 {
   text-align: left;
   cursor: pointer;
   transition: opacity 140ms ease, border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.heatMetricGroup {
+  display: contents;
 }
 
 .performanceStat:not(.is-selected) {
@@ -4176,6 +4181,13 @@ tbody th {
   color: #cbd5e1;
 }
 
+.heatCell .heatRegularValue,
+.heatCell .heatExtendedValue,
+.satelliteMiniCell .heatRegularValue,
+.satelliteMiniCell .heatExtendedValue {
+  color: inherit;
+}
+
 .heatPnl {
   position: relative;
   z-index: 1;
@@ -5037,19 +5049,69 @@ tbody tr:hover th {
   .pageNav::before { top: 5px; bottom: 5px; left: 5px; border-radius: 13px; background: linear-gradient(180deg, rgba(37,99,235,.95), rgba(29,78,216,.72)); }
   .pageNav button, .dashboardShell .pageNav button { display: inline-flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; min-height: 48px; padding: 5px 2px; border-radius: 13px; color: #7890a8; font-size: .66rem; font-weight: 700; }
   .pageNav button.active { color: #fff; }
-  .summaryGrid, .dashboardPage .summaryGrid { display: grid; grid-template-columns: 1fr; gap: 7px; }
-  .summaryAssetGroup, .dashboardPage .summaryAssetGroup { display: block; min-width: 0; }
-  .summaryRowLabel, .dashboardPage .summaryRowLabel { display: flex; align-items: center; justify-content: space-between; min-height: 29px; margin-bottom: 4px; padding: 5px 9px; border-radius: 9px; font-size: .7rem; }
-  .summaryAssetMetrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .summaryGrid, .dashboardPage .summaryGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(68px, auto)); gap: 5px; }
+  .summaryAssetGroup, .dashboardPage .summaryAssetGroup,
+  .summaryAssetMetrics { display: contents; }
+  .summaryRowLabel, .dashboardPage .summaryRowLabel { display: none; }
   .summaryAssetMetrics .summaryItem:first-child { grid-column: auto; }
   .summaryItem, .dashboardPage .summaryItem, .fxSummaryItem { min-height: 68px; padding: 7px 4px; border-radius: 10px; }
   .summaryItem span, .dashboardPage .summaryItem span { font-size: .58rem; line-height: 1.2; text-align: center; }
   .summaryItem strong, .dashboardPage .summaryItem strong { max-width: 100%; font-size: .68rem; line-height: 1.15; white-space: normal; overflow-wrap: anywhere; text-align: center; }
-  .dashboardPage .fxSummaryItem { grid-column: auto; grid-row: auto; min-height: 62px; }
+  .dashboardPage .fxSummaryItem { grid-column: 4; grid-row: 1 / span 2; min-height: 0; }
+  .dashboardPage .fxSummaryItem strong { font-size: .92rem; }
+  .dashboardPage .fxSummaryItem em { font-size: .58rem; text-align: center; }
   .dashboardTopGrid, .dashboardWorkspace { gap: 10px; margin-top: 10px; }
   .dashboardInsights .visualGrid { grid-template-columns: 1fr; gap: 10px; }
   .dashboardInsights .performancePlot { height: 230px; }
   .heatmapPanel { margin-bottom: 0; }
+  .heatmapPanel .heatmapCanvas {
+    width: 100%;
+    margin-left: auto;
+    height: min(calc(100vw * 1.68), 780px);
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto !important;
+  }
+  .heatmapPanel .heatCell {
+    gap: 1px;
+    padding: 3px;
+    border-radius: 5px;
+  }
+  .heatmapPanel .heatMetricGroup {
+    display: grid;
+    gap: 1px;
+    justify-items: center;
+  }
+  .heatmapPanel .heatCell .heatSymbol,
+  .heatmapPanel .heatCell .heatPrice,
+  .heatmapPanel .heatCell strong,
+  .heatmapPanel .heatCell span,
+  .heatmapPanel .heatCell .heatPnl {
+    font-size: .52rem !important;
+    line-height: 1.05;
+  }
+  .heatmapPanel .heatCell .heatSymbol,
+  .satelliteMiniCell b {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .heatmapPanel .heatCell .heatExtendedValue,
+  .satelliteMiniCell .heatExtendedValue {
+    display: block;
+    white-space: nowrap;
+  }
+  .satelliteHoverPanel { top: 36px; right: 6px; left: 6px; padding: 8px; }
+  .satelliteHoverPanel > strong { margin-bottom: 5px; font-size: .68rem; }
+  .satelliteMiniCanvas { height: min(102vw, 390px); }
+  .satelliteMiniCell,
+  .satelliteMiniCell b,
+  .satelliteMiniCell .heatPrice,
+  .satelliteMiniCell span { font-size: .52rem !important; line-height: 1.05; }
+  .satelliteMiniCell { gap: 1px; padding: 2px; border-radius: 4px; }
+  .satelliteMiniCell { min-width: 72px; min-height: 54px; }
+  .satelliteMiniTooltip { margin-top: 5px; padding: 5px 7px; font-size: .58rem; }
   .cardGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .dailyCard { min-height: 108px; padding: 10px 7px; border-radius: 12px; }
   .wideCard { grid-column: span 2; }
@@ -5057,9 +5119,42 @@ tbody tr:hover th {
   .fundQuoteMeta { max-width: 100%; overflow: hidden; font-size: .58rem; text-overflow: ellipsis; }
   .sectionHeader, .actions { flex-wrap: wrap; gap: 8px; }
   .sectionHeader h2 { font-size: 1rem; }
-  .tableWrap { margin-right: calc(var(--mobile-gutter) * -1); margin-left: calc(var(--mobile-gutter) * -1); padding: 0 var(--mobile-gutter); border-right: 0; border-left: 0; border-radius: 0; -webkit-overflow-scrolling: touch; }
+  .rebalancePage > .sectionHeader { flex-wrap: nowrap; gap: 8px; }
+  .rebalancePage > .sectionHeader > .muted { display: none; }
+  .rebalancePage > .sectionHeader .toolButton { flex: 0 0 auto; }
+  .tableWrap { margin-right: 0; margin-left: 0; padding: 0 8px; border-right: 0; border-left: 0; border-radius: 10px; -webkit-overflow-scrolling: touch; }
   .tableWrap::after { content: "左右滑动查看更多"; display: block; padding: 6px 0 8px; color: #71869d; font-size: .62rem; text-align: right; }
   .tableWrap table { min-width: 760px; }
+  .holdingsPage .tableWrap { margin-right: 0; margin-left: 0; padding: 0 8px; overflow: hidden; border-radius: 10px; }
+  .holdingsPage .tableWrap::after { display: none; }
+  .holdingsPage .editableHoldingsTable { width: 100%; min-width: 0; table-layout: fixed; }
+  .holdingsPage .editableHoldingsTable th,
+  .holdingsPage .editableHoldingsTable td { padding: 8px 4px; font-size: .64rem; }
+  .holdingsPage .editableHoldingsTable th:nth-child(1),
+  .holdingsPage .editableHoldingsTable td:nth-child(1) { width: 18%; }
+  .holdingsPage .editableHoldingsTable th:nth-child(2),
+  .holdingsPage .editableHoldingsTable td:nth-child(2) { width: 18%; }
+  .holdingsPage .editableHoldingsTable th:nth-child(3),
+  .holdingsPage .editableHoldingsTable td:nth-child(3) { width: 18%; }
+  .holdingsPage .editableHoldingsTable th:nth-child(4),
+  .holdingsPage .editableHoldingsTable td:nth-child(4) { width: 28%; }
+  .holdingsPage .editableHoldingsTable th:nth-child(5),
+  .holdingsPage .editableHoldingsTable td:nth-child(5) { width: 18%; }
+  .holdingsPage .editableHoldingsTable th:nth-child(n + 6),
+  .holdingsPage .editableHoldingsTable td:nth-child(n + 6) { display: none; }
+  .rebalancePage .tableWrap { padding: 0 8px; }
+  .rebalancePage .rebalanceTable {
+    min-width: 760px;
+  }
+  .rebalancePage .rebalanceTable th,
+  .rebalancePage .rebalanceTable td {
+    padding: 8px 4px;
+    font-size: .64rem;
+  }
+  .rebalancePage .rebalanceTable .tierBadge {
+    padding: 2px 5px;
+    font-size: .58rem;
+  }
   th, td { padding: 9px 8px; font-size: .72rem; }
   .modalBackdrop { align-items: end; padding: 0; }
   .modalPanel, .performanceModal, .cheatSheetModal { width: 100%; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top)); margin: 0; padding: 16px 14px calc(18px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; }
@@ -5115,8 +5210,8 @@ tbody tr:hover th {
 .globalQuoteChange.down { color: #fda4af; background: rgba(239, 68, 68, .16); }
 .globalQuoteChange.flat { color: #cbd5e1; background: rgba(148, 163, 184, .16); }
 @media (max-width: 720px) {
-  .globalQuoteList { width: 100%; margin-top: 10px; border-radius: 12px; }
-  .globalQuoteRow { grid-template-columns: minmax(58px, .65fr) minmax(150px, 2.4fr) minmax(62px, .7fr) 58px; gap: 4px; min-height: 62px; padding: 6px 7px; }
+  .globalQuoteList { width: 100%; height: calc(100dvh - 210px); margin-top: 10px; border-radius: 12px; grid-template-rows: repeat(8, minmax(0, 1fr)); }
+  .globalQuoteRow { grid-template-columns: minmax(58px, .65fr) minmax(150px, 2.4fr) minmax(62px, .7fr) 58px; gap: 4px; min-height: 0; padding: 6px 7px; }
   .globalQuoteIdentity strong { font-size: .9rem; }
   .globalQuoteIdentity span { font-size: .56rem; }
   .globalQuoteSparkline { width: 150px; height: 48px; justify-self: center; }
@@ -5299,6 +5394,34 @@ tbody tr:hover th {
   .klineToolbar .klineAvwapControl { min-width: 78px; }
   .klineToolbar .klineControl select,
   .klineToolbar .klineDateControl input { font-size: 9px; }
+
+  .summaryBreakdownTooltip {
+    position: absolute;
+    z-index: 120;
+    top: calc(100% + 6px);
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: min(300px, calc(100vw - 24px));
+    max-height: min(58dvh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translate(-50%, 4px);
+  }
+  .summaryItem.hasSummaryBreakdown:hover .summaryBreakdownTooltip,
+  .summaryItem.hasSummaryBreakdown:focus .summaryBreakdownTooltip,
+  .summaryItem.hasSummaryBreakdown:focus-within .summaryBreakdownTooltip {
+    transform: translate(-50%, 0);
+  }
+  .holdingPnlSummaryItem .summaryBreakdownTooltip {
+    max-height: none;
+    overflow: visible;
+  }
+  .summaryItem.hasSummaryBreakdown:hover,
+  .summaryItem.hasSummaryBreakdown:focus,
+  .summaryItem.hasSummaryBreakdown:focus-within {
+    transform: none;
+  }
 }
 
 @media (min-width: 721px) {

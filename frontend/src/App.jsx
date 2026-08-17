@@ -10,9 +10,12 @@ const API_BASE =
 const WS_BASE = API_BASE.replace(/^http/i, "ws");
 const HEATMAP_LAYOUT_WIDTH = 100;
 const HEATMAP_LAYOUT_HEIGHT = 72;
+const MOBILE_HEATMAP_LAYOUT_WIDTH = 140;
+const MOBILE_HEATMAP_LAYOUT_HEIGHT = 270;
+const HEATMAP_SATELLITE_LAYOUT_WEIGHT = 2.5;
 const HEATMAP_MAX_CANVAS_HEIGHT = 612;
-const SATELLITE_HOVER_LAYOUT_WIDTH = 100;
-const SATELLITE_HOVER_LAYOUT_HEIGHT = 42;
+const SATELLITE_HOVER_LAYOUT_WIDTH = 140;
+const SATELLITE_HOVER_LAYOUT_HEIGHT = 70;
 const TERMINAL_CHART = {
   yellow: "#facc15",
   cyan: "#22d3ee",
@@ -289,7 +292,7 @@ function globalCompositeChange(item, marketCard) {
   return ((1 + regular / 100) * (1 + extended / 100) - 1) * 100;
 }
 
-function TreemapPriceLine({ priceLine = "", regularPrice, extendedPrice, currency = "USD", regularPct = 0, extendedPct = null }) {
+function TreemapPriceLine({ priceLine = "", regularPrice, extendedPrice, currency = "USD", regularPct = 0, extendedPct = null, showRegular = true, showExtended = true }) {
   const legacyMatch = String(priceLine || "").trim().match(
     /^(USD|CNY)\s+([\d,]+(?:\.\d+)?)(?:（([\d,]+(?:\.\d+)?)）)?$/,
   );
@@ -311,8 +314,8 @@ function TreemapPriceLine({ priceLine = "", regularPrice, extendedPrice, currenc
   const hasExtended = Number.isFinite(extended) && extended > 0;
   return (
     <>
-      <span className={tone(regularPct)}>{resolvedCurrency} {formatPrice(regular)}</span>
-      {hasExtended ? <span className={tone(extendedPct)}>（{formatPrice(extended)}）</span> : null}
+      {showRegular ? <span className={`heatRegularValue ${tone(regularPct)}`}>{resolvedCurrency} {formatPrice(regular)}</span> : null}
+      {showExtended && hasExtended ? <span className={`heatExtendedValue ${tone(extendedPct)}`}>（{formatPrice(extended)}）</span> : null}
     </>
   );
 }
@@ -708,17 +711,17 @@ function Summary({ data }) {
         <div className="summaryRowLabel">美元资产</div>
         <div className="summaryAssetMetrics">
           <div className="summaryItem">
-            <span>资产规模</span>
+            <span>美元资产规模</span>
             <strong>{fmtMoney(usdTotalAssets, "USD")}</strong>
           </div>
-          <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
+          <div className="summaryItem hasSummaryBreakdown holdingPnlSummaryItem" tabIndex="0">
             <span>持仓盈亏</span>
             <strong className={tone(usdPnl)}>
               {fmtMoney(usdPnl, "USD")} · {fmtPct(usdPnlPct)}
             </strong>
             <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} showContribution />
           </div>
-          <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
+          <div className="summaryItem hasSummaryBreakdown dailySummaryItem" tabIndex="0">
             <span>当日加权{dailyAsOfLabel}</span>
             <strong className={tone(usdDailyChange)}>
               {fmtMoney(usdDailyChange, "USD")} · {fmtPct(usdDailyPct)}
@@ -731,17 +734,17 @@ function Summary({ data }) {
         <div className="summaryRowLabel">总资产</div>
         <div className="summaryAssetMetrics">
           <div className="summaryItem">
-            <span>资产规模</span>
+            <span>总资产规模</span>
             <strong>{fmtMoney(summary.total_assets_cny, "CNY")}</strong>
           </div>
-          <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
+          <div className="summaryItem hasSummaryBreakdown holdingPnlSummaryItem" tabIndex="0">
             <span>持仓盈亏</span>
             <strong className={tone(summary.total_pnl_cny)}>
               {fmtMoney(summary.total_pnl_cny, "CNY")} · {fmtPct(summary.total_pnl_pct)}
             </strong>
             <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} showContribution />
           </div>
-          <div className="summaryItem hasSummaryBreakdown" tabIndex="0">
+          <div className="summaryItem hasSummaryBreakdown dailySummaryItem totalDailySummaryItem" tabIndex="0">
             <span>当日加权{dailyAsOfLabel}</span>
             <strong className={tone(weightedDailyChangeCny)}>
               {fmtMoney(weightedDailyChangeCny, "CNY")} · {fmtPct(summary.weighted_daily_pct)}
@@ -821,6 +824,7 @@ function DailyCards({ cards }) {
 function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
   const [satelliteHovered, setSatelliteHovered] = useState(false);
   const [satelliteHoverSymbol, setSatelliteHoverSymbol] = useState(null);
+  const [heatmapLayoutWidth, setHeatmapLayoutWidth] = useState(HEATMAP_LAYOUT_WIDTH);
   const [heatmapLayoutHeight, setHeatmapLayoutHeight] = useState(HEATMAP_LAYOUT_HEIGHT);
   const heatmapCanvasRef = useRef(null);
   useEffect(() => {
@@ -828,8 +832,12 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
     if (!canvas || typeof ResizeObserver === "undefined") return undefined;
     const updateLayoutHeight = (width) => {
       if (!Number.isFinite(width) || width <= 0) return;
+      const mobile = window.innerWidth <= 720;
+      const layoutWidth = mobile ? MOBILE_HEATMAP_LAYOUT_WIDTH : HEATMAP_LAYOUT_WIDTH;
+      const baseHeight = mobile ? MOBILE_HEATMAP_LAYOUT_HEIGHT : HEATMAP_LAYOUT_HEIGHT;
+      setHeatmapLayoutWidth((current) => current === layoutWidth ? current : layoutWidth);
       const capHeight = window.innerWidth > 1240 ? HEATMAP_MAX_CANVAS_HEIGHT : Number.POSITIVE_INFINITY;
-      const nextHeight = Number(Math.min(HEATMAP_LAYOUT_HEIGHT, capHeight / width * HEATMAP_LAYOUT_WIDTH).toFixed(3));
+      const nextHeight = Number(Math.min(baseHeight, capHeight / width * layoutWidth).toFixed(3));
       setHeatmapLayoutHeight((current) => Math.abs(current - nextHeight) < 0.05 ? current : nextHeight);
     };
     const observer = new ResizeObserver(([entry]) => updateLayoutHeight(entry?.contentRect?.width));
@@ -942,7 +950,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
     treemap()
       .tile(treemapSquarify.ratio(1))
       .size([SATELLITE_HOVER_LAYOUT_WIDTH, SATELLITE_HOVER_LAYOUT_HEIGHT])
-      .paddingInner(0.8)
+      .paddingInner(0)
       .round(false)(root);
     return root.leaves().map((leaf) => {
       const card = leaf.data;
@@ -974,13 +982,16 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
   const rects = useMemo(() => {
     if (!rows.length) return [];
     const root = hierarchy({
-      children: rows.map((row) => ({ ...row, layoutValue: Math.max(row.valueCny, minLayoutValue) })),
+      children: rows.map((row) => ({
+        ...row,
+        layoutValue: Math.max(row.valueCny, minLayoutValue) * (row.symbol === "SATELLITE_GROUP" ? HEATMAP_SATELLITE_LAYOUT_WEIGHT : 1),
+      })),
     })
       .sum((item) => item.layoutValue || 0)
       .sort((a, b) => (b.value || 0) - (a.value || 0));
     treemap()
-      .tile(treemapSquarify.ratio(1))
-      .size([HEATMAP_LAYOUT_WIDTH, heatmapLayoutHeight])
+      .tile(treemapSquarify.ratio(heatmapLayoutWidth > HEATMAP_LAYOUT_WIDTH ? 1.8 : 1))
+      .size([heatmapLayoutWidth, heatmapLayoutHeight])
       .paddingInner(0.7)
       .round(false)(root);
     return root.leaves().map((leaf) => ({
@@ -990,7 +1001,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
       width: leaf.x1 - leaf.x0,
       height: leaf.y1 - leaf.y0,
     }));
-  }, [rows, minLayoutValue, heatmapLayoutHeight]);
+  }, [rows, minLayoutValue, heatmapLayoutWidth, heatmapLayoutHeight]);
 
   return (
     <section className="chartPanel heatmapPanel" onMouseLeave={() => setSatelliteHovered(false)}>
@@ -1019,36 +1030,22 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 title={`${displayAssetLabel(card.label, card.symbol)} · 当前价 ${fmtCurrentPrice(card.currentPrice, card.currency)} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
               >
                 <b>{displayAssetLabel(card.label, card.symbol)}</b>
-                {card.regular_price || card.price_line ? (
-                  <div className="heatPrice">
-                    <TreemapPriceLine
-                      priceLine={card.price_line}
-                      regularPrice={card.regular_price}
-                      extendedPrice={card.extended_price}
-                      currency={card.currency}
-                      regularPct={card.regular_pct}
-                      extendedPct={card.extended_pct}
-                    />
+                <div className="heatMetricGroup heatMetricRegular">
+                  {card.regular_price || card.price_line ? (
+                    <div className="heatPrice"><TreemapPriceLine priceLine={card.price_line} regularPrice={card.regular_price} extendedPrice={card.extended_price} currency={card.currency} regularPct={card.regular_pct} extendedPct={card.extended_pct} showExtended={false} /></div>
+                  ) : null}
+                  <span className={tone(card.regular_pct)}><span className="heatRegularValue">{fmtPct(card.regular_pct)}</span></span>
+                  <span className={tone(card.regular_change_usd ?? card.change_usd)}><span className="heatRegularValue">{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}</span></span>
+                  <span className={tone(card.regular_change_cny ?? card.change_cny)}><span className="heatRegularValue">{fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span></span>
+                </div>
+                {(card.extended_price || card.extended_pct != null || card.extended_change_usd != null || card.extended_change_cny != null) ? (
+                  <div className="heatMetricGroup heatMetricExtended">
+                    {card.extended_price ? <div className="heatPrice"><TreemapPriceLine regularPrice={card.regular_price} extendedPrice={card.extended_price} currency={card.currency} extendedPct={card.extended_pct} showRegular={false} /></div> : null}
+                    {card.extended_pct != null ? <span className={tone(card.extended_pct)}><span className="heatExtendedValue">（{fmtPct(card.extended_pct)}）</span></span> : null}
+                    {card.extended_change_usd != null ? <span className={tone(card.extended_change_usd)}><span className="heatExtendedValue">（{fmtMoney(card.extended_change_usd, "USD")}）</span></span> : null}
+                    {card.extended_change_cny != null ? <span className={tone(card.extended_change_cny)}><span className="heatExtendedValue">（{fmtMoney(card.extended_change_cny, "CNY")}）</span></span> : null}
                   </div>
                 ) : null}
-                <span className={tone(card.regular_pct)}>
-                  {fmtPct(card.regular_pct)}
-                  {card.session !== "regular" && card.extended_pct != null ? (
-                    <span className={tone(card.extended_pct)}>（{fmtPct(card.extended_pct)}）</span>
-                  ) : null}
-                </span>
-                <span className={tone(card.regular_change_usd ?? card.change_usd)}>
-                  {fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}
-                  {card.session !== "regular" && card.extended_change_usd != null ? (
-                    <span className={tone(card.extended_change_usd)}>（{fmtMoney(card.extended_change_usd, "USD")}）</span>
-                  ) : null}
-                </span>
-                <span className={tone(card.regular_change_cny ?? card.change_cny)}>
-                  {fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}
-                  {card.session !== "regular" && card.extended_change_cny != null ? (
-                    <span className={tone(card.extended_change_cny)}>（{fmtMoney(card.extended_change_cny, "CNY")}）</span>
-                  ) : null}
-                </span>
               </div>
             ))}
           </div>
@@ -1079,7 +1076,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
       <div
         className="heatmapCanvas"
         ref={heatmapCanvasRef}
-        style={{ aspectRatio: `${HEATMAP_LAYOUT_WIDTH} / ${heatmapLayoutHeight}` }}
+        style={{ aspectRatio: `${heatmapLayoutWidth} / ${heatmapLayoutHeight}` }}
       >
         {rects.map((row) => {
           return (
@@ -1089,16 +1086,16 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
               style={{
                 "--heat-bg": row.bg,
                 "--heat-border": row.dailyPct > 0 ? `rgba(52, 211, 153, ${0.24 + row.magnitude * 0.42})` : row.dailyPct < 0 ? `rgba(248, 113, 113, ${0.26 + row.magnitude * 0.44})` : "rgba(148, 163, 184, 0.24)",
-                left: `${row.x / HEATMAP_LAYOUT_WIDTH * 100}%`,
+                left: `${row.x / heatmapLayoutWidth * 100}%`,
                 top: `${row.y / heatmapLayoutHeight * 100}%`,
-                width: `${row.width / HEATMAP_LAYOUT_WIDTH * 100}%`,
+                width: `${row.width / heatmapLayoutWidth * 100}%`,
                 height: `${row.height / heatmapLayoutHeight * 100}%`,
               }}
               title={`${displayAssetLabel(row.label, row.symbol)} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 价格 ${row.price_line ? fmtCardPriceLine(row.price_line) : fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
               onMouseEnter={row.symbol === "SATELLITE_GROUP" ? () => setSatelliteHovered(true) : undefined}
               role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
             >
-              <div className="heatSymbol">{displayAssetLabel(row.label, row.symbol)}</div>
+              <div className="heatSymbol">{row.symbol === "SATELLITE_GROUP" ? "卫星" : displayAssetLabel(row.label, row.symbol)}</div>
               {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? (
                 <div className="heatPrice">
                   <TreemapPriceLine
@@ -1108,21 +1105,29 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                     currency={row.currency}
                     regularPct={row.regularPct}
                     extendedPct={row.extendedPct}
+                    showExtended={false}
                   />
                 </div>
               ) : null}
-              <strong className={row.fundPending ? "flat" : tone(row.regularPct)}>
-                {row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}
-                {row.hasDistinctExtendedPct ? <span className={tone(row.extendedPct)}>（{fmtPct(row.extendedPct)}）</span> : null}
-              </strong>
-              <div className={`heatPnl heatPnlUsd ${row.fundPending ? "flat" : tone(row.regularUsd)}`}>
-                {row.fundPending ? "--" : fmtMoney(row.regularUsd, "USD")}
-                {row.hasDistinctExtendedUsd ? <span className={tone(row.extendedUsd)}>（{fmtMoney(row.extendedUsd, "USD")}）</span> : null}
+              <div className="heatMetricGroup heatMetricRegular">
+                <strong className={row.fundPending ? "flat" : tone(row.regularPct)}>
+                  <span className="heatRegularValue">{row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}</span>
+                </strong>
+                <div className={`heatPnl heatPnlUsd ${row.fundPending ? "flat" : tone(row.regularUsd)}`}>
+                  <span className="heatRegularValue">{row.fundPending ? "--" : fmtMoney(row.regularUsd, "USD")}</span>
+                </div>
+                <div className={`heatPnl heatPnlCny ${row.fundPending ? "flat" : tone(row.regularCny)}`}>
+                  <span className="heatRegularValue">{row.fundPending ? "--" : fmtMoney(row.regularCny, "CNY")}</span>
+                </div>
               </div>
-              <div className={`heatPnl heatPnlCny ${row.fundPending ? "flat" : tone(row.regularCny)}`}>
-                {row.fundPending ? "--" : fmtMoney(row.regularCny, "CNY")}
-                {row.hasDistinctExtendedCny ? <span className={tone(row.extendedCny)}>（{fmtMoney(row.extendedCny, "CNY")}）</span> : null}
-              </div>
+              {(row.hasDistinctExtendedPct || row.hasDistinctExtendedUsd || row.hasDistinctExtendedCny || row.extended_price) ? (
+                <div className="heatMetricGroup heatMetricExtended">
+                  {row.extended_price ? <div className="heatPrice"><TreemapPriceLine regularPrice={row.regular_price} extendedPrice={row.extended_price} currency={row.currency} extendedPct={row.extendedPct} showRegular={false} /></div> : null}
+                  {row.hasDistinctExtendedPct ? <strong className={tone(row.extendedPct)}><span className="heatExtendedValue">（{fmtPct(row.extendedPct)}）</span></strong> : null}
+                  {row.hasDistinctExtendedUsd ? <div className={`heatPnl heatPnlUsd ${tone(row.extendedUsd)}`}><span className="heatExtendedValue">（{fmtMoney(row.extendedUsd, "USD")}）</span></div> : null}
+                  {row.hasDistinctExtendedCny ? <div className={`heatPnl heatPnlCny ${tone(row.extendedCny)}`}><span className="heatExtendedValue">（{fmtMoney(row.extendedCny, "CNY")}）</span></div> : null}
+                </div>
+              ) : null}
               <span>{row.assetPct.toFixed(1)}%</span>
               {row.fundStatusMeta ? <small className="fundQuoteMeta heatFundQuoteMeta">{row.fundStatusMeta}</small> : null}
             </article>
@@ -4067,7 +4072,7 @@ function EditableHoldingsPage({ data, onSaved }) {
   );
 
   return (
-    <section>
+    <section className="holdingsPage">
       <AssetMetricCards data={data} holdings={holdings} balances={balances} totalActions={holdingActions} />
       {editingHoldings ? (
         <div className="holdingAnchorBar">
@@ -4692,12 +4697,12 @@ function Rebalance({ data, onSaved }) {
           待买 {fmtMoney(tradeTotals.buy_USD, "USD")}{tradeTotals.buy_CNY ? ` / ${fmtMoney(tradeTotals.buy_CNY, "CNY")}` : ""} ·
           待卖 {fmtMoney(tradeTotals.sell_USD, "USD")}{tradeTotals.sell_CNY ? ` / ${fmtMoney(tradeTotals.sell_CNY, "CNY")}` : ""}
         </span>
+        <button className="toolButton compactTool" onClick={() => setRulesOpen(true)}>规则</button>
       </div>
       <div className="rulesToolbar">
         <span className="muted">
           建仓到 {data.rebalance.build_target} · 未来入金 {data.rebalance.future_cash_months} 个月 · 缩放 {Number(data.rebalance.suggestion_scale || 1).toFixed(2)}
         </span>
-        <button className="toolButton compactTool" onClick={() => setRulesOpen(true)}>规则</button>
       </div>
       <div className="muted rebalanceFormulaBanner">
         共同分母：{data.rebalance.planned_total_formula || `USD ${fmtMoney(data.rebalance.planned_total_usd, "USD")}`} · VOO 按月买入 · QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率
