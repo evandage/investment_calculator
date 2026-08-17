@@ -578,6 +578,8 @@ def ensure_futu_realtime_subscriptions(
     include_ticker: bool = False,
 ) -> None:
     """Ensure streams needed by a page are active on the shared OpenD context."""
+    if interval in {"1m", "5m", "15m"}:
+        symbols = [sym for sym in symbols if str(sym).upper() != "SGOV"]
     types = ([interval] if interval in {"1m", "5m", "15m"} else [])
     if include_ticker:
         types.append("TICKER")
@@ -590,6 +592,8 @@ def release_futu_realtime_subscriptions(
     include_ticker: bool = False,
 ) -> None:
     """Release page-specific streams after a grace period to avoid churn."""
+    if interval in {"1m", "5m", "15m"}:
+        symbols = [sym for sym in symbols if str(sym).upper() != "SGOV"]
     types = ([interval] if interval in {"1m", "5m", "15m"} else [])
     if include_ticker:
         types.append("TICKER")
