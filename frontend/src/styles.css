@@ -1202,7 +1202,7 @@ h2 {
 
 .satelliteMiniCanvas {
   position: relative;
-  height: 220px;
+  height: 320px;
   overflow: hidden;
   border-radius: 6px;
   background: #0d1d31;
@@ -1579,6 +1579,49 @@ h2 {
 
 .heatMetricGroup {
   display: contents;
+}
+
+.heatMetricRegular,
+.heatMetricExtended {
+  line-height: 1.12;
+}
+
+
+.satelliteMiniCell .heatMetricGroup {
+  display: block;
+  white-space: nowrap;
+}
+
+.satelliteMiniCell .heatMetricGroup > * {
+  display: inline;
+  margin-right: 3px;
+}
+
+.satelliteMiniCell .heatExtendedValue {
+  display: inline;
+}
+
+.satelliteMobileMetrics {
+  display: none;
+}
+
+.satelliteDesktopMetrics {
+  display: block;
+}
+
+.satelliteMetricRow {
+  display: block;
+  line-height: 1.22;
+  white-space: nowrap;
+}
+
+.satelliteMetricRow + .satelliteMetricRow {
+  margin-top: 2px;
+}
+
+.satelliteMetricRow > * {
+  display: inline;
+  margin-right: 3px;
 }
 
 .performanceStat:not(.is-selected) {
@@ -5082,6 +5125,12 @@ tbody tr:hover th {
     gap: 1px;
     justify-items: center;
   }
+  .satelliteMiniCell .heatMetricGroup > * {
+    display: block;
+    margin-right: 0;
+  }
+  .satelliteDesktopMetrics { display: none; }
+  .satelliteMobileMetrics { display: block; }
   .heatmapPanel .heatCell .heatSymbol,
   .heatmapPanel .heatCell .heatPrice,
   .heatmapPanel .heatCell strong,

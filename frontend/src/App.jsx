@@ -1030,6 +1030,25 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 title={`${displayAssetLabel(card.label, card.symbol)} · 当前价 ${fmtCurrentPrice(card.currentPrice, card.currency)} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
               >
                 <b>{displayAssetLabel(card.label, card.symbol)}</b>
+                <div className="satelliteDesktopMetrics">
+                  <div className="satelliteMetricRow">
+                    {card.regular_price || card.price_line ? <span className="heatPrice"><TreemapPriceLine priceLine={card.price_line} regularPrice={card.regular_price} extendedPrice={card.extended_price} currency={card.currency} regularPct={card.regular_pct} extendedPct={card.extended_pct} showExtended={false} /></span> : null}
+                    {card.extended_price ? <span className="heatPrice"><TreemapPriceLine regularPrice={card.regular_price} extendedPrice={card.extended_price} currency={card.currency} extendedPct={card.extended_pct} showRegular={false} /></span> : null}
+                  </div>
+                  <div className="satelliteMetricRow">
+                    <span className={tone(card.regular_pct)}>{fmtPct(card.regular_pct)}</span>
+                    {card.extended_pct != null ? <span className={tone(card.extended_pct)}>（{fmtPct(card.extended_pct)}）</span> : null}
+                  </div>
+                  <div className="satelliteMetricRow">
+                    <span className={tone(card.regular_change_usd ?? card.change_usd)}>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}</span>
+                    {card.extended_change_usd != null ? <span className={tone(card.extended_change_usd)}>（{fmtMoney(card.extended_change_usd, "USD")}）</span> : null}
+                  </div>
+                  <div className="satelliteMetricRow">
+                    <span className={tone(card.regular_change_cny ?? card.change_cny)}>{fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
+                    {card.extended_change_cny != null ? <span className={tone(card.extended_change_cny)}>（{fmtMoney(card.extended_change_cny, "CNY")}）</span> : null}
+                  </div>
+                </div>
+                <div className="satelliteMobileMetrics">
                 <div className="heatMetricGroup heatMetricRegular">
                   {card.regular_price || card.price_line ? (
                     <div className="heatPrice"><TreemapPriceLine priceLine={card.price_line} regularPrice={card.regular_price} extendedPrice={card.extended_price} currency={card.currency} regularPct={card.regular_pct} extendedPct={card.extended_pct} showExtended={false} /></div>
@@ -1046,6 +1065,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                     {card.extended_change_cny != null ? <span className={tone(card.extended_change_cny)}><span className="heatExtendedValue">（{fmtMoney(card.extended_change_cny, "CNY")}）</span></span> : null}
                   </div>
                 ) : null}
+              </div>
               </div>
             ))}
           </div>
@@ -1066,8 +1086,16 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                     extendedPct={card.extended_pct}
                   />
                 </span>
-                <span>收盘 {fmtPct(card.regular_pct)}{card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 {fmtPct(card.effectivePct)}</span>
-                <span>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")} · {fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
+                <span>
+                  收盘 <span className={tone(card.regular_pct)}>{fmtPct(card.regular_pct)}</span>
+                  {card.session !== "regular" && card.extended_pct != null ? <span> · 拓展盘 <span className={tone(card.extended_pct)}>{fmtPct(card.extended_pct)}</span></span> : null}
+                  <span> · 综合 <span className={tone(card.effectivePct)}>{fmtPct(card.effectivePct)}</span></span>
+                </span>
+                <span>
+                  <span className={tone(card.regular_change_usd ?? card.change_usd)}>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}</span>
+                  {" · "}
+                  <span className={tone(card.regular_change_cny ?? card.change_cny)}>{fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
+                </span>
               </div>
             );
           })() : null}
@@ -1096,20 +1124,20 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
               role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
             >
               <div className="heatSymbol">{row.symbol === "SATELLITE_GROUP" ? "卫星" : displayAssetLabel(row.label, row.symbol)}</div>
-              {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? (
-                <div className="heatPrice">
-                  <TreemapPriceLine
-                    priceLine={row.price_line}
-                    regularPrice={row.regular_price}
-                    extendedPrice={row.extended_price}
-                    currency={row.currency}
-                    regularPct={row.regularPct}
-                    extendedPct={row.extendedPct}
-                    showExtended={false}
-                  />
-                </div>
-              ) : null}
               <div className="heatMetricGroup heatMetricRegular">
+                {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? (
+                  <div className="heatPrice">
+                    <TreemapPriceLine
+                      priceLine={row.price_line}
+                      regularPrice={row.regular_price}
+                      extendedPrice={row.extended_price}
+                      currency={row.currency}
+                      regularPct={row.regularPct}
+                      extendedPct={row.extendedPct}
+                      showExtended={false}
+                    />
+                  </div>
+                ) : null}
                 <strong className={row.fundPending ? "flat" : tone(row.regularPct)}>
                   <span className="heatRegularValue">{row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}</span>
                 </strong>
@@ -1119,7 +1147,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 <div className={`heatPnl heatPnlCny ${row.fundPending ? "flat" : tone(row.regularCny)}`}>
                   <span className="heatRegularValue">{row.fundPending ? "--" : fmtMoney(row.regularCny, "CNY")}</span>
                 </div>
-              </div>
+                </div>
               {(row.hasDistinctExtendedPct || row.hasDistinctExtendedUsd || row.hasDistinctExtendedCny || row.extended_price) ? (
                 <div className="heatMetricGroup heatMetricExtended">
                   {row.extended_price ? <div className="heatPrice"><TreemapPriceLine regularPrice={row.regular_price} extendedPrice={row.extended_price} currency={row.currency} extendedPct={row.extendedPct} showRegular={false} /></div> : null}
