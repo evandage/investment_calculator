@@ -21,6 +21,7 @@ from . import market_data as market_data_module
 from . import portfolio as portfolio_module
 from . import storage as storage_module
 from .market_data import (
+    ensure_futu_realtime_subscriptions,
     fetch_quotes,
     futu_opend_config,
     get_futu_kline_revision,
@@ -28,6 +29,7 @@ from .market_data import (
     get_futu_subscription_quotes,
     futu_subscription_status,
     is_futu_opend_available,
+    release_futu_realtime_subscriptions,
     start_futu_quote_subscription,
     stop_futu_quote_subscription,
 )
@@ -1103,6 +1105,10 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
         await websocket.close()
         return
 
+    if not futu_subscription_status().get("started"):
+        await asyncio.to_thread(start_futu_quote_subscription)
+    ensure_futu_realtime_subscriptions([symbol], interval)
+
     last_revision: tuple[int, int] | None = None
     last_sent_at = 0.0
     try:
@@ -1128,6 +1134,8 @@ async def chart_board_light_ws(websocket: WebSocket) -> None:
             await asyncio.sleep(0.25)
     except WebSocketDisconnect:
         return
+    finally:
+        release_futu_realtime_subscriptions([symbol], interval)
 
 
 @app.websocket("/ws/chart-board-global-light")
@@ -1145,6 +1153,9 @@ async def chart_board_global_light_ws(websocket: WebSocket) -> None:
         return
 
     symbols = list(_chart_labels().keys())
+    if not futu_subscription_status().get("started"):
+        await asyncio.to_thread(start_futu_quote_subscription)
+    ensure_futu_realtime_subscriptions(symbols, interval)
     last_revision: dict[str, tuple[int, int]] | None = None
     last_sent_at = 0.0
     try:
@@ -1167,3 +1178,5 @@ async def chart_board_global_light_ws(websocket: WebSocket) -> None:
             await asyncio.sleep(0.25)
     except WebSocketDisconnect:
         return
+    finally:
+        release_futu_realtime_subscriptions(symbols, interval)

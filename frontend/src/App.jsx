@@ -445,9 +445,22 @@ function useDashboard() {
   }
 
   useEffect(() => {
+    let id = null;
+    const schedule = () => {
+      if (id !== null) window.clearInterval(id);
+      id = document.hidden ? null : window.setInterval(load, 5000);
+    };
     load(true);
-    const id = window.setInterval(load, 1000);
-    return () => window.clearInterval(id);
+    schedule();
+    const onVisibilityChange = () => {
+      if (!document.hidden) load();
+      schedule();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      if (id !== null) window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
   return { data, loading, error, load };

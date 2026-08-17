@@ -50,6 +50,11 @@ _FUTU_SUB_KLINE_REVISIONS: dict[tuple[str, str], int] = {}
 _FUTU_SUB_KLINE_ERROR = ""
 _FUTU_SUB_TICKER_ERROR = ""
 _FUTU_SUB_SYMBOL_ERRORS: dict[str, dict[str, str]] = {}
+_FUTU_SUB_TYPE_ENUMS: dict[str, Any] = {}
+_FUTU_SUB_RET_OK: Any = None
+_FUTU_ACTIVE_SUBSCRIPTIONS: set[tuple[str, str]] = set()
+_FUTU_RELEASE_TIMERS: dict[tuple[str, str], threading.Timer] = {}
+_FUTU_SUBSCRIPTION_GRACE_SECONDS = 90.0
 NY_TZ = ZoneInfo("America/New_York")
 _EXTENDED_US_SESSIONS = frozenset({"premarket", "postmarket", "overnight"})
 
@@ -370,7 +375,7 @@ def _update_futu_subscription_tickers(data: Any) -> None:
 
 
 def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
-    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR, _FUTU_SUB_KLINE_ERROR, _FUTU_SUB_TICKER_ERROR, _FUTU_SUB_SYMBOL_ERRORS, _QUOTES_CACHE, _QUOTES_CACHE_AT
+    global _FUTU_SUB_CTX, _FUTU_SUB_STARTED, _FUTU_SUB_LAST_ERROR, _FUTU_SUB_KLINE_ERROR, _FUTU_SUB_TICKER_ERROR, _FUTU_SUB_SYMBOL_ERRORS, _QUOTES_CACHE, _QUOTES_CACHE_AT, _FUTU_SUB_TYPE_ENUMS, _FUTU_SUB_RET_OK
     with _FUTU_SUB_LOCK:
         if _FUTU_SUB_STARTED and _FUTU_SUB_CTX is not None and not force:
             return futu_subscription_status()
@@ -388,6 +393,10 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         _FUTU_SUB_QUOTES.clear()
         _FUTU_SUB_UPDATED_AT.clear()
         _FUTU_SUB_KLINES.clear()
+        _FUTU_ACTIVE_SUBSCRIPTIONS.clear()
+        for timer in _FUTU_RELEASE_TIMERS.values():
+            timer.cancel()
+        _FUTU_RELEASE_TIMERS.clear()
         _QUOTES_CACHE = None
         _QUOTES_CACHE_AT = 0.0
 
@@ -411,6 +420,15 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         with _FUTU_SUB_LOCK:
             _FUTU_SUB_LAST_ERROR = f"futu_import_failed: {exc}"
         return futu_subscription_status()
+
+    _FUTU_SUB_TYPE_ENUMS = {
+        "QUOTE": SubType.QUOTE,
+        "TICKER": SubType.TICKER,
+        "1m": SubType.K_1M,
+        "15m": SubType.K_15M,
+        "5m": SubType.K_5M,
+    }
+    _FUTU_SUB_RET_OK = RET_OK
 
     class QuoteHandler(StockQuoteHandlerBase):
         def on_recv_rsp(self, rsp_pb: Any) -> tuple[int, Any]:
@@ -471,62 +489,12 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
                 _FUTU_SUB_SYMBOL_ERRORS = symbol_errors
             return futu_subscription_status()
 
-        ticker_errors: list[str] = []
-        kline_errors: list[str] = []
-        kline_symbols: list[str] = []
-        for group, _required in subscription_groups:
-            active_group = tuple(sym for sym in group if sym in quote_symbols)
-            if not active_group:
-                continue
-            is_us_group = all(
-                str(app_config.FUTU_US.get(sym, "")).upper().startswith("US.")
-                for sym in active_group
-            )
-            subscribe_kwargs = {
-                "is_first_push": True,
-                "subscribe_push": True,
-            }
-            if is_us_group:
-                subscribe_kwargs["extended_time"] = True
-            ticker_ret, ticker_msg = ctx.subscribe(
-                [app_config.FUTU_US[sym] for sym in active_group],
-                [SubType.TICKER],
-                **subscribe_kwargs,
-            )
-            if ticker_ret != RET_OK:
-                error = str(ticker_msg)
-                ticker_errors.append(error)
-                for sym in active_group:
-                    symbol_errors.setdefault(sym, {})["ticker"] = error
-            kline_ret, kline_msg = ctx.subscribe(
-                [app_config.FUTU_US[sym] for sym in active_group],
-                [SubType.K_1M, SubType.K_15M, SubType.K_5M],
-                **subscribe_kwargs,
-            )
-            if kline_ret != RET_OK:
-                error = str(kline_msg)
-                kline_errors.append(error)
-                for sym in active_group:
-                    symbol_errors.setdefault(sym, {})["kline"] = error
-            else:
-                kline_symbols.extend(active_group)
-
-        _FUTU_SUB_TICKER_ERROR = " | ".join(dict.fromkeys(ticker_errors))
-        _FUTU_SUB_KLINE_ERROR = " | ".join(dict.fromkeys(kline_errors))
-        for sym in kline_symbols:
-            code = app_config.FUTU_US[sym]
-            for interval, ktype in (("1m", KLType.K_1M), ("15m", KLType.K_15M), ("5m", KLType.K_5M)):
-                seed_ret, seed_data = ctx.get_cur_kline(code, 1, ktype=ktype, autype=AuType.QFQ)
-                if seed_ret != RET_OK or seed_data is None or len(seed_data) == 0:
-                    continue
-                seed = seed_data.copy()
-                seed["k_type"] = {"1m": "K_1M", "15m": "K_15M", "5m": "K_5M"}[interval]
-                _update_futu_subscription_klines(seed)
         with _FUTU_SUB_LOCK:
             _FUTU_SUB_CTX = ctx
             _FUTU_SUB_STARTED = True
             _FUTU_SUB_LAST_ERROR = ""
             _FUTU_SUB_SYMBOL_ERRORS = symbol_errors
+            _FUTU_ACTIVE_SUBSCRIPTIONS.update((sym, "QUOTE") for sym in quote_symbols)
     except Exception as exc:
         try:
             if ctx is not None:
@@ -544,11 +512,102 @@ def stop_futu_quote_subscription() -> None:
         ctx = _FUTU_SUB_CTX
         _FUTU_SUB_CTX = None
         _FUTU_SUB_STARTED = False
+        _FUTU_ACTIVE_SUBSCRIPTIONS.clear()
+        timers = list(_FUTU_RELEASE_TIMERS.values())
+        _FUTU_RELEASE_TIMERS.clear()
+    for timer in timers:
+        timer.cancel()
     try:
         if ctx is not None:
             ctx.close()
     except Exception:
         pass
+
+
+def _futu_subscribe_dynamic(symbols: list[str], types: list[str]) -> None:
+    """Add only the real-time streams currently needed by connected clients."""
+    with _FUTU_SUB_LOCK:
+        ctx = _FUTU_SUB_CTX
+        if ctx is None or not _FUTU_SUB_STARTED:
+            return
+        valid_symbols = [sym for sym in dict.fromkeys(symbols) if sym in app_config.FUTU_US]
+        valid_types = [name for name in dict.fromkeys(types) if name in _FUTU_SUB_TYPE_ENUMS]
+        if not valid_symbols or not valid_types:
+            return
+        grouped: dict[str, list[str]] = {}
+        for symbol in valid_symbols:
+            for name in valid_types:
+                key = (symbol, name)
+                timer = _FUTU_RELEASE_TIMERS.pop(key, None)
+                if timer is not None:
+                    timer.cancel()
+                if key not in _FUTU_ACTIVE_SUBSCRIPTIONS:
+                    grouped.setdefault(name, []).append(symbol)
+        for name, group in grouped.items():
+            kwargs: dict[str, Any] = {"is_first_push": True, "subscribe_push": True}
+            if all(str(app_config.FUTU_US[sym]).upper().startswith("US.") for sym in group):
+                kwargs["extended_time"] = True
+            ret, message = ctx.subscribe(
+                [app_config.FUTU_US[sym] for sym in group],
+                [_FUTU_SUB_TYPE_ENUMS[name]],
+                **kwargs,
+            )
+            if ret == _FUTU_SUB_RET_OK:
+                _FUTU_ACTIVE_SUBSCRIPTIONS.update((sym, name) for sym in group)
+            else:
+                for sym in group:
+                    _FUTU_SUB_SYMBOL_ERRORS.setdefault(sym, {})[name] = str(message)
+
+
+def _futu_release_dynamic_one(symbol: str, type_name: str) -> None:
+    with _FUTU_SUB_LOCK:
+        _FUTU_RELEASE_TIMERS.pop((symbol, type_name), None)
+        ctx = _FUTU_SUB_CTX
+        subtype = _FUTU_SUB_TYPE_ENUMS.get(type_name)
+        if ctx is None or subtype is None or (symbol, type_name) not in _FUTU_ACTIVE_SUBSCRIPTIONS:
+            return
+        try:
+            ctx.unsubscribe([app_config.FUTU_US[symbol]], [subtype])
+        finally:
+            _FUTU_ACTIVE_SUBSCRIPTIONS.discard((symbol, type_name))
+
+
+def ensure_futu_realtime_subscriptions(
+    symbols: list[str],
+    interval: str | None = None,
+    include_ticker: bool = False,
+) -> None:
+    """Ensure streams needed by a page are active on the shared OpenD context."""
+    types = ([interval] if interval in {"1m", "5m", "15m"} else [])
+    if include_ticker:
+        types.append("TICKER")
+    _futu_subscribe_dynamic(symbols, types)
+
+
+def release_futu_realtime_subscriptions(
+    symbols: list[str],
+    interval: str | None = None,
+    include_ticker: bool = False,
+) -> None:
+    """Release page-specific streams after a grace period to avoid churn."""
+    types = ([interval] if interval in {"1m", "5m", "15m"} else [])
+    if include_ticker:
+        types.append("TICKER")
+    for symbol in dict.fromkeys(symbols):
+        for type_name in types:
+            key = (symbol, type_name)
+            with _FUTU_SUB_LOCK:
+                old_timer = _FUTU_RELEASE_TIMERS.pop(key, None)
+                if old_timer is not None:
+                    old_timer.cancel()
+                timer = threading.Timer(
+                    _FUTU_SUBSCRIPTION_GRACE_SECONDS,
+                    _futu_release_dynamic_one,
+                    args=(symbol, type_name),
+                )
+                timer.daemon = True
+                _FUTU_RELEASE_TIMERS[key] = timer
+                timer.start()
 
 
 def get_futu_subscription_quotes(max_age: float = _FUTU_SUB_TTL_SECONDS) -> dict[str, dict[str, Any]]:
@@ -587,6 +646,10 @@ def futu_subscription_status() -> dict[str, Any]:
         return {
             "started": _FUTU_SUB_STARTED,
             "symbols": sorted(_FUTU_SUB_QUOTES.keys()),
+            "active_subscription_count": len(_FUTU_ACTIVE_SUBSCRIPTIONS),
+            "active_subscriptions": sorted(
+                {f"{sym}:{type_name}" for sym, type_name in _FUTU_ACTIVE_SUBSCRIPTIONS}
+            ),
             "fresh_symbols": sorted(get_futu_subscription_quotes().keys()),
             "ages_seconds": ages,
             "last_error": _FUTU_SUB_LAST_ERROR,
