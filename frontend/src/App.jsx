@@ -950,7 +950,8 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
     treemap()
       .tile(treemapSquarify.ratio(1))
       .size([SATELLITE_HOVER_LAYOUT_WIDTH, SATELLITE_HOVER_LAYOUT_HEIGHT])
-      .paddingInner(0)
+      .paddingInner(0.7)
+      .paddingOuter(0.5)
       .round(false)(root);
     return root.leaves().map((leaf) => {
       const card = leaf.data;
@@ -1124,9 +1125,25 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
               role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
             >
               <div className="heatSymbol">{row.symbol === "SATELLITE_GROUP" ? "卫星" : displayAssetLabel(row.label, row.symbol)}</div>
+              <div className="heatDesktopMetrics">
+                {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? <div className="heatPrice"><TreemapPriceLine priceLine={row.price_line} regularPrice={row.regular_price} extendedPrice={row.extended_price} currency={row.currency} regularPct={row.regularPct} extendedPct={row.extendedPct} /></div> : null}
+                <div className="heatDesktopMetricRow">
+                  <span className={row.fundPending ? "flat" : tone(row.regularPct)}>{row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}</span>
+                  {row.hasDistinctExtendedPct ? <span className={tone(row.extendedPct)}>（{fmtPct(row.extendedPct)}）</span> : null}
+                </div>
+                <div className="heatDesktopMetricRow">
+                  <span className={row.fundPending ? "flat" : tone(row.regularUsd)}>{row.fundPending ? "--" : fmtMoney(row.regularUsd, "USD")}</span>
+                  {row.hasDistinctExtendedUsd ? <span className={tone(row.extendedUsd)}>（{fmtMoney(row.extendedUsd, "USD")}）</span> : null}
+                </div>
+                <div className="heatDesktopMetricRow">
+                  <span className={row.fundPending ? "flat" : tone(row.regularCny)}>{row.fundPending ? "--" : fmtMoney(row.regularCny, "CNY")}</span>
+                  {row.hasDistinctExtendedCny ? <span className={tone(row.extendedCny)}>（{fmtMoney(row.extendedCny, "CNY")}）</span> : null}
+                </div>
+              </div>
+              <div className="heatMobileMetrics">
               <div className="heatMetricGroup heatMetricRegular">
                 {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? (
-                  <div className="heatPrice">
+                  <div className="heatPrice heatMobilePrice">
                     <TreemapPriceLine
                       priceLine={row.price_line}
                       regularPrice={row.regular_price}
@@ -1156,6 +1173,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                   {row.hasDistinctExtendedCny ? <div className={`heatPnl heatPnlCny ${tone(row.extendedCny)}`}><span className="heatExtendedValue">（{fmtMoney(row.extendedCny, "CNY")}）</span></div> : null}
                 </div>
               ) : null}
+              </div>
               <span>{row.assetPct.toFixed(1)}%</span>
               {row.fundStatusMeta ? <small className="fundQuoteMeta heatFundQuoteMeta">{row.fundStatusMeta}</small> : null}
             </article>

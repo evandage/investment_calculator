@@ -1586,6 +1586,11 @@ h2 {
   line-height: 1.12;
 }
 
+.heatDesktopMetrics { display: block; }
+.heatMobileMetrics { display: none; }
+.heatDesktopMetricRow { line-height: 1.12; white-space: nowrap; }
+.heatDesktopMetricRow > span { display: inline; margin-right: 3px; }
+
 
 .satelliteMiniCell .heatMetricGroup {
   display: block;
@@ -5133,6 +5138,8 @@ tbody tr:hover th {
     gap: 1px;
     justify-items: center;
   }
+  .heatmapPanel .heatDesktopMetrics { display: none; }
+  .heatmapPanel .heatMobileMetrics { display: block; }
   .satelliteMiniCell .heatMetricGroup > * {
     display: block;
     margin-right: 0;
