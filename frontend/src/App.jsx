@@ -1774,7 +1774,6 @@ function LightweightKlineCard({ item, displayRange, onOpenSymbol, isGlobal = fal
       <div className="lwChartHeader">
         <div>
           <strong>{item.symbol}</strong>
-          <span>{item.full_label || item.label}</span>
         </div>
         <div className={tone(item.latest_change_pct)}>
           <strong>{fmtChartPrice(item.latest_price, item.symbol)}</strong>
@@ -3094,7 +3093,6 @@ function SingleLightweightChart({
       <div className="singleLwHeader">
         <div>
           <strong>{data?.symbol}</strong>
-          <span>{data?.label} · {data?.interval} · {avwapText}{data?.avwap_anchor ? ` · 锚点 ${data.avwap_anchor}` : ""}{Number.isFinite(profilePoc) ? ` · 可见区间 POC ${fmtChartPrice(profilePoc, data?.symbol)}` : ""}</span>
         </div>
         <div className="klineDrawingTools" role="toolbar" aria-label="画线工具">
           <button type="button" className={drawingTool === "trend" ? "active" : ""} aria-pressed={drawingTool === "trend"} title="趋势线：依次点击起点和终点" onClick={() => {
@@ -3193,6 +3191,7 @@ function SingleLightweightChart({
         </div>
         {!candles.length ? <div className="muted lwEmpty">暂无K线数据</div> : null}
       </div>
+      <div className="singleChartFooterMeta">{data?.label} · {data?.interval} · {avwapText}{data?.avwap_anchor ? ` · 锚点 ${data.avwap_anchor}` : ""}{Number.isFinite(profilePoc) ? ` · 可见区间 POC ${fmtChartPrice(profilePoc, data?.symbol)}` : ""}</div>
     </div>
   );
 }

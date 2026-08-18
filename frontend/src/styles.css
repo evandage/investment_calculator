@@ -1982,7 +1982,15 @@ h2 {
 }
 
 .lwChartHeader div:last-child {
+  flex: 0 0 auto;
+  min-width: max-content;
   text-align: right;
+}
+
+.lwChartHeader div:last-child strong,
+.lwChartHeader div:last-child span {
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .lwChartHeader strong {
@@ -2100,7 +2108,7 @@ h2 {
 }
 
 .singleLwWrap.isFullscreen .singleLwCanvas {
-  height: calc(100dvh - 72px);
+  height: calc(100dvh - 92px);
 }
 
 .singleLwHeader {
@@ -2274,12 +2282,12 @@ h2 {
 .singleLwLegend .legendMacd { color: #22d3ee; }
 .singleLwLegend .legendSignal { color: #fb7185; }
 
-.singleLwCanvas { height: calc(100% - 72px); }
+.singleLwCanvas { height: calc(100% - 92px); }
 
 .singleLwCanvas {
   position: relative;
   width: 100%;
-  height: calc(100% - 48px);
+  height: calc(100% - 92px);
   --single-profile-width: 15%;
   --single-profile-label-gutter: 0%;
   --single-price-axis-width: 62px;
@@ -5022,7 +5030,7 @@ tbody tr:hover th {
     padding: 5px 7px;
   }
   .singleLwWrap.isFullscreen .singleLwCanvas {
-    height: calc(100dvh - 66px);
+    height: calc(100dvh - 86px);
   }
 
   .singleLwLegend {
@@ -5174,23 +5182,11 @@ tbody tr:hover th {
   .tableWrap { margin-right: 0; margin-left: 0; padding: 0 8px; border-right: 0; border-left: 0; border-radius: 10px; -webkit-overflow-scrolling: touch; }
   .tableWrap::after { content: "左右滑动查看更多"; display: block; padding: 6px 0 8px; color: #71869d; font-size: .62rem; text-align: right; }
   .tableWrap table { min-width: 760px; }
-  .holdingsPage .tableWrap { margin-right: 0; margin-left: 0; padding: 0 8px; overflow: hidden; border-radius: 10px; }
+  .holdingsPage .tableWrap { margin-right: 0; margin-left: 0; padding: 0 8px; overflow-x: auto; overflow-y: hidden; border-radius: 10px; }
   .holdingsPage .tableWrap::after { display: none; }
-  .holdingsPage .editableHoldingsTable { width: 100%; min-width: 0; table-layout: fixed; }
+  .holdingsPage .editableHoldingsTable { width: 100%; min-width: 760px; table-layout: auto; }
   .holdingsPage .editableHoldingsTable th,
   .holdingsPage .editableHoldingsTable td { padding: 8px 4px; font-size: .64rem; }
-  .holdingsPage .editableHoldingsTable th:nth-child(1),
-  .holdingsPage .editableHoldingsTable td:nth-child(1) { width: 18%; }
-  .holdingsPage .editableHoldingsTable th:nth-child(2),
-  .holdingsPage .editableHoldingsTable td:nth-child(2) { width: 18%; }
-  .holdingsPage .editableHoldingsTable th:nth-child(3),
-  .holdingsPage .editableHoldingsTable td:nth-child(3) { width: 18%; }
-  .holdingsPage .editableHoldingsTable th:nth-child(4),
-  .holdingsPage .editableHoldingsTable td:nth-child(4) { width: 28%; }
-  .holdingsPage .editableHoldingsTable th:nth-child(5),
-  .holdingsPage .editableHoldingsTable td:nth-child(5) { width: 18%; }
-  .holdingsPage .editableHoldingsTable th:nth-child(n + 6),
-  .holdingsPage .editableHoldingsTable td:nth-child(n + 6) { display: none; }
   .rebalancePage .tableWrap { padding: 0 8px; }
   .rebalancePage .rebalanceTable {
     min-width: 760px;
@@ -5228,6 +5224,17 @@ tbody tr:hover th {
 .globalBoardMeta { display: none; }
 .globalTechnicalPanel .klineToolbar { display: none; }
 .singleChartMeta { display: none; }
+.singleChartFooterMeta {
+  height: 20px;
+  padding: 3px 10px;
+  overflow: hidden;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .globalQuoteRow {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(320px, 2.6fr) minmax(130px, .8fr) 100px;
