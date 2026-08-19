@@ -631,6 +631,52 @@ h2 {
   margin-bottom: 0;
 }
 
+.holdingsTableHeader h2 {
+  margin: 0;
+}
+
+.holdingsTableHeader .assetTitleActions {
+  margin-bottom: 0;
+}
+
+.holdingsPage > .tableWrap {
+  margin-bottom: 18px;
+}
+
+@media (max-width: 720px) {
+  .holdingsTableHeader {
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow: visible;
+    padding: 6px 0 10px;
+    margin-bottom: 6px;
+  }
+
+  .holdingsTableHeader h2 {
+    flex: 0 0 auto;
+    font-size: .9rem;
+  }
+
+  .holdingsTableHeader .assetTitleActions {
+    flex: 0 0 auto;
+    min-width: auto;
+    gap: 5px;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    margin-left: auto;
+  }
+
+  .holdingsTableHeader .assetTitleActions .toolButton {
+    min-height: 30px;
+    padding: 5px 11px;
+    font-size: .8rem;
+  }
+
+  .holdingsTableHeader .assetTitleActions button {
+    flex: 0 0 auto;
+  }
+}
+
 .assetMetricGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1069,6 +1115,7 @@ h2 {
 
 .editableHoldingsTable {
   min-width: 1280px;
+  font-size: 1rem;
 }
 
 .holdingAnchorBar {
@@ -2475,6 +2522,7 @@ table {
 
 .rebalanceTable {
   min-width: 980px;
+  font-size: 1rem;
 }
 
 .rebalanceTable tbody tr.inactiveRebalanceRow > th,
@@ -2866,6 +2914,37 @@ tbody th {
 .tradeHistoryBlock .subHeader,
 .fxConversionBlock .subHeader {
   align-items: center;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.tradeHistoryBlock .subHeader > div:first-child,
+.fxConversionBlock .subHeader > div:first-child {
+  display: contents;
+}
+
+.tradeHistoryBlock .subHeader h2,
+.fxConversionBlock .subHeader h2 {
+  flex: 0 0 auto;
+  margin: 0;
+  line-height: 30px;
+}
+
+.tradeHistoryBlock .subHeader > div:first-child > .muted,
+.fxConversionBlock .subHeader > div:first-child > .muted {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tradeHistoryBlock .subHeader .headerActions,
+.fxConversionBlock .subHeader .headerActions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0;
 }
 
 .tradeHistoryBlock .tableWrap,
@@ -3708,6 +3787,81 @@ tbody th {
 
 .dashboardPage .heatCell[role="button"] > span {
   font-size: 0.64rem;
+}
+
+/* Treemap typography follows cell area; the satellite aggregate is the 1x reference. */
+.heatCell {
+  --heat-font-scale: 1;
+}
+
+.heatCell .heatSymbol {
+  font-size: calc(clamp(0.72rem, 1.1vw, 0.96rem) * var(--heat-font-scale));
+}
+
+.heatCell .heatPrice {
+  font-size: calc(clamp(0.62rem, 0.85vw, 0.78rem) * var(--heat-font-scale));
+}
+
+.heatCell strong {
+  font-size: calc(clamp(0.82rem, 1.35vw, 1.28rem) * var(--heat-font-scale));
+}
+
+.heatCell > span {
+  font-size: calc(0.82rem * var(--heat-font-scale));
+}
+
+.heatCell .heatPnl {
+  font-size: calc(clamp(0.58rem, 0.82vw, 0.78rem) * var(--heat-font-scale));
+}
+
+.heatCell.compact .heatSymbol { font-size: calc(0.72rem * var(--heat-font-scale)); }
+.heatCell.compact .heatPrice { font-size: calc(0.58rem * var(--heat-font-scale)); }
+.heatCell.compact strong { font-size: calc(0.86rem * var(--heat-font-scale)); }
+.heatCell.tiny strong { font-size: calc(0.72rem * var(--heat-font-scale)); }
+.heatCell.tiny .heatPrice { font-size: calc(0.5rem * var(--heat-font-scale)); }
+.heatCell.compact .heatPnl { font-size: calc(0.58rem * var(--heat-font-scale)); }
+.heatCell.tiny .heatPnl { font-size: calc(0.5rem * var(--heat-font-scale)); }
+
+.dashboardPage .heatCell[role="button"] .heatSymbol { font-size: calc(0.78rem * var(--heat-font-scale)); }
+.dashboardPage .heatCell[role="button"] strong { font-size: calc(0.92rem * var(--heat-font-scale)); }
+.dashboardPage .heatCell[role="button"] .heatPnl { font-size: calc(0.56rem * var(--heat-font-scale)); }
+.dashboardPage .heatCell[role="button"] > span { font-size: calc(0.64rem * var(--heat-font-scale)); }
+
+@media (max-width: 720px) {
+  .heatmapPanel .heatCell .heatSymbol,
+  .heatmapPanel .heatCell .heatPrice,
+  .heatmapPanel .heatCell strong,
+  .heatmapPanel .heatCell span,
+  .heatmapPanel .heatCell .heatPnl {
+    font-size: calc(0.52rem * var(--heat-font-scale)) !important;
+  }
+
+  .heatmapPanel .heatMobileMetricsHorizontal {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: repeat(4, auto);
+    align-items: center;
+    justify-items: center;
+    column-gap: 2px;
+    row-gap: 0;
+  }
+
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricGroup {
+    display: contents;
+  }
+
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricRegular > :nth-child(1) { grid-area: 1 / 1; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricRegular > :nth-child(2) { grid-area: 2 / 1; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricRegular > :nth-child(3) { grid-area: 3 / 1; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricRegular > :nth-child(4) { grid-area: 4 / 1; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended > :nth-child(1) { grid-area: 1 / 2; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended > :nth-child(2) { grid-area: 2 / 2; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended > :nth-child(3) { grid-area: 3 / 2; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended > :nth-child(4) { grid-area: 4 / 2; }
+
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended {
+    min-width: 0;
+  }
 }
 
 @media (max-width: 1240px) {
@@ -5232,7 +5386,7 @@ tbody tr:hover th {
   .holdingsPage .tableWrap::after { display: none; }
   .holdingsPage .editableHoldingsTable { width: 100%; min-width: 760px; table-layout: auto; }
   .holdingsPage .editableHoldingsTable th,
-  .holdingsPage .editableHoldingsTable td { padding: 8px 4px; font-size: .64rem; }
+  .holdingsPage .editableHoldingsTable td { padding: 8px 4px; font-size: .84rem; }
   .rebalancePage .tableWrap { padding: 0 8px; }
   .rebalancePage .rebalanceTable {
     min-width: 760px;
@@ -5240,11 +5394,11 @@ tbody tr:hover th {
   .rebalancePage .rebalanceTable th,
   .rebalancePage .rebalanceTable td {
     padding: 8px 4px;
-    font-size: .64rem;
+    font-size: .84rem;
   }
   .rebalancePage .rebalanceTable .tierBadge {
     padding: 2px 5px;
-    font-size: .58rem;
+    font-size: .72rem;
   }
   th, td { padding: 9px 8px; font-size: .72rem; }
   .modalBackdrop { z-index: 80; align-items: end; padding: 0; }
@@ -5548,4 +5702,189 @@ tbody tr:hover th {
   .assetDetailItem span { font-size: .66rem; }
   .assetDetailItem strong { font-size: .78rem; }
   .assetDetailPanel p { margin: 0; font-size: .66rem; line-height: 1.5; }
+}
+
+/* Keep the area-based treemap scale effective after all mobile overrides. */
+@media (max-width: 720px) {
+  .heatmapPanel .heatCell .heatSymbol,
+  .heatmapPanel .heatCell .heatPrice,
+  .heatmapPanel .heatCell strong,
+  .heatmapPanel .heatCell span,
+  .heatmapPanel .heatCell .heatPnl {
+    font-size: calc(0.52rem * var(--heat-font-scale)) !important;
+  }
+
+  /* Must come after the generic mobile heatmap rules so horizontal cells stay side-by-side. */
+  .heatmapPanel .heatMobileMetricsHorizontal {
+    display: grid !important;
+    grid-template-columns: auto auto;
+    grid-template-rows: repeat(4, auto);
+    align-items: center;
+    justify-items: center;
+    justify-content: center;
+    column-gap: 0.3rem;
+    row-gap: 0;
+  }
+
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricGroup {
+    display: contents !important;
+  }
+
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricRegular > :nth-child(1) { grid-area: 1 / 1; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricRegular > :nth-child(2) { grid-area: 2 / 1; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricRegular > :nth-child(3) { grid-area: 3 / 1; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricRegular > :nth-child(4) { grid-area: 4 / 1; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended > :nth-child(1) { grid-area: 1 / 2; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended > :nth-child(2) { grid-area: 2 / 2; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended > :nth-child(3) { grid-area: 3 / 2; }
+  .heatmapPanel .heatMobileMetricsHorizontal .heatMetricExtended > :nth-child(4) { grid-area: 4 / 2; }
+
+  .heatmapPanel .heatMetricGroup {
+    gap: 3px;
+  }
+
+  .heatmapPanel .heatMobileMetricsHorizontal {
+    row-gap: 2px;
+  }
+
+  .heatmapPanel .heatCell .heatSymbol,
+  .heatmapPanel .heatCell .heatPrice,
+  .heatmapPanel .heatCell strong,
+  .heatmapPanel .heatCell span,
+  .heatmapPanel .heatCell .heatPnl {
+    line-height: 1.12;
+  }
+
+  .satelliteMiniCell {
+    --mini-font-scale: 1;
+    font-size: calc(0.72rem * var(--mini-font-scale));
+    line-height: 1.08;
+  }
+
+  .satelliteMiniCell b,
+  .satelliteMiniCell .heatPrice,
+  .satelliteMiniCell span {
+    font-size: calc(0.72rem * var(--mini-font-scale)) !important;
+    line-height: 1.08;
+  }
+}
+
+.satelliteMiniCell {
+  --mini-font-scale: 1;
+  font-size: calc(0.72rem * var(--mini-font-scale));
+  line-height: 1.08;
+}
+
+.satelliteMiniCell b,
+.satelliteMiniCell .heatPrice,
+.satelliteMiniCell span {
+  font-size: calc(0.72rem * var(--mini-font-scale));
+  line-height: 1.08;
+}
+
+@media (max-width: 720px) {
+  .summaryBreakdownTooltip,
+  .holdingPnlSummaryItem .summaryBreakdownTooltip {
+    position: fixed;
+    z-index: 1200;
+    top: calc(72px + env(safe-area-inset-top));
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+    width: auto;
+    max-height: calc(100dvh - 96px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .performancePanel .performanceStats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
+  }
+
+  .performancePanel .performanceStat {
+    min-width: 0;
+    padding: 7px 6px;
+  }
+}
+
+@media (max-width: 760px) and (orientation: landscape) {
+  .performanceModalBackdrop {
+    padding: 8px;
+  }
+
+  .performanceModal {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    padding: 10px;
+  }
+
+  .performanceModal .performanceStats {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    overflow: visible;
+  }
+}
+
+.mobileSummaryBreak {
+  display: none;
+}
+
+.satelliteHoverPanel {
+  max-height: min(720px, calc(100dvh - 72px));
+  overflow-y: auto;
+}
+
+.satelliteMiniCanvas {
+  height: 420px;
+}
+
+@media (max-width: 720px) {
+  .summaryItem span,
+  .dashboardPage .summaryItem span {
+    font-size: .5rem;
+    line-height: 1.1;
+  }
+
+  .summaryGrid,
+  .dashboardPage .summaryGrid {
+    row-gap: 8px;
+  }
+
+  .summaryItem,
+  .dashboardPage .summaryItem {
+    gap: 6px;
+  }
+
+  .summaryItem strong,
+  .dashboardPage .summaryItem strong {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: .82rem;
+    line-height: 1.16;
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: normal;
+  }
+
+  .mobileSummaryBreak {
+    display: block;
+  }
+
+  .dashboardPage .fxSummaryItem strong {
+    font-size: 1.02rem;
+  }
+
+  .satelliteHoverPanel {
+    max-height: calc(100dvh - 72px);
+  }
+
+  .satelliteMiniCanvas {
+    height: min(132vw, 520px);
+    min-height: 440px;
+  }
 }

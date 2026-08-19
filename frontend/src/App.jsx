@@ -727,14 +727,14 @@ function Summary({ data }) {
           <div className="summaryItem hasSummaryBreakdown holdingPnlSummaryItem" tabIndex="0">
             <span>持仓盈亏</span>
             <strong className={tone(usdPnl)}>
-              {fmtMoney(usdPnl, "USD")} · {fmtPct(usdPnlPct)}
+              {fmtMoney(usdPnl, "USD")}<br className="mobileSummaryBreak" /> {fmtPct(usdPnlPct)}
             </strong>
             <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} showContribution />
           </div>
           <div className="summaryItem hasSummaryBreakdown dailySummaryItem" tabIndex="0">
             <span>当日加权{dailyAsOfLabel}</span>
             <strong className={tone(usdDailyChange)}>
-              {fmtMoney(usdDailyChange, "USD")} · {fmtPct(usdDailyPct)}
+              {fmtMoney(usdDailyChange, "USD")}<br className="mobileSummaryBreak" /> {fmtPct(usdDailyPct)}
             </strong>
             <SummaryBreakdownTooltip title="美元当日盈亏明细" rows={usdDailyDetails} currency="USD" total={usdDailyChange} showContribution />
           </div>
@@ -750,14 +750,14 @@ function Summary({ data }) {
           <div className="summaryItem hasSummaryBreakdown holdingPnlSummaryItem" tabIndex="0">
             <span>持仓盈亏</span>
             <strong className={tone(summary.total_pnl_cny)}>
-              {fmtMoney(summary.total_pnl_cny, "CNY")} · {fmtPct(summary.total_pnl_pct)}
+              {fmtMoney(summary.total_pnl_cny, "CNY")}<br className="mobileSummaryBreak" /> {fmtPct(summary.total_pnl_pct)}
             </strong>
             <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} showContribution />
           </div>
           <div className="summaryItem hasSummaryBreakdown dailySummaryItem totalDailySummaryItem" tabIndex="0">
             <span>当日加权{dailyAsOfLabel}</span>
             <strong className={tone(weightedDailyChangeCny)}>
-              {fmtMoney(weightedDailyChangeCny, "CNY")} · {fmtPct(summary.weighted_daily_pct)}
+              {fmtMoney(weightedDailyChangeCny, "CNY")}<br className="mobileSummaryBreak" /> {fmtPct(summary.weighted_daily_pct)}
             </strong>
             <SummaryBreakdownTooltip title="总资产当日盈亏明细" rows={totalDailyDetails} currency="CNY" total={weightedDailyChangeCny} showContribution />
           </div>
@@ -963,7 +963,9 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
       .paddingInner(0.7)
       .paddingOuter(0.5)
       .round(false)(root);
-    return root.leaves().map((leaf) => {
+    const leaves = root.leaves();
+    const maxArea = Math.max(1, ...leaves.map((leaf) => (leaf.x1 - leaf.x0) * (leaf.y1 - leaf.y0)));
+    return leaves.map((leaf) => {
       const card = leaf.data;
       const regularPct = Number(card.regular_pct || 0);
       const extendedPct = card.extended_pct == null ? null : Number(card.extended_pct);
@@ -977,6 +979,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
         : effectivePct < 0
           ? `linear-gradient(145deg, rgba(127, 29, 29, ${strength}), rgba(42, 24, 37, ${0.82 + magnitude * 0.18}))`
           : "linear-gradient(145deg, #15263d, #10233a)";
+      const area = Math.max(1, (leaf.x1 - leaf.x0) * (leaf.y1 - leaf.y0));
       return {
       ...card,
       effectivePct,
@@ -986,6 +989,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
       y: leaf.y0,
       width: leaf.x1 - leaf.x0,
       height: leaf.y1 - leaf.y0,
+      miniFontScale: Math.max(1, Math.min(1.6, 0.85 + 0.75 * area / maxArea)),
       };
     });
   }, [holdingsBySymbol, satelliteCards]);
@@ -1013,6 +1017,11 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
       height: leaf.y1 - leaf.y0,
     }));
   }, [rows, minLayoutValue, heatmapLayoutWidth, heatmapLayoutHeight]);
+  const satelliteReferenceArea = Math.max(
+    1,
+    rects.find((row) => row.symbol === "SATELLITE_GROUP")?.width
+      * (rects.find((row) => row.symbol === "SATELLITE_GROUP")?.height || 0) || 1,
+  );
 
   return (
     <section className="chartPanel heatmapPanel" onMouseLeave={() => setSatelliteHovered(false)}>
@@ -1035,6 +1044,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                   height: `${card.height / SATELLITE_HOVER_LAYOUT_HEIGHT * 100}%`,
                   "--mini-bg": card.bg,
                   "--mini-border": card.effectivePct > 0 ? `rgba(52, 211, 153, ${0.3 + card.magnitude * 0.45})` : card.effectivePct < 0 ? `rgba(248, 113, 113, ${0.3 + card.magnitude * 0.45})` : "rgba(148, 163, 184, 0.28)",
+                  "--mini-font-scale": card.miniFontScale,
                 }}
                 onMouseEnter={() => setSatelliteHoverSymbol(card.symbol)}
                 onMouseLeave={() => setSatelliteHoverSymbol(null)}
@@ -1118,9 +1128,12 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
         style={{ aspectRatio: `${heatmapLayoutWidth} / ${heatmapLayoutHeight}` }}
       >
         {rects.map((row) => {
+          const area = Math.max(1, row.width * row.height);
+          const fontScale = Math.max(0.675, Math.min(2.025, 1.5 * area / satelliteReferenceArea));
+          const isVertical = row.height > row.width;
           return (
             <article
-              className={`heatCell ${row.width < 7 || row.height < 7 ? "compact" : ""} ${row.width < 4 || row.height < 4 ? "tiny" : ""}`}
+              className={`heatCell ${isVertical ? "heatCellVertical" : "heatCellHorizontal"} ${row.width < 7 || row.height < 7 ? "compact" : ""} ${row.width < 4 || row.height < 4 ? "tiny" : ""}`}
               key={row.symbol}
               style={{
                 "--heat-bg": row.bg,
@@ -1129,6 +1142,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 top: `${row.y / heatmapLayoutHeight * 100}%`,
                 width: `${row.width / heatmapLayoutWidth * 100}%`,
                 height: `${row.height / heatmapLayoutHeight * 100}%`,
+                "--heat-font-scale": fontScale,
               }}
               title={`${displayAssetLabel(row.label, row.symbol)} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 价格 ${row.price_line ? fmtCardPriceLine(row.price_line) : fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
               onMouseEnter={row.symbol === "SATELLITE_GROUP" ? () => setSatelliteHovered(true) : undefined}
@@ -1150,10 +1164,10 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                   {row.hasDistinctExtendedCny ? <span className={tone(row.extendedCny)}>（{fmtMoney(row.extendedCny, "CNY")}）</span> : null}
                 </div>
               </div>
-              <div className="heatMobileMetrics">
+              <div className={`heatMobileMetrics ${isVertical ? "heatMobileMetricsVertical" : "heatMobileMetricsHorizontal"}`}>
               <div className="heatMetricGroup heatMetricRegular">
-                {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? (
                   <div className="heatPrice heatMobilePrice">
+                    {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? (
                     <TreemapPriceLine
                       priceLine={row.price_line}
                       regularPrice={row.regular_price}
@@ -1163,8 +1177,8 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                       extendedPct={row.extendedPct}
                       showExtended={false}
                     />
+                    ) : null}
                   </div>
-                ) : null}
                 <strong className={row.fundPending ? "flat" : tone(row.regularPct)}>
                   <span className="heatRegularValue">{row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}</span>
                 </strong>
@@ -1177,10 +1191,18 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 </div>
               {(row.hasDistinctExtendedPct || row.hasDistinctExtendedUsd || row.hasDistinctExtendedCny || row.extended_price) ? (
                 <div className="heatMetricGroup heatMetricExtended">
-                  {row.extended_price ? <div className="heatPrice"><TreemapPriceLine regularPrice={row.regular_price} extendedPrice={row.extended_price} currency={row.currency} extendedPct={row.extendedPct} showRegular={false} /></div> : null}
-                  {row.hasDistinctExtendedPct ? <strong className={tone(row.extendedPct)}><span className="heatExtendedValue">（{fmtPct(row.extendedPct)}）</span></strong> : null}
-                  {row.hasDistinctExtendedUsd ? <div className={`heatPnl heatPnlUsd ${tone(row.extendedUsd)}`}><span className="heatExtendedValue">（{fmtMoney(row.extendedUsd, "USD")}）</span></div> : null}
-                  {row.hasDistinctExtendedCny ? <div className={`heatPnl heatPnlCny ${tone(row.extendedCny)}`}><span className="heatExtendedValue">（{fmtMoney(row.extendedCny, "CNY")}）</span></div> : null}
+                  <div className="heatPrice">
+                    {row.extended_price ? <TreemapPriceLine regularPrice={row.regular_price} extendedPrice={row.extended_price} currency={row.currency} extendedPct={row.extendedPct} showRegular={false} /> : null}
+                  </div>
+                  <strong className={row.hasDistinctExtendedPct ? tone(row.extendedPct) : "flat"}>
+                    {row.hasDistinctExtendedPct ? <span className="heatExtendedValue">（{fmtPct(row.extendedPct)}）</span> : null}
+                  </strong>
+                  <div className={`heatPnl heatPnlUsd ${row.hasDistinctExtendedUsd ? tone(row.extendedUsd) : "flat"}`}>
+                    {row.hasDistinctExtendedUsd ? <span className="heatExtendedValue">（{fmtMoney(row.extendedUsd, "USD")}）</span> : null}
+                  </div>
+                  <div className={`heatPnl heatPnlCny ${row.hasDistinctExtendedCny ? tone(row.extendedCny) : "flat"}`}>
+                    {row.hasDistinctExtendedCny ? <span className="heatExtendedValue">（{fmtMoney(row.extendedCny, "CNY")}）</span> : null}
+                  </div>
                 </div>
               ) : null}
               </div>
@@ -1397,6 +1419,10 @@ function PerformanceChart({ history }) {
   useEffect(() => {
     if (!expanded) return undefined;
     const previousOverflow = document.body.style.overflow;
+    const orientation = window.screen?.orientation;
+    if (typeof orientation?.lock === "function") {
+      orientation.lock("landscape").catch(() => {});
+    }
     const handleKeyDown = (event) => {
       if (event.key === "Escape") setExpanded(false);
     };
@@ -1404,6 +1430,7 @@ function PerformanceChart({ history }) {
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
+      if (typeof orientation?.unlock === "function") orientation.unlock();
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [expanded]);
@@ -4125,7 +4152,6 @@ function EditableHoldingsPage({ data, onSaved }) {
 
   return (
     <section className="holdingsPage">
-      <AssetMetricCards data={data} holdings={holdings} balances={balances} />
       {editingHoldings ? (
         <div className="holdingAnchorBar">
           <span>修改数量或成本价后，保存日将成为新的准确持仓锚点；无需补齐锚点前的历史交易。</span>
@@ -4135,7 +4161,10 @@ function EditableHoldingsPage({ data, onSaved }) {
         </div>
       ) : null}
       {balanceMessage ? <div className={balanceMessage === "现金与已变现已保存" ? "saveMessage up" : "saveMessage down"}>{balanceMessage}</div> : null}
-      <div className="holdingsTableToolbar">{holdingActions}</div>
+      <div className="sectionHeader holdingsTableHeader">
+        <h2>持仓表格</h2>
+        {holdingActions}
+      </div>
       <div className="tableWrap">
         <table className="editableHoldingsTable">
           <thead>
@@ -4189,6 +4218,7 @@ function EditableHoldingsPage({ data, onSaved }) {
           </tbody>
         </table>
       </div>
+      <AssetMetricCards data={data} holdings={holdings} balances={balances} />
       {budgetOpen ? (
         <div className="modalBackdrop" role="presentation">
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
