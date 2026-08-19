@@ -534,7 +534,8 @@ def _quote_price_line(symbol: str, quote: dict[str, Any]) -> str:
     currency = ASSET_META[symbol]["currency"]
     regular = float(quote.get("regular_price") or quote.get("price") or 0.0)
     decimals = 2 if currency == "USD" else 4
-    text = f"{currency} {regular:,.{decimals}f}"
+    symbol_prefix = "$" if currency == "USD" else "￥"
+    text = f"{symbol_prefix}{regular:,.{decimals}f}"
     effective = float(quote.get("price") or regular)
     if quote.get("session") != "regular" and effective > 0 and abs(effective - regular) > 1e-9:
         text += f"（{effective:,.{decimals}f}）"
@@ -3353,11 +3354,11 @@ def build_rebalance_v2(
     holding_cost_total_usd = sum(cost_usd_by_symbol.values())
     planned_total_usd = cash_usd + sgov_current_usd + holding_cost_total_usd + future_cash_total_usd
     planned_total_formula = (
-        f"分母 USD {_fmt_usd_exact(planned_total_usd)} = "
-        f"非SGOV持仓成本 USD {_fmt_usd_exact(holding_cost_total_usd)} + "
-        f"USD现金 USD {_fmt_usd_exact(cash_usd)} + "
-        f"SGOV USD {_fmt_usd_exact(sgov_current_usd)} + "
-        f"未来资金 USD {_fmt_usd_exact(future_cash_total_usd)}"
+        f"分母 ${_fmt_usd_exact(planned_total_usd)} = "
+        f"非SGOV持仓成本 ${_fmt_usd_exact(holding_cost_total_usd)} + "
+        f"美元现金 ${_fmt_usd_exact(cash_usd)} + "
+        f"SGOV ${_fmt_usd_exact(sgov_current_usd)} + "
+        f"未来资金 ${_fmt_usd_exact(future_cash_total_usd)}"
     )
     planned_sgov_target_usd = sgov_target_pct * planned_total_usd
     sgov_excess_usd = max(0.0, sgov_current_usd - planned_sgov_target_usd)

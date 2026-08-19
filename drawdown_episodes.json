@@ -11826,8 +11826,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-08-17",
-        "last_confirmed_drawdown_pct": -0.6545912301559653,
+        "last_processed_close_date": "2026-08-18",
+        "last_confirmed_drawdown_pct": -1.3357577452968838,
         "anchor_date": "2026-08-13",
         "anchor_price": 714.95,
         "metric_version": "episode_peak_v2",
@@ -11849,8 +11849,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-08-17",
-        "last_confirmed_drawdown_pct": -2.0756186114424646,
+        "last_processed_close_date": "2026-08-18",
+        "last_confirmed_drawdown_pct": -3.7339212598080262,
         "anchor_date": "2026-06-02",
         "anchor_price": 745.340424571,
         "metric_version": "episode_peak_v2",
@@ -11884,8 +11884,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-08-17",
-        "last_confirmed_drawdown_pct": -13.927539747293217,
+        "last_processed_close_date": "2026-08-18",
+        "last_confirmed_drawdown_pct": -13.740104522701714,
         "anchor_date": "2026-05-07",
         "anchor_price": 453.49,
         "metric_version": "episode_peak_v2",
@@ -11916,8 +11916,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-08-17",
-        "last_confirmed_drawdown_pct": -16.168831168831165,
+        "last_processed_close_date": "2026-08-18",
+        "last_confirmed_drawdown_pct": -19.870129870129873,
         "anchor_date": "2026-07-01",
         "anchor_price": 61.6,
         "metric_version": "episode_peak_v2",
@@ -11936,8 +11936,8 @@
         "trigger_date": null,
         "trigger_dates": {},
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-08-17",
-        "last_confirmed_drawdown_pct": -3.6087369420702675,
+        "last_processed_close_date": "2026-08-18",
+        "last_confirmed_drawdown_pct": -4.172951231774757,
         "anchor_date": "2026-08-13",
         "anchor_price": 179.01,
         "metric_version": "episode_peak_v2",
@@ -11959,8 +11959,8 @@
           "medium": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-08-17",
-        "last_confirmed_drawdown_pct": -14.508598849346244,
+        "last_processed_close_date": "2026-08-18",
+        "last_confirmed_drawdown_pct": -14.458894546351686,
         "anchor_date": "2026-05-13",
         "anchor_price": 402.379649146,
         "metric_version": "episode_peak_v2",
@@ -12015,8 +12015,8 @@
           "large": "2026-07-29"
         },
         "recovery_streak": 0,
-        "last_processed_close_date": "2026-08-17",
-        "last_confirmed_drawdown_pct": -18.381318441482065,
+        "last_processed_close_date": "2026-08-18",
+        "last_confirmed_drawdown_pct": -20.966544371641284,
         "anchor_date": "2026-06-02",
         "anchor_price": 480.809040904,
         "metric_version": "episode_peak_v2",
@@ -12037,6 +12037,6 @@
         "end_reason": null
       }
     },
-    "updated_at": "2026-08-18T09:20:47+08:00"
+    "updated_at": "2026-08-19T09:58:51+08:00"
   }
 }

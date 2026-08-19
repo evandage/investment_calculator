@@ -86,9 +86,16 @@ function formatLightweightChartTime(time) {
   return "";
 }
 
+function currencySymbol(currency = "USD") {
+  if (currency === "USD") return "$";
+  if (currency === "CNY") return "￥";
+  return `${currency} `;
+}
+
 function fmtMoney(value, currency = "USD", digits = 2) {
   const num = Number(value || 0);
-  return `${currency} ${num.toLocaleString(undefined, {
+  const absolute = Math.abs(num);
+  return `${num < 0 ? "-" : ""}${currencySymbol(currency)}${absolute.toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })}`;
@@ -224,7 +231,10 @@ function dailyAmount(value, pct) {
 }
 
 function fmtCardPriceLine(value) {
-  return String(value || "");
+  const text = String(value || "");
+  return text.replace(/^(USD|CNY)\s+(-?[\d,]+(?:\.\d+)?)(.*)$/i, (_, currency, amount, suffix) => (
+    `${currencySymbol(String(currency).toUpperCase())}${amount}${suffix}`
+  ));
 }
 
 function fmtCostChange(trade, currency = "USD") {
@@ -314,7 +324,7 @@ function TreemapPriceLine({ priceLine = "", regularPrice, extendedPrice, currenc
   const hasExtended = Number.isFinite(extended) && extended > 0;
   return (
     <>
-      {showRegular ? <span className={`heatRegularValue ${tone(regularPct)}`}>{resolvedCurrency} {formatPrice(regular)}</span> : null}
+      {showRegular ? <span className={`heatRegularValue ${tone(regularPct)}`}>{currencySymbol(resolvedCurrency)}{formatPrice(regular)}</span> : null}
       {showExtended && hasExtended ? <span className={`heatExtendedValue ${tone(extendedPct)}`}>（{formatPrice(extended)}）</span> : null}
     </>
   );
@@ -3751,7 +3761,7 @@ function PnlBreakdownPanel({ data }) {
   );
 }
 
-function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
+function AssetMetricCards({ data, holdings, balances }) {
   const fx = Number(data.summary?.fx || 7.1);
   const avgFx = Number(data.summary?.avg_fx_rate || fx);
   const rows = data.holdings.map((row) => {
@@ -3847,10 +3857,7 @@ function AssetMetricCards({ data, holdings, balances, totalActions = null }) {
         </div>
       </div>
       <div className="assetMetricBlock">
-        <div className="assetMetricTitleRow">
-          <h2>总资产（折合CNY）</h2>
-          {totalActions}
-        </div>
+        <h2>总资产（折合CNY）</h2>
         <div className="assetMetricGrid">
           <div className="assetMetricCard"><span>已变现盈亏</span><strong>{fmtMoney(totalRealizedCny, "CNY")}</strong></div>
           <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(totalUnrealizedCny)}>{fmtMoney(totalUnrealizedCny, "CNY")}</strong><em className={tone(totalReturn)}>{fmtPct(totalReturn)}</em></div>
@@ -4105,20 +4112,20 @@ function EditableHoldingsPage({ data, onSaved }) {
   const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
   const holdingActions = (
     <div className="assetTitleActions">
-      <button className="toolButton compactTool" onClick={() => {
+      <button className={editingHoldings ? "iconButton modalActionButton" : "toolButton primaryTool compactTool"} title={editingHoldings ? "取消编辑" : "编辑持仓"} aria-label={editingHoldings ? "取消编辑" : "编辑持仓"} onClick={() => {
         resetDraft();
         setHoldingMessage("");
         setEditingHoldings((value) => !value);
-      }}>{editingHoldings ? "取消编辑" : "编辑持仓"}</button>
-      <button className="toolButton compactTool" onClick={() => setBudgetOpen(true)}>预算</button>
-      <button className="toolButton compactTool" onClick={() => setEditingBalances(true)}>现金</button>
-      <button className="toolButton compactTool" onClick={() => setUniverseOpen(true)}>标的</button>
+      }}>{editingHoldings ? <X size={18} /> : "编辑持仓"}</button>
+      <button className="toolButton primaryTool compactTool" onClick={() => setBudgetOpen(true)}>预算</button>
+      <button className="toolButton primaryTool compactTool" onClick={() => setEditingBalances(true)}>现金</button>
+      <button className="toolButton primaryTool compactTool" onClick={() => setUniverseOpen(true)}>标的</button>
     </div>
   );
 
   return (
     <section className="holdingsPage">
-      <AssetMetricCards data={data} holdings={holdings} balances={balances} totalActions={holdingActions} />
+      <AssetMetricCards data={data} holdings={holdings} balances={balances} />
       {editingHoldings ? (
         <div className="holdingAnchorBar">
           <span>修改数量或成本价后，保存日将成为新的准确持仓锚点；无需补齐锚点前的历史交易。</span>
@@ -4128,6 +4135,7 @@ function EditableHoldingsPage({ data, onSaved }) {
         </div>
       ) : null}
       {balanceMessage ? <div className={balanceMessage === "现金与已变现已保存" ? "saveMessage up" : "saveMessage down"}>{balanceMessage}</div> : null}
+      <div className="holdingsTableToolbar">{holdingActions}</div>
       <div className="tableWrap">
         <table className="editableHoldingsTable">
           <thead>
@@ -4186,7 +4194,7 @@ function EditableHoldingsPage({ data, onSaved }) {
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>预算</h2>
-              <button className="toolButton compactTool" onClick={() => setBudgetOpen(false)} disabled={savingBudget}>关闭</button>
+              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setBudgetOpen(false)} disabled={savingBudget}><X size={18} /></button>
             </div>
             <div className="muted">未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance?.planned_total_usd || 0, "USD")}</div>
             <div className="budgetEditGrid">
@@ -4195,7 +4203,6 @@ function EditableHoldingsPage({ data, onSaved }) {
               ))}
             </div>
             <div className="actions">
-              <button onClick={() => setBudgetOpen(false)} disabled={savingBudget}>取消</button>
               <button className="primary" onClick={saveBudget} disabled={savingBudget}><Save size={16} /> 保存</button>
             </div>
           </div>
@@ -4214,7 +4221,7 @@ function EditableHoldingsPage({ data, onSaved }) {
                 <h2>现金与已变现</h2>
                 <span className="muted">维护现金、已变现盈亏和 SGOV 股息，保存后会重算看板。</span>
               </div>
-              <button className="toolButton compactTool" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>关闭</button>
+              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}><X size={18} /></button>
             </div>
             <div className="balanceEditGrid">
               <label><span>USD 现金</span><input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
@@ -4228,7 +4235,6 @@ function EditableHoldingsPage({ data, onSaved }) {
             </div>
             <p className="muted">现金成本基准用于区分本金和已变现收益；普通入金、出金会自动同步，盈利再投资后允许显示为负数。</p>
             <div className="actions">
-              <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>
               <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存</button>
             </div>
           </div>
@@ -4241,7 +4247,7 @@ function EditableHoldingsPage({ data, onSaved }) {
           <div className="modalPanel satelliteUniverseModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>卫星标的</h2>
-              <button className="toolButton compactTool" onClick={() => setUniverseOpen(false)} disabled={savingUniverse}>关闭</button>
+              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setUniverseOpen(false)} disabled={savingUniverse}><X size={18} /></button>
             </div>
             <div className="satelliteUniverseRows">
               {universeInputs.map((item, index) => {
@@ -4742,7 +4748,7 @@ function Rebalance({ data, onSaved }) {
           待买 {fmtMoney(tradeTotals.buy_USD, "USD")}{tradeTotals.buy_CNY ? ` / ${fmtMoney(tradeTotals.buy_CNY, "CNY")}` : ""} ·
           待卖 {fmtMoney(tradeTotals.sell_USD, "USD")}{tradeTotals.sell_CNY ? ` / ${fmtMoney(tradeTotals.sell_CNY, "CNY")}` : ""}
         </span>
-        <button className="toolButton compactTool" onClick={() => setRulesOpen(true)}>规则</button>
+        <button className="toolButton primaryTool compactTool rulesButton" onClick={() => setRulesOpen(true)}>规则</button>
       </div>
       <div className="rulesToolbar">
         <span className="muted">
@@ -4750,7 +4756,7 @@ function Rebalance({ data, onSaved }) {
         </span>
       </div>
       <div className="muted rebalanceFormulaBanner">
-        共同分母：{data.rebalance.planned_total_formula || `USD ${fmtMoney(data.rebalance.planned_total_usd, "USD")}`} · VOO 按月买入 · QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率
+        共同分母：{data.rebalance.planned_total_formula || fmtMoney(data.rebalance.planned_total_usd, "USD")} · VOO 按月买入 · QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率
       </div>
       {data.rebalance.monthly_recalculation ? (
         <div className={`monthlyRecalculationStatus ${data.rebalance.monthly_recalculation.status || ""}`}>
@@ -4758,7 +4764,7 @@ function Rebalance({ data, onSaved }) {
           {data.rebalance.monthly_recalculation.attention_symbol_count ? ` · 需关注 ${data.rebalance.monthly_recalculation.attention_symbol_count}个标的` : " · 无需关注"}
           {data.rebalance.monthly_recalculation.review_symbol_count ? ` · 复核 ${data.rebalance.monthly_recalculation.review_symbol_count}个` : ""}
           <small>固定分位数 65% / 85% / 95% · {Number(data.rebalance.monthly_recalculation.diagnostic_count || 0)}项统计诊断已折叠</small>
-          <button className="statisticsDetailButton" onClick={() => setStatisticsOpen(true)}>统计详情</button>
+          <button className="toolButton primaryTool compactTool statisticsDetailButton" onClick={() => setStatisticsOpen(true)}>统计详情</button>
         </div>
       ) : null}
       {statisticsOpen ? (
@@ -4771,7 +4777,7 @@ function Rebalance({ data, onSaved }) {
                 <h2 id="statistics-detail-title">回撤档位统计详情</h2>
                 <div className="muted">月度快照 {data.rebalance.monthly_recalculation?.effective_month || "-"} · 验证结果只用于提示，不会自动修改 65% / 85% / 95% 分位数</div>
               </div>
-              <button onClick={() => setStatisticsOpen(false)}>关闭</button>
+              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setStatisticsOpen(false)}><X size={18} /></button>
             </div>
             <div className="statisticsTickerList">
               {suggestionRows.map((row) => {
@@ -4832,7 +4838,7 @@ function Rebalance({ data, onSaved }) {
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>预算设置</h2>
-              <button onClick={() => setBudgetOpen(false)} disabled={savingBudget}>关闭</button>
+              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setBudgetOpen(false)} disabled={savingBudget}><X size={18} /></button>
             </div>
             <div className="muted">
               未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · 月初口径已扣除本月确认买入 · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
@@ -4844,7 +4850,6 @@ function Rebalance({ data, onSaved }) {
               ))}
             </div>
             <div className="actions">
-              <button onClick={() => setBudgetOpen(false)} disabled={savingBudget}>取消</button>
               <button className="primary" onClick={saveBudget} disabled={savingBudget}><Save size={16} /> 保存预算并刷新建议</button>
             </div>
           </div>
@@ -4855,11 +4860,11 @@ function Rebalance({ data, onSaved }) {
           if (shouldCloseFromBackdropClick(event)) setRulesOpen(false);
         }}>
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <div className="sectionHeader"><h2>{data.rebalance.rules?.title || "算法规则"}</h2><button onClick={() => setRulesOpen(false)}>关闭</button></div>
+            <div className="sectionHeader"><h2>{data.rebalance.rules?.title || "算法规则"}</h2><button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setRulesOpen(false)}><X size={18} /></button></div>
             <div className="rebalanceRuleSummary">
               <p>{data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} · 待买 {fmtMoney(tradeTotals.buy_USD, "USD")} · 待卖 {fmtMoney(tradeTotals.sell_USD, "USD")}</p>
               <p>建仓到 {data.rebalance.build_target} · 未来入金 {data.rebalance.future_cash_months} 个月 · 缩放 {Number(data.rebalance.suggestion_scale || 1).toFixed(2)}</p>
-              <p>共同分母：{data.rebalance.planned_total_formula || `USD ${fmtMoney(data.rebalance.planned_total_usd, "USD")}`} · VOO 按月买入 · QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率</p>
+              <p>共同分母：{data.rebalance.planned_total_formula || fmtMoney(data.rebalance.planned_total_usd, "USD")} · VOO 按月买入 · QQQ 按周买入 · 个股一手按目标金额 × 0.1 × 档位倍率</p>
             </div>
             {(data.rebalance.rules?.sections || []).map((section) => (
               <section className="ruleSection" key={section.heading}>
@@ -4877,7 +4882,7 @@ function Rebalance({ data, onSaved }) {
           <div className="modalPanel satelliteUniverseModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>编辑卫星标的</h2>
-              <button onClick={() => setUniverseOpen(false)} disabled={savingUniverse}>关闭</button>
+              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setUniverseOpen(false)} disabled={savingUniverse}><X size={18} /></button>
             </div>
             <div className="satelliteUniverseRows">
               {universeInputs.map((item, index) => {
@@ -5171,7 +5176,7 @@ function Rebalance({ data, onSaved }) {
           <div className="modalPanel fxConversionModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
               <h2>记录换汇</h2>
-              <button onClick={() => setFxConversionOpen(false)} disabled={savingFxConversion}>关闭</button>
+              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setFxConversionOpen(false)} disabled={savingFxConversion}><X size={18} /></button>
             </div>
             <div className="fxConversionEditor">
               <label>日期<input type="date" value={fxInputs.converted_date || defaultTradeDate} onChange={(event) => updateFxInput("converted_date", event.target.value)} /></label>
@@ -5180,7 +5185,6 @@ function Rebalance({ data, onSaved }) {
               <label>备注<input value={fxInputs.note ?? ""} onChange={(event) => updateFxInput("note", event.target.value)} /></label>
             </div>
             <div className="actions">
-              <button onClick={() => setFxConversionOpen(false)} disabled={savingFxConversion}>取消</button>
               <button className="primary" onClick={saveFxConversion} disabled={savingFxConversion}><Save size={16} /> 保存换汇</button>
             </div>
           </div>
@@ -5197,7 +5201,7 @@ function Rebalance({ data, onSaved }) {
             <div className="modalPanel singleTradeModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className="sectionHeader">
                 <h2>记录买卖 · {row.symbol}</h2>
-                <button onClick={() => setActiveTradeSymbol("")} disabled={saving}>关闭</button>
+                <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setActiveTradeSymbol("")} disabled={saving}><X size={18} /></button>
               </div>
               <div className="singleTradeGrid">
                 <label>标的
@@ -5258,7 +5262,7 @@ function Rebalance({ data, onSaved }) {
                 <h2>现金与已变现</h2>
                 <span className="muted">维护现金、已变现盈亏和 SGOV 股息，保存后会重算看板。</span>
               </div>
-              <button className="toolButton compactTool" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>关闭</button>
+              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}><X size={18} /></button>
             </div>
             <div className="balanceEditGrid">
               <label><span>USD 现金</span><input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
@@ -5272,7 +5276,6 @@ function Rebalance({ data, onSaved }) {
             </div>
             <p className="muted">现金成本基准用于区分本金和已变现收益；普通入金、出金会自动同步，盈利再投资后允许显示为负数。</p>
             <div className="actions">
-              <button onClick={() => { resetBalanceDraft(); setEditingBalances(false); }} disabled={savingBalances}>取消</button>
               <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存</button>
             </div>
           </div>

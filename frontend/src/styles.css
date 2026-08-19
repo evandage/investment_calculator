@@ -324,6 +324,20 @@ h2 {
   padding: 0;
 }
 
+.modalActionButton {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.modalActionButton:hover:not(:disabled) {
+  color: var(--text-main);
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.12);
+}
+
 .summaryGrid {
   display: grid;
   grid-template-columns: 86px repeat(3, minmax(0, 1fr)) minmax(140px, 0.7fr);
@@ -605,6 +619,16 @@ h2 {
   gap: 7px;
   flex-wrap: wrap;
   margin-bottom: 10px;
+}
+
+.holdingsTableToolbar {
+  display: flex;
+  justify-content: flex-start;
+  margin: 10px 0 8px;
+}
+
+.holdingsTableToolbar .assetTitleActions {
+  margin-bottom: 0;
 }
 
 .assetMetricGrid {
@@ -1746,6 +1770,7 @@ h2 {
 .compareAmount {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .technicalPanel {
@@ -2818,6 +2843,20 @@ tbody th {
   min-height: 30px;
   padding: 5px 11px;
   font-size: 0.8rem;
+}
+
+.rebalancePage > .sectionHeader .rulesButton {
+  width: auto;
+  height: 30px;
+  min-width: 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.rebalancePage > .sectionHeader h2 {
+  margin: 0;
+  line-height: 30px;
 }
 
 .tradeHistoryBlock {
@@ -5208,8 +5247,8 @@ tbody tr:hover th {
     font-size: .58rem;
   }
   th, td { padding: 9px 8px; font-size: .72rem; }
-  .modalBackdrop { align-items: end; padding: 0; }
-  .modalPanel, .performanceModal, .cheatSheetModal { width: 100%; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top)); margin: 0; padding: 16px 14px calc(18px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; }
+  .modalBackdrop { z-index: 80; align-items: end; padding: 0; }
+  .modalPanel, .performanceModal, .cheatSheetModal { width: 100%; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); margin: 0; padding: 16px 14px calc(18px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   .fxConversionEditor { grid-template-columns: 1fr; }
   .fxConversionEditor button { grid-column: auto; }
   .klineToolbar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
