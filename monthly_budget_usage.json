@@ -88,7 +88,7 @@
       "updated_at": "2026-07-31T21:35:20+08:00"
     },
     "2026-08": {
-      "used_budget_usd": 849.94,
+      "used_budget_usd": 1183.8,
       "planned_new_cash_usd": 700.0,
       "planned_cash_by_month": {},
       "bought_symbols": [
@@ -97,8 +97,8 @@
         "VOO"
       ],
       "bought_amount_by_symbol": {
-        "GOOGL": 79.99000000000001,
-        "QQQ": 269.95,
+        "GOOGL": 116.97000000000001,
+        "QQQ": 566.8299999999999,
         "VOO": 500.0
       },
       "sold_amount_by_symbol": {
@@ -109,7 +109,7 @@
         "QQQ": "medium",
         "VOO": "normal"
       },
-      "updated_at": "2026-08-13T22:09:55+08:00"
+      "updated_at": "2026-08-19T23:13:09+08:00"
     }
   }
 }
