@@ -35,6 +35,41 @@ const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Tex
 const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"];
 const SATELLITE_PERFORMANCE_SYMBOLS = ["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA"];
 
+const DASHBOARD_CACHE_KEY = "investment-dashboard:last-dashboard";
+const APP_STATE_CACHE_KEY = "investment-dashboard:app-state";
+const DASHBOARD_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function readJsonCache(key) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonCache(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage can be unavailable or full; the app still works without it.
+  }
+}
+
+function readDashboardCache() {
+  const cached = readJsonCache(DASHBOARD_CACHE_KEY);
+  if (!cached?.data || !Number.isFinite(cached.savedAt)) return null;
+  if (Date.now() - cached.savedAt > DASHBOARD_CACHE_MAX_AGE_MS) return null;
+  return cached.data;
+}
+
+function readAppState() {
+  const cached = readJsonCache(APP_STATE_CACHE_KEY);
+  return cached && typeof cached === "object" ? cached : {};
+}
+
+const initialAppState = readAppState();
+
 const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
 const shanghaiDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SHANGHAI_TIME_ZONE,
@@ -436,8 +471,8 @@ function valuationBandTone(value, bandText) {
 }
 
 function useDashboard() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(() => readDashboardCache());
+  const [loading, setLoading] = useState(() => !readDashboardCache());
   const [error, setError] = useState("");
   const loadingRef = useRef(false);
 
@@ -448,7 +483,9 @@ function useDashboard() {
       setError("");
       const response = await fetch(`${API_BASE}/api/dashboard?user_id=evan${forceRefresh ? "&refresh=1" : ""}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      setData(await response.json());
+      const nextData = await response.json();
+      setData(nextData);
+      writeJsonCache(DASHBOARD_CACHE_KEY, { savedAt: Date.now(), data: nextData });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -3251,7 +3288,7 @@ function SingleLightweightChart({
   );
 }
 
-let klinePageMemory = {};
+let klinePageMemory = initialAppState.kline || {};
 
 function defaultKlineAvwapMode(interval, symbol) {
   if (["1m", "5m", "15m"].includes(interval)) return "today_open";
@@ -3392,6 +3429,7 @@ function KlinePage({ dashboardData }) {
       selectedDate,
       globalColumns,
     };
+    writeJsonCache(APP_STATE_CACHE_KEY, { ...readAppState(), kline: klinePageMemory });
   }, [symbol, interval, avwapMode, customAnchorDate, displayRange, showExtended, selectedDate, globalColumns]);
   const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${customAnchorDate}|${showExtended}|${selectedDate}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
@@ -5348,8 +5386,12 @@ function RebalancePage({ data, onSaved }) {
 
 export default function App() {
   const { data, loading, error, load } = useDashboard();
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState(() => String(initialAppState.page || "dashboard"));
   useTableGestureScroll();
+
+  useEffect(() => {
+    writeJsonCache(APP_STATE_CACHE_KEY, { ...readAppState(), page });
+  }, [page]);
 
   if (loading) {
     return <main className="appShell"><div className="loading"><Activity /> 加载中</div></main>;
