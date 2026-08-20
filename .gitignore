@@ -8,6 +8,21 @@ frontend/dist/
 portfolio_snapshot_ledger.backup-*.json
 portfolio_history.backup-*.json
 
+# Local runtime state and derived portfolio statistics.
+# The portable source of truth is holdings.json, balances.json, and trades.json.
+portfolio_history.json
+portfolio_snapshot_ledger.json
+drawdown_episodes.json
+monthly_budget_usage.json
+portfolio_adjustments.json
+fx_conversions.json
+swing_positions.json
+closed_satellite_pnl.json
+satellite_targets.json
+satellite_universe.json
+portfolio_history.before_*.json
+portfolio_snapshot_ledger.before_*.json
+
 # *.json
 *.sql
 *.log
