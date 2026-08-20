@@ -1,0 +1,27 @@
+[
+  {
+    "symbol": "ISRG",
+    "label": "ISRG",
+    "target_pct": 35.0
+  },
+  {
+    "symbol": "TEM",
+    "label": "TEM",
+    "target_pct": 10.0
+  },
+  {
+    "symbol": "PLTR",
+    "label": "PLTR",
+    "target_pct": 15.0
+  },
+  {
+    "symbol": "GOOGL",
+    "label": "GOOGL",
+    "target_pct": 32.5
+  },
+  {
+    "symbol": "AVGO",
+    "label": "AVGO",
+    "target_pct": 7.5
+  }
+]

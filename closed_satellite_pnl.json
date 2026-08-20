@@ -1,0 +1,16 @@
+{
+  "NVDA": {
+    "symbol": "NVDA",
+    "label": "NVDA",
+    "pnl_usd": -10.76,
+    "closed_at": "",
+    "included_in_realized": true
+  },
+  "MSFT": {
+    "symbol": "MSFT",
+    "label": "MSFT",
+    "pnl_usd": 8.698812000000004,
+    "closed_at": "2026-08-07T09:22:49+08:00",
+    "included_in_realized": true
+  }
+}
