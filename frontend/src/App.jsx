@@ -3379,6 +3379,18 @@ function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, onS
   );
 }
 
+function ChartBoardPlaceholder({ count = 1, scope }) {
+  const items = Array.from({ length: Math.max(1, Math.min(Number(count) || 1, 12)) });
+  return (
+    <div className={`klineBoardPlaceholder ${scope === "single" ? "singlePlaceholder" : ""}`} aria-live="polite" aria-label="正在准备K线图表">
+      <div className="klinePlaceholderTitle"><span className="placeholderPulse" />正在准备图表…</div>
+      <div className="klinePlaceholderGrid">
+        {items.map((_, index) => <div className="klinePlaceholderCard" key={index}><span /><span /><span /></div>)}
+      </div>
+    </div>
+  );
+}
+
 function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
   const [scope, setScope] = useState("global");
@@ -3402,8 +3414,10 @@ function KlinePage({ dashboardData }) {
   const [visibleProfileState, setVisibleProfileState] = useState(null);
   const [swingPositions, setSwingPositions] = useState(KLINE_SWING_DEFAULTS);
   const [swingPositionError, setSwingPositionError] = useState("");
+  const [chartsReady, setChartsReady] = useState(false);
   const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
   const loadRequestRef = useRef(0);
+  const dataSignatureRef = useRef("");
 
   useEffect(() => {
     if (scope === "global" && interval !== "1m") setInterval("1m");
@@ -3435,6 +3449,31 @@ function KlinePage({ dashboardData }) {
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
 
+  // Keep the toolbar and symbol navigation responsive while the chart library
+  // creates the (relatively expensive) global board / indicator panes.
+  useEffect(() => {
+    setChartsReady(false);
+  }, [requestSignature]);
+
+  useEffect(() => {
+    if (!data || chartsReady) return undefined;
+    let cancelled = false;
+    let idleId;
+    const revealCharts = () => {
+      if (!cancelled) setChartsReady(true);
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(revealCharts, { timeout: 250 });
+    } else {
+      idleId = window.setTimeout(() => window.requestAnimationFrame(revealCharts), 0);
+    }
+    return () => {
+      cancelled = true;
+      if (typeof window.cancelIdleCallback === "function" && idleId != null) window.cancelIdleCallback(idleId);
+      else if (idleId != null) window.clearTimeout(idleId);
+    };
+  }, [data, chartsReady]);
+
   async function load(options = {}) {
     const silent = Boolean(options.silent);
     const requestId = ++loadRequestRef.current;
@@ -3465,6 +3504,8 @@ function KlinePage({ dashboardData }) {
       const payload = await response.json();
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
       if (silent && scope === "global" && payload?.charts && payload.charts.length === 0) return;
+      dataSignatureRef.current = signature;
+      setChartsReady(false);
       setData(payload);
     } catch (err) {
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
@@ -3509,6 +3550,7 @@ function KlinePage({ dashboardData }) {
     socket.onmessage = (event) => {
       if (requestSignatureRef.current !== signature) return;
       try {
+        dataSignatureRef.current = signature;
         setData(JSON.parse(event.data));
       } catch {
         setRealtimeError("K线推送数据解析失败");
@@ -3588,6 +3630,7 @@ function KlinePage({ dashboardData }) {
   }
 
   const singleViewKey = `${data?.symbol || symbol}-${data?.interval || interval}-${data?.show_extended}-${data?.selected_date || selectedDate}-${data?.avwap_mode || avwapMode}-${customAnchorDate}-${displayRange}`;
+  const hasCurrentData = Boolean(data && dataSignatureRef.current === requestSignature);
   const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
   const swingPosition = swingPositions[symbol];
   const swingTargetPct = Number(swingPosition?.target_pct || KLINE_SWING_DEFAULTS[symbol]?.target_pct || 0);
@@ -3711,8 +3754,10 @@ function KlinePage({ dashboardData }) {
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
       {realtimeError && !(error || data?.error) ? <div className="muted">{realtimeError}</div> : null}
-      {scope === "global" && data?.charts ? <GlobalLightweightBoard data={data} marketCards={dashboardData?.daily_cards || []} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.selected_date}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
-      {scope === "single" && data?.candles ? (
+      {scope === "global" && hasCurrentData && data?.charts && !chartsReady ? <ChartBoardPlaceholder count={data.charts.length} scope="global" /> : null}
+      {scope === "global" && hasCurrentData && data?.charts && chartsReady ? <GlobalLightweightBoard data={data} marketCards={dashboardData?.daily_cards || []} displayRange="all" viewKey={`${data.interval}-${data.show_extended}-${data.selected_date}-${data.columns}`} onOpenSymbol={openSingleSymbolFromGlobal} /> : null}
+      {scope === "single" && hasCurrentData && data?.candles && !chartsReady ? <ChartBoardPlaceholder scope="single" /> : null}
+      {scope === "single" && hasCurrentData && data?.candles && chartsReady ? (
         <div className={`klineAnalysisLayout ${interval !== "1d" ? "withoutInsight" : ""}`}>
           <SingleLightweightChart
             data={data}

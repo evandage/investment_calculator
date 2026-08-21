@@ -4598,6 +4598,25 @@ tbody tr:hover th {
 }
 
 /* Professional chart-terminal controls */
+.klineBoardPlaceholder {
+  min-height: 420px;
+  margin-top: 12px;
+  padding: 18px;
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  border-radius: 14px;
+  background: rgba(8, 24, 42, 0.72);
+}
+.klineBoardPlaceholder.singlePlaceholder { min-height: 560px; }
+.klinePlaceholderTitle { display: flex; align-items: center; gap: 8px; color: #9fb4ca; font-size: .78rem; }
+.placeholderPulse { width: 8px; height: 8px; border-radius: 50%; background: #60a5fa; animation: klinePlaceholderPulse 1.4s infinite; }
+.klinePlaceholderGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 16px; }
+.klinePlaceholderCard { height: 176px; padding: 14px; border: 1px solid rgba(148, 163, 184, .12); border-radius: 10px; background: linear-gradient(110deg, rgba(30, 58, 87, .28) 8%, rgba(55, 87, 119, .42) 18%, rgba(30, 58, 87, .28) 33%); background-size: 220% 100%; animation: klinePlaceholderShimmer 1.6s linear infinite; }
+.klinePlaceholderCard span { display: block; width: 42%; height: 7px; margin-bottom: 12px; border-radius: 4px; background: rgba(148, 163, 184, .2); }
+.klinePlaceholderCard span:nth-child(2) { width: 72%; height: 5px; margin-top: 92px; }
+.klinePlaceholderCard span:nth-child(3) { width: 55%; height: 5px; }
+@keyframes klinePlaceholderShimmer { to { background-position: -220% 0; } }
+@keyframes klinePlaceholderPulse { 70% { box-shadow: 0 0 0 7px rgba(96, 165, 250, 0); } 100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); } }
+@media (prefers-reduced-motion: reduce) { .klinePlaceholderCard, .placeholderPulse { animation: none; } }
 .klineToolbar {
   position: relative;
   justify-content: space-between;
