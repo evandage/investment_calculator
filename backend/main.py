@@ -740,10 +740,12 @@ def _build_chart_board_light(
         rsi_ma = chart_api.ema(rsi_series, 9)
         macd_line, macd_signal, macd_hist = chart_api.macd_series(close)
         last_close = float(close.iloc[-1]) if len(close) else 0.0
-        if not selected_day and latest_change_pct is None and key == "1d" and len(close) >= 2:
-            previous_day_close = float(close.iloc[-2])
-            if last_close > 0 and previous_day_close > 0:
-                latest_change_pct = (last_close / previous_day_close - 1.0) * 100.0
+        if not selected_day and latest_change_pct is None:
+            reference_close = previous_close
+            if reference_close <= 0 and key == "1d" and len(close) >= 2:
+                reference_close = float(close.iloc[-2])
+            if last_close > 0 and reference_close > 0:
+                latest_change_pct = (last_close / reference_close - 1.0) * 100.0
         if selected_day:
             latest_price = last_close
             previous_close = 0.0

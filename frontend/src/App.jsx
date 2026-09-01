@@ -3201,13 +3201,12 @@ function SingleLightweightChart({
     setIsFullscreen(true);
   };
   const headerChangePct = data?.latest_change_pct ?? (
-    data?.interval === "1d" && data?.candles?.length >= 2
-      ? (() => {
-          const currentClose = Number(data.candles[data.candles.length - 1]?.close);
-          const previousClose = Number(data.candles[data.candles.length - 2]?.close);
-          return currentClose > 0 && previousClose > 0 ? (currentClose / previousClose - 1) * 100 : null;
-        })()
-      : null
+    (() => {
+      const currentClose = Number(data?.latest_price) || Number(data?.candles?.[data.candles.length - 1]?.close);
+      const previousClose = Number(data?.previous_close)
+        || (data?.interval === "1d" ? Number(data?.candles?.[data.candles.length - 2]?.close) : 0);
+      return currentClose > 0 && previousClose > 0 ? (currentClose / previousClose - 1) * 100 : null;
+    })()
   );
   return (
     <div className={`singleLwWrap ${isFullscreen ? "isFullscreen" : ""}`}>
