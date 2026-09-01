@@ -34,6 +34,8 @@ const TERMINAL_CHART = {
 const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
 const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"];
 const SATELLITE_PERFORMANCE_SYMBOLS = ["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA"];
+const KLINE_BOARD_SYMBOLS = new Set([...USD_PERFORMANCE_SYMBOLS.filter((item) => item !== "SGOV"), "510330.SS"]);
+const KLINE_SYMBOL_ALIASES = { "001015": "510330.SS" };
 
 const DASHBOARD_CACHE_KEY = "investment-dashboard:last-dashboard";
 const APP_STATE_CACHE_KEY = "investment-dashboard:app-state";
@@ -868,7 +870,7 @@ function DailyCards({ cards }) {
   );
 }
 
-function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
+function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenSymbol }) {
   const [satelliteHovered, setSatelliteHovered] = useState(false);
   const [satelliteHoverSymbol, setSatelliteHoverSymbol] = useState(null);
   const [heatmapLayoutWidth, setHeatmapLayoutWidth] = useState(HEATMAP_LAYOUT_WIDTH);
@@ -1072,7 +1074,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
           <div className="satelliteMiniCanvas">
             {satelliteHoverRects.map((card) => (
               <div
-                className="satelliteMiniCell"
+                className={`satelliteMiniCell ${KLINE_BOARD_SYMBOLS.has(card.symbol) ? "satelliteMiniCellClickable" : ""}`}
                 key={card.symbol}
                 style={{
                   left: `${card.x / SATELLITE_HOVER_LAYOUT_WIDTH * 100}%`,
@@ -1085,6 +1087,15 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
                 }}
                 onMouseEnter={() => setSatelliteHoverSymbol(card.symbol)}
                 onMouseLeave={() => setSatelliteHoverSymbol(null)}
+                onClick={KLINE_BOARD_SYMBOLS.has(card.symbol) ? () => onOpenSymbol?.(card.symbol) : undefined}
+                onKeyDown={KLINE_BOARD_SYMBOLS.has(card.symbol) ? (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpenSymbol?.(card.symbol);
+                  }
+                } : undefined}
+                role={KLINE_BOARD_SYMBOLS.has(card.symbol) ? "button" : undefined}
+                tabIndex={KLINE_BOARD_SYMBOLS.has(card.symbol) ? 0 : undefined}
                 title={`${displayAssetLabel(card.label, card.symbol)} · 当前价 ${fmtCurrentPrice(card.currentPrice, card.currency)} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
               >
                 <b>{displayAssetLabel(card.label, card.symbol)}</b>
@@ -1168,9 +1179,10 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
           const area = Math.max(1, row.width * row.height);
           const fontScale = Math.max(0.675, Math.min(2.025, 1.5 * area / satelliteReferenceArea));
           const isVertical = row.height > row.width;
+          const canOpenKline = row.symbol !== "SATELLITE_GROUP" && (KLINE_BOARD_SYMBOLS.has(row.symbol) || KLINE_SYMBOL_ALIASES[row.symbol]);
           return (
             <article
-              className={`heatCell ${isVertical ? "heatCellVertical" : "heatCellHorizontal"} ${row.width < 7 || row.height < 7 ? "compact" : ""} ${row.width < 4 || row.height < 4 ? "tiny" : ""}`}
+              className={`heatCell ${isVertical ? "heatCellVertical" : "heatCellHorizontal"} ${row.width < 7 || row.height < 7 ? "compact" : ""} ${row.width < 4 || row.height < 4 ? "tiny" : ""} ${canOpenKline ? "heatCellClickable" : ""}`}
               key={row.symbol}
               style={{
                 "--heat-bg": row.bg,
@@ -1183,7 +1195,15 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward }) {
               }}
               title={`${displayAssetLabel(row.label, row.symbol)} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 价格 ${row.price_line ? fmtCardPriceLine(row.price_line) : fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
               onMouseEnter={row.symbol === "SATELLITE_GROUP" ? () => setSatelliteHovered(true) : undefined}
-              role={row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
+              onClick={canOpenKline ? () => onOpenSymbol?.(row.symbol) : undefined}
+              onKeyDown={canOpenKline ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpenSymbol?.(row.symbol);
+                }
+              } : undefined}
+              role={canOpenKline || row.symbol === "SATELLITE_GROUP" ? "button" : undefined}
+              tabIndex={canOpenKline ? 0 : undefined}
             >
               <div className="heatSymbol">{row.symbol === "SATELLITE_GROUP" ? "卫星" : displayAssetLabel(row.label, row.symbol)}</div>
               <div className="heatDesktopMetrics">
@@ -3180,6 +3200,15 @@ function SingleLightweightChart({
     if (drawingToolRef.current || customAnchorPickEnabledRef.current) return;
     setIsFullscreen(true);
   };
+  const headerChangePct = data?.latest_change_pct ?? (
+    data?.interval === "1d" && data?.candles?.length >= 2
+      ? (() => {
+          const currentClose = Number(data.candles[data.candles.length - 1]?.close);
+          const previousClose = Number(data.candles[data.candles.length - 2]?.close);
+          return currentClose > 0 && previousClose > 0 ? (currentClose / previousClose - 1) * 100 : null;
+        })()
+      : null
+  );
   return (
     <div className={`singleLwWrap ${isFullscreen ? "isFullscreen" : ""}`}>
       <div className="singleLwHeader">
@@ -3217,9 +3246,9 @@ function SingleLightweightChart({
           {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
           <span>{isFullscreen ? "退出" : "全屏"}</span>
         </button>
-        <div className={tone(data?.latest_change_pct)}>
+        <div className={tone(headerChangePct)}>
           <strong>{fmtChartPrice(data?.latest_price, data?.symbol)}</strong>
-          <span>{data?.latest_change_pct == null ? "-" : fmtPct(data.latest_change_pct)}</span>
+          <span>{headerChangePct == null ? "-" : fmtPct(headerChangePct)}</span>
         </div>
       </div>
       <div className="singleLwLegend" aria-label="K线指标图例">
@@ -3393,7 +3422,7 @@ function ChartBoardPlaceholder({ count = 1, scope }) {
 
 function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
-  const [scope, setScope] = useState("global");
+  const [scope, setScope] = useState(() => String(restoredState.scope || "global"));
   const [symbol, setSymbol] = useState(() => String(restoredState.symbol || "VOO"));
   const [interval, setInterval] = useState(() => String(restoredState.interval || "1m"));
   const [avwapMode, setAvwapMode] = useState(() => String(
@@ -3435,6 +3464,7 @@ function KlinePage({ dashboardData }) {
   useEffect(() => {
     klinePageMemory = {
       symbol,
+      scope,
       interval,
       avwapMode,
       customAnchorDate,
@@ -5398,7 +5428,7 @@ function Rebalance({ data, onSaved }) {
   );
 }
 
-function DashboardPage({ data }) {
+function DashboardPage({ data, onOpenKlineSymbol }) {
   return (
     <div className="dashboardPage">
       <div className="dashboardTopGrid">
@@ -5411,6 +5441,7 @@ function DashboardPage({ data }) {
           holdings={data.holdings}
           dailyAsOf={data.summary?.daily_as_of}
           dailyCarriedForward={data.summary?.daily_carried_forward}
+          onOpenSymbol={onOpenKlineSymbol}
         />
         <div className="dashboardInsights">
           <PerformanceChart history={data.performance_history} />
@@ -5438,6 +5469,22 @@ export default function App() {
     writeJsonCache(APP_STATE_CACHE_KEY, { ...readAppState(), page });
   }, [page]);
 
+  function openKlineSymbol(symbol) {
+    const rawSymbol = String(symbol || "").toUpperCase();
+    const nextSymbol = KLINE_SYMBOL_ALIASES[rawSymbol] || rawSymbol;
+    if (!KLINE_BOARD_SYMBOLS.has(nextSymbol)) return;
+    klinePageMemory = {
+      ...klinePageMemory,
+      scope: "single",
+      symbol: nextSymbol,
+      interval: "1d",
+      avwapMode: defaultKlineAvwapMode("1d", nextSymbol),
+      customAnchorDate: "",
+      displayRange: "60",
+    };
+    setPage("kline");
+  }
+
   if (loading) {
     return <main className="appShell"><div className="loading"><Activity /> 加载中</div></main>;
   }
@@ -5453,7 +5500,7 @@ export default function App() {
     <main className={`appShell ${page === "dashboard" ? "dashboardShell" : ""}`}>
       <Header data={data} />
       <PageNav page={page} setPage={setPage} />
-      {page === "dashboard" ? <DashboardPage data={data} /> : null}
+      {page === "dashboard" ? <DashboardPage data={data} onOpenKlineSymbol={openKlineSymbol} /> : null}
       {page === "holdings" ? <HoldingsPage data={data} onSaved={load} /> : null}
       {page === "rebalance" ? <RebalancePage data={data} onSaved={load} /> : null}
       {page === "kline" ? <KlinePage dashboardData={data} /> : null}

@@ -1647,6 +1647,18 @@ h2 {
   cursor: pointer;
   transition: opacity 140ms ease, border-color 140ms ease, background 140ms ease, transform 140ms ease;
 }
+.heatCellClickable { cursor: pointer; }
+.heatCellClickable:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.95);
+  outline-offset: -2px;
+  z-index: 3;
+}
+.satelliteMiniCellClickable { cursor: pointer; }
+.satelliteMiniCellClickable:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.95);
+  outline-offset: -2px;
+  z-index: 2;
+}
 
 .heatMetricGroup {
   display: contents;
