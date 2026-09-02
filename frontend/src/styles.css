@@ -5490,8 +5490,8 @@ tbody tr:hover th {
 .globalQuotePrice .globalQuoteSubValue { min-height: 13px; line-height: 13px; }
 .globalQuoteSubBadge { display: inline-grid; min-width: 21px; height: 13px; padding: 0 3px; place-items: center; border: 1px solid rgba(148, 163, 184, .3); border-radius: 4px; color: #9fb4c8; font-size: .48rem; font-style: normal; font-weight: 800; letter-spacing: .04em; line-height: 1; }
 .globalQuoteChange { display: grid; justify-self: end; min-width: 78px; padding: 6px 9px; border-radius: 6px; gap: 2px; font-size: .9rem; font-variant-numeric: tabular-nums; text-align: center; }
-.globalQuoteChange strong { color: inherit; font-size: inherit; font-weight: 700; }
-.globalQuoteChange span { color: #94a3b8; font-size: .62rem; font-weight: 600; }
+.globalQuoteChange > strong { color: inherit; font-size: 1rem; font-weight: 800; }
+.globalQuoteChange .globalQuoteSubValue { color: #94a3b8; font-size: .62rem; font-weight: 600; }
 .globalQuoteChange.up { color: #86efac; background: rgba(34, 197, 94, .16); }
 .globalQuoteChange.down { color: #fda4af; background: rgba(239, 68, 68, .16); }
 .globalQuoteChange.flat { color: #cbd5e1; background: rgba(148, 163, 184, .16); }
@@ -5501,9 +5501,11 @@ tbody tr:hover th {
   .globalQuoteIdentity strong { font-size: .9rem; }
   .globalQuoteIdentity span { font-size: .56rem; }
   .globalQuoteSparkline { width: 150px; height: 48px; justify-self: center; }
-  .globalQuotePrice strong { font-size: .76rem; }
+  .globalQuotePrice strong { font-size: .68rem; }
   .globalQuoteSubValue { font-size: .62rem; }
-  .globalQuoteChange { min-width: 54px; padding: 5px 2px; font-size: .68rem; }
+  .globalQuoteChange { min-width: 58px; padding: 4px 2px; }
+  .globalQuoteChange > strong { font-size: .84rem; }
+  .globalQuoteChange .globalQuoteSubValue { font-size: .62rem; }
 }
 
 .rebalancePage .sectionHeader > .muted,
