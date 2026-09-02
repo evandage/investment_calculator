@@ -787,11 +787,11 @@ function Summary({ data }) {
             <strong>{fmtMoney(summary.total_assets_cny, "CNY")}</strong>
           </div>
           <div className="summaryItem hasSummaryBreakdown holdingPnlSummaryItem" tabIndex="0">
-            <span>持仓盈亏</span>
+            <span title="含汇率影响">持仓盈亏*</span>
             <strong className={tone(summary.total_pnl_cny)}>
               {fmtMoney(summary.total_pnl_cny, "CNY")}<br className="mobileSummaryBreak" /> {fmtPct(summary.total_pnl_pct)}
             </strong>
-            <SummaryBreakdownTooltip title="总资产持仓盈亏明细" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} showContribution />
+            <SummaryBreakdownTooltip title="总资产持仓盈亏明细（包含汇率浮盈亏）" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} showContribution />
           </div>
           <div className="summaryItem hasSummaryBreakdown dailySummaryItem totalDailySummaryItem" tabIndex="0">
             <span>当日加权{dailyAsOfLabel}</span>
@@ -870,7 +870,7 @@ function DailyCards({ cards }) {
   );
 }
 
-function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenSymbol }) {
+function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenSymbol, fx }) {
   const [satelliteHovered, setSatelliteHovered] = useState(false);
   const [satelliteHoverSymbol, setSatelliteHoverSymbol] = useState(null);
   const [heatmapLayoutWidth, setHeatmapLayoutWidth] = useState(HEATMAP_LAYOUT_WIDTH);
@@ -937,6 +937,15 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
     const fundStatusText = card.daily_status === "pending" ? "待更新" : card.daily_status === "preopen" ? "未开盘" : "";
     const fundStatusMeta = fundQuoteMeta(card);
     const holding = holdingsBySymbol[card.symbol] || {};
+    const totalValueUsd = card.symbol === "SATELLITE_GROUP"
+      ? satelliteCards.reduce((sum, item) => sum + Number(holdingsBySymbol[item.symbol]?.value || 0), 0)
+      : Number(holding.value || 0);
+    const floatingPnlUsd = card.symbol === "SATELLITE_GROUP"
+      ? satelliteCards.reduce((sum, item) => sum + Number(holdingsBySymbol[item.symbol]?.pnl || 0), 0)
+      : Number(holding.pnl || 0);
+    const floatingPnlCny = card.symbol === "SATELLITE_GROUP"
+      ? satelliteCards.reduce((sum, item) => sum + Number(holdingsBySymbol[item.symbol]?.pnl_cny || 0), 0)
+      : Number(holding.pnl_cny || 0);
     const rawValueCny = Number(holding.value_cny ?? card.value_cny ?? 0);
     const valueCny = Number.isFinite(rawValueCny) ? Math.max(0, rawValueCny) : 0;
     const assetPct = totalValue > 0 ? (valueCny / totalValue) * 100 : 0;
@@ -962,6 +971,10 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
         : "linear-gradient(145deg, #15263d, #10233a)";
       return {
         ...card,
+        totalValueUsd,
+        totalValueCny: valueCny,
+        floatingPnlUsd,
+        floatingPnlCny,
         valueCny,
         assetPct,
         currentPrice: holding.price,
@@ -983,7 +996,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
         fundStatusMeta,
       };
     });
-  }, [cards, holdingsBySymbol, satelliteCards, satelliteSymbols, totalValue]);
+  }, [cards, fx, holdingsBySymbol, satelliteCards, satelliteSymbols, totalValue]);
   const satelliteHoverRects = useMemo(() => {
     if (!satelliteCards.length) return [];
     const root = hierarchy({
@@ -1021,6 +1034,10 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
       const area = Math.max(1, (leaf.x1 - leaf.x0) * (leaf.y1 - leaf.y0));
       return {
       ...card,
+      totalValueUsd: Number(holdingsBySymbol[card.symbol]?.value || 0),
+      totalValueCny: Number(holdingsBySymbol[card.symbol]?.value_cny || card.layoutValue || 0),
+      floatingPnlUsd: Number(holdingsBySymbol[card.symbol]?.pnl || 0),
+      floatingPnlCny: Number(holdingsBySymbol[card.symbol]?.pnl_cny || 0),
       effectivePct,
       magnitude,
       bg,
@@ -1031,7 +1048,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
       miniFontScale: Math.max(1, Math.min(1.6, 0.85 + 0.75 * area / maxArea)),
       };
     });
-  }, [holdingsBySymbol, satelliteCards]);
+  }, [fx, holdingsBySymbol, satelliteCards]);
   const minLayoutValue = totalValue > 0 ? totalValue * 0.0025 : 1;
   const rects = useMemo(() => {
     if (!rows.length) return [];
@@ -1096,7 +1113,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
                 } : undefined}
                 role={KLINE_BOARD_SYMBOLS.has(card.symbol) ? "button" : undefined}
                 tabIndex={KLINE_BOARD_SYMBOLS.has(card.symbol) ? 0 : undefined}
-                title={`${displayAssetLabel(card.label, card.symbol)} · 当前价 ${fmtCurrentPrice(card.currentPrice, card.currency)} · 收盘 ${fmtPct(card.regular_pct)}${card.session !== "regular" && card.extended_pct != null ? ` · 拓展盘 ${fmtPct(card.extended_pct)}` : ""} · 综合 ${fmtPct(card.effectivePct)}`}
+                title={`${displayAssetLabel(card.label, card.symbol)}\n资产总额：${fmtMoney(card.totalValueUsd, "USD")} / ${fmtMoney(card.totalValueCny, "CNY")}\n浮盈亏：${fmtSignedMoney(card.floatingPnlUsd, "USD")} / ${fmtSignedMoney(card.floatingPnlCny, "CNY")}*`}
               >
                 <b>{displayAssetLabel(card.label, card.symbol)}</b>
                 <div className="satelliteDesktopMetrics">
@@ -1144,27 +1161,8 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
             return (
               <div className="satelliteMiniTooltip">
                 <b>{displayAssetLabel(card.label, card.symbol)}</b>
-                <span className="satelliteTooltipPrice">
-                  价格&nbsp;
-                  <TreemapPriceLine
-                    priceLine={card.price_line}
-                    regularPrice={card.regular_price}
-                    extendedPrice={card.extended_price}
-                    currency={card.currency}
-                    regularPct={card.regular_pct}
-                    extendedPct={card.extended_pct}
-                  />
-                </span>
-                <span>
-                  收盘 <span className={tone(card.regular_pct)}>{fmtPct(card.regular_pct)}</span>
-                  {card.session !== "regular" && card.extended_pct != null ? <span> · 拓展盘 <span className={tone(card.extended_pct)}>{fmtPct(card.extended_pct)}</span></span> : null}
-                  <span> · 综合 <span className={tone(card.effectivePct)}>{fmtPct(card.effectivePct)}</span></span>
-                </span>
-                <span>
-                  <span className={tone(card.regular_change_usd ?? card.change_usd)}>{fmtMoney(card.regular_change_usd ?? card.change_usd ?? 0, "USD")}</span>
-                  {" · "}
-                  <span className={tone(card.regular_change_cny ?? card.change_cny)}>{fmtMoney(card.regular_change_cny ?? card.change_cny ?? 0, "CNY")}</span>
-                </span>
+                <span>资产总额：{fmtMoney(card.totalValueUsd, "USD")} / {fmtMoney(card.totalValueCny, "CNY")}</span>
+                <span className={tone(card.floatingPnlCny)}>浮盈亏：{fmtSignedMoney(card.floatingPnlUsd, "USD")} / {fmtSignedMoney(card.floatingPnlCny, "CNY")}*</span>
               </div>
             );
           })() : null}
@@ -1193,7 +1191,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
                 height: `${row.height / heatmapLayoutHeight * 100}%`,
                 "--heat-font-scale": fontScale,
               }}
-              title={`${displayAssetLabel(row.label, row.symbol)} · 资产占比 ${row.assetPct.toFixed(2)}%${row.symbol !== "SATELLITE_GROUP" ? ` · 价格 ${row.price_line ? fmtCardPriceLine(row.price_line) : fmtCurrentPrice(row.currentPrice, row.currency)}` : ""} · 收盘 ${fmtPct(row.regularPct)}${row.hasDistinctExtendedPct ? ` · 拓展盘 ${fmtPct(row.extendedPct)}` : ""} · 当前综合 ${fmtPct(row.dailyPct)}`}
+              title={`${displayAssetLabel(row.label, row.symbol)}\n资产总额：${fmtMoney(row.totalValueUsd, "USD")} / ${fmtMoney(row.totalValueCny, "CNY")}\n浮盈亏：${fmtSignedMoney(row.floatingPnlUsd, "USD")} / ${fmtSignedMoney(row.floatingPnlCny, "CNY")}*`}
               onMouseEnter={row.symbol === "SATELLITE_GROUP" ? () => setSatelliteHovered(true) : undefined}
               onClick={canOpenKline ? () => onOpenSymbol?.(row.symbol) : undefined}
               onKeyDown={canOpenKline ? (event) => {
@@ -5435,6 +5433,7 @@ function DashboardPage({ data, onOpenKlineSymbol }) {
         <DailyHeatmap
           cards={data.daily_cards}
           holdings={data.holdings}
+          fx={data.summary?.fx}
           dailyAsOf={data.summary?.daily_as_of}
           dailyCarriedForward={data.summary?.daily_carried_forward}
           onOpenSymbol={onOpenKlineSymbol}
