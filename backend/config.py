@@ -69,7 +69,6 @@ TARGET_WEIGHTS = {
     "TEM": 0.003,
     "PLTR": 0.0,
     "SGOV": 0.12,
-    "001015": 0.20,
 }
 
 SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA")
@@ -249,7 +248,9 @@ def _apply_satellite_universe() -> None:
 
     SATELLITE_SYMBOLS = configured
     USD_SYMBOLS = ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV")
-    ALL_SYMBOLS = tuple(ASSET_META.keys())
+    # The sold CSI 300 fund remains in metadata so historical trades can be
+    # read and its final P&L can be shown, but it is no longer an active asset.
+    ALL_SYMBOLS = tuple(sym for sym in ASSET_META if sym != "001015")
 
 
 _apply_satellite_universe()

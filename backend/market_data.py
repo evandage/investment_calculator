@@ -31,7 +31,7 @@ _FUND_QUOTES_TTL_SECONDS = 120
 _FX_CACHE: dict[str, Any] | None = None
 _FX_CACHE_AT = 0.0
 _FX_CACHE_FILE = ROOT_DIR / ".fx_rate_cache.json"
-_FX_CACHE_TTL_SECONDS = 60
+_FX_CACHE_TTL_SECONDS = 300
 _FX_HISTORY_CACHE: dict[str, float] = {}
 _FX_HISTORY_CACHE_AT = 0.0
 _FX_HISTORY_CACHE_TTL_SECONDS = 900
@@ -68,14 +68,7 @@ def _satellite_symbols() -> tuple[str, ...]:
 
 
 def _futu_subscribe_symbols() -> tuple[str, ...]:
-    # 510330.SS is the dashboard's CSI 300 ETF benchmark.  It is attempted
-    # separately from US symbols so a missing China ETF entitlement cannot
-    # take the entire real-time connection down.
-    return tuple(
-        sym
-        for sym in dict.fromkeys((*_usd_symbols(), "510330.SS"))
-        if sym in app_config.FUTU_US
-    )
+    return tuple(sym for sym in _usd_symbols() if sym in app_config.FUTU_US)
 
 
 def _futu_subscription_groups(
@@ -1147,39 +1140,20 @@ def fetch_fx_usdcny() -> dict[str, Any]:
     if _FX_CACHE is not None and now - _FX_CACHE_AT < _FX_CACHE_TTL_SECONDS:
         return dict(_FX_CACHE)
 
-    for code, label in (("USDCNY", "Sina USDCNY"), ("fx_susdcny", "Sina fx_susdcny"), ("fx_susdcnh", "Sina fx_susdcnh")):
-        try:
-            r = requests.get(
-                f"https://hq.sinajs.cn/list={code}",
-                timeout=HTTP_TIMEOUT,
-                headers={**REQUEST_HEADERS, "Referer": "https://finance.sina.com.cn/"},
-            )
-            r.encoding = "gbk"
-            rate = _parse_sina_fx(r.text)
-            if rate:
-                payload = {"rate": rate, "source": label}
-                _write_fx_cache(payload)
-                return payload
-        except Exception:
-            continue
-
-    for secid, label in (("133.USDCNH", "Eastmoney USDCNH"), ("120.USDCNYC", "Eastmoney USDCNYC")):
-        try:
-            r = requests.get(
-                f"https://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f43,f57,f58",
-                timeout=HTTP_TIMEOUT,
-                headers=REQUEST_HEADERS,
-            )
-            obj = r.json()
-            raw = _coerce_float((obj.get("data") or {}).get("f43"))
-            if raw:
-                rate = raw / 10000.0 if raw > 1000 else raw
-                if 5.0 < rate < 10.0:
-                    payload = {"rate": rate, "source": label}
-                    _write_fx_cache(payload)
-                    return payload
-        except Exception:
-            continue
+    try:
+        r = requests.get(
+            "https://hq.sinajs.cn/list=USDCNY",
+            timeout=HTTP_TIMEOUT,
+            headers={**REQUEST_HEADERS, "Referer": "https://finance.sina.com.cn/"},
+        )
+        r.encoding = "gbk"
+        rate = _parse_sina_fx(r.text)
+        if rate:
+            payload = {"rate": rate, "source": "Sina USDCNY"}
+            _write_fx_cache(payload)
+            return payload
+    except Exception:
+        pass
     cached = _read_fx_cache()
     if cached:
         return cached
@@ -1358,11 +1332,6 @@ def fetch_quotes(force_refresh: bool = False) -> dict[str, Any]:
             fallback = fetch_sina_us_quote(sym)
             if fallback:
                 quotes[sym] = fallback
-    for sym, code in app_config.FUND_CODES.items():
-        fund = fetch_direct_fund_quote(code, force_refresh=force_refresh)
-        if fund:
-            fund["symbol"] = sym
-            quotes[sym] = fund
     for sym in app_config.ALL_SYMBOLS:
         if sym not in quotes:
             price = app_config.FALLBACK_PRICES[sym]

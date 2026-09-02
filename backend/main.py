@@ -136,7 +136,7 @@ class FxConversionPayload(BaseModel):
 
 
 def _chart_symbols() -> set[str]:
-    return {"VOO", "QQQ", *config_module.SATELLITE_SYMBOLS, "510330.SS"}
+    return {"VOO", "QQQ", *config_module.SATELLITE_SYMBOLS}
 
 
 def _chart_labels() -> dict[str, str]:
@@ -146,7 +146,6 @@ def _chart_labels() -> dict[str, str]:
         for symbol in symbols
         if symbol in config_module.ASSET_META
     }
-    labels["510330.SS"] = "沪深300ETF"
     return labels
 
 
@@ -162,7 +161,6 @@ def _chart_full_labels() -> dict[str, str]:
         "AVGO": "Broadcom",
         "NVDA": "NVIDIA",
         "SGOV": "iShares 0-3 Month Treasury Bond ETF",
-        "510330.SS": "Huatai-PineBridge CSI 300 ETF",
     }
 
 
@@ -295,7 +293,7 @@ def _kline_header_change_pct(
 def _default_avwap_mode(interval: str, symbol: str) -> str:
     if interval in {"1m", "5m", "15m"}:
         return "today_open"
-    return "year_start" if symbol in {"VOO", "QQQ", "SGOV", "510330.SS"} else "earnings"
+    return "year_start" if symbol in {"VOO", "QQQ", "SGOV"} else "earnings"
 
 
 def _refresh_global_chart_board_realtime(
@@ -621,7 +619,7 @@ def _build_chart_board_light(
     session_open = float(quote.get("open_price") or 0.0)
     previous_close = float(quote.get("prev_close") or 0.0)
     effective_avwap_mode = avwap_mode or _default_avwap_mode(key, sym)
-    if sym in {"VOO", "QQQ", "SGOV", "510330.SS"} and effective_avwap_mode == "earnings":
+    if sym in {"VOO", "QQQ", "SGOV"} and effective_avwap_mode == "earnings":
         effective_avwap_mode = "high_60d"
     cycle_start_date = None
     if effective_avwap_mode in {"cycle_high", "cycle_low"}:
@@ -693,7 +691,7 @@ def _build_chart_board_light(
         )
 
         earnings_anchor = None
-        if key == "1d" and sym not in {"VOO", "QQQ", "SGOV", "510330.SS"}:
+        if key == "1d" and sym not in {"VOO", "QQQ", "SGOV"}:
             earnings_date = chart_api.latest_earnings_anchor(sym)
             if earnings_date is not None:
                 earnings_anchor = earnings_date.strftime("%Y-%m-%d")

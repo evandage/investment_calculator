@@ -110,6 +110,16 @@
         "VOO": "normal"
       },
       "updated_at": "2026-08-19T23:13:09+08:00"
+    },
+    "2026-09": {
+      "used_budget_usd": 0,
+      "planned_new_cash_usd": 700.0,
+      "planned_cash_by_month": {},
+      "bought_symbols": [],
+      "bought_amount_by_symbol": {},
+      "sold_amount_by_symbol": {},
+      "bought_intensity_by_symbol": {},
+      "updated_at": "2026-09-02T09:36:39+08:00"
     }
   }
 }

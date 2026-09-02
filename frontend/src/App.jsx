@@ -34,8 +34,8 @@ const TERMINAL_CHART = {
 const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
 const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"];
 const SATELLITE_PERFORMANCE_SYMBOLS = ["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA"];
-const KLINE_BOARD_SYMBOLS = new Set([...USD_PERFORMANCE_SYMBOLS.filter((item) => item !== "SGOV"), "510330.SS"]);
-const KLINE_SYMBOL_ALIASES = { "001015": "510330.SS" };
+const KLINE_BOARD_SYMBOLS = new Set([...USD_PERFORMANCE_SYMBOLS.filter((item) => item !== "SGOV")]);
+const KLINE_SYMBOL_ALIASES = {};
 
 const DASHBOARD_CACHE_KEY = "investment-dashboard:last-dashboard";
 const APP_STATE_CACHE_KEY = "investment-dashboard:app-state";
@@ -1439,7 +1439,6 @@ function PerformanceChart({ history }) {
     ["portfolio_return_pct", "总资产", TERMINAL_CHART.yellow, 4],
     ["usd_return_pct", "美元资产", TERMINAL_CHART.deepBlue, 3],
     ["satellite_return_pct", "卫星仓位", TERMINAL_CHART.green, 3],
-    ["001015_return_pct", "沪深300", TERMINAL_CHART.coral, 2],
     ["VOO_return_pct", "VOO", TERMINAL_CHART.violet, 2],
     ["QQQ_return_pct", "QQQ", TERMINAL_CHART.cyan, 2],
   ], []);
@@ -1903,7 +1902,6 @@ function GlobalLightweightBoard({ data, viewKey, displayRange, onOpenSymbol, mar
   const charts = data?.charts || [];
   const marketCardBySymbol = Object.fromEntries((marketCards || []).flatMap((card) => [
     [card.symbol, card],
-    ...(card.symbol === "001015" ? [["510330.SS", card]] : []),
   ]));
   return (
     <div className="globalQuoteList">
@@ -2504,7 +2502,7 @@ function TechnicalCheatSheetModal({ onClose }) {
         </div>
         <div className="cheatSheetAssetGrid">
           <article className="assetPlaybook etfPlaybook">
-            <header><span>ETF PLAYBOOK</span><h3>ETF · VOO / QQQ / 沪深300</h3><p>技术面权重更高，重点判断长期趋势与资金成本。</p></header>
+            <header><span>ETF PLAYBOOK</span><h3>ETF · VOO / QQQ</h3><p>技术面权重更高，重点判断长期趋势与资金成本。</p></header>
             <section><b>01 · 长期趋势检查</b><p><strong>MA200</strong><span>价格在上方且均线向上</span></p><p><strong>VP250</strong><span>看一年 POC / HVN / Value Area</span></p><p><strong>结论</strong><span>Price &gt; MA200 + POC，长期结构健康</span></p></section>
             <section><b>02 · 中期趋势检查</b><p><strong>AVWAP 年初</strong><span>全年资金平均成本 · 默认</span></p><p><strong>Swing H/L</strong><span>本轮压力成本 / 反转成本</span></p><p><strong>MA50</strong><span>方向向上，价格最好在其上方</span></p></section>
             <section><b>03 · 节奏与买点</b><p><strong>EMA20</strong><span>趋势加仓与短期节奏</span></p><p><strong>RSI14</strong><span>只做情绪过滤，不单独抄底</span></p><p><strong>优先级</strong><span>EMA20 → MA50 → HVN/POC → MA200</span></p></section>
@@ -3320,7 +3318,7 @@ let klinePageMemory = initialAppState.kline || {};
 
 function defaultKlineAvwapMode(interval, symbol) {
   if (["1m", "5m", "15m"].includes(interval)) return "today_open";
-  return ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol) ? "year_start" : "earnings";
+  return ["VOO", "QQQ", "SGOV"].includes(symbol) ? "year_start" : "earnings";
 }
 
 const KLINE_SWING_DEFAULTS = {
@@ -3443,7 +3441,7 @@ function KlinePage({ dashboardData }) {
   const [swingPositions, setSwingPositions] = useState(KLINE_SWING_DEFAULTS);
   const [swingPositionError, setSwingPositionError] = useState("");
   const [chartsReady, setChartsReady] = useState(false);
-  const isEtf = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
+  const isEtf = ["VOO", "QQQ", "SGOV"].includes(symbol);
   const loadRequestRef = useRef(0);
   const dataSignatureRef = useRef("");
 
@@ -3512,7 +3510,7 @@ function KlinePage({ dashboardData }) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), scope === "global" ? 30000 : 20000);
     try {
-      const isEtfSymbol = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
+    const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
       let effectiveAvwapMode = avwapMode === "custom" && !customAnchorDate ? "none" : avwapMode;
       if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
       if (interval === "1d" && effectiveAvwapMode === "today_open") {
@@ -3556,7 +3554,7 @@ function KlinePage({ dashboardData }) {
       return undefined;
     }
     setRealtimeError("");
-    const isEtfSymbol = ["VOO", "QQQ", "SGOV", "510330.SS"].includes(symbol);
+      const isEtfSymbol = ["VOO", "QQQ", "SGOV"].includes(symbol);
     let effectiveAvwapMode = avwapMode === "custom" && !customAnchorDate ? "none" : avwapMode;
     if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
     const qs = new URLSearchParams(
@@ -3716,9 +3714,8 @@ function KlinePage({ dashboardData }) {
             <select value={symbol} onChange={(event) => changeKlineSymbol(event.target.value)} aria-label="标的">
               {[...(dashboardData?.holdings || [])
                 .filter((row) => row.currency === "USD" && row.symbol !== "SGOV")
-                .map((row) => row.symbol)
-                , "510330.SS"]
-                .map((item) => <option key={item} value={item}>{item === "510330.SS" ? "510330" : item}</option>)}
+                .map((row) => row.symbol)]
+                .map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </label> : null}
         </div>

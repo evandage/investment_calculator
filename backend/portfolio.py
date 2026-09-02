@@ -62,11 +62,7 @@ _DRAWDOWN_CACHE: dict[tuple[Any, ...], tuple[dict[str, Any], float]] = {}
 _DRAWDOWN_CACHE_TTL_SECONDS = 300
 _FUND_HISTORY_CACHE: dict[str, tuple[dict[str, float], float]] = {}
 _FUND_HISTORY_CACHE_TTL_SECONDS = 900
-PERFORMANCE_BENCHMARK_SOURCES = {
-    "001015": "510330.SS",
-    "VOO": "VOO",
-    "QQQ": "QQQ",
-}
+PERFORMANCE_BENCHMARK_SOURCES = {"VOO": "VOO", "QQQ": "QQQ"}
 _EPISODE_STATE_LOCK = threading.Lock()
 NY_TZ = ZoneInfo("America/New_York")
 PERFORMANCE_WRITE_HOUR = 8
@@ -555,6 +551,7 @@ def build_visualizations(
     balances: dict[str, float],
     value_cny_by_symbol: dict[str, float],
     fx: float,
+    trades: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     target_weights = effective_target_weights()
     row_by_symbol = {row["symbol"]: row for row in rows}
@@ -581,7 +578,7 @@ def build_visualizations(
                     "currency": row["currency"],
                 }
             )
-        elif sym in ("VOO", "QQQ", "SGOV", "001015"):
+        elif sym in ("VOO", "QQQ", "SGOV"):
             pnl_cny = float(row["pnl_cny"])
             pnl_usd = float(row["pnl"]) if row["currency"] == "USD" else (pnl_cny / fx if fx > 0 else 0.0)
             pnl_rank.append(
@@ -604,6 +601,23 @@ def build_visualizations(
                 "pnl": pnl_usd,
                 "pnl_cny": pnl_usd * fx,
                 "currency": "USD",
+                "archived": True,
+            }
+        )
+    closed_core_pnl_cny = sum(
+        float(trade.get("realized_pnl", 0.0) or 0.0)
+        for trade in (trades or [])
+        if str(trade.get("symbol") or "").upper() == "001015"
+        and str(trade.get("action") or "").lower() == "sell"
+    )
+    if abs(closed_core_pnl_cny) > 1e-9:
+        pnl_rank.append(
+            {
+                "symbol": "001015",
+                "label": "沪深300*",
+                "pnl_usd": closed_core_pnl_cny / fx if fx > 0 else 0.0,
+                "pnl_cny": closed_core_pnl_cny,
+                "currency": "CNY",
                 "archived": True,
             }
         )
@@ -2355,7 +2369,7 @@ def build_performance_history(
         "date_rule": "北京时间 06:00 切换投资日；凌晨美股交易归入前一投资日",
         "return_rule": "曲线按每日涨跌幅复利累计；当日未完整交易部分使用估值、盘前或夜盘作预计",
         "estimated_symbols": rows[-1].get("estimated_symbols", []) if rows else [],
-        "benchmark_labels": {"001015": "沪深300", "VOO": "VOO", "QQQ": "QQQ"},
+        "benchmark_labels": {"VOO": "VOO", "QQQ": "QQQ"},
     }
 
 
@@ -2784,7 +2798,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
 
     daily_cards = []
     card_by_symbol: dict[str, dict[str, Any]] = {}
-    for sym in ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV", "001015"):
+    for sym in ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV"):
         quote = quotes[sym]
         holding = holdings[sym]
         shares = float(holding["shares"])
@@ -3191,7 +3205,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
             "daily_carried_forward": carry_completed_daily,
         },
         "daily_cards": daily_cards,
-        "visualizations": build_visualizations(current_rows, balances, value_cny_by_symbol, fx),
+        "visualizations": build_visualizations(current_rows, balances, value_cny_by_symbol, fx, trades),
         "targets": target_weights,
         "satellite_targets": load_satellite_targets(),
         "satellite_universe": load_satellite_universe_config(),
