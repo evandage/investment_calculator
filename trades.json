@@ -944,6 +944,66 @@
       "new_avg_cost": 0.0,
       "intensity": "normal",
       "created_at": "2026-09-02T09:36:39+08:00"
+    },
+    {
+      "id": "20260902100709-63-SGOV",
+      "trade_date": "2026-09-01",
+      "symbol": "SGOV",
+      "action": "sell",
+      "amount_usd": 702.8168,
+      "shares": 7.0,
+      "price": 100.40239999999999,
+      "cost_basis": 703.4951388888888,
+      "realized_pnl": -0.6783388888889021,
+      "prev_avg_cost": 100.49930555555555,
+      "new_avg_cost": 100.49930555555554,
+      "intensity": "none",
+      "created_at": "2026-09-02T10:07:09+08:00"
+    },
+    {
+      "id": "20260902100739-64-VOO",
+      "trade_date": "2026-09-01",
+      "symbol": "VOO",
+      "action": "buy",
+      "amount_usd": 500.0,
+      "shares": 0.714,
+      "price": 700.280112044818,
+      "cost_basis": 500.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 670.2621643096289,
+      "new_avg_cost": 673.9689169916863,
+      "intensity": "normal",
+      "created_at": "2026-09-02T10:07:39+08:00"
+    },
+    {
+      "id": "20260902100806-65-QQQ",
+      "trade_date": "2026-09-01",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 99.95,
+      "shares": 0.1414,
+      "price": 706.8599717114569,
+      "cost_basis": 99.95,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 710.9929349050425,
+      "new_avg_cost": 710.8453178913334,
+      "intensity": "medium",
+      "created_at": "2026-09-02T10:08:06+08:00"
+    },
+    {
+      "id": "20260902100824-66-GOOGL",
+      "trade_date": "2026-09-01",
+      "symbol": "GOOGL",
+      "action": "buy",
+      "amount_usd": 19.99,
+      "shares": 0.0594,
+      "price": 336.5319865319865,
+      "cost_basis": 19.99,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 352.197453183522,
+      "new_avg_cost": 351.2857064471893,
+      "intensity": "medium",
+      "created_at": "2026-09-02T10:08:24+08:00"
     }
   ]
 }
