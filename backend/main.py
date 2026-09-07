@@ -99,7 +99,7 @@ class ExecutionItem(BaseModel):
     action: str = "buy"
     trade_date: str | None = None
     amount_usd: float
-    shares: float
+    shares: float = 0.0
     intensity: str = "normal"
 
 
@@ -887,24 +887,16 @@ def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
 @app.put("/api/balances")
 def update_balances(payload: BalancesPayload) -> dict[str, Any]:
     before = load_balances()
-    requested = dict(payload.balances)
+    requested = {**before, **payload.balances}
     # A manual cash edit is normally an external deposit/withdrawal, while a
     # simultaneous realized-P&L or dividend edit is income already contained
-    # in that cash.  Move only the principal portion into the cash basis unless
-    # the user explicitly supplies a different basis value.
+    # in that cash. Move only the principal portion into the cash basis.
     basis_rules = {
         "USD": ("cash_usd", "cash_cost_basis_usd", ("realized_usd", "voo_dividend_usd", "sgov_dividend_usd")),
         "CNY": ("cash_cny", "cash_cost_basis_cny", ("realized_cny",)),
     }
     for cash_key, basis_key, income_keys in basis_rules.values():
         old_basis = float(before.get(basis_key, 0.0) or 0.0)
-        try:
-            requested_basis = float(requested.get(basis_key, old_basis) or 0.0)
-        except (TypeError, ValueError):
-            requested_basis = old_basis
-        explicitly_changed = basis_key in requested and abs(requested_basis - old_basis) > 1e-9
-        if explicitly_changed:
-            continue
         old_cash = float(before.get(cash_key, 0.0) or 0.0)
         new_cash = float(requested.get(cash_key, old_cash) or 0.0)
         income_delta = sum(

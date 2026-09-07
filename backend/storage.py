@@ -704,7 +704,7 @@ def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
         if symbol not in ASSET_META:
             continue
         action = str(item.get("action", "buy")).lower()
-        if action not in {"buy", "sell"}:
+        if (action not in {"buy", "sell", "dividend"} or (action == "dividend" and symbol != "SGOV")):
             continue
         try:
             shares = max(0.0, float(item.get("shares", 0.0)))
@@ -715,7 +715,7 @@ def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
             new_avg_cost = float(item.get("new_avg_cost", 0.0) or 0.0)
         except (TypeError, ValueError):
             continue
-        if shares <= 0 or amount <= 0:
+        if (shares <= 0 and action != "dividend") or amount <= 0:
             continue
         trade_date = str(item.get("trade_date") or item.get("date") or "").strip()
         if not trade_date:
@@ -727,7 +727,7 @@ def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
                 "symbol": symbol,
                 "action": action,
                 "amount_usd": amount,
-                "shares": shares,
+                "shares": 0.0 if action == "dividend" else shares,
                 "price": amount / shares if shares > 0 else 0.0,
                 "cost_basis": cost_basis,
                 "realized_pnl": realized_pnl,
@@ -755,7 +755,7 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
             continue
         symbol = str(item.get("symbol", "")).upper()
         action = str(item.get("action", "buy")).lower()
-        if symbol not in ASSET_META or action not in {"buy", "sell"}:
+        if symbol not in ASSET_META or (action not in {"buy", "sell", "dividend"} or (action == "dividend" and symbol != "SGOV")):
             continue
         try:
             shares = max(0.0, float(item.get("shares", 0.0)))
@@ -767,7 +767,7 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
         except (TypeError, ValueError):
             continue
         trade_date = str(item.get("trade_date") or item.get("date") or "").strip()[:10]
-        if shares <= 0 or amount <= 0 or not trade_date:
+        if (shares <= 0 and action != "dividend") or amount <= 0 or not trade_date:
             continue
         normalized.append(
             {
@@ -776,7 +776,7 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
                 "symbol": symbol,
                 "action": action,
                 "amount_usd": amount,
-                "shares": shares,
+                "shares": 0.0 if action == "dividend" else shares,
                 "price": amount / shares if shares > 0 else 0.0,
                 "cost_basis": cost_basis,
                 "realized_pnl": realized_pnl,

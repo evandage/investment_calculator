@@ -114,7 +114,9 @@
     "2026-09": {
       "used_budget_usd": 619.94,
       "planned_new_cash_usd": 700.0,
-      "planned_cash_by_month": {},
+      "planned_cash_by_month": {
+        "2026-10": 700.0
+      },
       "bought_symbols": [
         "GOOGL",
         "QQQ",
@@ -131,7 +133,7 @@
         "QQQ": "medium",
         "GOOGL": "medium"
       },
-      "updated_at": "2026-09-02T10:08:24+08:00"
+      "updated_at": "2026-09-07T14:01:11+08:00"
     }
   }
 }

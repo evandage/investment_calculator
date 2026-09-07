@@ -12,16 +12,16 @@
   {
     "symbol": "PLTR",
     "label": "PLTR",
-    "target_pct": 15.0
+    "target_pct": 7.5
   },
   {
     "symbol": "GOOGL",
     "label": "GOOGL",
-    "target_pct": 32.5
+    "target_pct": 35.0
   },
   {
     "symbol": "AVGO",
     "label": "AVGO",
-    "target_pct": 7.5
+    "target_pct": 12.5
   }
 ]

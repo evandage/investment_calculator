@@ -4070,11 +4070,8 @@ function EditableHoldingsPage({ data, onSaved }) {
     setBalances({
       cash_usd: String(data.balances?.cash_usd ?? 0),
       cash_cny: String(data.balances?.cash_cny ?? 0),
-      cash_cost_basis_usd: String(data.balances?.cash_cost_basis_usd ?? 0),
-      cash_cost_basis_cny: String(data.balances?.cash_cost_basis_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
-      voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
   }
@@ -4094,11 +4091,8 @@ function EditableHoldingsPage({ data, onSaved }) {
     setBalanceInputs({
       cash_usd: String(data.balances?.cash_usd ?? 0),
       cash_cny: String(data.balances?.cash_cny ?? 0),
-      cash_cost_basis_usd: String(data.balances?.cash_cost_basis_usd ?? 0),
-      cash_cost_basis_cny: String(data.balances?.cash_cost_basis_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
-      voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
   }
@@ -4363,11 +4357,8 @@ function EditableHoldingsPage({ data, onSaved }) {
             <div className="balanceEditGrid">
               <label><span>USD 现金</span><input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 现金</span><input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
-              <label><span>USD 现金成本基准</span><input value={balanceInputs.cash_cost_basis_usd ?? ""} onChange={(event) => updateBalance("cash_cost_basis_usd", event.target.value)} inputMode="decimal" /></label>
-              <label><span>CNY 现金成本基准</span><input value={balanceInputs.cash_cost_basis_cny ?? ""} onChange={(event) => updateBalance("cash_cost_basis_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>USD 已变现</span><input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
-              <label><span>VOO 累计分红</span><input value={balanceInputs.voo_dividend_usd ?? ""} onChange={(event) => updateBalance("voo_dividend_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
             <p className="muted">现金成本基准用于区分本金和已变现收益；普通入金、出金会自动同步，盈利再投资后允许显示为负数。</p>
@@ -4506,11 +4497,8 @@ function Rebalance({ data, onSaved }) {
     setBalanceInputs({
       cash_usd: String(data.balances?.cash_usd ?? 0),
       cash_cny: String(data.balances?.cash_cny ?? 0),
-      cash_cost_basis_usd: String(data.balances?.cash_cost_basis_usd ?? 0),
-      cash_cost_basis_cny: String(data.balances?.cash_cost_basis_cny ?? 0),
       realized_usd: String(data.balances?.realized_usd ?? 0),
       realized_cny: String(data.balances?.realized_cny ?? 0),
-      voo_dividend_usd: String(data.balances?.voo_dividend_usd ?? 0),
       sgov_dividend_usd: String(data.balances?.sgov_dividend_usd ?? 0),
     });
   }
@@ -4686,12 +4674,12 @@ function Rebalance({ data, onSaved }) {
           action: item.action || "buy",
           trade_date: item.trade_date || defaultTradeDate,
           amount_usd: Number(item.amount_usd || 0),
-          shares: Number(item.shares || 0),
+          shares: item.action === "dividend" ? 0 : Number(item.shares || 0),
           intensity: item.intensity,
         }))
-        .filter((item) => item.amount_usd > 0 && item.shares > 0);
+        .filter((item) => item.amount_usd > 0 && (item.action === "dividend" || item.shares > 0));
       if (!executions.length) {
-        throw new Error("请填写成交金额和成交股数");
+        throw new Error(inputs[symbolToSave]?.action === "dividend" ? "请填写大于零的实际到账股息" : "请填写成交金额和成交股数");
       }
       const response = await fetch(`${API_BASE}/api/rebalance/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, executions }) });
       if (!response.ok) {
@@ -4713,7 +4701,7 @@ function Rebalance({ data, onSaved }) {
   async function deleteTrade(trade) {
     const tradeId = String(trade.id || "");
     if (!tradeId) return;
-    const confirmed = window.confirm(`确认撤销 ${trade.trade_date || trade.date || ""} ${trade.symbol} ${trade.action === "sell" ? "卖出" : "买入"} 记录？`);
+    const confirmed = window.confirm(`确认撤销 ${trade.trade_date || trade.date || ""} ${trade.symbol} ${trade.action === "dividend" ? "派息" : trade.action === "sell" ? "卖出" : "买入"} 记录？`);
     if (!confirmed) return;
     setDeletingTradeId(tradeId);
     setTradeMessage("");
@@ -5160,7 +5148,7 @@ function Rebalance({ data, onSaved }) {
         <div className="sectionHeader subHeader">
           <div>
             <h2>交易记录</h2>
-            <span className="muted">买入或卖出后会按交易日期重算该日之后的收益曲线</span>
+            <span className="muted">买卖或 SGOV 派息保存后会按交易日期重算收益曲线</span>
           </div>
           <div className="headerActions">
             <button className="toolButton primaryTool" onClick={() => openTradeEditor(tradeRows[0]?.symbol || "")}>交易</button>
@@ -5180,7 +5168,7 @@ function Rebalance({ data, onSaved }) {
             aria-label={"\u7b5b\u9009\u4ea4\u6613\u8bb0\u5f55"}
           />
           <select value={tradeActionFilter} onChange={(event) => setTradeActionFilter(event.target.value)} aria-label={"\u6309\u4ea4\u6613\u65b9\u5411\u7b5b\u9009"}>
-            <option value="all">{"\u5168\u90e8\u65b9\u5411"}</option><option value="buy">{"\u4e70\u5165"}</option><option value="sell">{"\u5356\u51fa"}</option>
+            <option value="all">{"\u5168\u90e8\u65b9\u5411"}</option><option value="buy">{"\u4e70\u5165"}</option><option value="sell">{"\u5356\u51fa"}</option><option value="dividend">派息</option>
           </select>
           <span>{`\u7b5b\u9009\u540e ${sortedTrades.length} / ${(data.trades || []).length} \u6761`}</span>
         </div>
@@ -5205,17 +5193,17 @@ function Rebalance({ data, onSaved }) {
                 <tr key={`${trade.trade_date || trade.date}-${trade.symbol}-${index}`}>
                   <td>{trade.trade_date || trade.date || "-"}</td>
                   <td>{trade.symbol}</td>
-                  <td>{trade.action === "sell" ? "卖出" : "买入"}</td>
-                  <td>{Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                  <td>{trade.action === "dividend" ? "派息" : trade.action === "sell" ? "卖出" : "买入"}</td>
+                  <td>{trade.action === "dividend" ? "—" : Number(trade.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                   <td>{fmtMoney(trade.amount_usd, currencyBySymbol[trade.symbol] || "USD")}</td>
-                  <td>{fmtMoney(trade.price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}</td>
+                  <td>{trade.action === "dividend" ? "—" : fmtMoney(trade.price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}</td>
                   <td className={tone(trade.close_effect)} title={trade.close_price ? `当日收盘 ${fmtMoney(trade.close_price, currencyBySymbol[trade.symbol] || "USD", (currencyBySymbol[trade.symbol] || "USD") === "USD" ? 2 : 4)}` : ""}>
                     {fmtTradeCloseEffect(trade, currencyBySymbol[trade.symbol] || "USD")}
                   </td>
                   <td className={tradeCostTone(trade)} title={fmtAvgCostChangeTitle(trade, currencyBySymbol[trade.symbol] || "USD")}>
-                    {fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}
+                    {trade.action === "dividend" ? "—" : fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}
                   </td>
-                  <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{tierLabel(trade.intensity)}</span></td>
+                  <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.action === "dividend" ? "—" : tierLabel(trade.intensity)}</span></td>
                   <td>
                     <button onClick={() => deleteTrade(trade)} disabled={deletingTradeId === trade.id}>
                       {deletingTradeId === trade.id ? "撤销中" : "撤销"}
@@ -5330,6 +5318,7 @@ function Rebalance({ data, onSaved }) {
       {activeTradeSymbol ? (() => {
         const row = tradeRows.find((item) => item.symbol === activeTradeSymbol);
         const currentInput = inputs[activeTradeSymbol] || {};
+        const isDividend = currentInput.action === "dividend";
         if (!row) return null;
         return (
           <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
@@ -5337,7 +5326,7 @@ function Rebalance({ data, onSaved }) {
           }}>
             <div className="modalPanel singleTradeModal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className="sectionHeader">
-                <h2>记录买卖 · {row.symbol}</h2>
+                <h2>记录交易 · {row.symbol}</h2>
                 <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setActiveTradeSymbol("")} disabled={saving}><X size={18} /></button>
               </div>
               <div className="singleTradeGrid">
@@ -5349,15 +5338,16 @@ function Rebalance({ data, onSaved }) {
                   </select>
                 </label>
                 <label>方向
-                  <select value={currentInput.action || "buy"} onChange={(event) => update(row.symbol, "action", event.target.value)}>
+                  <select value={currentInput.action || "buy"} onChange={(event) => setInputs((prev) => ({ ...prev, [row.symbol]: { ...prev[row.symbol], action: event.target.value, amount_usd: "", shares: "" } }))}>
                     <option value="buy">买入</option>
                     <option value="sell">卖出</option>
+                    {row.symbol === "SGOV" ? <option value="dividend">派息</option> : null}
                   </select>
                 </label>
                 <label>日期
                   <input type="date" value={currentInput.trade_date || defaultTradeDate} onChange={(event) => update(row.symbol, "trade_date", event.target.value)} />
                 </label>
-                <label>档位
+                {!isDividend && <label>档位
                   <select className={tierClass(currentInput.intensity || row.intensity)} value={currentInput.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
                     <option value="normal">普通</option>
                     <option value="small">小加</option>
@@ -5365,17 +5355,17 @@ function Rebalance({ data, onSaved }) {
                     <option value="large">大加</option>
                     {row.review_mode === "manual_review_only" ? <option value="manual_review_only">复核</option> : null}
                   </select>
-                </label>
-                <label>成交金额
+                </label>}
+                <label>{isDividend ? "实际到账股息（USD）" : "成交金额"}
                   <input value={currentInput.amount_usd ?? ""} onChange={(event) => update(row.symbol, "amount_usd", event.target.value)} inputMode="decimal" />
                 </label>
-                <label>成交股数
+                {!isDividend && <label>成交股数
                   <input value={currentInput.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" />
-                </label>
-                <div className="singleTradeHint">
+                </label>}
+                {isDividend ? <div className="singleTradeHint">保存后增加美元现金和 SGOV 累计股息。已计入累计股息的历史派息无需重复记账。</div> : <div className="singleTradeHint">
                   <span>建议买/卖</span>
                   <strong>{fmtMoney(Number(row.suggested_sell_usd || 0) > Number(row.suggested_buy_usd || 0) ? -Number(row.suggested_sell_usd || 0) : Number(row.suggested_buy_usd || 0), row.currency || "USD")}</strong>
-                </div>
+                </div>}
               </div>
               <div className="actions">
                 <button onClick={() => clearPending(row.symbol)} disabled={saving}>清零</button>
@@ -5404,11 +5394,8 @@ function Rebalance({ data, onSaved }) {
             <div className="balanceEditGrid">
               <label><span>USD 现金</span><input value={balanceInputs.cash_usd ?? ""} onChange={(event) => updateBalance("cash_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 现金</span><input value={balanceInputs.cash_cny ?? ""} onChange={(event) => updateBalance("cash_cny", event.target.value)} inputMode="decimal" /></label>
-              <label><span>USD 现金成本基准</span><input value={balanceInputs.cash_cost_basis_usd ?? ""} onChange={(event) => updateBalance("cash_cost_basis_usd", event.target.value)} inputMode="decimal" /></label>
-              <label><span>CNY 现金成本基准</span><input value={balanceInputs.cash_cost_basis_cny ?? ""} onChange={(event) => updateBalance("cash_cost_basis_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>USD 已变现</span><input value={balanceInputs.realized_usd ?? ""} onChange={(event) => updateBalance("realized_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
-              <label><span>VOO 累计分红</span><input value={balanceInputs.voo_dividend_usd ?? ""} onChange={(event) => updateBalance("voo_dividend_usd", event.target.value)} inputMode="decimal" /></label>
               <label><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
             <p className="muted">现金成本基准用于区分本金和已变现收益；普通入金、出金会自动同步，盈利再投资后允许显示为负数。</p>

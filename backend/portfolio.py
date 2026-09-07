@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import json
 import time
 import re
@@ -1018,6 +1020,7 @@ def completed_portfolio_daily_pct(
 
         if basis <= 0:
             continue
+        pnl += sum(float(t.get("amount_usd", 0.0)) for t in trades_by_symbol.get(sym, []) if t.get("action") == "dividend") * multiplier
         symbol_basis[sym] = basis
         symbol_pnl[sym] = pnl
 
@@ -1069,8 +1072,10 @@ def historical_holding_pnl(
     balances: dict[str, float],
     symbols: set[str] | None = None,
     native_usd: bool = False,
+    trades: list[dict[str, Any]] | None = None,
+    history_day: str | None = None,
 ) -> dict[str, float]:
-    """Use the live-card dividend basis for historical holding P&L too."""
+    """Include legacy dividends and dated receipts through the requested day."""
     result = holding_pnl_pct_for_snapshot(holdings_snapshot, prices, fx, symbols, native_usd)
     includes_usd = symbols is None or bool(set(USD_SYMBOLS) & symbols)
     if not includes_usd:
@@ -1078,6 +1083,12 @@ def historical_holding_pnl(
     dividend_usd = float(balances.get("voo_dividend_usd", 0.0) or 0.0) + float(
         balances.get("sgov_dividend_usd", 0.0) or 0.0
     )
+    if history_day:
+        dividend_usd -= sum(
+            float(trade.get("amount_usd", 0.0))
+            for trade in (trades or [])
+            if trade.get("action") == "dividend" and str(trade.get("trade_date", ""))[:10] > history_day
+        )
     dividend_amount = dividend_usd if native_usd else dividend_usd * fx
     result["amount_cny"] += dividend_amount
     result["value_cny"] += dividend_amount
@@ -1189,6 +1200,8 @@ def balances_for_history_day(
                 reconstructed["cash_cny"] += direction * amount
                 realized_key = "realized_cny"
                 basis_key = "cash_cost_basis_cny"
+            if action == "dividend":
+                continue
             if action == "sell":
                 cost_basis = max(0.0, float(trade.get("cost_basis", amount) or 0.0))
                 reconstructed[basis_key] += realized_direction * cost_basis
@@ -1229,6 +1242,8 @@ def balances_for_history_day(
             reconstructed["cash_cny"] += direction * amount
             realized_key = "realized_cny"
             basis_key = "cash_cost_basis_cny"
+        if str(trade.get("action") or "").lower() == "dividend":
+            continue
         if str(trade.get("action") or "").lower() == "sell":
             reconstructed[basis_key] -= max(0.0, float(trade.get("cost_basis", amount) or 0.0))
             reconstructed[realized_key] -= float(trade.get("realized_pnl", 0.0) or 0.0)
@@ -1343,9 +1358,9 @@ def current_holdings_pnl_for_history_day(
     snapshot_cash_cny: float | None = None,
 ) -> dict[str, float]:
     """Value today's book at a historical close for a continuous P&L series."""
-    holding_pnl = historical_holding_pnl(holdings, prices, fx_rate, balances)
+    holding_pnl = historical_holding_pnl(holdings, prices, fx_rate, balances, trades=trades, history_day=day)
     usd_holding_pnl = historical_holding_pnl(
-        holdings, prices, fx_rate, balances, set(USD_SYMBOLS), True
+        holdings, prices, fx_rate, balances, set(USD_SYMBOLS), True, trades, day
     )
     # Closed satellite positions remain part of the user's displayed P&L even
     # after their zero-share holding row is removed. Keep that frozen result
@@ -1543,6 +1558,7 @@ def current_portfolio_daily_pct(
             pnl += shares * (close_price - trade_price) * multiplier
         if basis <= 0:
             continue
+        pnl += sum(float(t.get("amount_usd", 0.0)) for t in trades_by_symbol.get(sym, []) if t.get("action") == "dividend") * multiplier
         symbol_daily_pct[sym] = pnl / basis * 100.0
         total_basis += basis
         total_pnl += pnl
@@ -1802,9 +1818,9 @@ def ensure_completed_performance_history(
                     for sym in row["holdings_snapshot"]
                     if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
                 }
-                holding_pnl = historical_holding_pnl(row["holdings_snapshot"], holding_prices, row_fx, balances)
+                holding_pnl = historical_holding_pnl(row["holdings_snapshot"], holding_prices, row_fx, balances, trades=trades, history_day=day)
                 usd_holding_pnl = historical_holding_pnl(
-                    row["holdings_snapshot"], holding_prices, row_fx, balances, set(USD_SYMBOLS), True
+                    row["holdings_snapshot"], holding_prices, row_fx, balances, set(USD_SYMBOLS), True, trades, day
                 )
                 portfolio_daily_pct, symbol_position_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(
                     row["holdings_snapshot"], day, histories, row_fx, trades
@@ -1917,7 +1933,7 @@ def ensure_completed_performance_history(
             for sym in snapshot
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
-        usd_holding_pnl = historical_holding_pnl(snapshot, holding_prices, row_fx, balances, set(USD_SYMBOLS), True)
+        usd_holding_pnl = historical_holding_pnl(snapshot, holding_prices, row_fx, balances, set(USD_SYMBOLS), True, trades, day)
         usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
             snapshot,
             day,
@@ -1993,12 +2009,12 @@ def ensure_completed_performance_history(
             for sym in holdings_snapshot
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
-        holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances)
-        usd_holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances, set(USD_SYMBOLS), True)
+        holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances, trades=trades, history_day=day)
+        usd_holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances, set(USD_SYMBOLS), True, trades, day)
         day_cash_flow_cny = sum(
             max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (day_fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
             for trade in trades
-            if str(trade.get("trade_date") or "")[:10] == day
+            if str(trade.get("trade_date") or "")[:10] == day and trade.get("action") != "dividend"
         )
         rows_by_date[day] = {
             "date": day,
@@ -3327,6 +3343,8 @@ def build_rebalance_v2(
     weekly_bought_amounts: dict[str, float] = {}
     weekly_sold_amounts: dict[str, float] = {}
     for record in load_trade_records(user_id):
+        if record.get("action") == "dividend":
+            continue
         trade_day = str(record.get("trade_date") or "")[:10]
         if not week_start_key <= trade_day <= today_key:
             continue
@@ -3974,11 +3992,15 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
         is_cny_trade = sym == "001015"
         tracks_monthly_usage = sym != "SGOV" and not is_cny_trade
         action = str(item.get("action", "buy")).lower()
-        if action not in {"buy", "sell"}:
+        if action not in {"buy", "sell", "dividend"} or (action == "dividend" and sym != "SGOV"):
             raise ValueError(f"{sym} 的交易方向无效")
         amount = max(0.0, float(item.get("amount_usd", 0.0) or 0.0))
         shares = max(0.0, float(item.get("shares", 0.0) or 0.0))
-        if amount <= 0 or shares <= 0:
+        if action == "dividend":
+            shares = 0.0
+            if not math.isfinite(amount) or amount <= 0:
+                raise ValueError("派息到账金额必须大于零")
+        if amount <= 0 or (shares <= 0 and action != "dividend"):
             continue
         trade_date = str(item.get("trade_date") or item.get("date") or now.date().isoformat()).strip()[:10]
         try:
@@ -3994,7 +4016,13 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
         sold_amounts = dict(usage.get("sold_amount_by_symbol", {}))
         intensities = dict(usage.get("bought_intensity_by_symbol", {}))
         prev_avg_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
-        if action == "sell":
+        if action == "dividend":
+            available_usd += amount
+            balances["sgov_dividend_usd"] = float(balances.get("sgov_dividend_usd", 0.0)) + amount
+            new_avg_cost = prev_avg_cost
+            cost_basis = 0.0
+            sale_pnl = 0.0
+        elif action == "sell":
             old_shares = float(holdings.get(sym, {}).get("shares", 0.0) or 0.0)
             if shares > old_shares + 1e-9:
                 raise ValueError(f"{sym} 卖出股数 {shares:g} 超过当前持仓 {old_shares:g}")
@@ -4057,7 +4085,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
                 "action": action,
                 "amount_usd": amount,
                 "shares": shares,
-                "price": amount / shares,
+                "price": amount / shares if shares else 0.0,
                 "cost_basis": cost_basis,
                 "realized_pnl": sale_pnl,
                 "prev_avg_cost": prev_avg_cost,
@@ -4149,13 +4177,20 @@ def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
     amount = max(0.0, float(target.get("amount_usd", 0.0) or 0.0))
     shares = max(0.0, float(target.get("shares", 0.0) or 0.0))
     is_cny_trade = sym == "001015"
-    if sym not in holdings or amount <= 0 or shares <= 0:
+    if amount <= 0 or (action != "dividend" and (sym not in holdings or shares <= 0)):
         raise ValueError("交易记录无法撤销")
 
-    current = holdings[sym]
+    current = holdings.get(sym, {})
     current_shares = float(current.get("shares", 0.0) or 0.0)
     current_cost = float(current.get("avg_cost", 0.0) or 0.0)
-    if action == "buy":
+    if action == "dividend":
+        cash = float(balances.get("cash_usd", 0.0))
+        dividend = float(balances.get("sgov_dividend_usd", 0.0))
+        if sym != "SGOV" or cash + 1e-9 < amount or dividend + 1e-9 < amount:
+            raise ValueError("美元现金或 SGOV 累计股息不足，无法撤销该次派息")
+        balances["cash_usd"] = max(0.0, cash - amount)
+        balances["sgov_dividend_usd"] = max(0.0, dividend - amount)
+    elif action == "buy":
         if current_shares + 1e-9 < shares:
             raise ValueError(f"{sym} 当前持仓不足，无法撤销该次买入")
         new_shares = max(0.0, current_shares - shares)
