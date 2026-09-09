@@ -1019,6 +1019,51 @@
       "new_avg_cost": 100.49930555555554,
       "intensity": "normal",
       "created_at": "2026-09-07T14:01:11+08:00"
+    },
+    {
+      "id": "20260909092406-68-VOO",
+      "trade_date": "2026-09-08",
+      "symbol": "VOO",
+      "action": "buy",
+      "amount_usd": 230.0,
+      "shares": 0.3254,
+      "price": 706.8223724646589,
+      "cost_basis": 230.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 673.9689169916863,
+      "new_avg_cost": 675.7193082173769,
+      "intensity": "normal",
+      "created_at": "2026-09-09T09:24:06+08:00"
+    },
+    {
+      "id": "20260909092417-69-QQQ",
+      "trade_date": "2026-09-08",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 230.0,
+      "shares": 0.3201,
+      "price": 718.525460793502,
+      "cost_basis": 230.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 710.8453178913334,
+      "new_avg_cost": 711.4198478616498,
+      "intensity": "medium",
+      "created_at": "2026-09-09T09:24:17+08:00"
+    },
+    {
+      "id": "20260909092451-70-SGOV",
+      "trade_date": "2026-09-08",
+      "symbol": "SGOV",
+      "action": "buy",
+      "amount_usd": 1406.72,
+      "shares": 14.0,
+      "price": 100.48,
+      "cost_basis": 1406.72,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 100.49930555555554,
+      "new_avg_cost": 100.49111531986532,
+      "intensity": "normal",
+      "created_at": "2026-09-09T09:24:51+08:00"
     }
   ]
 }
