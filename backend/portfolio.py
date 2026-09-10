@@ -72,6 +72,7 @@ US_MARKET_CLOSE_MINUTE = 16 * 60
 PERFORMANCE_HISTORY_START_DATE = "2026-07-07"
 PERFORMANCE_CHART_START_DATE = "2026-07-08"
 PERFORMANCE_CHART_BASELINE_DATE = "2026-07-08"
+PERFORMANCE_HISTORY_CALCULATION_VERSION = "2026-09-eod-v10-recalculate-satellite-daily-return"
 FUND_HISTORY_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -1798,7 +1799,7 @@ def ensure_completed_performance_history(
             snapshot_changed = not holdings_snapshots_match(row.get("holdings_snapshot") or {}, expected_snapshot)
             needs_pnl_repair = (
                 snapshot_changed
-                or str(row.get("calculation_version") or "") != "2026-08-eod-v9-satellite-performance"
+                or str(row.get("calculation_version") or "") != PERFORMANCE_HISTORY_CALCULATION_VERSION
                 or int(row.get("pnl_basis_version", 0) or 0) < 2
                 or int(row.get("snapshot_schema_version", 0) or 0) < 7
                 or (
@@ -1861,7 +1862,7 @@ def ensure_completed_performance_history(
                         "satellite_daily_basis_usd": satellite_daily_basis_usd,
                         "pnl_basis_version": 2,
                         "snapshot_schema_version": 7,
-                        "calculation_version": "2026-08-eod-v9-satellite-performance",
+                        "calculation_version": PERFORMANCE_HISTORY_CALCULATION_VERSION,
                         "fx_rate": row_fx,
                         "closing_prices": holding_prices,
                         "price_source": "historical_daily_close",
@@ -2042,7 +2043,7 @@ def ensure_completed_performance_history(
             "satellite_daily_basis_usd": satellite_daily_basis_usd,
             "pnl_basis_version": 2,
             "snapshot_schema_version": 7,
-            "calculation_version": "2026-08-eod-v9-satellite-performance",
+            "calculation_version": PERFORMANCE_HISTORY_CALCULATION_VERSION,
             "closing_prices": holding_prices,
             "price_source": "historical_daily_close",
             "fx_source": "Sina fx_susdcny daily close",
@@ -2363,10 +2364,9 @@ def build_performance_history(
                 point[f"{sym}_daily_pct"] = daily_pct
         points.append(point)
 
-    # Anchor the satellite series to its live cumulative holding return, then
-    # reverse each trade-aware daily return to derive historical levels. This
-    # preserves the real return on the chart's first day rather than forcing
-    # an arbitrary zero at the chart start.
+    # Anchor the curve to today's live cumulative satellite return, then walk
+    # backwards. The return for day D is the multiplier from D-1 to D, so it
+    # must be applied when moving from point D back to point D-1.
     if points and satellite_return_pct is not None:
         running_factor = 1.0 + satellite_return_pct / 100.0
         for index in range(len(points) - 1, -1, -1):
@@ -2374,7 +2374,7 @@ def build_performance_history(
             point["satellite_return_pct"] = (running_factor - 1.0) * 100.0
             if index == 0:
                 continue
-            daily_pct = coerce_optional_float(point.get("satellite_daily_pct"))
+            daily_pct = coerce_optional_float(points[index].get("satellite_daily_pct"))
             if daily_pct is not None and 1.0 + daily_pct / 100.0 > 0:
                 running_factor /= 1.0 + daily_pct / 100.0
 
