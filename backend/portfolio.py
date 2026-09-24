@@ -72,7 +72,7 @@ US_MARKET_CLOSE_MINUTE = 16 * 60
 PERFORMANCE_HISTORY_START_DATE = "2026-07-07"
 PERFORMANCE_CHART_START_DATE = "2026-07-08"
 PERFORMANCE_CHART_BASELINE_DATE = "2026-07-08"
-PERFORMANCE_HISTORY_CALCULATION_VERSION = "2026-09-eod-v10-recalculate-satellite-daily-return"
+PERFORMANCE_HISTORY_CALCULATION_VERSION = "2026-09-eod-v12-guard-missing-previous-close"
 FUND_HISTORY_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -753,6 +753,20 @@ def close_on(prices: dict[str, float], day: str) -> float | None:
     return prices.get(day)
 
 
+def merge_recorded_close_histories(
+    histories: dict[str, dict[str, float]], rows: list[dict[str, Any]]
+) -> None:
+    """Fill gaps in a partial market feed with previously saved EOD closes."""
+    for row in rows:
+        day = str(row.get("date") or "")[:10]
+        if not day:
+            continue
+        for symbol, value in (row.get("closing_prices") or {}).items():
+            price = coerce_optional_float(value)
+            if price is not None and price > 0:
+                histories.setdefault(symbol, {}).setdefault(day, price)
+
+
 def is_completed_trading_day(day: str, histories: dict[str, dict[str, float]], symbols: set[str]) -> bool:
     return any(close_on(histories.get(sym, {}), day) is not None for sym in symbols)
 
@@ -976,12 +990,19 @@ def completed_portfolio_daily_pct(
     for sym, holding in holdings_snapshot.items():
         if symbols is not None and sym not in symbols:
             continue
-        close_price = close_on(histories.get(sym, {}), day)
         prev_price = close_on_or_before(histories.get(sym, {}), prev_day)
-        if prev_price is None:
-            prev_price = float(holding.get("avg_cost", 0.0) or 0.0)
-        if not close_price or prev_price <= 0:
+        close_price = close_on(histories.get(sym, {}), day)
+        # A missing bar means the position was flat at its last known close;
+        # it must still count in the basket's daily return denominator.
+        if close_price is None and prev_price is not None:
+            close_price = prev_price
+        if not close_price or close_price <= 0:
             continue
+        # Cost basis is not yesterday's market price. If the feed has no
+        # previous close, keep the position in the basket with zero inferred
+        # market P&L until a reliable daily comparison is available.
+        has_previous_close = prev_price is not None and prev_price > 0
+        reference_price = prev_price if has_previous_close else close_price
 
         close_shares = max(0.0, float(holding.get("shares", 0.0) or 0.0))
         old_shares = close_shares
@@ -1008,12 +1029,15 @@ def completed_portfolio_daily_pct(
 
         for shares, price in sell_lots:
             sold_old_shares = min(remaining_old_shares, shares)
-            basis += sold_old_shares * prev_price * multiplier
-            pnl += sold_old_shares * (price - prev_price) * multiplier
+            sold_reference = reference_price if has_previous_close else price
+            basis += sold_old_shares * sold_reference * multiplier
+            if has_previous_close:
+                pnl += sold_old_shares * (price - reference_price) * multiplier
             remaining_old_shares -= sold_old_shares
 
-        basis += remaining_old_shares * prev_price * multiplier
-        pnl += remaining_old_shares * (close_price - prev_price) * multiplier
+        basis += remaining_old_shares * reference_price * multiplier
+        if has_previous_close:
+            pnl += remaining_old_shares * (close_price - reference_price) * multiplier
 
         for shares, price in buy_lots:
             basis += shares * price * multiplier
@@ -1773,6 +1797,7 @@ def ensure_completed_performance_history(
     usd_cost_fx = float(fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx)
     symbols = set(holdings) | {str(trade.get("symbol", "")).upper() for trade in trades} | {"001015", "VOO", "QQQ"}
     histories = fetch_close_histories(symbols)
+    merge_recorded_close_histories(histories, rows)
     fx_history = fetch_fx_usdcny_history()
 
     # Repair snapshots created before new symbols could be replayed. Rebuild
@@ -2119,7 +2144,6 @@ def build_performance_history(
     satellite_daily_pct: float,
     satellite_daily_pnl_usd: float,
     satellite_daily_basis_usd: float,
-    satellite_return_pct: float,
     cash_flow_cny: float,
 ) -> dict[str, Any]:
     now = datetime.now(TZ_SHANGHAI)
@@ -2364,19 +2388,7 @@ def build_performance_history(
                 point[f"{sym}_daily_pct"] = daily_pct
         points.append(point)
 
-    # Anchor the curve to today's live cumulative satellite return, then walk
-    # backwards. The return for day D is the multiplier from D-1 to D, so it
-    # must be applied when moving from point D back to point D-1.
-    if points and satellite_return_pct is not None:
-        running_factor = 1.0 + satellite_return_pct / 100.0
-        for index in range(len(points) - 1, -1, -1):
-            point = points[index]
-            point["satellite_return_pct"] = (running_factor - 1.0) * 100.0
-            if index == 0:
-                continue
-            daily_pct = coerce_optional_float(points[index].get("satellite_daily_pct"))
-            if daily_pct is not None and 1.0 + daily_pct / 100.0 > 0:
-                running_factor /= 1.0 + daily_pct / 100.0
+    compound_satellite_returns(points)
 
     return {
         "points": points,
@@ -2387,6 +2399,17 @@ def build_performance_history(
         "estimated_symbols": rows[-1].get("estimated_symbols", []) if rows else [],
         "benchmark_labels": {"VOO": "VOO", "QQQ": "QQQ"},
     }
+
+
+def compound_satellite_returns(points: list[dict[str, Any]]) -> None:
+    """Build the satellite curve from the chart baseline and daily returns."""
+    factor = 1.0
+    for index, point in enumerate(points):
+        if index:
+            daily_pct = coerce_optional_float(point.get("satellite_daily_pct"))
+            if daily_pct is not None and 1.0 + daily_pct / 100.0 > 0:
+                factor *= 1.0 + daily_pct / 100.0
+        point["satellite_return_pct"] = (factor - 1.0) * 100.0
 
 
 def performance_history_date(now: datetime | None = None) -> str:
@@ -2999,18 +3022,6 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
         if satellite_daily_basis_usd > 0
         else 0.0
     )
-    satellite_cost_usd = sum(
-        float(holdings[s].get("shares", 0.0) or 0.0) * float(holdings[s].get("avg_cost", 0.0) or 0.0)
-        for s in SATELLITE_SYMBOLS
-    )
-    satellite_value_usd = sum(
-        value_cny_by_symbol.get(s, 0.0) / fx for s in SATELLITE_SYMBOLS
-    ) if fx > 0 else 0.0
-    satellite_return_pct = (
-        (satellite_value_usd - satellite_cost_usd) / satellite_cost_usd * 100.0
-        if satellite_cost_usd > 0
-        else 0.0
-    )
     holding_pnl_cny = (
         sum(float(row.get("pnl_cny", 0.0)) for row in rows)
         + archived_pnl_cny
@@ -3067,7 +3078,6 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
         satellite_daily_pct,
         satellite_daily_pnl_usd,
         satellite_daily_basis_usd,
-        satellite_return_pct,
         today_cash_flow_cny,
     )
 

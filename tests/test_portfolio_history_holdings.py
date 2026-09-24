@@ -11,10 +11,12 @@ from backend.portfolio import (
     balances_for_history_day,
     completed_daily_pct_for_symbol,
     completed_portfolio_daily_pct,
+    compound_satellite_returns,
     current_holdings_pnl_for_history_day,
     daily_fx_change_cny,
     fund_daily_status,
     historical_holding_pnl,
+    merge_recorded_close_histories,
     holdings_snapshot_for_day,
     reconcile_current_book_daily_pnl,
     total_pnl_for_history_snapshot,
@@ -22,6 +24,79 @@ from backend.portfolio import (
 
 
 class HistoricalHoldingsSnapshotTests(unittest.TestCase):
+    def test_satellite_daily_return_uses_saved_previous_close_and_full_basket_basis(self):
+        histories = {"TEM": {"2026-09-23": 76.59}, "GOOGL": {}}
+        merge_recorded_close_histories(histories, [
+            {"date": "2026-09-22", "closing_prices": {"TEM": 77.19, "GOOGL": 351.16}},
+        ])
+        snapshot = {
+            "TEM": {"shares": 2.0, "avg_cost": 52.0},
+            "GOOGL": {"shares": 1.0, "avg_cost": 300.0},
+        }
+
+        pct, by_symbol, pnl, basis = completed_portfolio_daily_pct(
+            snapshot, "2026-09-23", histories, 1.0, symbols={"TEM", "GOOGL"}, native_usd=True
+        )
+
+        self.assertAlmostEqual(pnl, 2.0 * (76.59 - 77.19))
+        self.assertAlmostEqual(basis, 2.0 * 77.19 + 351.16)
+        self.assertAlmostEqual(pct, pnl / basis * 100.0)
+        self.assertAlmostEqual(by_symbol["GOOGL"], 0.0)
+
+    def test_satellite_curve_compounds_forward_from_baseline(self):
+        points = [
+            {"date": "2026-09-21", "satellite_daily_pct": 5.0},
+            {"date": "2026-09-22", "satellite_daily_pct": 10.0},
+            {"date": "2026-09-23", "satellite_daily_pct": -5.0},
+        ]
+
+        compound_satellite_returns(points)
+
+        self.assertAlmostEqual(points[0]["satellite_return_pct"], 0.0)
+        self.assertAlmostEqual(points[1]["satellite_return_pct"], 10.0)
+        self.assertAlmostEqual(points[2]["satellite_return_pct"], 4.5)
+
+    def test_missing_previous_close_cannot_turn_cost_gain_into_daily_gain(self):
+        histories = {
+            "TEM": {"2026-09-23": 76.59},
+            "GOOGL": {"2026-09-22": 350.0, "2026-09-23": 353.5},
+        }
+        snapshot = {
+            "TEM": {"shares": 2.0, "avg_cost": 50.0},
+            "GOOGL": {"shares": 1.0, "avg_cost": 200.0},
+        }
+
+        pct, by_symbol, pnl, basis = completed_portfolio_daily_pct(
+            snapshot, "2026-09-23", histories, 1.0, symbols={"TEM", "GOOGL"}, native_usd=True
+        )
+
+        self.assertAlmostEqual(by_symbol["TEM"], 0.0)
+        self.assertAlmostEqual(pnl, 3.5)
+        self.assertAlmostEqual(basis, 2.0 * 76.59 + 350.0)
+        self.assertAlmostEqual(pct, pnl / basis * 100.0)
+
+        snapshot["TEM"]["avg_cost"] = 10.0
+        changed_cost_pct, _, _, _ = completed_portfolio_daily_pct(
+            snapshot, "2026-09-23", histories, 1.0, symbols={"TEM", "GOOGL"}, native_usd=True
+        )
+        self.assertAlmostEqual(changed_cost_pct, pct)
+
+    def test_new_buy_uses_trade_price_when_previous_close_is_missing(self):
+        pct, by_symbol, pnl, basis = completed_portfolio_daily_pct(
+            {"TEM": {"shares": 2.0, "avg_cost": 50.0}},
+            "2026-09-23",
+            {"TEM": {"2026-09-23": 55.0}},
+            1.0,
+            [{"trade_date": "2026-09-23", "symbol": "TEM", "action": "buy", "shares": 2.0, "amount_usd": 100.0}],
+            symbols={"TEM"},
+            native_usd=True,
+        )
+
+        self.assertAlmostEqual(by_symbol["TEM"], 10.0)
+        self.assertAlmostEqual(pnl, 10.0)
+        self.assertAlmostEqual(basis, 100.0)
+        self.assertAlmostEqual(pct, 10.0)
+
     def test_confirmed_sale_moves_cost_not_profit_into_cash_basis(self):
         balances = {
             "cash_usd": 0.0,
