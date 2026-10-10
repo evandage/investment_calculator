@@ -4030,6 +4030,13 @@ function buildSatelliteUniverseDraft(data) {
   }));
 }
 
+function nextMonthKey(monthKey) {
+  const [year, month] = String(monthKey || "").split("-").map(Number);
+  if (!year || !month) return "";
+  const date = new Date(Date.UTC(year, month, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 function EditableHoldingsPage({ data, onSaved }) {
   const backdropPointerStartedOnSelf = useRef(false);
   const [holdings, setHoldings] = useState({});
@@ -4082,10 +4089,11 @@ function EditableHoldingsPage({ data, onSaved }) {
 
   useEffect(() => {
     if (!budgetOpen && !savingBudget) {
-      setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance?.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+      const month = nextMonthKey(data.rebalance?.month_key);
+      setBudgetInputs(month ? { [month]: Number(data.rebalance?.future_cash_by_month?.[month] ?? 700).toFixed(2) } : {});
     }
     if (!universeOpen) setUniverseInputs(buildSatelliteUniverseDraft(data));
-  }, [data.rebalance?.future_cash_by_month, data.satellite_universe, data.satellite_targets, budgetOpen, savingBudget, universeOpen]);
+  }, [data.rebalance?.month_key, data.rebalance?.future_cash_by_month, data.satellite_universe, data.satellite_targets, budgetOpen, savingBudget, universeOpen]);
 
   function resetBalanceDraft() {
     setBalanceInputs({
@@ -4327,10 +4335,10 @@ function EditableHoldingsPage({ data, onSaved }) {
               <h2>预算</h2>
               <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setBudgetOpen(false)} disabled={savingBudget}><X size={18} /></button>
             </div>
-            <div className="muted">未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance?.planned_total_usd || 0, "USD")}</div>
+            <div className="muted">下个月预计投入 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance?.planned_total_usd || 0, "USD")}</div>
             <div className="budgetEditGrid">
               {Object.entries(budgetInputs).map(([month, value]) => (
-                <label key={month}>{month} 可投入(USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
+                <label key={month}>{month} 预计投入(USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
               ))}
             </div>
             <div className="actions">
@@ -4462,7 +4470,8 @@ function Rebalance({ data, onSaved }) {
 
   useEffect(() => {
     if (!budgetOpen && !savingBudget) {
-      setBudgetInputs(Object.fromEntries(Object.entries(data.rebalance.future_cash_by_month || {}).map(([month, amount]) => [month, Number(amount || 0).toFixed(2)])));
+      const month = nextMonthKey(data.rebalance.month_key);
+      setBudgetInputs(month ? { [month]: Number(data.rebalance.future_cash_by_month?.[month] ?? 700).toFixed(2) } : {});
     }
     if (!universeOpen) {
       setUniverseInputs(buildSatelliteUniverseDraft(data));
@@ -4966,12 +4975,12 @@ function Rebalance({ data, onSaved }) {
               <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setBudgetOpen(false)} disabled={savingBudget}><X size={18} /></button>
             </div>
             <div className="muted">
-              未来预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · 月初口径已扣除本月确认买入 · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
+              下个月预计投入 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · 月初口径已扣除本月确认买入 · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
               {data.rebalance.sgov_large_trigger_enabled ? " · 大档位已启用SGOV资金" : " · 普通情况SGOV保留20%"}
             </div>
             <div className="budgetEditGrid">
               {Object.entries(budgetInputs).map(([month, value]) => (
-                <label key={month}>{month} 可投入(USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
+                <label key={month}>{month} 预计投入(USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
               ))}
             </div>
             <div className="actions">
