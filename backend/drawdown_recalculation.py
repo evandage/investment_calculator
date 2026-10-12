@@ -248,12 +248,13 @@ def run_monthly_recalculation(
             return run
 
 
-def start_monthly_drawdown_scheduler(user_id: str = "evan") -> None:
+def start_monthly_drawdown_scheduler(user_id: str | None = None) -> None:
     """Recalculate once per month after prior-month US data is available."""
+    from .profiles import active_user_id
     while True:
         current = datetime.now(TZ_SHANGHAI)
         # 07:00 Shanghai is safely after the prior US regular close. If the
         # service was offline at the boundary, a later restart catches up.
         if current.hour >= 7:
-            run_monthly_recalculation(user_id, now=current)
+            run_monthly_recalculation(user_id or active_user_id(), now=current)
         time.sleep(900)

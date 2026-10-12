@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .profiles import active_user_id, profile_path
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 HOLDINGS_FILE = ROOT_DIR / "holdings.json"
 BALANCES_FILE = ROOT_DIR / "balances.json"
@@ -41,7 +43,6 @@ FALLBACK_PRICES = {
     "AVGO": 170.0,
     "NVDA": 120.0,
     "SGOV": 100.0,
-    "001015": 1.0,
 }
 
 ASSET_META = {
@@ -55,7 +56,6 @@ ASSET_META = {
     "AVGO": {"label": "AVGO", "currency": "USD"},
     "NVDA": {"label": "NVDA", "currency": "USD"},
     "SGOV": {"label": "SGOV", "currency": "USD"},
-    "001015": {"label": "沪深300", "currency": "CNY"},
 }
 
 TARGET_WEIGHTS = {
@@ -146,12 +146,12 @@ FUTU_US = {
     "AVGO": "US.AVGO",
     "NVDA": "US.NVDA",
     "SGOV": "US.SGOV",
-    "510330.SS": "SH.510330",
 }
 
 
 _STATIC_SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA")
 _SATELLITE_TOTAL_WEIGHT = sum(TARGET_WEIGHTS.get(sym, 0.0) for sym in _STATIC_SATELLITE_SYMBOLS)
+_BASE_CONFIG = tuple(dict(mapping) for mapping in (FALLBACK_PRICES, ASSET_META, TARGET_WEIGHTS, QQ_US, SINA_GB, FUTU_US))
 
 
 def _default_satellite_universe() -> list[dict[str, Any]]:
@@ -189,16 +189,20 @@ def _normalize_satellite_universe(raw: Any) -> list[dict[str, Any]]:
                 "target_pct": target_pct,
             }
         )
-    return out or _default_satellite_universe()
+    return out
 
 
 def _load_satellite_universe() -> list[dict[str, Any]]:
     raw: Any = None
-    if SATELLITE_UNIVERSE_FILE.exists():
+    path = profile_path(SATELLITE_UNIVERSE_FILE)
+    if path.exists():
         try:
-            raw = json.loads(SATELLITE_UNIVERSE_FILE.read_text(encoding="utf-8"))
+            raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             raw = None
+    elif active_user_id() == "nave":
+        # Nave starts with an empty satellite list; symbols can be added as needed.
+        raw = []
     return _normalize_satellite_universe(raw)
 
 
@@ -208,13 +212,19 @@ def load_satellite_universe_config() -> list[dict[str, Any]]:
 
 def save_satellite_universe_config(items: Any) -> list[dict[str, Any]]:
     normalized = _normalize_satellite_universe(items)
-    SATELLITE_UNIVERSE_FILE.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    path = profile_path(SATELLITE_UNIVERSE_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
     _apply_satellite_universe()
     return load_satellite_universe_config()
 
 
 def _apply_satellite_universe() -> None:
     global SATELLITE_SYMBOLS, USD_SYMBOLS, ALL_SYMBOLS, DEFAULT_SATELLITE_TARGET_PCTS
+
+    for mapping, original in zip((FALLBACK_PRICES, ASSET_META, TARGET_WEIGHTS, QQ_US, SINA_GB, FUTU_US), _BASE_CONFIG):
+        mapping.clear()
+        mapping.update(original)
 
     universe = _load_satellite_universe()
     configured = tuple(item["symbol"] for item in universe)
@@ -240,7 +250,7 @@ def _apply_satellite_universe() -> None:
         FUTU_US[sym] = f"US.{sym}"
 
     ordered_meta: dict[str, dict[str, str]] = {}
-    for sym in ("VOO", "QQQ", *configured, "SGOV", "001015"):
+    for sym in ("VOO", "QQQ", *configured, "SGOV"):
         if sym in ASSET_META:
             ordered_meta[sym] = ASSET_META[sym]
     ASSET_META.clear()
@@ -248,14 +258,10 @@ def _apply_satellite_universe() -> None:
 
     SATELLITE_SYMBOLS = configured
     USD_SYMBOLS = ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV")
-    # The sold CSI 300 fund remains in metadata so historical trades can be
-    # read and its final P&L can be shown, but it is no longer an active asset.
-    ALL_SYMBOLS = tuple(sym for sym in ASSET_META if sym != "001015")
+    ALL_SYMBOLS = tuple(ASSET_META)
 
 
 _apply_satellite_universe()
-
-FUND_CODES = {"001015": "001015"}
 
 REBALANCE_PHASE_BUILD = "建仓期"
 REBALANCE_PHASE_DCA = "长期定投期"

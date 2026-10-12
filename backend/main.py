@@ -61,13 +61,14 @@ from .storage import (
     record_portfolio_adjustment,
 )
 from .drawdown_recalculation import start_monthly_drawdown_scheduler
+from .profiles import PROFILES, active_user_id, switch_profile
 
 TZ_SHANGHAI = config_module.TZ_SHANGHAI
 TZ_NEW_YORK = ZoneInfo("America/New_York")
 _GLOBAL_BOARD_CACHE_LOCK = threading.RLock()
 _GLOBAL_BOARD_CACHE_TTL_SECONDS = 60.0
 _GLOBAL_BOARD_CACHE: dict[
-    tuple[str, bool, str, int],
+    tuple[str, bool, str, int, str],
     tuple[dict[str, Any], float, dict[str, int]],
 ] = {}
 
@@ -172,6 +173,8 @@ def _refresh_satellite_runtime_config() -> None:
             module.SATELLITE_SYMBOLS = config_module.SATELLITE_SYMBOLS
         if hasattr(module, "USD_SYMBOLS"):
             module.USD_SYMBOLS = config_module.USD_SYMBOLS
+        if hasattr(module, "DEFAULT_SATELLITE_TARGET_PCTS"):
+            module.DEFAULT_SATELLITE_TARGET_PCTS = config_module.DEFAULT_SATELLITE_TARGET_PCTS
 
 
 app = FastAPI(title="Investment Dashboard API")
@@ -224,7 +227,28 @@ def quotes() -> dict[str, Any]:
 
 @app.get("/api/dashboard")
 def dashboard(user_id: str = "evan", refresh: bool = False) -> dict[str, Any]:
-    return build_dashboard(user_id, force_refresh=refresh)
+    return build_dashboard(active_user_id(), force_refresh=refresh)
+
+
+@app.get("/api/profiles")
+def profiles() -> dict[str, Any]:
+    return {"active_user_id": active_user_id(), "profiles": [{"id": key, "name": name} for key, name in PROFILES.items()]}
+
+
+class SwitchProfilePayload(BaseModel):
+    user_id: str
+
+
+@app.put("/api/profiles/active")
+def update_active_profile(payload: SwitchProfilePayload) -> dict[str, Any]:
+    if payload.user_id not in PROFILES:
+        raise HTTPException(status_code=400, detail="Unknown profile")
+    switch_profile(payload.user_id)
+    config_module._apply_satellite_universe()
+    _refresh_satellite_runtime_config()
+    stop_futu_quote_subscription()
+    threading.Thread(target=start_futu_quote_subscription, kwargs={"force": True}, daemon=True).start()
+    return profiles()
 
 
 @app.get("/api/ohlcv")
@@ -351,7 +375,7 @@ def _build_global_chart_board_light(
 ) -> dict[str, Any]:
     key = interval if interval in {"1d", "1m", "15m", "5m"} else "15m"
     selected_day = selected_date[:10] if key != "1d" else ""
-    cache_key = (key, bool(show_extended), selected_day, min(5, max(1, int(columns or 1))))
+    cache_key = (key, bool(show_extended), selected_day, min(5, max(1, int(columns or 1))), active_user_id())
     now = time.monotonic()
     with _GLOBAL_BOARD_CACHE_LOCK:
         cached = _GLOBAL_BOARD_CACHE.get(cache_key)
@@ -524,7 +548,7 @@ def _trade_markers_for_chart(
             candle_order_by_day[day] = position
 
     grouped: dict[str, dict[str, Any]] = {}
-    for record in records if records is not None else load_trade_records("evan"):
+    for record in records if records is not None else load_trade_records():
         if str(record.get("symbol") or "").upper() != symbol:
             continue
         trade_date = str(record.get("trade_date") or record.get("date") or "")[:10]
@@ -623,7 +647,7 @@ def _build_chart_board_light(
         effective_avwap_mode = "high_60d"
     cycle_start_date = None
     if effective_avwap_mode in {"cycle_high", "cycle_low"}:
-        episode_store = load_drawdown_episode_store("evan")
+        episode_store = load_drawdown_episode_store()
         episode_state = dict(episode_store.get("episodes") or {}).get(sym) or {}
         cycle_start_date = episode_state.get("anchor_date")
 
@@ -855,12 +879,13 @@ def holdings() -> dict[str, Any]:
 
 @app.put("/api/holdings")
 def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
+    user_id = active_user_id()
     before = load_holdings()
     save_holdings(payload.holdings)
     after = load_holdings()
     effective_date = portfolio_module.performance_history_date()
     adjustment = record_portfolio_adjustment(
-        "evan",
+        user_id,
         "holdings",
         effective_date,
         before,
@@ -869,12 +894,12 @@ def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
         allow_noop=True,
     )
     if adjustment:
-        portfolio_module.invalidate_performance_history_from("evan", effective_date)
+        portfolio_module.invalidate_performance_history_from(user_id, effective_date)
     # Rebuild the live P&L and performance payload before acknowledging the
     # save.  The exact anchor remains authoritative for future EOD snapshots;
     # this call refreshes the current point immediately without finalizing an
     # incomplete trading day.
-    refreshed_dashboard = build_dashboard("evan")
+    refreshed_dashboard = build_dashboard(user_id)
     return {
         "saved": True,
         "holdings": after,
@@ -886,6 +911,7 @@ def update_holdings(payload: HoldingPayload) -> dict[str, Any]:
 
 @app.put("/api/balances")
 def update_balances(payload: BalancesPayload) -> dict[str, Any]:
+    user_id = active_user_id()
     before = load_balances()
     requested = {**before, **payload.balances}
     # A manual cash edit is normally an external deposit/withdrawal, while a
@@ -909,7 +935,7 @@ def update_balances(payload: BalancesPayload) -> dict[str, Any]:
     after = load_balances()
     effective_date = portfolio_module.performance_history_date()
     adjustment = record_portfolio_adjustment(
-        "evan",
+        user_id,
         "balances",
         effective_date,
         before,
@@ -918,12 +944,13 @@ def update_balances(payload: BalancesPayload) -> dict[str, Any]:
         {"reconstruct_from_date": effective_date},
     )
     if adjustment:
-        portfolio_module.invalidate_performance_history_from("evan", effective_date)
+        portfolio_module.invalidate_performance_history_from(user_id, effective_date)
     return {"saved": True, "balances": after, "adjustment": adjustment}
 
 
 @app.get("/api/portfolio-audit")
 def portfolio_audit(user_id: str = "evan") -> dict[str, Any]:
+    user_id = active_user_id()
     ledger = load_portfolio_snapshot_ledger(user_id)
     latest_by_date: dict[str, dict[str, Any]] = {}
     for item in ledger:
@@ -971,6 +998,7 @@ def satellite_universe() -> dict[str, Any]:
 
 @app.put("/api/satellite-universe")
 def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, Any]:
+    user_id = active_user_id()
     previous_items = config_module.load_satellite_universe_config()
     previous_symbols = {item["symbol"] for item in previous_items}
     requested_items = [item.model_dump() for item in payload.items]
@@ -978,7 +1006,7 @@ def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, An
     removed_symbols = previous_symbols - requested_symbols
     if removed_symbols:
         holdings_before = load_holdings()
-        trade_records = load_trade_records()
+        trade_records = load_trade_records(user_id)
         archived_rows = load_closed_satellite_pnl()
         needs_quotes = any(float((holdings_before.get(sym) or {}).get("shares", 0.0) or 0.0) > 0 for sym in removed_symbols)
         quotes = (fetch_quotes().get("quotes") or {}) if needs_quotes else {}
@@ -1024,6 +1052,7 @@ def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, An
 
 @app.post("/api/rebalance/confirm")
 def confirm_execution(payload: ExecutionPayload) -> dict[str, Any]:
+    payload.user_id = active_user_id()
     try:
         result = confirm_trades(payload.user_id, [item.model_dump() for item in payload.executions])
     except ValueError as exc:
@@ -1034,6 +1063,7 @@ def confirm_execution(payload: ExecutionPayload) -> dict[str, Any]:
 
 @app.delete("/api/trades/{trade_id}")
 def delete_trade(trade_id: str, payload: DeleteTradePayload) -> dict[str, Any]:
+    payload.user_id = active_user_id()
     try:
         result = delete_trade_record(payload.user_id, trade_id)
     except ValueError as exc:
@@ -1044,6 +1074,7 @@ def delete_trade(trade_id: str, payload: DeleteTradePayload) -> dict[str, Any]:
 
 @app.post("/api/fx-conversions")
 def add_fx_conversion(payload: FxConversionPayload) -> dict[str, Any]:
+    payload.user_id = active_user_id()
     try:
         result = add_fx_conversion_record(payload.user_id, payload.model_dump())
     except ValueError as exc:
@@ -1054,6 +1085,7 @@ def add_fx_conversion(payload: FxConversionPayload) -> dict[str, Any]:
 
 @app.delete("/api/fx-conversions/{record_id}")
 def delete_fx_conversion(record_id: str, payload: DeleteTradePayload) -> dict[str, Any]:
+    payload.user_id = active_user_id()
     try:
         result = delete_fx_conversion_record(payload.user_id, record_id)
     except ValueError as exc:
@@ -1064,6 +1096,7 @@ def delete_fx_conversion(record_id: str, payload: DeleteTradePayload) -> dict[st
 
 @app.put("/api/rebalance/budget")
 def update_rebalance_budget(payload: RebalanceBudgetPayload) -> dict[str, Any]:
+    payload.user_id = active_user_id()
     result = save_rebalance_budget(payload.user_id, payload.planned_cash_by_month)
     result["dashboard"] = build_dashboard(payload.user_id)
     return result

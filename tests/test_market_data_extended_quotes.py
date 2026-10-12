@@ -4,198 +4,19 @@ import unittest
 from unittest.mock import patch
 
 from backend.market_data import (
-    cache_fund_quote,
-    fetch_direct_fund_quote,
     _apply_futu_ticker_price,
     _build_futu_quote,
     _merge_futu_subscription_quote,
     _parse_sina_fx_daily_history,
-    _parse_sina_fund_estimate,
     _futu_subscription_groups,
 )
 
 
 class ExtendedQuoteStabilityTests(unittest.TestCase):
-    @patch(
-        "backend.market_data.app_config.FUTU_US",
-        {"VOO": "US.VOO", "QQQ": "US.QQQ", "510330.SS": "SH.510330"},
-    )
-    def test_subscription_groups_isolate_optional_china_etf(self):
-        groups = _futu_subscription_groups(("VOO", "QQQ", "510330.SS"))
 
-        self.assertEqual(
-            groups,
-            (
-                (("VOO", "QQQ"), True),
-                (("510330.SS",), False),
-            ),
-        )
 
-    def test_fund_cache_does_not_allow_an_older_quote_to_replace_today(self):
-        with (
-            patch("backend.market_data._load_fund_quotes_cache"),
-            patch("backend.market_data._save_fund_quotes_cache"),
-            patch.dict("backend.market_data._FUND_QUOTES_CACHE", {}, clear=True),
-        ):
-            today = cache_fund_quote(
-                "001015",
-                {"price": 2.33, "quote_date": "2026-07-24", "source": "provider estimate"},
-            )
-            selected = cache_fund_quote(
-                "001015",
-                {"price": 2.30, "quote_date": "2026-07-20", "source": "stale estimate"},
-            )
 
-        self.assertEqual(today["price"], 2.33)
-        self.assertEqual(selected["price"], 2.33)
-        self.assertEqual(selected["quote_date"], "2026-07-24")
 
-    @patch("backend.market_data.fetch_sina_fund_estimate")
-    @patch("backend.market_data.fetch_fund_quote")
-    def test_direct_fund_quote_prefers_same_day_eastmoney(self, eastmoney, sina):
-        eastmoney.return_value = {
-            "price": 2.33,
-            "quote_date": "2026-07-24",
-            "source": "eastmoney",
-        }
-
-        selected = fetch_direct_fund_quote("001015", "2026-07-24")
-
-        self.assertEqual(selected["source"], "eastmoney")
-        sina.assert_not_called()
-
-    @patch("backend.market_data.cache_fund_quote")
-    @patch("backend.market_data.fetch_sina_fund_estimate")
-    @patch("backend.market_data.fetch_fund_quote")
-    def test_direct_fund_quote_uses_same_day_sina_when_eastmoney_is_stale(
-        self,
-        eastmoney,
-        sina,
-        cache,
-    ):
-        eastmoney.return_value = {"price": 2.30, "quote_date": "2026-07-20"}
-        sina.return_value = {
-            "price": 2.33,
-            "quote_date": "2026-07-24",
-            "source": "sina",
-        }
-        cache.side_effect = lambda _code, quote: quote
-
-        selected = fetch_direct_fund_quote("001015", "2026-07-24")
-
-        self.assertEqual(selected["source"], "sina")
-        cache.assert_called_once_with("001015", sina.return_value)
-
-    @patch("backend.market_data.cache_fund_quote")
-    @patch("backend.market_data.fetch_sina_fund_estimate")
-    @patch("backend.market_data.fetch_fund_quote")
-    def test_direct_fund_quote_retries_sina_for_same_day_stale_cache(
-        self,
-        eastmoney,
-        sina,
-        cache,
-    ):
-        eastmoney.return_value = {
-            "price": 2.30,
-            "quote_date": "2026-07-24",
-            "cache_status": "stale",
-            "cache_reason": "东方财富未返回估值",
-        }
-        sina.return_value = {
-            "price": 2.33,
-            "quote_date": "2026-07-24",
-            "source": "sina",
-        }
-        cache.side_effect = lambda _code, quote: quote
-
-        selected = fetch_direct_fund_quote("001015", "2026-07-24")
-
-        self.assertEqual(selected["source"], "sina")
-        self.assertEqual(selected["cache_status"], "live")
-
-    @patch("backend.market_data.fetch_sina_fund_estimate")
-    @patch("backend.market_data.fetch_fund_quote")
-    def test_direct_fund_quote_rate_limits_both_failed_providers(self, eastmoney, sina):
-        eastmoney.return_value = {
-            "price": 2.30,
-            "quote_date": "2026-07-24",
-            "cache_status": "stale",
-            "cache_reason": "东方财富和新浪暂未返回当日估值",
-            "cache_age_seconds": 30,
-        }
-
-        selected = fetch_direct_fund_quote("001015", "2026-07-24")
-
-        self.assertEqual(selected["cache_status"], "stale")
-        sina.assert_not_called()
-    def test_same_day_official_nav_replaces_estimate_in_cache(self):
-        with (
-            patch("backend.market_data._load_fund_quotes_cache"),
-            patch("backend.market_data._save_fund_quotes_cache"),
-            patch.dict("backend.market_data._FUND_QUOTES_CACHE", {}, clear=True),
-        ):
-            cache_fund_quote(
-                "001015",
-                {"price": 2.33, "quote_date": "2026-07-24", "source": "provider estimate"},
-            )
-            selected = cache_fund_quote(
-                "001015",
-                {
-                    "price": 2.34,
-                    "quote_date": "2026-07-24",
-                    "source": "\u4e1c\u65b9\u8d22\u5bcc\u57fa\u91d1\u51c0\u503c",
-                },
-            )
-
-        self.assertEqual(selected["price"], 2.34)
-
-    def test_china_etf_quote_never_uses_us_extended_session_fields(self):
-        quote = _build_futu_quote(
-            "510330.SS",
-            {
-                "last_price": 4.908,
-                "prev_close_price": 4.846,
-                "open_price": 4.868,
-                "overnight_price": 4.908,
-                "overnight_change_rate": 0.0,
-            },
-        )
-
-        self.assertIsNotNone(quote)
-        self.assertEqual(quote["session"], "regular")
-        self.assertIsNone(quote["extended_price"])
-        self.assertIsNone(quote["extended_change_pct"])
-        self.assertAlmostEqual(quote["change_pct"], (4.908 / 4.846 - 1.0) * 100.0)
-
-    def test_china_etf_ticker_updates_regular_change(self):
-        quote = {
-            "session": "overnight",
-            "regular_price": 4.908,
-            "prev_close": 4.846,
-            "extended_price": 4.908,
-            "extended_change_pct": 0.0,
-        }
-
-        updated = _apply_futu_ticker_price(quote, "510330.SS", 4.91)
-
-        self.assertEqual(updated["session"], "regular")
-        self.assertEqual(updated["regular_price"], 4.91)
-        self.assertIsNone(updated["extended_price"])
-        self.assertIsNone(updated["extended_change_pct"])
-        self.assertAlmostEqual(updated["change_pct"], (4.91 / 4.846 - 1.0) * 100.0)
-
-    def test_sina_fund_estimate_parser_uses_daily_change_field(self):
-        text = (
-            'var hq_str_fu_001015="华夏沪深300指数增强A,10:04:00,2.3053,'
-            '2.3130,2.3130,-0.3544,-0.3329,2026-07-21,2.3327,0.8517";'
-        )
-        quote = _parse_sina_fund_estimate("001015", text)
-        self.assertIsNotNone(quote)
-        self.assertEqual(quote["quote_date"], "2026-07-21")
-        self.assertEqual(quote["quote_time"], "2026-07-21 10:04:00")
-        self.assertEqual(quote["source"], "新浪基金估值")
-        self.assertAlmostEqual(quote["price"], 2.3053)
-        self.assertAlmostEqual(quote["regular_change_pct"], -0.3329)
 
     def test_sina_fx_history_parser_uses_daily_close(self):
         text = (

@@ -137,6 +137,18 @@
         "AVGO": "large"
       },
       "updated_at": "2026-09-24T09:47:31+08:00"
+    },
+    "2026-10": {
+      "used_budget_usd": 0,
+      "planned_new_cash_usd": 700.0,
+      "planned_cash_by_month": {
+        "2026-11": 700.0
+      },
+      "bought_symbols": [],
+      "bought_amount_by_symbol": {},
+      "sold_amount_by_symbol": {},
+      "bought_intensity_by_symbol": {},
+      "updated_at": "2026-10-10T09:35:08+08:00"
     }
   }
 }

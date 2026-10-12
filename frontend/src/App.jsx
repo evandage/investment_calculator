@@ -58,8 +58,8 @@ function writeJsonCache(key, value) {
   }
 }
 
-function readDashboardCache() {
-  const cached = readJsonCache(DASHBOARD_CACHE_KEY);
+function readDashboardCache(userId) {
+  const cached = readJsonCache(`${DASHBOARD_CACHE_KEY}:${userId}`);
   if (!cached?.data || !Number.isFinite(cached.savedAt)) return null;
   if (Date.now() - cached.savedAt > DASHBOARD_CACHE_MAX_AGE_MS) return null;
   return cached.data;
@@ -251,7 +251,7 @@ function buildBalancesPayload(balanceInputs) {
 
 function chartPriceDigits(symbol) {
   const normalized = String(symbol || "").toUpperCase();
-  return normalized === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalized) ? 3 : 2;
+  return /^\d{6}\.(SS|SZ)$/.test(normalized) ? 3 : 2;
 }
 
 function fmtChartPrice(value, symbol) {
@@ -472,9 +472,9 @@ function valuationBandTone(value, bandText) {
   return "flat";
 }
 
-function useDashboard() {
-  const [data, setData] = useState(() => readDashboardCache());
-  const [loading, setLoading] = useState(() => !readDashboardCache());
+function useDashboard(userId) {
+  const [data, setData] = useState(() => readDashboardCache(userId));
+  const [loading, setLoading] = useState(() => !readDashboardCache(userId));
   const [error, setError] = useState("");
   const loadingRef = useRef(false);
 
@@ -483,11 +483,15 @@ function useDashboard() {
     loadingRef.current = true;
     try {
       setError("");
-      const response = await fetch(`${API_BASE}/api/dashboard?user_id=evan${forceRefresh ? "&refresh=1" : ""}`);
+      const response = await fetch(`${API_BASE}/api/dashboard?refresh=${forceRefresh ? 1 : 0}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextData = await response.json();
+      if (nextData.user_id !== userId) {
+        window.location.reload();
+        return;
+      }
       setData(nextData);
-      writeJsonCache(DASHBOARD_CACHE_KEY, { savedAt: Date.now(), data: nextData });
+      writeJsonCache(`${DASHBOARD_CACHE_KEY}:${userId}`, { savedAt: Date.now(), data: nextData });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -544,7 +548,7 @@ function useTableGestureScroll() {
   }, []);
 }
 
-function Header({ data }) {
+function Header({ data, profiles, onSwitch }) {
   const market = data?.market;
   return (
     <header className="topbar">
@@ -554,9 +558,12 @@ function Header({ data }) {
           {market ? `行情源 ${market.provider} · ${market.fetched_at}` : "正在连接后端"}
         </div>
       </div>
-      <button className="iconButton" onClick={() => window.location.reload()} title="刷新网页">
-        <RefreshCcw size={18} />
-      </button>
+      <div className="profileControls">
+        <select aria-label="切换用户" value={data.user_id} onChange={(event) => onSwitch(event.target.value)}>
+          {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+        </select>
+        <button className="iconButton" onClick={() => window.location.reload()} title="刷新网页"><RefreshCcw size={18} /></button>
+      </div>
     </header>
   );
 }
@@ -811,35 +818,13 @@ function Summary({ data }) {
   );
 }
 
-function fundQuoteClock(card) {
-  const match = String(card?.quote_time || "").match(/(?:T|\s)(\d{1,2}:\d{2})/);
-  return match ? match[1].padStart(5, "0") : "";
-}
-
-function fundQuoteMeta(card) {
-  if (card?.symbol !== "001015") return "";
-  const clock = fundQuoteClock(card);
-  const status = card.daily_status || card.cache_status;
-  const label = ["stale", "cached"].includes(status)
-    ? "缓存"
-    : ["estimated", "live"].includes(status)
-      ? "估值"
-      : status === "official"
-        ? "净值"
-        : "";
-  if (!label) return "";
-  return clock ? `${label} · 更新于 ${clock}` : label;
-}
 function DailyCards({ cards }) {
   return (
     <section className="cardGrid">
       {cards.map((card) => {
-        const fundPending = card.symbol === "001015" && ["pending", "preopen"].includes(card.daily_status);
-        const fundStatusText = card.daily_status === "pending" ? "待更新" : card.daily_status === "preopen" ? "未开盘" : "";
-        const fundStatusMeta = fundQuoteMeta(card);
         const regularPct = Number(card.regular_pct ?? 0);
         const extendedPct = Number(card.extended_pct);
-        const hasDistinctExtendedPct = card.symbol !== "001015" && card.extended_pct != null && Math.abs(extendedPct - regularPct) > 0.0001;
+        const hasDistinctExtendedPct = card.extended_pct != null && Math.abs(extendedPct - regularPct) > 0.0001;
         const regularUsd = Number(card.regular_change_usd ?? card.change_usd ?? 0);
         const regularCny = Number(card.regular_change_cny ?? card.change_cny ?? 0);
         const extendedUsd = Number(card.extended_change_usd);
@@ -850,19 +835,18 @@ function DailyCards({ cards }) {
           <article className={`dailyCard ${card.wide ? "wideCard" : ""}`} key={card.symbol}>
             <div className="cardTitle">{displayAssetLabel(card.label, card.symbol)}</div>
             {card.price_line ? <div className="priceLine">{fmtCardPriceLine(card.price_line)}</div> : null}
-            <div className={fundPending ? "flat" : tone(regularPct)}>
-              {fundPending ? fundStatusText : fmtPct(regularPct)}
+            <div className={tone(regularPct)}>
+              {fmtPct(regularPct)}
               {hasDistinctExtendedPct ? <span className={tone(extendedPct)}>（{fmtPct(extendedPct)}）</span> : null}
             </div>
-            <div className={fundPending ? "flat" : tone(regularUsd)}>
-              {fundPending ? "--" : fmtMoney(regularUsd, "USD")}
+            <div className={tone(regularUsd)}>
+              {fmtMoney(regularUsd, "USD")}
               {hasDistinctExtendedUsd ? <span className={tone(extendedUsd)}>（{extendedUsd.toFixed(2)}）</span> : null}
             </div>
-            <div className={fundPending ? "flat" : tone(regularCny)}>
-              {fundPending ? "--" : fmtMoney(regularCny, "CNY")}
+            <div className={tone(regularCny)}>
+              {fmtMoney(regularCny, "CNY")}
               {hasDistinctExtendedCny ? <span className={tone(extendedCny)}>（{extendedCny.toFixed(2)}）</span> : null}
             </div>
-            {fundStatusMeta ? <small className="fundQuoteMeta">{fundStatusMeta}</small> : null}
           </article>
         );
       })}
@@ -933,9 +917,6 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
       });
     }
     return displayCards.map((card) => {
-    const fundPending = card.symbol === "001015" && ["pending", "preopen"].includes(card.daily_status);
-    const fundStatusText = card.daily_status === "pending" ? "待更新" : card.daily_status === "preopen" ? "未开盘" : "";
-    const fundStatusMeta = fundQuoteMeta(card);
     const holding = holdingsBySymbol[card.symbol] || {};
     const totalValueUsd = card.symbol === "SATELLITE_GROUP"
       ? satelliteCards.reduce((sum, item) => sum + Number(holdingsBySymbol[item.symbol]?.value || 0), 0)
@@ -953,7 +934,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
     const regularPct = Number.isFinite(rawRegularPct) ? rawRegularPct : 0;
     const rawExtendedPct = card.extended_pct == null ? null : Number(card.extended_pct);
     const extendedPct = rawExtendedPct != null && Number.isFinite(rawExtendedPct) ? rawExtendedPct : null;
-    const hasDistinctExtendedPct = card.session !== "regular" && card.symbol !== "001015" && extendedPct != null && Math.abs(extendedPct - regularPct) > 0.0001;
+    const hasDistinctExtendedPct = card.session !== "regular" && extendedPct != null && Math.abs(extendedPct - regularPct) > 0.0001;
     const regularUsd = Number(card.regular_change_usd ?? card.change_usd ?? 0);
     const regularCny = Number(card.regular_change_cny ?? card.change_cny ?? 0);
     const extendedUsd = Number(card.extended_change_usd);
@@ -991,10 +972,7 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
         dailyPct,
         bg,
         magnitude,
-        fundPending,
-        fundStatusText,
-        fundStatusMeta,
-      };
+              };
     });
   }, [cards, fx, holdingsBySymbol, satelliteCards, satelliteSymbols, totalValue]);
   const satelliteHoverRects = useMemo(() => {
@@ -1207,15 +1185,15 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
               <div className="heatDesktopMetrics">
                 {row.symbol !== "SATELLITE_GROUP" && (row.regular_price || row.price_line) ? <div className="heatPrice"><TreemapPriceLine priceLine={row.price_line} regularPrice={row.regular_price} extendedPrice={row.extended_price} currency={row.currency} regularPct={row.regularPct} extendedPct={row.extendedPct} /></div> : null}
                 <div className="heatDesktopMetricRow">
-                  <span className={row.fundPending ? "flat" : tone(row.regularPct)}>{row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}</span>
+                  <span className={tone(row.regularPct)}>{fmtPct(row.regularPct)}</span>
                   {row.hasDistinctExtendedPct ? <span className={tone(row.extendedPct)}>（{fmtPct(row.extendedPct)}）</span> : null}
                 </div>
                 <div className="heatDesktopMetricRow">
-                  <span className={row.fundPending ? "flat" : tone(row.regularUsd)}>{row.fundPending ? "--" : fmtMoney(row.regularUsd, "USD")}</span>
+                  <span className={tone(row.regularUsd)}>{fmtMoney(row.regularUsd, "USD")}</span>
                   {row.hasDistinctExtendedUsd ? <span className={tone(row.extendedUsd)}>（{fmtMoney(row.extendedUsd, "USD")}）</span> : null}
                 </div>
                 <div className="heatDesktopMetricRow">
-                  <span className={row.fundPending ? "flat" : tone(row.regularCny)}>{row.fundPending ? "--" : fmtMoney(row.regularCny, "CNY")}</span>
+                  <span className={tone(row.regularCny)}>{fmtMoney(row.regularCny, "CNY")}</span>
                   {row.hasDistinctExtendedCny ? <span className={tone(row.extendedCny)}>（{fmtMoney(row.extendedCny, "CNY")}）</span> : null}
                 </div>
               </div>
@@ -1234,14 +1212,14 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
                     />
                     ) : null}
                   </div>
-                <strong className={row.fundPending ? "flat" : tone(row.regularPct)}>
-                  <span className="heatRegularValue">{row.fundPending ? row.fundStatusText : fmtPct(row.regularPct)}</span>
+                <strong className={tone(row.regularPct)}>
+                  <span className="heatRegularValue">{fmtPct(row.regularPct)}</span>
                 </strong>
-                <div className={`heatPnl heatPnlUsd ${row.fundPending ? "flat" : tone(row.regularUsd)}`}>
-                  <span className="heatRegularValue">{row.fundPending ? "--" : fmtMoney(row.regularUsd, "USD")}</span>
+                <div className={`heatPnl heatPnlUsd ${tone(row.regularUsd)}`}>
+                  <span className="heatRegularValue">{fmtMoney(row.regularUsd, "USD")}</span>
                 </div>
-                <div className={`heatPnl heatPnlCny ${row.fundPending ? "flat" : tone(row.regularCny)}`}>
-                  <span className="heatRegularValue">{row.fundPending ? "--" : fmtMoney(row.regularCny, "CNY")}</span>
+                <div className={`heatPnl heatPnlCny ${tone(row.regularCny)}`}>
+                  <span className="heatRegularValue">{fmtMoney(row.regularCny, "CNY")}</span>
                 </div>
                 </div>
               {(row.hasDistinctExtendedPct || row.hasDistinctExtendedUsd || row.hasDistinctExtendedCny || row.extended_price) ? (
@@ -1262,7 +1240,6 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
               ) : null}
               </div>
               <span>{row.assetPct.toFixed(1)}%</span>
-              {row.fundStatusMeta ? <small className="fundQuoteMeta heatFundQuoteMeta">{row.fundStatusMeta}</small> : null}
             </article>
           );
         })}
@@ -1336,7 +1313,7 @@ function Visualizations({ data }) {
   const viz = data.visualizations || {};
   return (
     <section className="visualGrid">
-      <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value, row) => row.symbol === "001015" ? fmtMoney(row.pnl_cny, "CNY") : fmtMoney(value, "USD")} />
+      <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value, row) => fmtMoney(value, "USD")} />
       <BarList title="卫星仓位浮盈亏排名" rows={viz.satellite_pnl_rank || []} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} />
       <CompareBars title="美元资产配置占比" rows={viz.allocation_compare || []} />
       <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" alertThresholdPct={2.5} sortByTarget />
@@ -2143,7 +2120,7 @@ function applyKlineDisplayRange(chart, candles = [], mode = "250", anchorDate = 
 function fixedIntradaySessionConfig(symbol, interval, showExtended) {
   if (!["1m", "5m", "15m"].includes(interval)) return null;
   const normalizedSymbol = String(symbol || "").toUpperCase();
-  const isChinaMarket = normalizedSymbol === "510330.SS" || /^\d{6}\.(SS|SZ)$/.test(normalizedSymbol);
+  const isChinaMarket = /^\d{6}\.(SS|SZ)$/.test(normalizedSymbol);
   const sessionMinutes = isChinaMarket ? 240 : showExtended ? 960 : 390;
   const sessionStartMinutes = isChinaMarket ? 9 * 60 + 30 : showExtended ? 4 * 60 : 9 * 60 + 30;
   const intervalMinutes = interval === "1m" ? 1 : interval === "5m" ? 5 : 15;
@@ -4015,7 +3992,7 @@ function AssetMetricCards({ data, holdings, balances }) {
 
 function buildSatelliteUniverseDraft(data) {
   const explicit = Array.isArray(data.satellite_universe) ? data.satellite_universe : [];
-  const source = explicit.length
+  const source = Array.isArray(data.satellite_universe)
     ? explicit
     : Object.entries(data.satellite_targets || {}).map(([symbol, targetPct]) => {
         const holding = (data.holdings || []).find((row) => row.symbol === symbol) || {};
@@ -4306,7 +4283,6 @@ function EditableHoldingsPage({ data, onSaved }) {
                 ) : Number(row.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                 <td>
                   {fmtMoney(row.price, row.currency, row.currency === "USD" ? 2 : 4)}
-                  {fundQuoteMeta(row) ? <small className="fundQuoteMeta">{fundQuoteMeta(row)}</small> : null}
                 </td>
                 <td className={tone(row.effective_daily_pct)}>{fmtPct(row.effective_daily_pct)}</td>
                 <td className={tone(row.drawdown_pct)}>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</td>
@@ -4417,7 +4393,7 @@ function EditableHoldingsPage({ data, onSaved }) {
 
 function Rebalance({ data, onSaved }) {
   const rows = data.rebalance.rows;
-  const suggestionRows = useMemo(() => rows.filter((row) => row.symbol !== "001015"), [rows]);
+  const suggestionRows = useMemo(() => rows, [rows]);
   const realtimeHoldingBySymbol = useMemo(
     () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row])),
     [data.holdings],
@@ -5451,8 +5427,8 @@ function RebalancePage({ data, onSaved }) {
   return <Rebalance data={data} onSaved={onSaved} />;
 }
 
-export default function App() {
-  const { data, loading, error, load } = useDashboard();
+function ProfileApp({ activeUserId, profiles, onSwitch }) {
+  const { data, loading, error, load } = useDashboard(activeUserId);
   const [page, setPage] = useState(() => String(initialAppState.page || "dashboard"));
   useTableGestureScroll();
 
@@ -5489,7 +5465,7 @@ export default function App() {
   }
   return (
     <main className={`appShell ${page === "dashboard" ? "dashboardShell" : ""}`}>
-      <Header data={data} />
+      <Header data={data} profiles={profiles} onSwitch={onSwitch} />
       <PageNav page={page} setPage={setPage} />
       {page === "dashboard" ? <DashboardPage data={data} onOpenKlineSymbol={openKlineSymbol} /> : null}
       {page === "holdings" ? <HoldingsPage data={data} onSaved={load} /> : null}
@@ -5497,4 +5473,34 @@ export default function App() {
       {page === "kline" ? <KlinePage dashboardData={data} /> : null}
     </main>
   );
+}
+
+export default function App() {
+  const [profileState, setProfileState] = useState(null);
+  const [profileError, setProfileError] = useState("");
+  useEffect(() => {
+    fetch(`${API_BASE}/api/profiles`)
+      .then((response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
+      .then(setProfileState)
+      .catch((error) => setProfileError(String(error)));
+  }, []);
+
+  async function switchUser(userId) {
+    try {
+      setProfileError("");
+      const response = await fetch(`${API_BASE}/api/profiles/active`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setProfileState(await response.json());
+    } catch (error) {
+      setProfileError(String(error));
+    }
+  }
+
+  if (profileError) return <main className="appShell"><div className="error">档案加载失败：{profileError}</div></main>;
+  if (!profileState) return <main className="appShell"><div className="loading"><Activity /> 加载档案中</div></main>;
+  return <ProfileApp key={profileState.active_user_id} activeUserId={profileState.active_user_id} profiles={profileState.profiles} onSwitch={switchUser} />;
 }

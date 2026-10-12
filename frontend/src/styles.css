@@ -315,6 +315,18 @@ h2 {
   text-shadow: 0 1px 12px rgba(4, 13, 30, 0.32);
 }
 
+.topbar > div:first-child { min-width: 0; }
+.profileControls { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.profileControls select {
+  min-width: 86px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text-main);
+  background: #14273e;
+  font: inherit;
+}
+
 .iconButton {
   width: 40px;
   height: 40px;
@@ -1183,23 +1195,6 @@ h2 {
   font-size: 0.95rem;
   font-weight: 800;
 }
-.fundQuoteMeta {
-  display: block;
-  color: var(--text-muted);
-  font-size: 0.66rem;
-  font-weight: 600;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-
-.dailyCard > .fundQuoteMeta {
-  margin-top: 2px;
-}
-
-.heatFundQuoteMeta {
-  font-size: clamp(0.5rem, 0.66vw, 0.64rem);
-}
-
 .heatmapPanel {
   margin-top: 14px;
   margin-bottom: 18px;
@@ -5403,7 +5398,6 @@ tbody tr:hover th {
   .dailyCard { min-height: 108px; padding: 10px 7px; border-radius: 12px; }
   .wideCard { grid-column: span 2; }
   .priceLine { font-size: .95rem; }
-  .fundQuoteMeta { max-width: 100%; overflow: hidden; font-size: .58rem; text-overflow: ellipsis; }
   .sectionHeader, .actions { flex-wrap: wrap; gap: 8px; }
   .sectionHeader h2 { font-size: 1rem; }
   .rebalancePage > .sectionHeader { flex-wrap: nowrap; gap: 8px; }

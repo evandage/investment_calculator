@@ -5,6 +5,8 @@ import hashlib
 from datetime import datetime
 from typing import Any
 
+from .profiles import active_user_id, profile_path
+
 from .config import (
     ALL_SYMBOLS,
     ASSET_META,
@@ -37,6 +39,7 @@ def _read_json(path, default: Any) -> Any:
 
 
 def _write_json(path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -62,12 +65,12 @@ def normalize_holdings(raw: Any) -> dict[str, dict[str, float]]:
     return out
 
 
-def load_holdings() -> dict[str, dict[str, float]]:
-    return normalize_holdings(_read_json(HOLDINGS_FILE, {}))
+def load_holdings(user_id: str | None = None) -> dict[str, dict[str, float]]:
+    return normalize_holdings(_read_json(profile_path(HOLDINGS_FILE, user_id), {}))
 
 
-def save_holdings(holdings: dict[str, dict[str, float]]) -> None:
-    _write_json(HOLDINGS_FILE, normalize_holdings(holdings))
+def save_holdings(holdings: dict[str, dict[str, float]], user_id: str | None = None) -> None:
+    _write_json(profile_path(HOLDINGS_FILE, user_id), normalize_holdings(holdings))
 
 
 def default_balances() -> dict[str, float]:
@@ -113,17 +116,17 @@ def normalize_balances(raw: Any) -> dict[str, float]:
     return out
 
 
-def load_balances() -> dict[str, float]:
-    return normalize_balances(_read_json(BALANCES_FILE, {}))
+def load_balances(user_id: str | None = None) -> dict[str, float]:
+    return normalize_balances(_read_json(profile_path(BALANCES_FILE, user_id), {}))
 
 
-def save_balances(balances: dict[str, float]) -> None:
-    _write_json(BALANCES_FILE, normalize_balances(balances))
+def save_balances(balances: dict[str, float], user_id: str | None = None) -> None:
+    _write_json(profile_path(BALANCES_FILE, user_id), normalize_balances(balances))
 
 
-def load_portfolio_adjustments(user_id: str = "evan") -> list[dict[str, Any]]:
+def load_portfolio_adjustments(user_id: str | None = None) -> list[dict[str, Any]]:
     raw = _read_json(PORTFOLIO_ADJUSTMENTS_FILE, {})
-    rows = raw.get(str(user_id or "local"), []) if isinstance(raw, dict) else []
+    rows = raw.get(str(user_id or active_user_id()), []) if isinstance(raw, dict) else []
     return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
 
@@ -141,7 +144,7 @@ def record_portfolio_adjustment(
         return None
     raw = _read_json(PORTFOLIO_ADJUSTMENTS_FILE, {})
     store = raw if isinstance(raw, dict) else {}
-    user_key = str(user_id or "local")
+    user_key = str(user_id or active_user_id())
     rows = store.get(user_key, [])
     if not isinstance(rows, list):
         rows = []
@@ -163,9 +166,9 @@ def record_portfolio_adjustment(
     return record
 
 
-def load_portfolio_snapshot_ledger(user_id: str = "evan") -> list[dict[str, Any]]:
+def load_portfolio_snapshot_ledger(user_id: str | None = None) -> list[dict[str, Any]]:
     raw = _read_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, {})
-    rows = raw.get(str(user_id or "local"), []) if isinstance(raw, dict) else []
+    rows = raw.get(str(user_id or active_user_id()), []) if isinstance(raw, dict) else []
     return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
 
@@ -177,7 +180,7 @@ def _snapshot_checksum(payload: dict[str, Any]) -> str:
 def _sync_snapshot_ledger(user_id: str, rows: list[dict[str, Any]]) -> None:
     raw = _read_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, {})
     store = raw if isinstance(raw, dict) else {}
-    user_key = str(user_id or "local")
+    user_key = str(user_id or active_user_id())
     ledger = store.get(user_key, [])
     if not isinstance(ledger, list):
         ledger = []
@@ -250,7 +253,7 @@ def replace_snapshot_ledger_with_corrected_history(
                 "payload": payload,
             }
         )
-    user_key = str(user_id or "local")
+    user_key = str(user_id or active_user_id())
     store[user_key] = corrected
     _write_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, store)
     return {
@@ -276,11 +279,11 @@ def normalize_satellite_targets(raw: Any) -> dict[str, float]:
 
 
 def load_satellite_targets() -> dict[str, float]:
-    return normalize_satellite_targets(_read_json(SATELLITE_TARGETS_FILE, {}))
+    return normalize_satellite_targets(_read_json(profile_path(SATELLITE_TARGETS_FILE), {}))
 
 
 def save_satellite_targets(targets: dict[str, float]) -> None:
-    _write_json(SATELLITE_TARGETS_FILE, normalize_satellite_targets(targets))
+    _write_json(profile_path(SATELLITE_TARGETS_FILE), normalize_satellite_targets(targets))
 
 
 SWING_POSITION_DEFAULTS: dict[str, dict[str, float]] = {
@@ -312,7 +315,7 @@ def normalize_swing_positions(raw: Any) -> dict[str, dict[str, float]]:
 
 
 def load_swing_positions() -> dict[str, dict[str, float]]:
-    return normalize_swing_positions(_read_json(SWING_POSITIONS_FILE, {}))
+    return normalize_swing_positions(_read_json(profile_path(SWING_POSITIONS_FILE), {}))
 
 
 def save_swing_position(symbol: str, position: dict[str, float]) -> dict[str, dict[str, float]]:
@@ -322,7 +325,7 @@ def save_swing_position(symbol: str, position: dict[str, float]) -> dict[str, di
     positions = load_swing_positions()
     positions[normalized_symbol] = {**positions[normalized_symbol], **position}
     normalized = normalize_swing_positions(positions)
-    _write_json(SWING_POSITIONS_FILE, normalized)
+    _write_json(profile_path(SWING_POSITIONS_FILE), normalized)
     return normalized
 
 
@@ -349,20 +352,20 @@ def normalize_closed_satellite_pnl(raw: Any) -> dict[str, dict[str, Any]]:
 
 
 def load_closed_satellite_pnl() -> dict[str, dict[str, Any]]:
-    return normalize_closed_satellite_pnl(_read_json(CLOSED_SATELLITE_PNL_FILE, {}))
+    return normalize_closed_satellite_pnl(_read_json(profile_path(CLOSED_SATELLITE_PNL_FILE), {}))
 
 
 def save_closed_satellite_pnl(rows: dict[str, dict[str, Any]]) -> None:
-    _write_json(CLOSED_SATELLITE_PNL_FILE, normalize_closed_satellite_pnl(rows))
+    _write_json(profile_path(CLOSED_SATELLITE_PNL_FILE), normalize_closed_satellite_pnl(rows))
 
 
-def load_user_state(_: str = "evan") -> tuple[dict[str, dict[str, float]], dict[str, float], str]:
-    return load_holdings(), load_balances(), "local"
+def load_user_state(user_id: str | None = None) -> tuple[dict[str, dict[str, float]], dict[str, float], str]:
+    return load_holdings(user_id), load_balances(user_id), "local"
 
 
-def save_user_state(_: str, holdings: dict[str, dict[str, float]], balances: dict[str, float]) -> str:
-    save_holdings(holdings)
-    save_balances(balances)
+def save_user_state(user_id: str, holdings: dict[str, dict[str, float]], balances: dict[str, float]) -> str:
+    save_holdings(holdings, user_id)
+    save_balances(balances, user_id)
     return "local"
 
 
@@ -373,7 +376,7 @@ def load_monthly_usage_store() -> dict[str, Any]:
 
 def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:
     store = load_monthly_usage_store()
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     raw_user = store.get(user_key)
     raw = raw_user.get(month_key, {}) if isinstance(raw_user, dict) else {}
     out = {
@@ -451,7 +454,7 @@ def save_monthly_usage(
     sold_amount_by_symbol: dict[str, float] | None = None,
 ) -> None:
     store = load_monthly_usage_store()
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     user_store = store.get(user_key)
     if not isinstance(user_store, dict):
         user_store = {}
@@ -490,9 +493,9 @@ def save_monthly_usage(
     _write_json(MONTHLY_USAGE_FILE, store)
 
 
-def load_drawdown_episode_store(user_id: str = "evan") -> dict[str, Any]:
+def load_drawdown_episode_store(user_id: str | None = None) -> dict[str, Any]:
     raw = _read_json(DRAWDOWN_EPISODES_FILE, {})
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     user_state = raw.get(user_key, {}) if isinstance(raw, dict) else {}
     if not isinstance(user_state, dict):
         user_state = {}
@@ -512,7 +515,7 @@ def load_drawdown_episode_store(user_id: str = "evan") -> dict[str, Any]:
 def save_drawdown_episode_store(user_id: str, state: dict[str, Any]) -> None:
     raw = _read_json(DRAWDOWN_EPISODES_FILE, {})
     store = raw if isinstance(raw, dict) else {}
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     store[user_key] = {
         "threshold_snapshots": dict(state.get("threshold_snapshots") or {}),
         "preferred_threshold_snapshots": dict(state.get("preferred_threshold_snapshots") or {}),
@@ -523,9 +526,9 @@ def save_drawdown_episode_store(user_id: str, state: dict[str, Any]) -> None:
     _write_json(DRAWDOWN_EPISODES_FILE, store)
 
 
-def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
+def load_portfolio_history(user_id: str | None = None) -> list[dict[str, Any]]:
     raw = _read_json(PORTFOLIO_HISTORY_FILE, {})
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     rows = raw.get(user_key, []) if isinstance(raw, dict) else []
     if not isinstance(rows, list):
         return []
@@ -684,15 +687,15 @@ def load_portfolio_history(user_id: str = "evan") -> list[dict[str, Any]]:
 def save_portfolio_history(user_id: str, rows: list[dict[str, Any]]) -> None:
     raw = _read_json(PORTFOLIO_HISTORY_FILE, {})
     store = raw if isinstance(raw, dict) else {}
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     store[user_key] = rows
     _write_json(PORTFOLIO_HISTORY_FILE, store)
     _sync_snapshot_ledger(user_id, rows)
 
 
-def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
+def load_trade_records(user_id: str | None = None) -> list[dict[str, Any]]:
     raw = _read_json(TRADE_RECORDS_FILE, {})
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     rows = raw.get(user_key, []) if isinstance(raw, dict) else []
     if not isinstance(rows, list):
         return []
@@ -743,7 +746,7 @@ def load_trade_records(user_id: str = "evan") -> list[dict[str, Any]]:
 def save_trade_records(user_id: str, rows: list[dict[str, Any]]) -> None:
     raw = _read_json(TRADE_RECORDS_FILE, {})
     store = raw if isinstance(raw, dict) else {}
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     store[user_key] = load_trade_records_from_rows(rows)
     _write_json(TRADE_RECORDS_FILE, store)
 
@@ -789,9 +792,9 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
     return normalized
 
 
-def load_fx_conversion_records(user_id: str = "evan") -> list[dict[str, Any]]:
+def load_fx_conversion_records(user_id: str | None = None) -> list[dict[str, Any]]:
     raw = _read_json(FX_CONVERSION_RECORDS_FILE, {})
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     rows = raw.get(user_key, []) if isinstance(raw, dict) else []
     if not isinstance(rows, list):
         return []
@@ -829,7 +832,7 @@ def load_fx_conversion_records(user_id: str = "evan") -> list[dict[str, Any]]:
 def save_fx_conversion_records(user_id: str, rows: list[dict[str, Any]]) -> None:
     raw = _read_json(FX_CONVERSION_RECORDS_FILE, {})
     store = raw if isinstance(raw, dict) else {}
-    user_key = str(user_id or "local").strip() or "local"
+    user_key = str(user_id or active_user_id()).strip() or "local"
     store[user_key] = load_fx_conversion_records_from_rows(rows)
     _write_json(FX_CONVERSION_RECORDS_FILE, store)
 

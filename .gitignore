@@ -3,6 +3,8 @@ __pycache__/
 node_modules/
 frontend/node_modules/
 frontend/dist/
+profiles.json
+profiles.json.tmp
 .fund_quotes_cache.json
 .fx_rate_cache.json
 portfolio_snapshot_ledger.backup-*.json
