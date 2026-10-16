@@ -99,6 +99,16 @@
       "note": "沪深300清仓 第二批 - 27年车位费",
       "created_at": "2026-09-16T10:01:42+08:00",
       "balance_applied": true
+    },
+    {
+      "id": "20261012173259-10-FX",
+      "converted_date": "2026-10-10",
+      "cny_amount": 4787.3,
+      "usd_amount": 712.73,
+      "rate": 6.716849297770544,
+      "note": "",
+      "created_at": "2026-10-12T17:32:59+08:00",
+      "balance_applied": true
     }
   ]
 }
