@@ -1398,17 +1398,50 @@ function withSatellitePerformanceFallback(points) {
   });
 }
 
-function PerformanceChart({ history }) {
+function PerformanceChart({ history, trades, userId }) {
   const [expanded, setExpanded] = useState(false);
+  const [liveTrades, setLiveTrades] = useState(null);
   const [selectedSeriesKeys, setSelectedSeriesKeys] = useState(() => new Set([
     "portfolio_return_pct",
     "usd_return_pct",
     "satellite_return_pct",
   ]));
-  const points = useMemo(
-    () => withSatellitePerformanceFallback(withUsdPerformanceFallback(history?.points || [])),
-    [history?.points],
-  );
+  useEffect(() => {
+    let active = true;
+    const loadTrades = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/trades`, { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (active && payload.user_id === userId && Array.isArray(payload.trades)) {
+          setLiveTrades(payload.trades);
+        }
+      } catch {
+        // Keep the latest dashboard trade list while the server is unavailable.
+      }
+    };
+    loadTrades();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) loadTrades();
+    }, 5000);
+    document.addEventListener("visibilitychange", loadTrades);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", loadTrades);
+    };
+  }, [userId]);
+
+  const points = useMemo(() => {
+    const tradeDates = new Set((liveTrades ?? trades ?? [])
+      .filter((trade) => trade.action === "buy" || trade.action === "sell")
+      .map((trade) => String(trade.trade_date || "").slice(0, 10)));
+    const rows = (history?.points || []).map((point) => ({
+      ...point,
+      cash_flow_flag: tradeDates.has(point.date),
+    }));
+    return withSatellitePerformanceFallback(withUsdPerformanceFallback(rows));
+  }, [history?.points, liveTrades, trades]);
   const latest = points[points.length - 1];
   const series = useMemo(() => [
     ["portfolio_return_pct", "总资产", TERMINAL_CHART.yellow, 4],
@@ -2650,8 +2683,10 @@ function SingleLightweightChart({
     if (!isFullscreen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.classList.add("klineFullscreenOpen");
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.body.classList.remove("klineFullscreenOpen");
     };
   }, [isFullscreen]);
 
@@ -3170,7 +3205,7 @@ function SingleLightweightChart({
   }, [candles, volumes, percentRows, overlays, indicators, data, isDaily, showOpeningPercentAxis, avwapSkewsIntradayScale, previousClose, displayRange, viewKey]);
 
   const openFullscreen = () => {
-    if (drawingToolRef.current || customAnchorPickEnabledRef.current) return;
+    if (isFullscreen || drawingToolRef.current || customAnchorPickEnabledRef.current) return;
     setIsFullscreen(true);
   };
   const headerChangePct = data?.latest_change_pct ?? (
@@ -3235,7 +3270,7 @@ function SingleLightweightChart({
         <span><i className="legendMacd" />MACD</span>
         <span><i className="legendSignal" />Signal</span>
       </div>
-      <div className={`singleLwCanvas ${drawingTool || customAnchorPickEnabled ? "isDrawing" : ""}`} ref={containerRef} onClick={openFullscreen}>
+      <div className={`singleLwCanvas ${drawingTool || customAnchorPickEnabled ? "isDrawing" : ""}`} ref={containerRef} onDoubleClick={openFullscreen}>
         {candleTooltip.visible ? (
           <div className="klineCandleTooltip" style={{ left: `${candleTooltip.left}px`, top: `${candleTooltip.top}px` }}>
             <strong>{candleTooltip.time || "-"}</strong>
@@ -5411,7 +5446,7 @@ function DashboardPage({ data, onOpenKlineSymbol }) {
           onOpenSymbol={onOpenKlineSymbol}
         />
         <div className="dashboardInsights">
-          <PerformanceChart history={data.performance_history} />
+          <PerformanceChart history={data.performance_history} trades={data.trades} userId={data.user_id} />
           <Visualizations data={data} />
         </div>
       </div>

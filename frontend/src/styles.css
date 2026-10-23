@@ -2191,6 +2191,10 @@ h2 {
   box-shadow: none;
 }
 
+body.klineFullscreenOpen .pageNav {
+  display: none;
+}
+
 .singleLwWrap.isFullscreen .singleLwCanvas {
   height: calc(100dvh - 92px);
 }

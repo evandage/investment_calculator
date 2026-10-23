@@ -230,6 +230,12 @@ def dashboard(user_id: str = "evan", refresh: bool = False) -> dict[str, Any]:
     return build_dashboard(active_user_id(), force_refresh=refresh)
 
 
+@app.get("/api/trades")
+def trades() -> dict[str, Any]:
+    user_id = active_user_id()
+    return {"user_id": user_id, "trades": load_trade_records(user_id)}
+
+
 @app.get("/api/profiles")
 def profiles() -> dict[str, Any]:
     return {"active_user_id": active_user_id(), "profiles": [{"id": key, "name": name} for key, name in PROFILES.items()]}
