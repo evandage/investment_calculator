@@ -1409,6 +1409,51 @@
       "new_avg_cost": 713.0123281576153,
       "intensity": "small",
       "created_at": "2026-10-23T09:21:26+08:00"
+    },
+    {
+      "id": "20261027095440-95-VOO",
+      "trade_date": "2026-10-23",
+      "symbol": "VOO",
+      "action": "buy",
+      "amount_usd": 300.0,
+      "shares": 0.4291,
+      "price": 699.1377301328362,
+      "cost_basis": 300.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 680.42779963202,
+      "new_avg_cost": 681.4606742576939,
+      "intensity": "normal",
+      "created_at": "2026-10-27T09:54:40+08:00"
+    },
+    {
+      "id": "20261027095421-94-SGOV",
+      "trade_date": "2026-10-26",
+      "symbol": "SGOV",
+      "action": "sell",
+      "amount_usd": 302.04,
+      "shares": 3.0,
+      "price": 100.68,
+      "cost_basis": 301.5053702788757,
+      "realized_pnl": 0.5346297211243041,
+      "prev_avg_cost": 100.50179009295857,
+      "new_avg_cost": 100.50179009295859,
+      "intensity": "none",
+      "created_at": "2026-10-27T09:54:21+08:00"
+    },
+    {
+      "id": "20261027095457-96-GOOGL",
+      "trade_date": "2026-10-26",
+      "symbol": "GOOGL",
+      "action": "buy",
+      "amount_usd": 40.0,
+      "shares": 0.1256,
+      "price": 318.47133757961785,
+      "cost_basis": 40.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 347.387997330764,
+      "new_avg_cost": 344.92450111917617,
+      "intensity": "large",
+      "created_at": "2026-10-27T09:54:57+08:00"
     }
   ]
 }

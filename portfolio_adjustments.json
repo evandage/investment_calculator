@@ -3104,6 +3104,90 @@
         "sgov_dividend_usd": 30.229999999999997
       },
       "reconstruct_from_date": "2026-10-22"
+    },
+    {
+      "id": "adj-20261027T095421+0800-106",
+      "kind": "balances",
+      "effective_date": "2026-10-27",
+      "recorded_at": "2026-10-27T09:54:21+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": 55.030000000000086,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -7.706728791538694,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 24.52672879153867,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "after": {
+        "cash_usd": 357.0700000000001,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": 293.798641487337,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "reconstruct_from_date": "2026-10-26"
+    },
+    {
+      "id": "adj-20261027T095440+0800-107",
+      "kind": "balances",
+      "effective_date": "2026-10-27",
+      "recorded_at": "2026-10-27T09:54:40+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": 357.0700000000001,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": 293.798641487337,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "after": {
+        "cash_usd": 57.07000000000011,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -6.201358512662978,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "reconstruct_from_date": "2026-10-23"
+    },
+    {
+      "id": "adj-20261027T095457+0800-108",
+      "kind": "balances",
+      "effective_date": "2026-10-27",
+      "recorded_at": "2026-10-27T09:54:57+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": 57.07000000000011,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -6.201358512662978,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "after": {
+        "cash_usd": 17.070000000000107,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -46.20135851266298,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "reconstruct_from_date": "2026-10-26"
     }
   ]
 }
