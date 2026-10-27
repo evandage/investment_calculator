@@ -3127,7 +3127,7 @@ def build_rebalance_v2(
                 f"目标金额 {_fmt_usd_compact(target_usd)} = 分母 {_fmt_usd_compact(planned_total_usd)} x 目标 {target_pct * 100.0:.2f}%",
                 f"月初成本 {_fmt_usd_compact(month_start_cost_usd)} = 当前成本 {_fmt_usd_compact(cost_usd)} - 本月买入成本 {_fmt_usd_compact(bought_cost)} + 本月卖出释放成本 {_fmt_usd_compact(sold_cost)}",
                 f"成本缺口 {_fmt_usd_compact(gap)} = 目标 {_fmt_usd_compact(target_usd)} - 月初成本 {_fmt_usd_compact(month_start_cost_usd)}",
-                f"实际差值 {_fmt_usd_compact(actual_gap)} = 目标 {_fmt_usd_compact(target_usd)} - 当前成本 {_fmt_usd_compact(cost_usd)}",
+                f"成本差值 {_fmt_usd_compact(actual_gap)} = 目标 {_fmt_usd_compact(target_usd)} - 当前成本 {_fmt_usd_compact(cost_usd)}",
                 (
                     f"每周基准 {_fmt_usd_compact(base_budget)} = 成本缺口 / {weeks_until_midterm}周（至 {MIDTERM_ELECTION_DATE.isoformat()} 中期选举）"
                     if weekly_cadence
@@ -3274,6 +3274,11 @@ def build_rebalance_v2(
 
     sgov_available_usd = sgov_excess_usd
     if sgov_available_usd > 1e-9:
+        sgov_holding = next((item for item in holding_rows if item["symbol"] == "SGOV"), {})
+        sgov_cost_usd = max(0.0, float(sgov_holding.get("shares", 0.0) or 0.0)) * max(
+            0.0, float(sgov_holding.get("avg_cost", 0.0) or 0.0)
+        )
+        sgov_cost_gap_usd = planned_sgov_target_usd - sgov_cost_usd
         sgov_price = float(market["quotes"].get("SGOV", {}).get("price") or 0.0)
         sgov_sell_note = (
             "大档位触发，但 SGOV 仍保留最低安全线，只释放安全线以上部分。"
@@ -3305,7 +3310,9 @@ def build_rebalance_v2(
                 "period_net_bought_usd": float(weekly_bought_amounts.get("SGOV", 0.0)) - float(weekly_sold_amounts.get("SGOV", 0.0)),
                 "bought_period": "week",
                 "planned_after_valuation_usd": 0.0,
-                "buy_difference_usd": -sgov_available_usd,
+                "buy_difference_usd": sgov_cost_gap_usd,
+                "actual_gap_usd": sgov_cost_gap_usd,
+                "current_cost_usd": sgov_cost_usd,
                 "month_start_value_usd": sgov_current_usd,
                 "gap_usd": planned_sgov_target_usd - sgov_current_usd,
                 "drawdown_pct": None,

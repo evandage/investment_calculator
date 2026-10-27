@@ -4433,6 +4433,13 @@ function Rebalance({ data, onSaved }) {
     () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row])),
     [data.holdings],
   );
+  const realtimeGapBySymbol = useMemo(() => Object.fromEntries(suggestionRows.map((row) => {
+    const value = realtimeHoldingBySymbol[row.symbol]?.value;
+    const target = Number(row.target_usd);
+    return [row.symbol, value != null && Number.isFinite(Number(value)) && Number.isFinite(target)
+      ? target - Number(value)
+      : null];
+  })), [suggestionRows, realtimeHoldingBySymbol]);
   const tradeRows = useMemo(() => {
     const bySymbol = new Map((data.holdings || []).map((row) => [row.symbol, { ...row, intensity: "normal", suggested_buy_usd: 0 }]));
     rows.forEach((row) => {
@@ -4544,13 +4551,14 @@ function Rebalance({ data, onSaved }) {
     }
     return ({
       symbol: row.symbol,
-      actual_gap: row.buy_difference_usd,
+      cost_gap: row.buy_difference_usd,
+      realtime_gap: realtimeGapBySymbol[row.symbol],
       planned_buy: row.planned_buy_usd,
       period_net_bought: row.period_net_bought_usd,
       drawdown_pct: row.drawdown_pct,
       valuation_factor: row.valuation_split_factor,
     })[key];
-  }), [suggestionRows, rebalanceSort]);
+  }), [suggestionRows, rebalanceSort, realtimeGapBySymbol]);
   const tradeTotals = useMemo(() => Object.entries(inputs).reduce(
     (totals, item) => {
       const [symbol, value] = item;
@@ -5077,7 +5085,8 @@ function Rebalance({ data, onSaved }) {
             <tr>
               <SortableTableHeader label="标的" sortKey="symbol" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="档位" sortKey="tier" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
-              <SortableTableHeader label="实际差值" sortKey="actual_gap" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="成本差值" sortKey="cost_gap" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="实时差值" sortKey="realtime_gap" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="计划应买" sortKey="planned_buy" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="该月/周净买入" sortKey="period_net_bought" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="周期高点回撤" sortKey="drawdown_pct" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
@@ -5089,13 +5098,16 @@ function Rebalance({ data, onSaved }) {
               const diagnostics = row.tier_diagnostics || null;
               const realtimeHolding = realtimeHoldingBySymbol[row.symbol] || {};
               const currency = row.currency || realtimeHolding.currency || "USD";
-              const realtimeValue = Number(realtimeHolding.value || 0);
-              const realtimeMarketGap = Number(row.target_usd || 0) - realtimeValue;
-              const actualGapTooltip = [
-                `\u6210\u672c\u53e3\u5f84\u5b9e\u9645\u5dee\u503c\uff1a${fmtMoney(row.buy_difference_usd, currency)}`,
-                `\u5b9e\u65f6\u5e02\u503c\u5dee\u503c\uff1a${fmtMoney(realtimeMarketGap, currency)}`,
+              const realtimeValue = realtimeHolding.value != null && Number.isFinite(Number(realtimeHolding.value))
+                ? Number(realtimeHolding.value)
+                : null;
+              const realtimeMarketGap = realtimeGapBySymbol[row.symbol];
+              const gapTooltip = [
+                `成本差值：${fmtMoney(row.buy_difference_usd, currency)}`,
+                `实时差值：${realtimeMarketGap == null ? "-" : fmtMoney(realtimeMarketGap, currency)}`,
                 `\u76ee\u6807\u91d1\u989d\uff1a${fmtMoney(row.target_usd, currency)}`,
-                `\u5b9e\u65f6\u5e02\u503c\uff1a${fmtMoney(realtimeValue, currency)}`,
+                `当前成本：${fmtMoney(row.current_cost_usd ?? realtimeHolding.cost, currency)}`,
+                `\u5b9e\u65f6\u5e02\u503c\uff1a${realtimeValue == null ? "-" : fmtMoney(realtimeValue, currency)}`,
                 `\u5f53\u524d\u5e02\u503c\u5360\u6bd4\uff1a${Number(row.current_pct || 0).toFixed(2)}%`,
                 `\u76ee\u6807\u5360\u6bd4\uff1a${Number(row.target_pct || 0).toFixed(2)}%`,
               ].join("\n");
@@ -5130,8 +5142,11 @@ function Rebalance({ data, onSaved }) {
                         ) : null}
                       </div>
                     </td>
-                    <td className="planCell hasDetailTooltip" title={actualGapTooltip}>
+                    <td className="planCell hasDetailTooltip" title={gapTooltip}>
                       <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, currency)}</div>
+                    </td>
+                    <td className="planCell hasDetailTooltip" title={gapTooltip}>
+                      <div className={realtimeMarketGap == null ? "" : tone(realtimeMarketGap)}>{realtimeMarketGap == null ? "-" : fmtMoney(realtimeMarketGap, currency)}</div>
                     </td>
                     <td className="planCell hasDetailTooltip" title={row.planned_buy_formula || "-"}>
                       <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
@@ -5145,7 +5160,7 @@ function Rebalance({ data, onSaved }) {
                   </tr>
                   {row.symbol !== "TEM" && row.review_mode === "manual_review_only" && diagnostics ? (
                     <tr className="manualReviewDetailRow">
-                      <td colSpan="7">
+                      <td colSpan="8">
                         <div className="manualReviewDetail">
                           <strong>复核</strong>
                           <span>自身样本档位：{formatThresholdSet(diagnostics.self_thresholds_pct)}</span>
