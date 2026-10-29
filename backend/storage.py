@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import re
 from datetime import datetime
 from typing import Any
 
@@ -372,6 +373,51 @@ def save_user_state(user_id: str, holdings: dict[str, dict[str, float]], balance
 def load_monthly_usage_store() -> dict[str, Any]:
     raw = _read_json(MONTHLY_USAGE_FILE, {})
     return raw if isinstance(raw, dict) else {}
+
+
+def load_stock_quarters(user_id: str) -> dict[str, dict[str, Any]]:
+    store = load_monthly_usage_store()
+    user_store = store.get(str(user_id or active_user_id()).strip() or "local", {})
+    raw = user_store.get("stock_quarters", {}) if isinstance(user_store, dict) else {}
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for symbol, cycle in raw.items():
+        sym = str(symbol).upper()
+        if sym not in SATELLITE_SYMBOLS or not isinstance(cycle, dict):
+            continue
+        try:
+            start_date = str(cycle["start_date"])
+            datetime.fromisoformat(start_date)
+            carry_in = float(cycle.get("carry_in_usd", 0.0))
+        except (KeyError, TypeError, ValueError):
+            continue
+        clean = {"start_date": start_date[:10], "carry_in_usd": carry_in}
+        quarter_label = str(cycle.get("quarter_label") or "").upper()
+        if re.fullmatch(r"Y\d{2}Q[1-4]", quarter_label):
+            clean["quarter_label"] = quarter_label
+        try:
+            base_budget = float(cycle["base_budget_usd"])
+            if 0 <= base_budget < float("inf"):
+                clean["base_budget_usd"] = base_budget
+        except (KeyError, TypeError, ValueError):
+            pass
+        history = cycle.get("history", [])
+        if isinstance(history, list):
+            clean["history"] = [item for item in history if isinstance(item, dict)]
+        result[sym] = clean
+    return result
+
+
+def save_stock_quarters(user_id: str, quarters: dict[str, dict[str, Any]]) -> None:
+    store = load_monthly_usage_store()
+    user_key = str(user_id or active_user_id()).strip() or "local"
+    user_store = store.get(user_key)
+    if not isinstance(user_store, dict):
+        user_store = {}
+    user_store["stock_quarters"] = quarters
+    store[user_key] = user_store
+    _write_json(MONTHLY_USAGE_FILE, store)
 
 
 def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:

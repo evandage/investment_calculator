@@ -2546,6 +2546,17 @@ table {
   cursor: help;
 }
 
+.rebalanceTable .quarterSelect {
+  display: block;
+  width: auto;
+  min-width: 92px;
+  margin-left: auto;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: .8rem;
+  background: rgba(9, 25, 43, .35);
+}
+
 th,
 td {
   padding: 10px 11px;
