@@ -139,7 +139,7 @@
       "updated_at": "2026-09-24T09:47:31+08:00"
     },
     "2026-10": {
-      "used_budget_usd": 1850.0,
+      "used_budget_usd": 2145.56,
       "planned_new_cash_usd": 1700.0,
       "planned_cash_by_month": {
         "2026-11": 1700.0
@@ -157,7 +157,7 @@
         "AVGO": 60.0,
         "VOO": 970.0,
         "TEM": 20.0,
-        "GOOGL": 100.0,
+        "GOOGL": 395.56,
         "ISRG": 50.0
       },
       "sold_amount_by_symbol": {},
@@ -168,7 +168,7 @@
         "GOOGL": "large",
         "ISRG": "medium"
       },
-      "updated_at": "2026-10-29T10:30:43+08:00"
+      "updated_at": "2026-10-29T15:16:16+08:00"
     },
     "stock_quarters": {
       "ISRG": {

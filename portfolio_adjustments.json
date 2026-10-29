@@ -3188,6 +3188,137 @@
         "sgov_dividend_usd": 30.229999999999997
       },
       "reconstruct_from_date": "2026-10-26"
+    },
+    {
+      "id": "adj-20261029T144220+0800-109",
+      "kind": "holdings",
+      "effective_date": "2026-10-29",
+      "recorded_at": "2026-10-29T14:42:20+08:00",
+      "reason": "exact_holdings_anchor_reconciliation",
+      "before": {
+        "VOO": {
+          "shares": 7.772900000000001,
+          "avg_cost": 681.4606742576939
+        },
+        "QQQ": {
+          "shares": 5.4613999999999985,
+          "avg_cost": 713.0123281576153
+        },
+        "ISRG": {
+          "shares": 0.9671000000000001,
+          "avg_cost": 398.1301974976734
+        },
+        "TEM": {
+          "shares": 2.2527,
+          "avg_cost": 53.71206241399209
+        },
+        "PLTR": {
+          "shares": 0.47619999999999996,
+          "avg_cost": 128.05614447711048
+        },
+        "GOOGL": {
+          "shares": 1.474299999999996,
+          "avg_cost": 344.92450111917617
+        },
+        "AVGO": {
+          "shares": 0.446,
+          "avg_cost": 374.89707623318384
+        },
+        "SGOV": {
+          "shares": 30.0,
+          "avg_cost": 100.50179009295859
+        }
+      },
+      "after": {
+        "VOO": {
+          "shares": 7.7808,
+          "avg_cost": 681.4606742576939
+        },
+        "QQQ": {
+          "shares": 5.4655,
+          "avg_cost": 713.0123281576153
+        },
+        "ISRG": {
+          "shares": 0.9671000000000001,
+          "avg_cost": 398.1301974976734
+        },
+        "TEM": {
+          "shares": 2.2527,
+          "avg_cost": 53.71206241399209
+        },
+        "PLTR": {
+          "shares": 0.47619999999999996,
+          "avg_cost": 128.05614447711048
+        },
+        "GOOGL": {
+          "shares": 1.474299999999996,
+          "avg_cost": 344.92450111917617
+        },
+        "AVGO": {
+          "shares": 0.4464,
+          "avg_cost": 374.89707623318384
+        },
+        "SGOV": {
+          "shares": 30.0,
+          "avg_cost": 100.50179009295859
+        }
+      }
+    },
+    {
+      "id": "adj-20261029T151616+0800-110",
+      "kind": "balances",
+      "effective_date": "2026-10-29",
+      "recorded_at": "2026-10-29T15:16:16+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": 17.070000000000107,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -46.20135851266298,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "after": {
+        "cash_usd": -278.4899999999999,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -341.761358512663,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "reconstruct_from_date": "2026-10-29"
+    },
+    {
+      "id": "adj-20261029T151634+0800-111",
+      "kind": "balances",
+      "effective_date": "2026-10-29",
+      "recorded_at": "2026-10-29T15:16:34+08:00",
+      "reason": "manual_edit",
+      "before": {
+        "cash_usd": -278.4899999999999,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -341.761358512663,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "after": {
+        "cash_usd": -285.95,
+        "cash_cny": 0.0,
+        "cash_cost_basis_usd": -349.2213585126631,
+        "cash_cost_basis_cny": -1072.848839030412,
+        "realized_usd": 25.061358512662974,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "reconstruct_from_date": "2026-10-29"
     }
   ]
 }

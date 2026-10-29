@@ -1454,6 +1454,21 @@
       "new_avg_cost": 344.92450111917617,
       "intensity": "large",
       "created_at": "2026-10-27T09:54:57+08:00"
+    },
+    {
+      "id": "20261029151616-97-GOOGL",
+      "trade_date": "2026-10-29",
+      "symbol": "GOOGL",
+      "action": "buy",
+      "amount_usd": 295.56,
+      "shares": 1.0,
+      "price": 295.56,
+      "cost_basis": 295.56,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 344.92450111917617,
+      "new_avg_cost": 324.97360546417224,
+      "intensity": "large",
+      "created_at": "2026-10-29T15:16:16+08:00"
     }
   ]
 }
