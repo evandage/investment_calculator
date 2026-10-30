@@ -128,13 +128,13 @@ def rebalance_rules_payload(
                 "items": [
                     f"建仓期默认计算到 {BUILD_TARGET_YEAR}-{BUILD_TARGET_MONTH:02d}，当前共 {build_months} 个月。",
                     f"未来入金纳入目标分母，共 {future_cash_months} 个月，每月 USD {planned_new_cash_usd:,.2f}；本轮实际建议仍只使用当前可释放资金。",
-                    "目标分母 = USD 现金 + SGOV 当前金额 + 各美元标的持仓成本金额 + 未来入金；是否接近目标优先看成本占比，而不是市值占比。",
+                    "目标分母 = 美元现金成本基准 + 所有美元持仓成本（含 SGOV）+ 相应的未来入金。",
                 ],
             },
             {
                 "heading": "建议金额",
                 "items": [
-                    "VOO、QQQ 的长期目标以当前资产为分母；个股以当前资产加后续两个月预计投入为分母。成本差值为长期目标减当前成本，实时差值为长期目标减当前市值。",
+                    "VOO、QQQ 的长期目标以持仓成本加美元现金成本基准为分母；个股以持仓成本加美元现金成本基准及后续两个月预计投入为分母。成本差值为长期目标减当前成本，实时差值为长期目标减当前市值。",
                     "VOO 和 QQQ 的月度基准均为自设总月预算 × 标的目标比例，计划应买再乘档位倍率。个股以三个月预算为基准，加上上轮结转，财报后可手动刷新周期。",
                     f"个股本轮建议以三个月预算乘回撤档位倍率，并受本轮剩余额度限制；{zero_target_note}",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；全部标的统一按回撤周期锚定高点定档。",
@@ -3142,7 +3142,7 @@ def build_rebalance_v2(
     cost_usd_by_symbol: dict[str, float] = {}
     for item in holding_rows:
         sym = str(item.get("symbol", "")).upper()
-        if sym not in USD_SYMBOLS or sym == "SGOV":
+        if sym not in USD_SYMBOLS:
             continue
         shares = max(0.0, float(item.get("shares", 0.0) or 0.0))
         avg_cost = max(0.0, float(item.get("avg_cost", 0.0) or 0.0))
@@ -3150,13 +3150,13 @@ def build_rebalance_v2(
     sgov_target_pct = target_weights["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
     sgov_current_usd = value_cny_by_symbol.get("SGOV", 0.0) / fx if fx > 0 else 0.0
     holding_cost_total_usd = sum(cost_usd_by_symbol.values())
-    current_assets_usd = cash_usd + sgov_current_usd + holding_cost_total_usd
+    cash_cost_basis_usd = float(balances.get("cash_cost_basis_usd", cash_usd) or 0.0)
+    current_assets_usd = cash_cost_basis_usd + holding_cost_total_usd
     planned_total_usd = current_assets_usd + future_cash_total_usd
     planned_total_formula = (
         f"分母 ${_fmt_usd_exact(planned_total_usd)} = "
-        f"非SGOV持仓成本 ${_fmt_usd_exact(holding_cost_total_usd)} + "
-        f"美元现金 ${_fmt_usd_exact(cash_usd)} + "
-        f"SGOV ${_fmt_usd_exact(sgov_current_usd)} + "
+        f"美元持仓成本（含SGOV） ${_fmt_usd_exact(holding_cost_total_usd)} + "
+        f"美元现金成本基准 ${_fmt_usd_exact(cash_cost_basis_usd)} + "
         f"未来资金 ${_fmt_usd_exact(future_cash_total_usd)}"
     )
     planned_sgov_target_usd = sgov_target_pct * planned_total_usd
@@ -3234,7 +3234,7 @@ def build_rebalance_v2(
         if is_satellite:
             gap_capped_plan = min(max(0.0, gap), tier_plan, remaining_plan)
         planned_formula_parts.append(
-            f"长期目标 {_fmt_usd_compact(target_usd)} = {'当前资产 + 后续两个月预算' if is_satellite else '当前资产'} {_fmt_usd_compact(target_denominator_usd)} x 目标比例 {target_pct * 100.0:.2f}%"
+            f"长期目标 {_fmt_usd_compact(target_usd)} = {'持仓成本 + 美元现金成本基准 + 后续两个月预算' if is_satellite else '持仓成本 + 美元现金成本基准'} {_fmt_usd_compact(target_denominator_usd)} x 目标比例 {target_pct * 100.0:.2f}%"
         )
         planned_formula_parts.append(f"成本差值 {_fmt_usd_compact(actual_gap)} = 长期目标 - 当前成本 {_fmt_usd_compact(cost_usd)}（接近目标时按 0 处理）")
         planned_formula = "；".join(planned_formula_parts)

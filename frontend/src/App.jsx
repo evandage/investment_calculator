@@ -5166,7 +5166,7 @@ function Rebalance({ data, onSaved }) {
                 `成本差值：${fmtMoney(row.buy_difference_usd, currency)}`,
                 `实时差值：${realtimeMarketGap == null ? "-" : fmtMoney(realtimeMarketGap, currency)}`,
                 `长期目标：${fmtMoney(row.target_usd, currency)}`,
-                `目标分母：${fmtMoney(row.target_denominator_usd ?? data.rebalance.planned_total_usd, currency)}${row.bought_period === "quarter" ? `（含后两个月预算 ${fmtMoney(row.target_future_cash_usd || 0, currency)}）` : row.bought_period === "month" ? "（当前资产）" : ""}`,
+                `目标分母：${fmtMoney(row.target_denominator_usd ?? data.rebalance.planned_total_usd, currency)}${row.bought_period === "quarter" ? `（含后两个月预算 ${fmtMoney(row.target_future_cash_usd || 0, currency)}）` : row.bought_period === "month" ? "（持仓及现金成本基准）      " : ""}`,
                 `周期起始成本：${fmtMoney(row.period_start_cost_usd || 0, currency)}`,
                 `周期起始日：${row.period_start_date || "-"}`,
                 `当前成本：${fmtMoney(row.current_cost_usd ?? realtimeHolding.cost, currency)}`,

@@ -37,9 +37,11 @@ def test_long_term_target_drives_gaps_while_budget_and_bought_use_period(monkeyp
         {"symbol": "VOO", "label": "VOO", "value_cny": 1100.0, "shares": 10.5, "avg_cost": 100.0},
         {"symbol": "QQQ", "label": "QQQ", "value_cny": 1080.0, "shares": 10.3, "avg_cost": 100.0},
         {"symbol": "ISRG", "label": "ISRG", "value_cny": 1090.0, "shares": 10.15, "avg_cost": 100.0},
+        {"symbol": "SGOV", "label": "SGOV", "value_cny": 600.0, "shares": 5.0, "avg_cost": 100.0},
     ]
     market = {"quotes": {symbol: {"price": 100.0} for symbol in ("VOO", "QQQ", "ISRG", "SGOV")}}
-    result = portfolio.build_rebalance_v2("evan", holdings, {"cash_usd": 1000.0}, market, {}, 1.0, build_months=3)
+    result = portfolio.build_rebalance_v2("evan", holdings, {"cash_usd": 1000.0, "cash_cost_basis_usd": 800.0}, market, {"SGOV": 600.0}, 1.0, build_months=3)
+    assert result["current_assets_usd"] == pytest.approx(1050.0 + 1030.0 + 1015.0 + 500.0 + 800.0 )
     rows = {row["symbol"]: row for row in result["rows"]}
     weights = portfolio.effective_target_weights()
     total = sum(weights[s] for s in portfolio.USD_SYMBOLS)
@@ -64,7 +66,7 @@ def test_long_term_target_drives_gaps_while_budget_and_bought_use_period(monkeyp
         assert row["target_usd"] - market_value == pytest.approx(expected_target - market_value)
     assert rows["VOO"]["bought_period"] == rows["QQQ"]["bought_period"] == "month"
     assert rows["ISRG"]["bought_period"] == "quarter"
-    short_horizon = portfolio.build_rebalance_v2("evan", holdings, {"cash_usd": 1000.0}, market, {}, 1.0, build_months=1)
+    short_horizon = portfolio.build_rebalance_v2("evan", holdings, {"cash_usd": 1000.0, "cash_cost_basis_usd": 800.0}, market, {"SGOV": 600.0}, 1.0, build_months=1)
     short_rows = {row["symbol"]: row for row in short_horizon["rows"]}
     assert short_rows["ISRG"]["target_denominator_usd"] == pytest.approx(result["current_assets_usd"] + 1300.0)
     assert short_rows["VOO"]["target_denominator_usd"] == pytest.approx(result["current_assets_usd"])
