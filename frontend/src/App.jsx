@@ -3325,6 +3325,18 @@ function SingleLightweightChart({
 }
 
 let klinePageMemory = initialAppState.kline || {};
+const KLINE_MEMORY_TIMEOUT_MS = 5 * 60 * 1000;
+
+function klineMemoryExpired(memory, now = Date.now()) {
+  const lastActiveAt = Number(memory.lastActiveAt);
+  return !Number.isFinite(lastActiveAt) || lastActiveAt <= 0 || now - lastActiveAt >= KLINE_MEMORY_TIMEOUT_MS;
+}
+
+function markKlineActive() {
+  klinePageMemory = { ...klinePageMemory, lastActiveAt: Date.now() };
+  writeJsonCache(APP_STATE_CACHE_KEY, { ...readAppState(), kline: klinePageMemory });
+}
+
 
 function defaultKlineAvwapMode(interval, symbol) {
   if (["1m", "5m", "15m"].includes(interval)) return "today_open";
@@ -3429,7 +3441,7 @@ function ChartBoardPlaceholder({ count = 1, scope }) {
 
 function KlinePage({ dashboardData }) {
   const restoredState = useMemo(() => klinePageMemory, []);
-  const [scope, setScope] = useState(() => String(restoredState.scope || "global"));
+  const [scope, setScope] = useState(() => klineMemoryExpired(restoredState) ? "global" : String(restoredState.scope || "global"));
   const [symbol, setSymbol] = useState(() => String(restoredState.symbol || "VOO"));
   const [interval, setInterval] = useState(() => String(restoredState.interval || "1m"));
   const [avwapMode, setAvwapMode] = useState(() => String(
@@ -3470,6 +3482,7 @@ function KlinePage({ dashboardData }) {
 
   useEffect(() => {
     klinePageMemory = {
+      ...klinePageMemory,
       symbol,
       scope,
       interval,
@@ -3481,7 +3494,32 @@ function KlinePage({ dashboardData }) {
       globalColumns,
     };
     writeJsonCache(APP_STATE_CACHE_KEY, { ...readAppState(), kline: klinePageMemory });
-  }, [symbol, interval, avwapMode, customAnchorDate, displayRange, showExtended, selectedDate, globalColumns]);
+  }, [scope, symbol, interval, avwapMode, customAnchorDate, displayRange, showExtended, selectedDate, globalColumns]);
+
+  useEffect(() => {
+    let hiddenAt = document.hidden ? Date.now() : null;
+    if (!document.hidden) markKlineActive();
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+        markKlineActive();
+      } else {
+        if (hiddenAt != null && Date.now() - hiddenAt >= KLINE_MEMORY_TIMEOUT_MS) setScope("global");
+        hiddenAt = null;
+        markKlineActive();
+      }
+    };
+    const onPageHide = () => { if (hiddenAt == null) markKlineActive(); };
+    const heartbeat = window.setInterval(() => { if (!document.hidden) markKlineActive(); }, 30000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", onPageHide);
+      if (!document.hidden) markKlineActive();
+    };
+  }, []);
   const requestSignature = `${scope}|${symbol}|${interval}|${avwapMode}|${customAnchorDate}|${showExtended}|${selectedDate}|${globalColumns}`;
   const requestSignatureRef = useRef(requestSignature);
   requestSignatureRef.current = requestSignature;
@@ -5575,6 +5613,7 @@ function ProfileApp({ activeUserId, profiles, onSwitch }) {
       avwapMode: defaultKlineAvwapMode("1d", nextSymbol),
       customAnchorDate: "",
       displayRange: "60",
+      lastActiveAt: Date.now(),
     };
     setPage("kline");
   }
