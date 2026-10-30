@@ -2548,7 +2548,7 @@ table {
 
 .rebalanceTable .quarterSelect {
   display: block;
-  width: auto;
+  width: 92px;
   min-width: 92px;
   margin-left: auto;
   padding: 5px 8px;

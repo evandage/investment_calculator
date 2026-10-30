@@ -201,6 +201,9 @@
         "quarter_label": "Y26Q3",
         "base_budget_usd": 26.250000000000007
       }
+    },
+    "etf_budget_months": {
+      "VOO": "2026-11"
     }
   }
 }

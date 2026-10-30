@@ -37,6 +37,8 @@ from .storage import (
     load_closed_satellite_pnl,
     load_drawdown_episode_store,
     load_monthly_usage,
+    load_etf_budget_months,
+    save_etf_budget_month,
     load_stock_quarters,
     load_fx_conversion_records,
     load_portfolio_history,
@@ -3040,6 +3042,16 @@ def save_stock_quarter_label(user_id: str, symbol: str, quarter_label: str) -> d
     return {"symbol": sym, "quarter_label": label}
 
 
+def set_etf_budget_month(user_id: str, symbol: str, month: str) -> dict[str, str]:
+    sym = str(symbol).upper()
+    now = datetime.now(TZ_SHANGHAI)
+    allowed = [now.strftime("%Y-%m"), *future_month_keys(now, 1)]
+    if sym not in ("VOO", "QQQ") or month not in allowed:
+        raise ValueError("请选择 VOO 或 QQQ 的本月或下月")
+    save_etf_budget_month(user_id, sym, month)
+    return {"symbol": sym, "month": month}
+
+
 def refresh_stock_quarter(user_id: str, symbol: str) -> dict[str, Any]:
     sym = str(symbol).upper()
     if sym not in SATELLITE_SYMBOLS:
@@ -3109,6 +3121,7 @@ def build_rebalance_v2(
     bought_intensities = {sym: normalize_intensity(v) for sym, v in usage.get("bought_intensity_by_symbol", {}).items()}
     trade_records = load_trade_records(user_id)
     stock_quarters = stock_quarter_state(user_id, now)
+    etf_budget_months = load_etf_budget_months(user_id)
     week_start = now.date() - timedelta(days=now.weekday())
     week_start_key = week_start.isoformat()
     today_key = now.date().isoformat()
@@ -3172,11 +3185,15 @@ def build_rebalance_v2(
             continue
         current_usd = item["value_cny"] / fx if fx > 0 else 0.0
         cost_usd = cost_usd_by_symbol.get(sym, 0.0)
-        already = float(bought_amounts.get(sym, 0.0))
-        already_sold = float(sold_amounts.get(sym, 0.0))
         is_satellite = sym in SATELLITE_SYMBOLS
+        selected_month = etf_budget_months.get(sym, month_key) if not is_satellite else month_key
+        if selected_month not in (month_key, *future_month_keys(now, 1)):
+            selected_month = month_key
+        selected_usage = usage if selected_month == month_key else load_monthly_usage(user_id, selected_month)
+        already = float(selected_usage.get("bought_amount_by_symbol", {}).get(sym, 0.0))
+        already_sold = float(selected_usage.get("sold_amount_by_symbol", {}).get(sym, 0.0))
         bought_period = "quarter" if is_satellite else "month"
-        period_start = stock_quarters[sym]["start_date"] if is_satellite else f"{month_key}-01"
+        period_start = stock_quarters[sym]["start_date"] if is_satellite else f"{selected_month}-01"
         period_trades = period_trade_totals(trade_records, sym, period_start, (now.date() + timedelta(days=1)).isoformat())
         period_net_bought = period_trades["bought_usd"] - period_trades["sold_usd"]
         bought_cost = period_trades["bought_cost_usd"]
@@ -3197,7 +3214,7 @@ def build_rebalance_v2(
         rebalance_rule = REBALANCE_RULES.get(phase, {}).get(sym, {})
         review_mode = rebalance_rule.get("mode")
         tier_diagnostics = rebalance_rule.get("diagnostics")
-        previous = normalize_intensity(bought_intensities.get(sym, "none"))
+        previous = normalize_intensity(selected_usage.get("bought_intensity_by_symbol", {}).get(sym, "none"))
 
         if normalize_intensity(intensity) == "large":
             has_large_trigger = True
@@ -3215,10 +3232,11 @@ def build_rebalance_v2(
             ]
         else:
             carry_in = 0.0
-            base_budget = planned_new_cash_usd * target_pct
+            etf_month_budget = float(saved_budget_by_month.get(selected_month, planned_new_cash_usd)) if selected_month != month_key else planned_new_cash_usd
+            base_budget = etf_month_budget * target_pct
             planned = base_budget * float(multiplier)
             planned_formula_parts = [
-                f"月度基准 {_fmt_usd_compact(base_budget)} = 总月预算 {_fmt_usd_compact(planned_new_cash_usd)} x 目标比例 {target_pct * 100.0:.2f}%",
+                f"{selected_month} 月度基准 {_fmt_usd_compact(base_budget)} = 总月预算 {_fmt_usd_compact(etf_month_budget)} x 目标比例 {target_pct * 100.0:.2f}%",
                 f"计划应买 {_fmt_usd_compact(planned)} = 月度基准 x 档位 {float(multiplier):.2f}x",
             ]
         target_usd = long_term_target_usd
@@ -3344,6 +3362,7 @@ def build_rebalance_v2(
                 "net_bought_usd": net_bought,
                 "period_net_bought_usd": period_net_bought,
                 "bought_period": bought_period,
+                "budget_month": selected_month if not is_satellite else None,
                 "planned_after_valuation_usd": suggested_cap if is_satellite else raw_planned * split,
                 "buy_difference_usd": actual_gap,
                 "actual_gap_usd": actual_gap,

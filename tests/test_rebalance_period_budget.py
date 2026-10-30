@@ -17,6 +17,7 @@ def trade(symbol, trade_date, amount, action="buy"):
 
 def test_long_term_target_drives_gaps_while_budget_and_bought_use_period(monkeypatch):
     monkeypatch.setattr(portfolio, "datetime", FixedDatetime)
+    monkeypatch.setattr(portfolio, "load_etf_budget_months", lambda *_: {"VOO": "2026-11"})
     monkeypatch.setattr(portfolio, "load_monthly_usage", lambda *_: {
         "planned_new_cash_usd": 700.0, "planned_cash_by_month": {"2026-11": 900.0, "2026-12": 400.0},
         "bought_amount_by_symbol": {}, "sold_amount_by_symbol": {}, "bought_intensity_by_symbol": {},
@@ -46,12 +47,12 @@ def test_long_term_target_drives_gaps_while_budget_and_bought_use_period(monkeyp
     weights = portfolio.effective_target_weights()
     total = sum(weights[s] for s in portfolio.USD_SYMBOLS)
     for symbol, bought, start_cost, market_value in (
-        ("VOO", 50.0, 1000.0, 1100.0),
+        ("VOO", 0.0, 1050.0, 1100.0),
         ("QQQ", 30.0, 1000.0, 1080.0),
         ("ISRG", 15.0, 1000.0, 1090.0),
     ):
         row = rows[symbol]
-        base = 700.0 * weights[symbol] / total
+        base = (900.0 if symbol == "VOO" else 700.0) * weights[symbol] / total
         expected_plan = max(0.0, base * 3.0 - 15.0) if symbol == "ISRG" else base * row["signal_multiplier"]
         assert row["planned_buy_usd"] == pytest.approx(expected_plan)
         assert row["period_net_bought_usd"] == pytest.approx(bought)
@@ -65,6 +66,9 @@ def test_long_term_target_drives_gaps_while_budget_and_bought_use_period(monkeyp
         assert row["buy_difference_usd"] == pytest.approx(expected_gap)
         assert row["target_usd"] - market_value == pytest.approx(expected_target - market_value)
     assert rows["VOO"]["bought_period"] == rows["QQQ"]["bought_period"] == "month"
+    assert rows["VOO"]["budget_month"] == "2026-11"
+    assert rows["QQQ"]["budget_month"] == "2026-10"
+    assert rows["VOO"]["period_start_cost_usd"] == pytest.approx(1050.0)
     assert rows["ISRG"]["bought_period"] == "quarter"
     short_horizon = portfolio.build_rebalance_v2("evan", holdings, {"cash_usd": 1000.0, "cash_cost_basis_usd": 800.0}, market, {"SGOV": 600.0}, 1.0, build_months=1)
     short_rows = {row["symbol"]: row for row in short_horizon["rows"]}

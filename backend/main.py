@@ -127,6 +127,12 @@ class StockQuarterLabelPayload(BaseModel):
     quarter_label: str
 
 
+class EtfBudgetMonthPayload(BaseModel):
+    user_id: str = "evan"
+    symbol: str
+    month: str
+
+
 class SwingPositionPayload(BaseModel):
     shares: float = 0.0
     avg_cost: float = 0.0
@@ -1137,6 +1143,14 @@ def update_rebalance_stock_quarter_label(payload: StockQuarterLabelPayload) -> d
     payload.user_id = active_user_id()
     try:
         return save_stock_quarter_label(payload.user_id, payload.symbol, payload.quarter_label)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/rebalance/etf-month")
+def update_rebalance_etf_month(payload: EtfBudgetMonthPayload) -> dict[str, Any]:
+    try:
+        return portfolio_module.set_etf_budget_month(active_user_id(), payload.symbol, payload.month)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

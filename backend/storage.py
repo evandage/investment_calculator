@@ -471,6 +471,21 @@ def load_monthly_usage_store() -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def load_etf_budget_months(user_id: str) -> dict[str, str]:
+    user_store = load_monthly_usage_store().get(str(user_id or active_user_id()), {})
+    raw = user_store.get("etf_budget_months", {}) if isinstance(user_store, dict) else {}
+    return {sym: str(raw[sym]) for sym in ("VOO", "QQQ") if isinstance(raw, dict) and sym in raw}
+
+
+def save_etf_budget_month(user_id: str, symbol: str, month: str) -> None:
+    store = load_monthly_usage_store()
+    user_key = str(user_id or active_user_id())
+    user_store = store.setdefault(user_key, {})
+    months = user_store.setdefault("etf_budget_months", {})
+    months[symbol] = month
+    _write_json(MONTHLY_USAGE_FILE, store)
+
+
 def load_stock_quarters(user_id: str) -> dict[str, dict[str, Any]]:
     store = load_monthly_usage_store()
     user_store = store.get(str(user_id or active_user_id()).strip() or "local", {})

@@ -4946,6 +4946,24 @@ function Rebalance({ data, onSaved }) {
     }
   }
 
+  async function changeEtfMonth(symbol, month) {
+    setSavingQuarterLabelSymbol(symbol);
+    try {
+      const response = await fetch(`${API_BASE}/api/rebalance/etf-month`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: data.user_id, symbol, month }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
+      await onSaved();
+      showTradeToast(`${symbol} 已切换至 ${month} 预算`, "up");
+    } catch (error) {
+      showTradeToast(`${symbol} 月份保存失败：${error instanceof Error ? error.message : String(error)}`, "down");
+    } finally {
+      setSavingQuarterLabelSymbol("");
+    }
+  }
+
   async function saveBalances() {
     setSavingBalances(true);
     setBalanceMessage("");
@@ -5274,7 +5292,7 @@ function Rebalance({ data, onSaved }) {
                     <td className="planCell hasDetailTooltip" title={row.planned_buy_formula || "-"}>
                       <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
                     </td>
-                    <td title={row.bought_period === "quarter" ? `${row.symbol}：自 ${row.period_start_date} 起累计买入减卖出；上轮结转 ${fmtMoney(row.carry_in_usd || 0, "USD")}` : `${row.symbol}：本月累计买入减卖出`}>{fmtMoney(row.period_net_bought_usd, row.currency || "USD")}</td>
+                    <td title={row.bought_period === "quarter" ? `${row.symbol}：自 ${row.period_start_date} 起累计买入减卖出；上轮结转 ${fmtMoney(row.carry_in_usd || 0, "USD")}` : `${row.symbol}：${row.budget_month || data.rebalance.month_key} 累计买入减卖出，按交易日期归月`}>{fmtMoney(row.period_net_bought_usd, row.currency || "USD")}</td>
                     <td className={`${tone(row.drawdown_pct)} hasDetailTooltip`} title={`锚点：${row.drawdown_anchor_date || "-"} @ ${row.drawdown_anchor_price == null ? "-" : fmtMoney(row.drawdown_anchor_price, "USD")}\n正式确认：${row.confirmed_close_date || "-"}\n盘中回撤：${row.intraday_drawdown_pct == null ? "-" : fmtPct(row.intraday_drawdown_pct)}`}>
                       <div>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</div>
                       {row.intraday_warning?.active ? <small className="intradayDrawdown">盘中 {fmtPct(row.intraday_drawdown_pct)}</small> : null}
@@ -5286,7 +5304,11 @@ function Rebalance({ data, onSaved }) {
                           {quarterLabelOptions(data.rebalance.month_key, quarterLabelDrafts[row.symbol] ?? row.quarter_label).map((label) => <option key={label} value={label}>{label}</option>)}
                           <option value="__refresh__">刷新季度…</option>
                         </select>
-                      ) : row.bought_period === "month" ? data.rebalance.month_key : "—"}
+                      ) : row.bought_period === "month" ? (
+                        <select className="quarterSelect" aria-label={`${row.symbol} 预算月份`} title="按所选月份计算预算和交易记录" value={row.budget_month || data.rebalance.month_key} onChange={(event) => changeEtfMonth(row.symbol, event.target.value)} disabled={Boolean(savingQuarterLabelSymbol)}>
+                          {[data.rebalance.month_key, nextMonthKey(data.rebalance.month_key)].map((month) => <option key={month} value={month}>{month}</option>)}
+                        </select>
+                      ) : "—"}
                     </td>
                   </tr>
                   {row.symbol !== "TEM" && row.review_mode === "manual_review_only" && diagnostics ? (
