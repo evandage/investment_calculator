@@ -1080,15 +1080,13 @@ def balances_for_history_day(
                 )
             else:
                 reconstructed[basis_key] += direction * amount
-        reconstructed["cash_usd"] = max(0.0, reconstructed["cash_usd"])
-        reconstructed["cash_cny"] = max(0.0, reconstructed["cash_cny"])
         return reconstructed
 
     # Preserve older stored snapshots when no trustworthy dated anchor exists.
     if fallback_cash_usd is not None or fallback_cash_cny is not None:
         return accounting_balance_fields({
-            "cash_usd": max(0.0, float(fallback_cash_usd or 0.0)),
-            "cash_cny": max(0.0, float(fallback_cash_cny or 0.0)),
+            "cash_usd": float(fallback_cash_usd or 0.0),
+            "cash_cny": float(fallback_cash_cny or 0.0),
             "realized_usd": float(balances.get("realized_usd", 0.0) or 0.0),
             "realized_cny": float(balances.get("realized_cny", 0.0) or 0.0),
             "voo_dividend_usd": float(balances.get("voo_dividend_usd", 0.0) or 0.0),
@@ -1119,8 +1117,6 @@ def balances_for_history_day(
             reconstructed[realized_key] -= float(trade.get("realized_pnl", 0.0) or 0.0)
         else:
             reconstructed[basis_key] += amount
-    reconstructed["cash_usd"] = max(0.0, reconstructed["cash_usd"])
-    reconstructed["cash_cny"] = max(0.0, reconstructed["cash_cny"])
     return reconstructed
 
 
@@ -3723,7 +3719,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
         if INTENSITY_ORDER.get(new_intensity, 0) > INTENSITY_ORDER.get(old_intensity, 0):
             intensities[sym] = new_intensity
         total_bought += amount
-    balances["cash_usd"] = max(0.0, float(balances.get("cash_usd", 0.0)) - total_bought + total_sold)
+    balances["cash_usd"] = float(balances.get("cash_usd", 0.0)) - total_bought + total_sold
     balances["realized_usd"] = float(balances.get("realized_usd", 0.0)) + realized_pnl
     save_user_state(user_id, holdings, balances)
     save_monthly_usage(
@@ -3810,8 +3806,6 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
                 sold_amounts[sym] = float(sold_amounts.get(sym, 0.0)) + amount
             total_sold += amount
         else:
-            if amount > available_usd + 1e-9:
-                raise ValueError(f"{sym} 买入金额 {amount:,.2f} USD 超过当前美元现金 {available_usd:,.2f} USD")
             holdings, _ = apply_trade_to_holdings(holdings, {"symbol": sym, "action": action, "amount_usd": amount, "shares": shares})
             new_avg_cost = float(holdings.get(sym, {}).get("avg_cost", 0.0) or 0.0)
             cost_basis = amount
@@ -3849,7 +3843,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             }
         )
         earliest_trade_date = trade_date if not earliest_trade_date else min(earliest_trade_date, trade_date)
-    balances["cash_usd"] = max(0.0, available_usd)
+    balances["cash_usd"] = available_usd
     balances["realized_usd"] = float(balances.get("realized_usd", 0.0)) + realized_pnl
     save_user_state(user_id, holdings, balances)
     save_trade_records(user_id, records)
@@ -3938,9 +3932,9 @@ def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
     if action == "dividend":
         cash = float(balances.get("cash_usd", 0.0))
         dividend = float(balances.get("sgov_dividend_usd", 0.0))
-        if sym != "SGOV" or cash + 1e-9 < amount or dividend + 1e-9 < amount:
-            raise ValueError("美元现金或 SGOV 累计股息不足，无法撤销该次派息")
-        balances["cash_usd"] = max(0.0, cash - amount)
+        if sym != "SGOV" or dividend + 1e-9 < amount:
+            raise ValueError("SGOV 累计股息不足，无法撤销该次派息")
+        balances["cash_usd"] = cash - amount
         balances["sgov_dividend_usd"] = max(0.0, dividend - amount)
     elif action == "buy":
         if current_shares + 1e-9 < shares:
@@ -3964,8 +3958,6 @@ def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
             "avg_cost": (current_shares * current_cost + shares * avg_restore_cost) / new_shares if new_shares > 1e-9 else 0.0,
         }
         current_cash = float(balances.get("cash_usd", 0.0) or 0.0)
-        if amount > current_cash + 1e-9:
-            raise ValueError("美元现金不足，无法撤销该次卖出")
         balances["cash_usd"] = current_cash - amount
         balances["cash_cost_basis_usd"] = (
             float(balances.get("cash_cost_basis_usd", 0.0) or 0.0) - cost_basis

@@ -998,7 +998,7 @@ def update_satellite_targets(payload: SatelliteTargetsPayload) -> dict[str, Any]
 
 @app.get("/api/swing-positions")
 def swing_positions() -> dict[str, Any]:
-    return {"positions": load_swing_positions()}
+    return {"positions": load_swing_positions(), "recommendations": storage_module.swing_position_recommendations()}
 
 
 @app.put("/api/swing-positions/{symbol}")

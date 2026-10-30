@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import math
 import re
 from datetime import datetime
 from typing import Any
@@ -96,7 +97,7 @@ def normalize_balances(raw: Any) -> dict[str, float]:
             value = float(raw.get(key, out[key]))
         except (TypeError, ValueError):
             value = out[key]
-        out[key] = max(0.0, value) if key.startswith("cash_") or key.endswith("_dividend_usd") else value
+        out[key] = max(0.0, value) if key.endswith("_dividend_usd") else value
     # Cash balance and principal basis are deliberately separate.  A basis can
     # be negative when previously realized profit has already been reinvested;
     # keeping that negative residual is what makes buys and sells basis-neutral.
@@ -287,15 +288,110 @@ def save_satellite_targets(targets: dict[str, float]) -> None:
     _write_json(profile_path(SATELLITE_TARGETS_FILE), normalize_satellite_targets(targets))
 
 
-SWING_POSITION_DEFAULTS: dict[str, dict[str, float]] = {
-    "QQQ": {"shares": 0.0, "avg_cost": 0.0, "target_pct": 3.0, "stop_loss_min_pct": 5.0, "stop_loss_max_pct": 7.0, "take_profit_min_pct": 10.0, "take_profit_max_pct": 15.0},
+SWING_POSITION_DEFAULTS: dict[str, float] = {
+    "shares": 0.0,
+    "avg_cost": 0.0,
+    "target_pct": 0.0,
+    "stop_loss_min_pct": 0.0,
+    "stop_loss_max_pct": 0.0,
+    "take_profit_min_pct": 0.0,
+    "take_profit_max_pct": 0.0,
 }
+
+SWING_RV20_SNAPSHOT_PCT: dict[str, float] = {
+    "VOO": 10.03,
+    "QQQ": 19.66,
+    "ISRG": 28.14,
+    "TEM": 92.95,
+    "PLTR": 45.54,
+    "GOOGL": 22.28,
+    "AVGO": 43.15,
+}
+SWING_RECOMMENDATION_AS_OF = "2026-10-28"
+
+
+def _round_half_pct(value: float) -> float:
+    return math.floor(value * 2.0 + 0.5) / 2.0
+
+
+def swing_position_recommendation(
+    symbol: str,
+    rv20_pct: float | None = None,
+    as_of: str | None = None,
+) -> dict[str, float | str] | None:
+    if rv20_pct is None:
+        rv20_pct = SWING_RV20_SNAPSHOT_PCT.get(symbol)
+    if rv20_pct is None:
+        return None
+    # Match rebalancing's RV20: sample std of 20 daily log returns, annualized
+    # by sqrt(252). Translate it to a five-trading-day swing horizon.
+    sigma_5d_pct = rv20_pct * math.sqrt(5.0 / 252.0)
+    stop_min = _round_half_pct(sigma_5d_pct * 1.25)
+    stop_max = _round_half_pct(sigma_5d_pct * 1.75)
+    midpoint = (stop_min + stop_max) / 2.0
+    return {
+        "as_of": as_of or SWING_RECOMMENDATION_AS_OF,
+        "rv20_pct": rv20_pct,
+        "sigma_5d_pct": round(sigma_5d_pct, 2),
+        "stop_loss_min_pct": stop_min,
+        "stop_loss_max_pct": stop_max,
+        "take_profit_min_pct": _round_half_pct(midpoint * 1.5),
+        "take_profit_max_pct": _round_half_pct(midpoint * 2.5),
+    }
+
+
+def swing_position_defaults(
+    symbol: str,
+    recommendation: dict[str, float | str] | None = None,
+) -> dict[str, float]:
+    defaults = dict(SWING_POSITION_DEFAULTS)
+    if symbol == "QQQ":
+        defaults["target_pct"] = 3.0
+    recommendation = recommendation or swing_position_recommendation(symbol) or {}
+    for key in ("stop_loss_min_pct", "stop_loss_max_pct", "take_profit_min_pct", "take_profit_max_pct"):
+        defaults[key] = float(recommendation.get(key, 0.0))
+    return defaults
+
+
+def swing_position_recommendations() -> dict[str, dict[str, float | str]]:
+    latest_snapshots: dict[str, dict[str, Any]] = {}
+    for snapshot in load_drawdown_episode_store().get("threshold_snapshots", {}).values():
+        if not isinstance(snapshot, dict) or snapshot.get("calculation_kind") != "monthly_auto":
+            continue
+        symbol = str(snapshot.get("symbol") or "").upper()
+        if not symbol or snapshot.get("rv20_pct") is None:
+            continue
+        previous = latest_snapshots.get(symbol)
+        if previous is None or str(snapshot.get("as_of_date") or "") > str(previous.get("as_of_date") or ""):
+            latest_snapshots[symbol] = snapshot
+    recommendations: dict[str, dict[str, float | str]] = {}
+    for symbol in swing_position_symbols():
+        snapshot = latest_snapshots.get(symbol, {})
+        try:
+            annual_vol_pct = float(snapshot["rv20_pct"]) if snapshot else None
+        except (TypeError, ValueError):
+            annual_vol_pct = None
+        if annual_vol_pct is not None and (not math.isfinite(annual_vol_pct) or annual_vol_pct <= 0):
+            annual_vol_pct = None
+        if symbol in SWING_RV20_SNAPSHOT_PCT and str(snapshot.get("as_of_date") or "") <= SWING_RECOMMENDATION_AS_OF:
+            annual_vol_pct = None
+            snapshot = {}
+        recommendation = swing_position_recommendation(symbol, annual_vol_pct, str(snapshot.get("as_of_date") or ""))
+        if recommendation is not None:
+            recommendations[symbol] = recommendation
+    return recommendations
+
+
+def swing_position_symbols() -> tuple[str, ...]:
+    return tuple(dict.fromkeys(("VOO", "QQQ", *SATELLITE_SYMBOLS)))
 
 
 def normalize_swing_positions(raw: Any) -> dict[str, dict[str, float]]:
     source = raw if isinstance(raw, dict) else {}
     out: dict[str, dict[str, float]] = {}
-    for symbol, defaults in SWING_POSITION_DEFAULTS.items():
+    recommendations = swing_position_recommendations()
+    for symbol in swing_position_symbols():
+        defaults = swing_position_defaults(symbol, recommendations.get(symbol))
         item = source.get(symbol, {})
         if not isinstance(item, dict):
             item = {}
@@ -321,7 +417,7 @@ def load_swing_positions() -> dict[str, dict[str, float]]:
 
 def save_swing_position(symbol: str, position: dict[str, float]) -> dict[str, dict[str, float]]:
     normalized_symbol = str(symbol or "").strip().upper()
-    if normalized_symbol not in SWING_POSITION_DEFAULTS:
+    if normalized_symbol not in swing_position_symbols():
         raise ValueError(f"unsupported swing position symbol: {normalized_symbol}")
     positions = load_swing_positions()
     positions[normalized_symbol] = {**positions[normalized_symbol], **position}

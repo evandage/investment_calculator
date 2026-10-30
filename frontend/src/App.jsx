@@ -3337,30 +3337,32 @@ function markKlineActive() {
   writeJsonCache(APP_STATE_CACHE_KEY, { ...readAppState(), kline: klinePageMemory });
 }
 
-
 function defaultKlineAvwapMode(interval, symbol) {
   if (["1m", "5m", "15m"].includes(interval)) return "today_open";
   return ["VOO", "QQQ", "SGOV"].includes(symbol) ? "year_start" : "earnings";
 }
 
-const KLINE_SWING_DEFAULTS = {
-  QQQ: { shares: 0, avg_cost: 0, target_pct: 3, stop_loss_min_pct: 5, stop_loss_max_pct: 7, take_profit_min_pct: 10, take_profit_max_pct: 15 },
-};
+function klineSwingDefaults(symbol) {
+  return {
+    shares: 0, avg_cost: 0, target_pct: symbol === "QQQ" ? 3 : 0,
+    stop_loss_min_pct: 0, stop_loss_max_pct: 0,
+    take_profit_min_pct: 0, take_profit_max_pct: 0,
+  };
+}
 
-function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, onSave }) {
-  const defaults = KLINE_SWING_DEFAULTS[symbol];
-  const normalized = { ...(defaults || {}), ...(position || {}) };
+function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, recommendation, onSave }) {
+  const defaults = klineSwingDefaults(symbol);
+  const normalized = { ...defaults, ...(position || {}) };
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [draft, setDraft] = useState({});
 
   useEffect(() => {
-    if (!defaults || editing) return;
+    if (editing) return;
     setDraft(Object.fromEntries(Object.entries(normalized).map(([key, value]) => [key, String(value ?? 0)])));
   }, [symbol, position, editing]);
 
-  if (!defaults) return null;
   const shares = Math.max(0, Number(normalized.shares || 0));
   const avgCost = Math.max(0, Number(normalized.avg_cost || 0));
   const price = Math.max(0, Number(latestPrice || 0));
@@ -3378,6 +3380,7 @@ function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, onS
   const stopPrices = avgCost > 0 ? [avgCost * (1 - stopMax / 100), avgCost * (1 - stopMin / 100)] : [];
   const takePrices = avgCost > 0 ? [avgCost * (1 + takeMin / 100), avgCost * (1 + takeMax / 100)] : [];
   const progress = targetAmount > 0 ? Math.min(100, marketValue / targetAmount * 100) : 0;
+  const hasRiskLevels = stopMax > 0 && takeMax > 0;
 
   function updateDraft(key, value) { setDraft((current) => ({ ...current, [key]: value })); }
 
@@ -3406,9 +3409,15 @@ function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, onS
         <div><span>{"\u76ee\u6807\u6ce2\u6bb5\u4ed3"}</span><strong>{fmtMoney(targetAmount, "USD", 0)}</strong><small>{targetPct.toFixed(2)}% {"\u00b7"} {"\u5dee\u989d"} {fmtMoney(targetAmount - marketValue, "USD", 0)}</small></div>
         <div className={tone(floatingPnl)}><span>{"\u6d6e\u52a8\u76c8\u4e8f"}</span><strong>{fmtSignedMoney(floatingPnl, "USD")}</strong><small>{fmtPct(floatingPnlPct)}</small></div>
         <div><span>{"\u6ce2\u6bb5\u6210\u672c"}</span><strong>{avgCost > 0 ? fmtMoney(avgCost, "USD") : "-"}</strong><small>{"\u6210\u672c\u91d1\u989d"} {fmtMoney(costValue, "USD", 0)}</small></div>
-        <div className="risk"><span>{"\u6700\u5927\u6b62\u635f\u53c2\u8003"}</span><strong>-{stopMin.toFixed(0)}% ~ -{stopMax.toFixed(0)}%</strong><small>{stopPrices.length ? fmtMoney(stopPrices[0], "USD") + " ~ " + fmtMoney(stopPrices[1], "USD") : "-"}</small></div>
-        <div className="reward"><span>{"\u5206\u6279\u6b62\u76c8\u53c2\u8003"}</span><strong>+{takeMin.toFixed(0)}% ~ +{takeMax.toFixed(0)}%</strong><small>{takePrices.length ? fmtMoney(takePrices[0], "USD") + " ~ " + fmtMoney(takePrices[1], "USD") : "-"}</small></div>
+        <div className="risk"><span>{"\u6700\u5927\u6b62\u635f\u53c2\u8003"}</span><strong>{hasRiskLevels ? `-${stopMin.toFixed(1)}% ~ -${stopMax.toFixed(1)}%` : "待设置"}</strong><small>{stopPrices.length && hasRiskLevels ? fmtMoney(stopPrices[0], "USD") + " ~ " + fmtMoney(stopPrices[1], "USD") : "-"}</small></div>
+        <div className="reward"><span>{"\u5206\u6279\u6b62\u76c8\u53c2\u8003"}</span><strong>{hasRiskLevels ? `+${takeMin.toFixed(1)}% ~ +${takeMax.toFixed(1)}%` : "待设置"}</strong><small>{takePrices.length && hasRiskLevels ? fmtMoney(takePrices[0], "USD") + " ~ " + fmtMoney(takePrices[1], "USD") : "-"}</small></div>
       </div>
+      {recommendation ? <div className="swingRecommendation">
+        <strong>统计波动参考 · 截至 {recommendation.as_of}</strong>
+        <span>再平衡同口径 RV20 年化 {Number(recommendation.rv20_pct).toFixed(1)}% · 约 5 个交易日波动 {Number(recommendation.sigma_5d_pct).toFixed(1)}%</span>
+        <span>止损选一档 {Number(recommendation.stop_loss_min_pct).toFixed(1)}%–{Number(recommendation.stop_loss_max_pct).toFixed(1)}% · 分批止盈 +{Number(recommendation.take_profit_min_pct).toFixed(1)}% / +{Number(recommendation.take_profit_max_pct).toFixed(1)}%</span>
+        <small>按波段成本计算。假设持有约 5 个交易日；止盈档位按风险倍数推算，并非收益预测。波动变化后请复核，Margin 仓位还需控制借款与单笔风险。</small>
+      </div> : null}
       <div className="swingProgress"><span style={{ width: progress.toFixed(2) + "%" }} /></div>
       {editing ? (
         <div className="swingEditor">
@@ -3419,6 +3428,13 @@ function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, onS
           <label>{"\u6b62\u635f\u4e0a\u9650"}<input value={draft.stop_loss_max_pct ?? ""} onChange={(event) => updateDraft("stop_loss_max_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
           <label>{"\u6b62\u76c8\u4e0b\u9650"}<input value={draft.take_profit_min_pct ?? ""} onChange={(event) => updateDraft("take_profit_min_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
           <label>{"\u6b62\u76c8\u4e0a\u9650"}<input value={draft.take_profit_max_pct ?? ""} onChange={(event) => updateDraft("take_profit_max_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
+          {recommendation ? <button type="button" onClick={() => setDraft((current) => ({
+            ...current,
+            stop_loss_min_pct: String(recommendation.stop_loss_min_pct),
+            stop_loss_max_pct: String(recommendation.stop_loss_max_pct),
+            take_profit_min_pct: String(recommendation.take_profit_min_pct),
+            take_profit_max_pct: String(recommendation.take_profit_max_pct),
+          }))}>填入波动建议</button> : null}
           <button className="primary" type="button" disabled={saving} onClick={save}><Save size={14} />{saving ? "\u4fdd\u5b58\u4e2d..." : "\u4fdd\u5b58"}</button>
         </div>
       ) : null}
@@ -3460,7 +3476,8 @@ function KlinePage({ dashboardData }) {
   const [globalColumns, setGlobalColumns] = useState(() => Number(restoredState.globalColumns) || globalKlineColumns());
   const [showCheatSheet, setShowCheatSheet] = useState(false);
   const [visibleProfileState, setVisibleProfileState] = useState(null);
-  const [swingPositions, setSwingPositions] = useState(KLINE_SWING_DEFAULTS);
+  const [swingPositions, setSwingPositions] = useState({});
+  const [swingRecommendations, setSwingRecommendations] = useState({});
   const [swingPositionError, setSwingPositionError] = useState("");
   const [chartsReady, setChartsReady] = useState(false);
   const isEtf = ["VOO", "QQQ", "SGOV"].includes(symbol);
@@ -3475,7 +3492,12 @@ function KlinePage({ dashboardData }) {
     let cancelled = false;
     fetch(API_BASE + "/api/swing-positions")
       .then((response) => { if (!response.ok) throw new Error("HTTP " + response.status); return response.json(); })
-      .then((payload) => { if (!cancelled) setSwingPositions((current) => ({ ...current, ...(payload.positions || {}) })); })
+      .then((payload) => {
+        if (!cancelled) {
+          setSwingPositions((current) => ({ ...current, ...(payload.positions || {}) }));
+          setSwingRecommendations(payload.recommendations || {});
+        }
+      })
       .catch((error) => { if (!cancelled) setSwingPositionError(error instanceof Error ? error.message : String(error)); });
     return () => { cancelled = true; };
   }, []);
@@ -3708,7 +3730,7 @@ function KlinePage({ dashboardData }) {
   const hasCurrentData = Boolean(data && dataSignatureRef.current === requestSignature);
   const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
   const swingPosition = swingPositions[symbol];
-  const swingTargetPct = Number(swingPosition?.target_pct || KLINE_SWING_DEFAULTS[symbol]?.target_pct || 0);
+  const swingTargetPct = Number(swingPosition?.target_pct ?? klineSwingDefaults(symbol).target_pct);
   const dashboardFx = Number(dashboardData?.summary?.fx || 0);
   const totalAssetsUsd = dashboardFx > 0
     ? Number(dashboardData?.summary?.total_assets_cny || 0) / dashboardFx
@@ -3823,7 +3845,7 @@ function KlinePage({ dashboardData }) {
         <button className="klineGuideButton" type="button" onClick={() => setShowCheatSheet(true)}><BookOpen size={16} />指标模板</button>
       </div>
       {data && scope === "global" ? <div className="muted globalBoardMeta">全局看板：{data.symbols?.join(" / ")} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : "实时"}</div> : null}
-      {swingPositionError && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? <div className="errorInline">{"\u6ce2\u6bb5\u4ed3\u8bfb\u53d6\u5931\u8d25\uff1a"}{swingPositionError}</div> : null}
+      {swingPositionError && scope === "single" ? <div className="errorInline">{"\u6ce2\u6bb5\u4ed3\u8bfb\u53d6\u5931\u8d25\uff1a"}{swingPositionError}</div> : null}
       {data && scope === "single" ? <div className="muted singleChartMeta">行情源 {data.market_provider || "-"} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : (realtimeConnected ? "实时订阅中" : "实时连接中")}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}{swingTargetAmount > 0 ? ` · 波段目标 ${fmtMoney(swingTargetAmount, "USD", 0)}（${swingTargetPct}%）` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
       {error || data?.error ? <div className="errorInline">K线加载失败：{error || data.error}</div> : null}
@@ -3844,8 +3866,8 @@ function KlinePage({ dashboardData }) {
           {interval === "1d" ? <TechnicalInsightPanel data={data} displayRange={displayRange} visibleProfile={activeVisibleProfile} /> : null}
         </div>
       ) : null}
-      {data && scope === "single" && KLINE_SWING_DEFAULTS[symbol] ? (
-        <SwingPositionPanel symbol={symbol} latestPrice={data.latest_price} totalAssetsUsd={totalAssetsUsd} position={swingPosition} onSave={saveSwingPosition} />
+      {hasCurrentData && scope === "single" ? (
+        <SwingPositionPanel key={symbol} symbol={symbol} latestPrice={data.latest_price} totalAssetsUsd={totalAssetsUsd} position={swingPosition} recommendation={swingRecommendations[symbol]} onSave={saveSwingPosition} />
       ) : null}
       {showCheatSheet ? <TechnicalCheatSheetModal onClose={() => setShowCheatSheet(false)} /> : null}
     </section>
@@ -4427,7 +4449,7 @@ function EditableHoldingsPage({ data, onSaved }) {
               <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
-            <p className="muted">现金成本基准用于区分本金和已变现收益；普通入金、出金会自动同步，盈利再投资后允许显示为负数。</p>
+            <p className="muted">Margin 账户现金余额允许为负数；现金成本基准用于区分本金和已变现收益。</p>
             <div className="actions">
               <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存</button>
             </div>
@@ -5548,7 +5570,7 @@ function Rebalance({ data, onSaved }) {
               <label><span>CNY 已变现</span><input value={balanceInputs.realized_cny ?? ""} onChange={(event) => updateBalance("realized_cny", event.target.value)} inputMode="decimal" /></label>
               <label><span>SGOV 股息</span><input value={balanceInputs.sgov_dividend_usd ?? ""} onChange={(event) => updateBalance("sgov_dividend_usd", event.target.value)} inputMode="decimal" /></label>
             </div>
-            <p className="muted">现金成本基准用于区分本金和已变现收益；普通入金、出金会自动同步，盈利再投资后允许显示为负数。</p>
+            <p className="muted">Margin 账户现金余额允许为负数；现金成本基准用于区分本金和已变现收益。</p>
             <div className="actions">
               <button className="primary" onClick={saveBalances} disabled={savingBalances}><Save size={16} /> 保存</button>
             </div>

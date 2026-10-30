@@ -146,6 +146,7 @@ def install_monthly_results(
                 "quantiles": list(MONTHLY_QUANTILES),
                 "vol_regime": result.get("vol_regime"),
                 "vol_multiplier": result.get("vol_multiplier"),
+                "rv20_pct": float(result["current_rv20"]) * 100.0 if result.get("current_rv20") is not None else None,
                 "history_days": result.get("history_days"),
                 "as_of_date": result.get("as_of_date"),
                 "confidence_by_tier": result.get("confidence_by_tier") or {},

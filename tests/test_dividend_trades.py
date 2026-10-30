@@ -59,14 +59,13 @@ def test_invalid_receipt_does_not_save(book, changes):
     assert book == before
 
 
-def test_insufficient_cash_reversal_preserves_book(book):
+def test_dividend_reversal_can_leave_negative_margin_cash(book):
     _, balances, records = book
     portfolio.confirm_trades("test", [receipt()])
     balances["cash_usd"] = 1
-    before = deepcopy(book)
-    with pytest.raises(ValueError):
-        portfolio.delete_trade_record("test", records[0]["id"])
-    assert book == before
+    portfolio.delete_trade_record("test", records[0]["id"])
+    assert balances["cash_usd"] == -2.5
+    assert balances["sgov_dividend_usd"] == 15.2
 
 
 def test_receipt_history_changes_cash_not_principal(book):
