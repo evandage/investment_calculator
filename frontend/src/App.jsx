@@ -634,12 +634,15 @@ function Summary({ data }) {
   const usdHoldingCost = usdRows.reduce((sum, row) => sum + Number(row.shares || 0) * Number(row.avg_cost || 0), 0);
   const usdCash = Number(data.balances?.cash_usd || 0);
   const usdTotalAssets = usdHoldingValue + usdCash;
-  const usdPnl = Number.isFinite(Number(summary.usd_unrealized_pnl_usd))
+  const archivedPnlRows = Object.values(data.archived_pnl || {});
+  const includedArchivedPnlUsd = archivedPnlRows
+    .filter((row) => Boolean(row.included_in_realized))
+    .reduce((sum, row) => sum + Number(row.pnl_usd || 0), 0);
+  const realizedTradeUsd = Number(data.balances?.realized_usd || 0);
+  const realizedTradeCny = Number(data.balances?.realized_cny || 0);
+  const usdPnl = summary.usd_unrealized_pnl_usd != null && Number.isFinite(Number(summary.usd_unrealized_pnl_usd))
     ? Number(summary.usd_unrealized_pnl_usd)
     : usdRows.reduce((sum, row) => sum + Number(row.pnl || 0), 0);
-  const totalHoldingPnl = Number.isFinite(Number(summary.total_unrealized_pnl_cny))
-    ? Number(summary.total_unrealized_pnl_cny)
-    : Number(summary.total_pnl_cny || 0) - Number(summary.total_realized_pnl_cny || 0);
   const usdPnlPct = usdHoldingCost > 0 ? (usdPnl / usdHoldingCost) * 100 : 0;
   const usdDailyChange = usdRows.reduce(
     (total, row) => total + dailyAmount(row.value, row.effective_daily_pct),
@@ -662,6 +665,7 @@ function Summary({ data }) {
       ? Number(row.pnl || 0) / usdHoldingCost * 100
       : 0,
   }));
+  const otherRealizedTradeUsd = realizedTradeUsd - includedArchivedPnlUsd;
   const totalReturnBasisCny = Number(summary.total_return_basis_cny || 0);
   const totalHoldingPnlDetails = (data.holdings || []).map((row) => ({
     symbol: row.symbol,
@@ -671,6 +675,26 @@ function Summary({ data }) {
       ? Number(row.pnl_cny || 0) / totalReturnBasisCny * 100
       : 0,
   }));
+  archivedPnlRows.forEach((row) => {
+    const amount = Number(row.pnl_usd || 0) * fx;
+    totalHoldingPnlDetails.push({
+      symbol: `${row.label || row.symbol}*`,
+      amount,
+      pct: null,
+      contributionPct: totalReturnBasisCny > 0 ? amount / totalReturnBasisCny * 100 : 0,
+    });
+  });
+  const realizedTradeTotalCny = realizedTradeCny + otherRealizedTradeUsd * fx;
+  if (Math.abs(realizedTradeTotalCny) > 0.000001) {
+    totalHoldingPnlDetails.push({
+      symbol: "其他已变现交易",
+      amount: realizedTradeTotalCny,
+      pct: null,
+      contributionPct: totalReturnBasisCny > 0
+        ? realizedTradeTotalCny / totalReturnBasisCny * 100
+        : 0,
+    });
+  }
   if (Math.abs(Number(summary.usd_cash_fx_pnl_cny || 0)) > 0.000001) {
     totalHoldingPnlDetails.push({
       symbol: "美元现金汇兑",
@@ -729,11 +753,11 @@ function Summary({ data }) {
             <strong>{fmtMoney(usdTotalAssets, "USD")}</strong>
           </div>
           <div className="summaryItem hasSummaryBreakdown holdingPnlSummaryItem" tabIndex="0">
-            <span>持仓盈亏</span>
+            <span>未变现盈亏</span>
             <strong className={tone(usdPnl)}>
               {fmtMoney(usdPnl, "USD")}<br className="mobileSummaryBreak" /> {fmtPct(usdPnlPct)}
             </strong>
-            <SummaryBreakdownTooltip title="美元持仓盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} showContribution />
+            <SummaryBreakdownTooltip title="美元未变现盈亏明细" rows={usdHoldingPnlDetails} currency="USD" total={usdPnl} showContribution />
           </div>
           <div className="summaryItem hasSummaryBreakdown dailySummaryItem" tabIndex="0">
             <span>当日加权{dailyAsOfLabel}</span>
@@ -752,11 +776,11 @@ function Summary({ data }) {
             <strong>{fmtMoney(summary.total_assets_cny, "CNY")}</strong>
           </div>
           <div className="summaryItem hasSummaryBreakdown holdingPnlSummaryItem" tabIndex="0">
-            <span title="含汇率影响">持仓盈亏*</span>
-            <strong className={tone(totalHoldingPnl)}>
-              {fmtMoney(totalHoldingPnl, "CNY")}<br className="mobileSummaryBreak" /> {fmtPct(totalReturnBasisCny > 0 ? totalHoldingPnl / totalReturnBasisCny * 100 : 0)}
+            <span title="含汇率影响">总盈亏</span>
+            <strong className={tone(summary.total_pnl_cny)}>
+              {fmtMoney(summary.total_pnl_cny, "CNY")}<br className="mobileSummaryBreak" /> {fmtPct(summary.total_pnl_pct)}
             </strong>
-            <SummaryBreakdownTooltip title="总资产持仓盈亏明细（包含汇率浮盈亏）" rows={totalHoldingPnlDetails} currency="CNY" total={totalHoldingPnl} showContribution />
+            <SummaryBreakdownTooltip title="总资产总盈亏明细（包含汇率浮盈亏）" rows={totalHoldingPnlDetails} currency="CNY" total={summary.total_pnl_cny} showContribution />
           </div>
           <div className="summaryItem hasSummaryBreakdown dailySummaryItem totalDailySummaryItem" tabIndex="0">
             <span>当日加权{dailyAsOfLabel}</span>
@@ -1639,7 +1663,7 @@ function PerformanceLightweightChart({ points, series }) {
             {tooltip.point.fx_source ? " · " + tooltip.point.fx_source : ""}
           </span>
           <span className={tone(tooltip.point.usd_pnl_usd)}>
-            美元资产累计盈亏&nbsp;
+            美元资产持仓盈亏&nbsp;
             {tooltip.point.usd_pnl_usd == null ? "-" : fmtMoney(tooltip.point.usd_pnl_usd, "USD")}
             &nbsp;·&nbsp;{tooltip.point.usd_return_pct == null ? "-" : fmtPct(tooltip.point.usd_return_pct)}
           </span>
@@ -1649,7 +1673,7 @@ function PerformanceLightweightChart({ points, series }) {
             &nbsp;·&nbsp;{tooltip.point.usd_daily_pct == null ? "-" : fmtPct(tooltip.point.usd_daily_pct)}
           </span>
           <span className={tone(tooltip.point.total_pnl_cny)}>
-            总资产累计盈亏&nbsp;
+            总资产持仓盈亏&nbsp;
             {tooltip.point.total_pnl_cny == null ? "-" : fmtMoney(tooltip.point.total_pnl_cny, "CNY")}
             &nbsp;·&nbsp;{tooltip.point.portfolio_return_pct == null ? "-" : fmtPct(tooltip.point.portfolio_return_pct)}
           </span>
@@ -4005,7 +4029,7 @@ function AssetMetricCards({ data, holdings, balances }) {
         <h2>美元资产</h2>
         <div className="assetMetricGrid">
           <div className="assetMetricCard"><span>已变现盈亏</span><strong>{fmtMoney(usdRealized, "USD")}</strong></div>
-          <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(usdUnrealized)}>{fmtMoney(usdUnrealized, "USD")}</strong><em className={tone(usdUnrealized)}>{fmtPct(usdCost ? usdUnrealized / usdCost * 100 : 0)}</em></div>
+          <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(usdUnrealized)}>{fmtMoney(usdUnrealized, "USD")}</strong><em className={tone(usdReturn)}>{fmtPct(usdReturn)}</em></div>
           <div className="assetMetricCard"><span>合计盈亏</span><strong className={tone(usdTotalPnl)}>{fmtMoney(usdTotalPnl, "USD")}</strong></div>
         </div>
         <div className="assetDetailPanel">
@@ -4024,7 +4048,7 @@ function AssetMetricCards({ data, holdings, balances }) {
         <h2>总资产（折合CNY）</h2>
         <div className="assetMetricGrid">
           <div className="assetMetricCard"><span>已变现盈亏</span><strong>{fmtMoney(totalRealizedCny, "CNY")}</strong></div>
-          <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(totalUnrealizedCny)}>{fmtMoney(totalUnrealizedCny, "CNY")}</strong><em className={tone(totalUnrealizedCny)}>{fmtPct(totalReturnBasisCny ? totalUnrealizedCny / totalReturnBasisCny * 100 : 0)}</em></div>
+          <div className="assetMetricCard"><span>未实现浮盈亏</span><strong className={tone(totalUnrealizedCny)}>{fmtMoney(totalUnrealizedCny, "CNY")}</strong><em className={tone(totalReturn)}>{fmtPct(totalReturn)}</em></div>
           <div className="assetMetricCard"><span>合计盈亏</span><strong className={tone(totalPnlCny)}>{fmtMoney(totalPnlCny, "CNY")}</strong></div>
         </div>
         <div className="assetDetailPanel">
