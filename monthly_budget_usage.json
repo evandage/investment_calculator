@@ -139,7 +139,7 @@
       "updated_at": "2026-09-24T09:47:31+08:00"
     },
     "2026-10": {
-      "used_budget_usd": 2145.56,
+      "used_budget_usd": 3127.36,
       "planned_new_cash_usd": 1700.0,
       "planned_cash_by_month": {
         "2026-11": 1700.0
@@ -153,9 +153,9 @@
         "VOO"
       ],
       "bought_amount_by_symbol": {
-        "QQQ": 650.0,
-        "AVGO": 60.0,
-        "VOO": 970.0,
+        "QQQ": 850.0,
+        "AVGO": 102.69,
+        "VOO": 1709.1100000000001,
         "TEM": 20.0,
         "GOOGL": 395.56,
         "ISRG": 50.0
@@ -168,42 +168,64 @@
         "GOOGL": "large",
         "ISRG": "medium"
       },
-      "updated_at": "2026-10-29T15:16:16+08:00"
+      "updated_at": "2026-11-02T09:35:32+08:00"
     },
     "stock_quarters": {
       "ISRG": {
         "start_date": "2026-10-01",
         "carry_in_usd": 0.0,
-        "quarter_label": "Y26Q3",
-        "base_budget_usd": 73.50000000000001
+        "quarter_label": "Y26Q4",
+        "base_budget_usd": 73.50000000000001,
+        "history": []
       },
       "TEM": {
         "start_date": "2026-10-01",
         "carry_in_usd": 0.0,
-        "quarter_label": "Y26Q3",
-        "base_budget_usd": 21.000000000000007
+        "quarter_label": "Y26Q4",
+        "base_budget_usd": 21.000000000000007,
+        "history": []
       },
       "PLTR": {
         "start_date": "2026-10-01",
         "carry_in_usd": 0.0,
-        "quarter_label": "Y26Q3",
-        "base_budget_usd": 15.750000000000004
+        "quarter_label": "Y26Q4",
+        "base_budget_usd": 15.750000000000004,
+        "history": []
       },
       "GOOGL": {
         "start_date": "2026-10-01",
         "carry_in_usd": 0.0,
-        "quarter_label": "Y26Q3",
-        "base_budget_usd": 73.50000000000001
+        "quarter_label": "Y26Q4",
+        "base_budget_usd": 73.50000000000001,
+        "history": []
       },
       "AVGO": {
         "start_date": "2026-10-01",
         "carry_in_usd": 0.0,
-        "quarter_label": "Y26Q3",
-        "base_budget_usd": 26.250000000000007
+        "quarter_label": "Y26Q4",
+        "base_budget_usd": 26.250000000000007,
+        "history": []
       }
     },
     "etf_budget_months": {
-      "VOO": "2026-11"
+      "VOO": "2026-11",
+      "QQQ": "2026-11"
+    },
+    "2026-11": {
+      "used_budget_usd": 100.0,
+      "planned_new_cash_usd": 700.0,
+      "planned_cash_by_month": {},
+      "bought_symbols": [
+        "QQQ"
+      ],
+      "bought_amount_by_symbol": {
+        "QQQ": 100.0
+      },
+      "sold_amount_by_symbol": {},
+      "bought_intensity_by_symbol": {
+        "QQQ": "small"
+      },
+      "updated_at": "2026-11-04T10:08:08+08:00"
     }
   }
 }
