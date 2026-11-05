@@ -12,7 +12,7 @@ import pandas as pd
 from futu import AuType, KLType, OpenQuoteContext, RET_OK, Session
 
 
-TICKERS = ("VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO")
+TICKERS = ("VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "APP")
 QUANTILES = np.array([0.65, 0.85, 0.95])
 TIER_NAMES = ("small", "medium", "large")
 REGIME_NAMES = {0: "low", 1: "normal", 2: "high"}

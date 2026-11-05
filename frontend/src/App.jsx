@@ -407,7 +407,7 @@ function globalKlineColumns(width = window.innerWidth) {
 
 function peTone(row) {
   if (row.symbol === "VOO" || row.symbol === "QQQ") return "";
-  const ps = Number(row.forward_ps ?? row.ps);
+  const ps = row.ps == null ? NaN : Number(row.ps);
   const psMatch = String(row.ps_band || "").match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$/);
   if (Number.isFinite(ps) && psMatch) {
     const low = Number(psMatch[1]);
@@ -424,8 +424,8 @@ function valuationLabel(row) {
   if (row.symbol === "VOO" || row.symbol === "QQQ") {
     return row.recent_5d_pct == null ? "-" : `5日 ${fmtPct(row.recent_5d_pct)}`;
   }
-  if (row.forward_ps || row.ps) return `PS ${(row.forward_ps ?? row.ps).toFixed(2)}`;
-  return row.forward_pe ? row.forward_pe.toFixed(2) : "-";
+  if (row.ps) return `PS ${row.ps.toFixed(2)}`;
+  return row.pe ? row.pe.toFixed(2) : "-";
 }
 
 function valuationTooltip(row) {
@@ -433,32 +433,14 @@ function valuationTooltip(row) {
     return `近5日涨跌：${row.recent_5d_pct == null ? "-" : fmtPct(row.recent_5d_pct)}`;
   }
   if (row.symbol === "TEM") {
-    const ps = Number(row.forward_ps ?? row.ps);
-    return `PS：${Number.isFinite(ps) ? ps.toFixed(2) : "-"}\nPS区间：${row.ps_band || "-"}`;
+    const ps = row.ps == null ? NaN : Number(row.ps);
+    return `历史口径 PS：${Number.isFinite(ps) ? ps.toFixed(2) : "-"}\n历史 PS 25%–75% 分位：${row.ps_band || "-"}`;
   }
-  const pe = Number(row.forward_pe);
+  const pe = row.pe == null ? NaN : Number(row.pe);
   return [
-    `Forward PE：${Number.isFinite(pe) ? pe.toFixed(2) : "-"}`,
-    `PE区间：${row.pe_band || "-"}`,
-    `PEG：${pegLabel(row)}`,
-    `PEG区间：${row.peg_band || "-"}`,
+    `历史口径 PE：${Number.isFinite(pe) ? pe.toFixed(2) : "-"}`,
+    `历史 PE 25%–75% 分位：${row.pe_band || "-"}`,
   ].join("\n");
-}
-
-function pegLabel(row) {
-  const peg = Number(row.peg);
-  return Number.isFinite(peg) && peg > 0 ? peg.toFixed(2) : "-";
-}
-
-function pegTone(row) {
-  const peg = Number(row.peg);
-  const match = String(row.peg_band || "").match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$/);
-  if (!Number.isFinite(peg) || !match) return "";
-  const low = Number(match[1]);
-  const high = Number(match[2]);
-  if (peg > high) return "down";
-  if (peg < low) return "up";
-  return "";
 }
 
 function valuationBandTone(value, bandText) {

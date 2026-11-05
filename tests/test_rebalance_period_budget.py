@@ -11,6 +11,25 @@ class FixedDatetime(datetime):
         return cls(2026, 10, 29, 12, 0, tzinfo=tz)
 
 
+def test_stock_quarter_state_uses_current_satellite_symbols(monkeypatch):
+    monkeypatch.setattr(portfolio, "SATELLITE_SYMBOLS", ("APP",))
+    monkeypatch.setattr(portfolio, "USD_SYMBOLS", ("APP",))
+    monkeypatch.setattr(portfolio, "load_stock_quarters", lambda *_: {})
+    monkeypatch.setattr(portfolio, "load_monthly_usage", lambda *_: {"planned_new_cash_usd": 100.0})
+    monkeypatch.setattr(portfolio, "effective_target_weights", lambda: {"APP": 1.0})
+    monkeypatch.setattr(portfolio, "save_stock_quarters", lambda *_: None)
+    assert portfolio.stock_quarter_state("evan", FixedDatetime.now())["APP"]["base_budget_usd"] == 300.0
+
+
+def test_valuation_uses_historical_metrics_and_ignores_peg(monkeypatch):
+    monkeypatch.setattr(portfolio, "SATELLITE_SYMBOLS", ("APP", "TEM"))
+    assert portfolio.valuation_split_for_row("APP", {"pe": 105, "forward_pe": 10, "peg": 0.1})[0] == 0.5
+    assert portfolio.valuation_split_for_row("APP", {"pe": 60, "forward_pe": 200, "peg": 100})[0] == 1.0
+    assert portfolio.valuation_split_for_row("APP", {"pe": None, "forward_pe": 200})[0] == 1.0
+    assert portfolio.valuation_split_for_row("TEM", {"ps": 14, "forward_ps": 5})[0] == 0.5
+    assert portfolio.valuation_split_for_row("TEM", {"ps": 10, "forward_ps": 50, "peg": 100})[0] == 1.0
+
+
 def trade(symbol, trade_date, amount, action="buy"):
     return {"symbol": symbol, "trade_date": trade_date, "amount_usd": amount, "action": action, "cost_basis": amount}
 

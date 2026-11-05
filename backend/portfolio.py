@@ -249,7 +249,7 @@ def signal_for_intensity(symbol: str, phase: str, intensity: str) -> tuple[float
 
 def pe_band_text(symbol: str) -> str:
     band = PE_BANDS.get(symbol)
-    return "-" if not band else f"{band[0]:.0f}-{band[1]:.0f}"
+    return "-" if not band else f"{band[0]:.1f}-{band[1]:.1f}"
 
 
 def peg_band_text(symbol: str) -> str:
@@ -288,24 +288,19 @@ def fx_conversion_summary(records: list[dict[str, Any]], fallback_fx: float) -> 
 
 
 def valuation_split_for_row(symbol: str, item: dict[str, Any]) -> tuple[float, str]:
-    fpe = item.get("forward_pe")
+    pe = item.get("pe")
     band = PE_BANDS.get(symbol)
-    peg = item.get("peg")
-    peg_band = PEG_BANDS.get(symbol)
     if symbol in SATELLITE_SYMBOLS:
-        ps = item.get("forward_ps") or item.get("ps")
+        ps = item.get("ps")
         ps_band = PS_BANDS.get(symbol)
-        high_fpe = symbol not in PS_BANDS and isinstance(fpe, (int, float)) and band and fpe > band[1]
+        high_pe = symbol not in PS_BANDS and isinstance(pe, (int, float)) and band and pe > band[1]
         high_ps = symbol in PS_BANDS and isinstance(ps, (int, float)) and ps_band and ps > ps_band[1]
-        high_peg = isinstance(peg, (int, float)) and peg_band and peg > peg_band[1]
-        if high_fpe or high_ps or high_peg:
+        if high_pe or high_ps:
             signals = []
-            if high_fpe:
-                signals.append("Forward PE")
+            if high_pe:
+                signals.append("历史口径 PE")
             if high_ps:
                 signals.append("PS")
-            if high_peg:
-                signals.append("PEG")
             return 0.5, f"{' / '.join(signals)} 高于合理区间，估值系数 0.50。"
 
     recent_5d = item.get("recent_5d_pct")
@@ -2430,6 +2425,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
         value_cny_by_symbol[sym] = value_cny
         metrics = valuation_metrics.get(sym, {}) if isinstance(valuation_metrics, dict) else {}
         fpe = metrics.get("forward_pe", forward_pe.get(sym)) if isinstance(metrics, dict) else forward_pe.get(sym)
+        pe = metrics.get("pe") if isinstance(metrics, dict) else None
         peg = metrics.get("peg") if isinstance(metrics, dict) else None
         forward_ps = metrics.get("forward_ps") if isinstance(metrics, dict) else None
         ps = metrics.get("ps") if isinstance(metrics, dict) else None
@@ -2479,13 +2475,14 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
                 "rebound_pct": sixty_day.get("rebound_pct"),
                 "recent_5d_pct": sixty_day.get("recent_5d_pct"),
                 "forward_pe": fpe,
+                "pe": pe,
                 "pe_band": pe_band_text(sym) if sym in SATELLITE_SYMBOLS else "-",
                 "peg": peg,
                 "peg_band": peg_band_text(sym) if sym in SATELLITE_SYMBOLS else "-",
                 "forward_ps": forward_ps,
                 "ps": ps,
                 "ps_band": ps_band_text(sym) if sym in PS_BANDS else None,
-                "pe_judgment": pe_judgment(sym, fpe),
+                "pe_judgment": pe_judgment(sym, pe),
             }
         )
 
@@ -3010,8 +3007,10 @@ def latest_report_quarter_label(day: date) -> str:
 
 
 def stock_quarter_state(
-    user_id: str, now: datetime, symbols: tuple[str, ...] | list[str] = SATELLITE_SYMBOLS,
+    user_id: str, now: datetime, symbols: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
+    if symbols is None:
+        symbols = SATELLITE_SYMBOLS
     quarters = load_stock_quarters(user_id)
     missing = [sym for sym in symbols if sym not in quarters]
     unpriced = [sym for sym in symbols if sym in quarters and "base_budget_usd" not in quarters[sym]]
@@ -3386,6 +3385,7 @@ def build_rebalance_v2(
                 "month_start_pct": month_start_cost_usd / target_denominator_usd * 100.0 if target_denominator_usd > 0 else 0.0,
                 "current_cost_pct": cost_usd / target_denominator_usd * 100.0 if target_denominator_usd > 0 else 0.0,
                 "forward_pe": fpe,
+                "pe": item.get("pe"),
                 "pe_band": pe_band_text(sym),
                 "forward_ps": item.get("forward_ps"),
                 "ps": item.get("ps"),
@@ -3545,8 +3545,7 @@ def build_rebalance(
         base_budget = max(0.0, target_usd) if is_satellite else max(0.0, gap) / max(1, build_months)
         planned = base_budget * multiplier if is_satellite else min(max(0.0, gap), base_budget * multiplier)
         fpe = item.get("forward_pe")
-        band = PE_BANDS.get(sym)
-        split = 0.5 if sym in SATELLITE_SYMBOLS and isinstance(fpe, (int, float)) and band and fpe > band[1] else 1.0
+        split, split_note = valuation_split_for_row(sym, item)
         suggested = min(max(0.0, gap), planned) * split if is_satellite else max(0.0, planned * split - already)
         rows.append(
             {
@@ -3563,10 +3562,11 @@ def build_rebalance(
                 "target_pct": target_pct * 100.0,
                 "current_pct": current_usd / planned_total_usd * 100.0 if planned_total_usd > 0 else 0.0,
                 "forward_pe": fpe,
+                "pe": item.get("pe"),
                 "pe_band": pe_band_text(sym),
                 "peg": item.get("peg"),
                 "peg_band": peg_band_text(sym),
-                "note": "Forward PE 偏高，建议分批买入。" if split < 1.0 else "按当前规则执行。",
+                "note": split_note if split < 1.0 else "按当前规则执行。",
             }
         )
     return {

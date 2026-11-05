@@ -205,6 +205,13 @@
         "quarter_label": "Y26Q4",
         "base_budget_usd": 26.250000000000007,
         "history": []
+      },
+      "APP": {
+        "start_date": "2026-10-01",
+        "carry_in_usd": 0.0,
+        "quarter_label": "Y26Q4",
+        "base_budget_usd": 31.5,
+        "history": []
       }
     },
     "etf_budget_months": {

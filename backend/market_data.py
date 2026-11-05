@@ -1011,8 +1011,12 @@ def fetch_valuation_metrics(symbols: tuple[str, ...] | None = None) -> dict[str,
             if ret != RET_OK or not data:
                 continue
             value = _coerce_float((data.get("trend") or {}).get("forward_value"))
+            current_pe = _coerce_float((data.get("trend") or {}).get("current_value"))
+            if current_pe is not None and current_pe > 0:
+                out.setdefault(sym, {})["pe"] = current_pe
             if value and value > 0:
-                metrics = {"forward_pe": value}
+                metrics = out.setdefault(sym, {})
+                metrics["forward_pe"] = value
                 peg = _extract_peg(value, data)
                 if peg is not None and peg > 0:
                     metrics["peg"] = peg
