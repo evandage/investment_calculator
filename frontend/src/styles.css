@@ -5962,3 +5962,7 @@ tbody tr:hover th {
   .singleTradeGrid .tradeShares { grid-area: 3 / 2; }
   .singleTradeGrid .singleTradeHint { grid-area: 4 / 1 / auto / -1; }
 }
+
+.rankChartHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.rankChartHeader h2 { min-width: 0; }
+.rankClosedToggle { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 0; border: 0; background: transparent; color: var(--text-muted); line-height: 1; }

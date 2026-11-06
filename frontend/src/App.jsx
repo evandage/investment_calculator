@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, HistogramSeries, LineSeries } from "lightweight-charts";
-import { Activity, BookOpen, Check, CircleAlert, Gauge, Home, Maximize2, Minimize2, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
+import { Eye, EyeOff, Activity, BookOpen, Check, CircleAlert, Gauge, Home, Maximize2, Minimize2, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -32,8 +32,8 @@ const TERMINAL_CHART = {
   legend: "#10233a",
 };
 const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
-const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "SGOV"];
-const SATELLITE_PERFORMANCE_SYMBOLS = ["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA"];
+const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "APP", "SGOV"];
+const SATELLITE_PERFORMANCE_SYMBOLS = ["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "APP"];
 const KLINE_BOARD_SYMBOLS = new Set([...USD_PERFORMANCE_SYMBOLS.filter((item) => item !== "SGOV")]);
 const KLINE_SYMBOL_ALIASES = {};
 
@@ -813,7 +813,7 @@ function DailyCards({ cards }) {
   );
 }
 
-function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenSymbol, fx }) {
+function DailyHeatmap({ cards, holdings, satelliteUniverse, dailyAsOf, dailyCarriedForward, onOpenSymbol, fx }) {
   const [satelliteHovered, setSatelliteHovered] = useState(false);
   const [satelliteHoverSymbol, setSatelliteHoverSymbol] = useState(null);
   const [heatmapLayoutWidth, setHeatmapLayoutWidth] = useState(HEATMAP_LAYOUT_WIDTH);
@@ -838,8 +838,8 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
     return () => observer.disconnect();
   }, []);
   const satelliteSymbols = useMemo(
-    () => new Set(["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA"]),
-    [],
+    () => new Set(Array.isArray(satelliteUniverse) ? satelliteUniverse.map((item) => String(item.symbol || "").toUpperCase()).filter(Boolean) : SATELLITE_PERFORMANCE_SYMBOLS),
+    [satelliteUniverse],
   );
   const holdingsBySymbol = useMemo(
     () => Object.fromEntries((holdings || []).map((row) => [row.symbol, row])),
@@ -1207,11 +1207,11 @@ function DailyHeatmap({ cards, holdings, dailyAsOf, dailyCarriedForward, onOpenS
   );
 }
 
-function BarList({ title, rows, valueKey, formatValue }) {
+function BarList({ title, rows, valueKey, formatValue, headerAction = null }) {
   const max = Math.max(1, ...rows.map((row) => Math.abs(Number(row[valueKey] || 0))));
   return (
     <section className="chartPanel rankChartPanel">
-      <h2>{title}</h2>
+      <div className="rankChartHeader"><h2>{title}</h2>{headerAction}</div>
       <div className="barList">
         {rows.map((row) => {
           const value = Number(row[valueKey] || 0);
@@ -1269,11 +1269,14 @@ function CompareBars({ title, rows, amountKey = "current_usd", className = "", a
 }
 
 function Visualizations({ data }) {
+  const [showClosedSatellites, setShowClosedSatellites] = useState(false);
   const viz = data.visualizations || {};
+  const holdingsBySymbol = Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row]));
+  const satellitePnlRows = (viz.satellite_pnl_rank || []).filter((row) => showClosedSatellites || (!row.archived && Number(holdingsBySymbol[row.symbol]?.shares || 0) > 0));
   return (
     <section className="visualGrid">
       <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value, row) => fmtMoney(value, "USD")} />
-      <BarList title="卫星仓位浮盈亏排名" rows={viz.satellite_pnl_rank || []} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} />
+      <BarList title="卫星仓位浮盈亏排名" rows={satellitePnlRows} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} headerAction={<button type="button" className="rankClosedToggle" aria-pressed={showClosedSatellites} aria-label={showClosedSatellites ? "隐藏清仓标的" : "显示清仓标的"} title={showClosedSatellites ? "隐藏清仓标的" : "显示清仓标的"} onClick={() => setShowClosedSatellites((value) => !value)}>{showClosedSatellites ? <Eye size={15} /> : <EyeOff size={15} />}</button>} />
       <CompareBars title="美元资产配置占比" rows={viz.allocation_compare || []} />
       <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" alertThresholdPct={2.5} sortByTarget />
     </section>
@@ -5588,6 +5591,7 @@ function DashboardPage({ data, onOpenKlineSymbol }) {
         <DailyHeatmap
           cards={data.daily_cards}
           holdings={data.holdings}
+          satelliteUniverse={data.satellite_universe}
           fx={data.summary?.fx}
           dailyAsOf={data.summary?.daily_as_of}
           dailyCarriedForward={data.summary?.daily_carried_forward}
