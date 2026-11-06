@@ -13,6 +13,8 @@
       "prev_avg_cost": 726.846950341345,
       "new_avg_cost": 725.3139168389619,
       "intensity": "probe",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-02T13:09:34+08:00"
     },
     {
@@ -28,6 +30,8 @@
       "prev_avg_cost": 646.5231083496468,
       "new_avg_cost": 654.8684772257069,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-03T10:06:03+08:00"
     },
     {
@@ -43,6 +47,8 @@
       "prev_avg_cost": 725.3139168389619,
       "new_avg_cost": 725.7021851078638,
       "intensity": "probe",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-03T10:06:03+08:00"
     },
     {
@@ -58,6 +64,8 @@
       "prev_avg_cost": 100.52,
       "new_avg_cost": 100.52,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T10:52:16+08:00"
     },
     {
@@ -73,6 +81,8 @@
       "prev_avg_cost": 414.1,
       "new_avg_cost": 414.1,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T10:53:36+08:00"
     },
     {
@@ -88,6 +98,8 @@
       "prev_avg_cost": 364.1269623748706,
       "new_avg_cost": 364.1269623748706,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T10:54:51+08:00"
     },
     {
@@ -103,6 +115,8 @@
       "prev_avg_cost": 418.2912358757062,
       "new_avg_cost": 418.2912358757062,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T10:55:09+08:00"
     },
     {
@@ -118,6 +132,8 @@
       "prev_avg_cost": 654.8684772257069,
       "new_avg_cost": 655.886371580185,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T10:55:26+08:00"
     },
     {
@@ -133,6 +149,8 @@
       "prev_avg_cost": 725.7021851078734,
       "new_avg_cost": 722.7800429230687,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T10:56:27+08:00"
     },
     {
@@ -148,6 +166,8 @@
       "prev_avg_cost": 722.7800429230687,
       "new_avg_cost": 720.69569292403,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T11:01:14+08:00"
     },
     {
@@ -163,6 +183,8 @@
       "prev_avg_cost": 655.8741,
       "new_avg_cost": 645.0492690376637,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T21:52:50+08:00"
     },
     {
@@ -178,6 +200,8 @@
       "prev_avg_cost": 645.0492690376637,
       "new_avg_cost": 657.2688171,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T21:54:11+08:00"
     },
     {
@@ -193,6 +217,8 @@
       "prev_avg_cost": 100.0,
       "new_avg_cost": 128.74806800618236,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-08T21:54:48+08:00"
     },
     {
@@ -208,6 +234,8 @@
       "prev_avg_cost": 100.52,
       "new_avg_cost": 0.0,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-09T09:44:21+08:00"
     },
     {
@@ -223,6 +251,8 @@
       "prev_avg_cost": 54.5,
       "new_avg_cost": 56.45145357042055,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-11T10:58:46+08:00"
     },
     {
@@ -238,6 +268,8 @@
       "prev_avg_cost": 408.94,
       "new_avg_cost": 408.69220903345155,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-11T11:00:04+08:00"
     },
     {
@@ -253,6 +285,8 @@
       "prev_avg_cost": 56.45145357042055,
       "new_avg_cost": 56.70892741412832,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-13T22:00:52+08:00"
     },
     {
@@ -268,6 +302,8 @@
       "prev_avg_cost": 408.69220903345155,
       "new_avg_cost": 408.0062820702952,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-15T10:33:48+08:00"
     },
     {
@@ -283,6 +319,8 @@
       "prev_avg_cost": 56.70892741412832,
       "new_avg_cost": 54.27362024155328,
       "intensity": "manual_review_only",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-17T22:11:36+08:00"
     },
     {
@@ -298,6 +336,8 @@
       "prev_avg_cost": 128.76,
       "new_avg_cost": 129.50879533678759,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-17T22:12:08+08:00"
     },
     {
@@ -313,6 +353,8 @@
       "prev_avg_cost": 721.67,
       "new_avg_cost": 720.8503628977656,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-17T22:36:40+08:00"
     },
     {
@@ -328,6 +370,8 @@
       "prev_avg_cost": 54.27362024155328,
       "new_avg_cost": 52.97208801443624,
       "intensity": "manual_review_only",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-21T10:42:04+08:00"
     },
     {
@@ -343,6 +387,8 @@
       "prev_avg_cost": 408.0062820702952,
       "new_avg_cost": 400.25230026673444,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-21T10:42:24+08:00"
     },
     {
@@ -358,6 +404,8 @@
       "prev_avg_cost": 0.0,
       "new_avg_cost": 100.595,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-22T09:45:59+08:00"
     },
     {
@@ -373,6 +421,8 @@
       "prev_avg_cost": 129.47,
       "new_avg_cost": 129.09682451253482,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-24T10:02:16+08:00"
     },
     {
@@ -388,6 +438,8 @@
       "prev_avg_cost": 363.76,
       "new_avg_cost": 356.9632792994224,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-24T10:02:48+08:00"
     },
     {
@@ -403,6 +455,8 @@
       "prev_avg_cost": 129.09682451253482,
       "new_avg_cost": 128.05614447711048,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-24T10:03:13+08:00"
     },
     {
@@ -418,6 +472,8 @@
       "prev_avg_cost": 100.595,
       "new_avg_cost": 100.595,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-25T11:33:37+08:00"
     },
     {
@@ -433,6 +489,8 @@
       "prev_avg_cost": 356.963279299425,
       "new_avg_cost": 351.12867194928896,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-25T11:36:11+08:00"
     },
     {
@@ -448,6 +506,8 @@
       "prev_avg_cost": 400.18,
       "new_avg_cost": 395.73790928419555,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-25T11:36:35+08:00"
     },
     {
@@ -463,6 +523,8 @@
       "prev_avg_cost": 100.595,
       "new_avg_cost": 100.595,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-28T22:01:43+08:00"
     },
     {
@@ -478,6 +540,8 @@
       "prev_avg_cost": 720.83,
       "new_avg_cost": 718.0557205701958,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-28T22:02:22+08:00"
     },
     {
@@ -493,6 +557,8 @@
       "prev_avg_cost": 718.0557205701958,
       "new_avg_cost": 716.6942250748473,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-28T22:02:49+08:00"
     },
     {
@@ -508,6 +574,8 @@
       "prev_avg_cost": 716.6942250748473,
       "new_avg_cost": 715.3157947309775,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-28T22:03:17+08:00"
     },
     {
@@ -523,6 +591,8 @@
       "prev_avg_cost": 100.595,
       "new_avg_cost": 100.59500000000001,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-28T22:33:03+08:00"
     },
     {
@@ -538,6 +608,8 @@
       "prev_avg_cost": 715.3157947309775,
       "new_avg_cost": 712.781941773103,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-28T22:33:35+08:00"
     },
     {
@@ -553,6 +625,8 @@
       "prev_avg_cost": 712.781941773103,
       "new_avg_cost": 709.4793571973111,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-30T10:57:43+08:00"
     },
     {
@@ -568,6 +642,8 @@
       "prev_avg_cost": 100.59500000000001,
       "new_avg_cost": 100.595,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-31T08:06:13+08:00"
     },
     {
@@ -583,6 +659,8 @@
       "prev_avg_cost": 657.2688171,
       "new_avg_cost": 659.6361040612114,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-31T08:06:45+08:00"
     },
     {
@@ -598,6 +676,8 @@
       "prev_avg_cost": 52.97,
       "new_avg_cost": 51.69268246494011,
       "intensity": "manual_review_only",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-31T08:07:10+08:00"
     },
     {
@@ -613,6 +693,8 @@
       "prev_avg_cost": 659.6361040612114,
       "new_avg_cost": 661.0267200187416,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-31T08:08:31+08:00"
     },
     {
@@ -628,6 +710,8 @@
       "prev_avg_cost": 100.595,
       "new_avg_cost": 100.59500000000001,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-31T21:34:30+08:00"
     },
     {
@@ -643,6 +727,8 @@
       "prev_avg_cost": 709.4793571973111,
       "new_avg_cost": 708.708095379538,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-31T21:35:01+08:00"
     },
     {
@@ -658,6 +744,8 @@
       "prev_avg_cost": 661.0267200187416,
       "new_avg_cost": 663.4198994521332,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-07-31T21:35:20+08:00"
     },
     {
@@ -673,6 +761,8 @@
       "prev_avg_cost": 100.59500000000001,
       "new_avg_cost": 100.49930555555555,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-06T09:34:09+08:00"
     },
     {
@@ -688,6 +778,8 @@
       "prev_avg_cost": 421.23,
       "new_avg_cost": 421.22999999999996,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-07T09:19:28+08:00"
     },
     {
@@ -703,6 +795,8 @@
       "prev_avg_cost": 351.12867194928896,
       "new_avg_cost": 353.48674450722075,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-07T09:19:45+08:00"
     },
     {
@@ -718,6 +812,8 @@
       "prev_avg_cost": 708.708095379538,
       "new_avg_cost": 709.1850517656627,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-07T09:21:26+08:00"
     },
     {
@@ -733,6 +829,8 @@
       "prev_avg_cost": 100.49930555555555,
       "new_avg_cost": 100.49930555555555,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-12T09:32:45+08:00"
     },
     {
@@ -748,6 +846,8 @@
       "prev_avg_cost": 353.48674450722075,
       "new_avg_cost": 353.35386922896805,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-12T09:33:05+08:00"
     },
     {
@@ -763,6 +863,8 @@
       "prev_avg_cost": 353.35386922896805,
       "new_avg_cost": 352.73191451666634,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-19T23:00:04+08:00"
     },
     {
@@ -778,6 +880,8 @@
       "prev_avg_cost": 352.73191451666634,
       "new_avg_cost": 352.197453183522,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-19T23:00:33+08:00"
     },
     {
@@ -793,6 +897,8 @@
       "prev_avg_cost": 100.49930555555555,
       "new_avg_cost": 100.49930555555555,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-13T22:09:13+08:00"
     },
     {
@@ -808,6 +914,8 @@
       "prev_avg_cost": 709.1850517656627,
       "new_avg_cost": 710.3333810349387,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-13T22:09:37+08:00"
     },
     {
@@ -823,6 +931,8 @@
       "prev_avg_cost": 663.4198994521332,
       "new_avg_cost": 670.2621643096289,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-13T22:09:55+08:00"
     },
     {
@@ -838,6 +948,8 @@
       "prev_avg_cost": 710.7211290541826,
       "new_avg_cost": 710.9929349050425,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-19T23:13:09+08:00"
     },
     {
@@ -853,6 +965,8 @@
       "prev_avg_cost": 100.49930555555555,
       "new_avg_cost": 100.49930555555555,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-19T22:59:38+08:00"
     },
     {
@@ -868,6 +982,8 @@
       "prev_avg_cost": 100.49930555555555,
       "new_avg_cost": 100.49930555555555,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-19T23:01:53+08:00"
     },
     {
@@ -883,6 +999,8 @@
       "prev_avg_cost": 710.3333810349387,
       "new_avg_cost": 710.6114773048442,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-19T23:02:28+08:00"
     },
     {
@@ -898,6 +1016,8 @@
       "prev_avg_cost": 710.6114773048442,
       "new_avg_cost": 710.7211290541826,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-08-19T23:02:49+08:00"
     },
     {
@@ -913,6 +1033,8 @@
       "prev_avg_cost": 100.49930555555555,
       "new_avg_cost": 100.49930555555554,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-02T10:07:09+08:00"
     },
     {
@@ -928,6 +1050,8 @@
       "prev_avg_cost": 670.2621643096289,
       "new_avg_cost": 673.9689169916863,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-02T10:07:39+08:00"
     },
     {
@@ -943,6 +1067,8 @@
       "prev_avg_cost": 710.9929349050425,
       "new_avg_cost": 710.8453178913334,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-02T10:08:06+08:00"
     },
     {
@@ -958,6 +1084,8 @@
       "prev_avg_cost": 352.197453183522,
       "new_avg_cost": 351.2857064471893,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-02T10:08:24+08:00"
     },
     {
@@ -973,6 +1101,8 @@
       "prev_avg_cost": 100.49930555555554,
       "new_avg_cost": 100.49930555555554,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-07T14:01:11+08:00"
     },
     {
@@ -988,6 +1118,8 @@
       "prev_avg_cost": 673.9689169916863,
       "new_avg_cost": 675.7193082173769,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-09T09:24:06+08:00"
     },
     {
@@ -1003,6 +1135,8 @@
       "prev_avg_cost": 710.8453178913334,
       "new_avg_cost": 711.4198478616498,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-09T09:24:17+08:00"
     },
     {
@@ -1018,6 +1152,8 @@
       "prev_avg_cost": 100.49930555555554,
       "new_avg_cost": 100.49111531986532,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-09T09:24:51+08:00"
     },
     {
@@ -1033,6 +1169,8 @@
       "prev_avg_cost": 675.7193082173769,
       "new_avg_cost": 676.192298145547,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-16T09:43:15+08:00"
     },
     {
@@ -1048,6 +1186,8 @@
       "prev_avg_cost": 711.4198478616498,
       "new_avg_cost": 711.3177369290287,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-16T09:43:37+08:00"
     },
     {
@@ -1063,6 +1203,8 @@
       "prev_avg_cost": 100.49111531986532,
       "new_avg_cost": 100.49111531986532,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-16T09:42:36+08:00"
     },
     {
@@ -1078,6 +1220,8 @@
       "prev_avg_cost": 676.192298145547,
       "new_avg_cost": 676.6848091171245,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-16T09:44:03+08:00"
     },
     {
@@ -1093,6 +1237,8 @@
       "prev_avg_cost": 711.3177369290287,
       "new_avg_cost": 711.1016065322226,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-16T09:44:25+08:00"
     },
     {
@@ -1108,6 +1254,8 @@
       "prev_avg_cost": 421.22999999999996,
       "new_avg_cost": 399.8660798209623,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-16T09:45:23+08:00"
     },
     {
@@ -1123,6 +1271,8 @@
       "prev_avg_cost": 351.2857064471893,
       "new_avg_cost": 349.6723375845257,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-09-24T09:47:31+08:00"
     },
     {
@@ -1138,6 +1288,8 @@
       "prev_avg_cost": 100.50179009295856,
       "new_avg_cost": 100.50179009295856,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-16T09:22:49+08:00"
     },
     {
@@ -1153,6 +1305,8 @@
       "prev_avg_cost": 711.1016065322226,
       "new_avg_cost": 712.8167747744018,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-14T09:18:58+08:00"
     },
     {
@@ -1168,6 +1322,8 @@
       "prev_avg_cost": 100.49111531986532,
       "new_avg_cost": 100.50179009295856,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-14T09:19:25+08:00"
     },
     {
@@ -1183,6 +1339,8 @@
       "prev_avg_cost": 100.50179009295856,
       "new_avg_cost": 100.50179009295856,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-16T09:17:40+08:00"
     },
     {
@@ -1198,6 +1356,8 @@
       "prev_avg_cost": 712.8167747744018,
       "new_avg_cost": 712.9728673452965,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-16T09:18:06+08:00"
     },
     {
@@ -1213,6 +1373,8 @@
       "prev_avg_cost": 399.8660798209623,
       "new_avg_cost": 374.89707623318384,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-16T09:18:27+08:00"
     },
     {
@@ -1228,6 +1390,8 @@
       "prev_avg_cost": 676.6848091171245,
       "new_avg_cost": 677.8965954772651,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-16T09:18:41+08:00"
     },
     {
@@ -1243,6 +1407,8 @@
       "prev_avg_cost": 51.69268246494011,
       "new_avg_cost": 53.71206241399209,
       "intensity": "manual_review_only",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-16T09:18:55+08:00"
     },
     {
@@ -1258,6 +1424,8 @@
       "prev_avg_cost": 100.50179009295856,
       "new_avg_cost": 100.50179009295856,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-20T09:20:42+08:00"
     },
     {
@@ -1273,6 +1441,8 @@
       "prev_avg_cost": 677.8965954772651,
       "new_avg_cost": 679.0681772382349,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-20T09:21:09+08:00"
     },
     {
@@ -1288,6 +1458,8 @@
       "prev_avg_cost": 679.0681772382349,
       "new_avg_cost": 679.4608528361066,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-20T09:21:27+08:00"
     },
     {
@@ -1303,6 +1475,8 @@
       "prev_avg_cost": 712.9728673452965,
       "new_avg_cost": 712.9749831470302,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-21T09:31:42+08:00"
     },
     {
@@ -1318,6 +1492,8 @@
       "prev_avg_cost": 100.50179009295856,
       "new_avg_cost": 100.50179009295856,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-21T09:31:27+08:00"
     },
     {
@@ -1333,6 +1509,8 @@
       "prev_avg_cost": 100.50179009295856,
       "new_avg_cost": 100.50179009295857,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-23T09:19:16+08:00"
     },
     {
@@ -1348,6 +1526,8 @@
       "prev_avg_cost": 349.6723375845257,
       "new_avg_cost": 347.387997330764,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-23T09:20:27+08:00"
     },
     {
@@ -1363,6 +1543,8 @@
       "prev_avg_cost": 395.73790928419555,
       "new_avg_cost": 398.1301974976734,
       "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-23T09:20:57+08:00"
     },
     {
@@ -1378,6 +1560,8 @@
       "prev_avg_cost": 100.50179009295857,
       "new_avg_cost": 100.50179009295857,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-23T09:19:53+08:00"
     },
     {
@@ -1393,6 +1577,8 @@
       "prev_avg_cost": 679.4608528361066,
       "new_avg_cost": 680.42779963202,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-23T09:21:12+08:00"
     },
     {
@@ -1408,6 +1594,8 @@
       "prev_avg_cost": 712.9749831470302,
       "new_avg_cost": 713.0123281576153,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-23T09:21:26+08:00"
     },
     {
@@ -1423,6 +1611,8 @@
       "prev_avg_cost": 680.42779963202,
       "new_avg_cost": 681.4606742576939,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-27T09:54:40+08:00"
     },
     {
@@ -1438,6 +1628,8 @@
       "prev_avg_cost": 100.50179009295857,
       "new_avg_cost": 100.50179009295859,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-27T09:54:21+08:00"
     },
     {
@@ -1453,6 +1645,8 @@
       "prev_avg_cost": 347.387997330764,
       "new_avg_cost": 344.92450111917617,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-27T09:54:57+08:00"
     },
     {
@@ -1468,6 +1662,8 @@
       "prev_avg_cost": 344.92450111917617,
       "new_avg_cost": 324.97360546417224,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-10-29T15:16:16+08:00"
     },
     {
@@ -1483,6 +1679,8 @@
       "prev_avg_cost": 681.4606742576939,
       "new_avg_cost": 683.5499150588081,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-11-02T09:34:57+08:00"
     },
     {
@@ -1498,6 +1696,8 @@
       "prev_avg_cost": 713.0123281576153,
       "new_avg_cost": 712.144773082817,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-11-02T09:35:13+08:00"
     },
     {
@@ -1513,6 +1713,8 @@
       "prev_avg_cost": 374.89707623318384,
       "new_avg_cost": 365.10351960801887,
       "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-11-02T09:35:32+08:00"
     },
     {
@@ -1528,6 +1730,8 @@
       "prev_avg_cost": 100.50179009295859,
       "new_avg_cost": 100.49452067025759,
       "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-11-04T10:07:26+08:00"
     },
     {
@@ -1543,6 +1747,8 @@
       "prev_avg_cost": 712.144773082817,
       "new_avg_cost": 711.4953684724768,
       "intensity": "small",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-11-04T10:07:46+08:00"
     },
     {
@@ -1558,7 +1764,196 @@
       "prev_avg_cost": 100.49452067025759,
       "new_avg_cost": 100.49452067025757,
       "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
       "created_at": "2026-11-04T10:08:08+08:00"
+    },
+    {
+      "id": "20261106100758-104-QQQ",
+      "trade_date": "2026-11-05",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 200.0,
+      "shares": 0.2947,
+      "price": 678.656260604004,
+      "cost_basis": 200.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 711.4953684724768,
+      "new_avg_cost": 709.9328133600462,
+      "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:07:58+08:00"
+    },
+    {
+      "id": "20261106100828-105-APP",
+      "trade_date": "2026-11-05",
+      "symbol": "APP",
+      "action": "buy",
+      "amount_usd": 20.0,
+      "shares": 0.0565,
+      "price": 353.98230088495575,
+      "cost_basis": 20.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 0.0,
+      "new_avg_cost": 353.98230088495575,
+      "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:08:28+08:00"
+    },
+    {
+      "id": "20261106100848-106-QQQ",
+      "trade_date": "2026-11-05",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 70.0,
+      "shares": 0.1045,
+      "price": 669.8564593301436,
+      "cost_basis": 70.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 709.9328133600462,
+      "new_avg_cost": 709.2678436877495,
+      "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:08:48+08:00"
+    },
+    {
+      "id": "20261106100902-107-QQQ",
+      "trade_date": "2026-11-05",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 63.8,
+      "shares": 0.0964,
+      "price": 661.8257261410788,
+      "cost_basis": 63.8,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 709.2678436877495,
+      "new_avg_cost": 708.5526209723268,
+      "intensity": "medium",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:09:02+08:00"
+    },
+    {
+      "id": "20261106100952-108-SGOV",
+      "trade_date": "2026-11-05",
+      "symbol": "SGOV",
+      "action": "sell",
+      "amount_usd": 1506.825,
+      "shares": 15.0,
+      "price": 100.455,
+      "cost_basis": 1507.4178100538636,
+      "realized_pnl": -0.592810053863559,
+      "prev_avg_cost": 100.49452067025757,
+      "new_avg_cost": 100.49452067025759,
+      "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:09:52+08:00"
+    },
+    {
+      "id": "20261106101637-109-APP",
+      "trade_date": "2026-11-05",
+      "symbol": "APP",
+      "action": "buy",
+      "amount_usd": 30.0,
+      "shares": 0.0832,
+      "price": 360.5769230769231,
+      "cost_basis": 30.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 353.98230088495575,
+      "new_avg_cost": 357.9098067287044,
+      "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:16:37+08:00"
+    },
+    {
+      "id": "20261106101840-110-QQQ",
+      "trade_date": "2026-11-05",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 200.0,
+      "shares": 0.3028,
+      "price": 660.5019815059445,
+      "cost_basis": 200.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 708.5526209723268,
+      "new_avg_cost": 706.3801110233301,
+      "intensity": "small",
+      "uses_sgov": true,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:18:40+08:00"
+    },
+    {
+      "id": "20261106101854-111-VOO",
+      "trade_date": "2026-11-05",
+      "symbol": "VOO",
+      "action": "buy",
+      "amount_usd": 170.0,
+      "shares": 0.2517,
+      "price": 675.4072308303537,
+      "cost_basis": 170.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 683.5499150588081,
+      "new_avg_cost": 683.3244460136705,
+      "intensity": "small",
+      "uses_sgov": true,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:18:54+08:00"
+    },
+    {
+      "id": "20261106101913-112-VOO",
+      "trade_date": "2026-11-05",
+      "symbol": "VOO",
+      "action": "buy",
+      "amount_usd": 130.0,
+      "shares": 0.1925,
+      "price": 675.3246753246754,
+      "cost_basis": 130.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 683.3244460136705,
+      "new_avg_cost": 683.1585471871009,
+      "intensity": "small",
+      "uses_sgov": true,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:19:13+08:00"
+    },
+    {
+      "id": "20261106101927-113-VOO",
+      "trade_date": "2026-11-05",
+      "symbol": "VOO",
+      "action": "buy",
+      "amount_usd": 400.0,
+      "shares": 0.5916,
+      "price": 676.132521974307,
+      "cost_basis": 400.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 683.1585471871009,
+      "new_avg_cost": 682.7375876550029,
+      "intensity": "small",
+      "uses_sgov": true,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:19:27+08:00"
+    },
+    {
+      "id": "20261106101951-114-QQQ",
+      "trade_date": "2026-11-05",
+      "symbol": "QQQ",
+      "action": "buy",
+      "amount_usd": 260.0,
+      "shares": 0.3993,
+      "price": 651.1394941147007,
+      "cost_basis": 260.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 706.3801110233301,
+      "new_avg_cost": 703.2718776221301,
+      "intensity": "medium",
+      "uses_sgov": true,
+      "sgov_tier": null,
+      "created_at": "2026-11-06T10:19:51+08:00"
     }
   ]
 }
