@@ -31,7 +31,7 @@ const TERMINAL_CHART = {
   surface: "#0b1b2e",
   legend: "#10233a",
 };
-const PLOT_FONT = "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Inter, Microsoft YaHei, system-ui, sans-serif";
+const PLOT_FONT = '"PingFang SC", "PingFang TC", "Microsoft YaHei", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
 const USD_PERFORMANCE_SYMBOLS = ["VOO", "QQQ", "ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "APP", "SGOV"];
 const SATELLITE_PERFORMANCE_SYMBOLS = ["ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA", "APP"];
 const KLINE_BOARD_SYMBOLS = new Set([...USD_PERFORMANCE_SYMBOLS.filter((item) => item !== "SGOV")]);
@@ -452,14 +452,15 @@ function valuationBandTone(value, bandText) {
 function useDashboard(userId) {
   const [data, setData] = useState(() => readDashboardCache(userId));
   const [loading, setLoading] = useState(() => !readDashboardCache(userId));
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const loadingRef = useRef(false);
 
   async function load(forceRefresh = false) {
     if (loadingRef.current) return;
     loadingRef.current = true;
+    setRefreshing(forceRefresh);
     try {
-      setError("");
       const response = await fetch(`${API_BASE}/api/dashboard?refresh=${forceRefresh ? 1 : 0}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextData = await response.json();
@@ -468,12 +469,14 @@ function useDashboard(userId) {
         return;
       }
       setData(nextData);
+      setError("");
       writeJsonCache(`${DASHBOARD_CACHE_KEY}:${userId}`, { savedAt: Date.now(), data: nextData });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       loadingRef.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -496,7 +499,7 @@ function useDashboard(userId) {
     };
   }, []);
 
-  return { data, loading, error, load };
+  return { data, loading, refreshing, error, load };
 }
 
 function useTableGestureScroll() {
@@ -525,21 +528,33 @@ function useTableGestureScroll() {
   }, []);
 }
 
-function Header({ data, profiles, onSwitch }) {
+function Header({ data, profiles, onSwitch, onRefresh, refreshing }) {
   const market = data?.market;
+  const fetchedAt = market?.fetched_at ? new Date(market.fetched_at) : null;
+  const updatedAt = fetchedAt && Number.isFinite(fetchedAt.getTime())
+    ? new Intl.DateTimeFormat("zh-CN", {
+      timeZone: SHANGHAI_TIME_ZONE, month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).format(fetchedAt)
+    : market?.fetched_at;
   return (
     <header className="topbar">
-      <div>
-        <h1>Investment Dashboard</h1>
-        <div className="muted">
-          {market ? `行情源 ${market.provider} · ${market.fetched_at}` : "正在连接后端"}
+      <div className="brandBlock">
+        <span className="brandMark" aria-hidden="true"><TrendingUp size={23} strokeWidth={1.7} /></span>
+        <div className="brandText">
+          <h1>Investment <span>Dashboard</span></h1>
+          <div className="muted marketStatus" title={market ? `行情源 ${market.provider} · ${market.fetched_at}（北京时间）` : "正在连接后端"}>
+            <span className="marketStatusDot" aria-hidden="true" />
+            <span className="marketProvider">{market ? `行情源 ${market.provider}` : "正在连接后端"}</span>
+            {updatedAt ? <time dateTime={market.fetched_at}>{updatedAt}</time> : null}
+          </div>
         </div>
       </div>
       <div className="profileControls">
         <select aria-label="切换用户" value={data.user_id} onChange={(event) => onSwitch(event.target.value)}>
           {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
         </select>
-        <button className="iconButton" onClick={() => window.location.reload()} title="刷新网页"><RefreshCcw size={18} /></button>
+        <button type="button" className="iconButton" onClick={onRefresh} disabled={refreshing} aria-label={refreshing ? "正在刷新行情" : "刷新行情"} aria-busy={refreshing} title={refreshing ? "正在刷新行情" : "刷新行情"}><RefreshCcw size={17} className={refreshing ? "refreshSpinning" : ""} aria-hidden="true" /></button>
       </div>
     </header>
   );
@@ -554,9 +569,9 @@ function PageNav({ page, setPage }) {
   ];
   const activeIndex = Math.max(0, items.findIndex(([key]) => key === page));
   return (
-    <nav className="pageNav" style={{ "--active-index": activeIndex }}>
+    <nav className="pageNav" aria-label="主导航" style={{ "--active-index": activeIndex }}>
       {items.map(([key, label]) => (
-        <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
+        <button type="button" key={key} className={page === key ? "active" : ""} aria-current={page === key ? "page" : undefined} onClick={() => setPage(key)}>
           {key === "dashboard" ? <Home size={17} aria-hidden="true" /> : null}
           {key === "holdings" ? <Activity size={17} aria-hidden="true" /> : null}
           {key === "rebalance" ? <Gauge size={17} aria-hidden="true" /> : null}
@@ -723,7 +738,6 @@ function Summary({ data }) {
   return (
     <section className="summaryGrid">
       <div className="summaryAssetGroup">
-        <div className="summaryRowLabel">美元资产</div>
         <div className="summaryAssetMetrics">
           <div className="summaryItem">
             <span>美元资产规模</span>
@@ -746,7 +760,6 @@ function Summary({ data }) {
         </div>
       </div>
       <div className="summaryAssetGroup">
-        <div className="summaryRowLabel">总资产</div>
         <div className="summaryAssetMetrics">
           <div className="summaryItem">
             <span>总资产规模</span>
@@ -1240,7 +1253,7 @@ function CompareBars({ title, rows, amountKey = "current_usd", className = "", a
   return (
     <section className={`chartPanel verticalChartPanel ${className}`}>
       <h2>{title}</h2>
-      <div className="verticalBars">
+      <div className="verticalBars" style={{ "--bar-count": Math.max(1, displayRows.length) }}>
         {displayRows.map((row) => (
           <div
             className={`verticalGroup ${Number.isFinite(alertThresholdPct) && Math.abs(Number(row.current_pct || 0) - Number(row.target_pct || 0)) > alertThresholdPct ? "allocationDeviationAlert" : ""}`}
@@ -1465,9 +1478,6 @@ function PerformanceChart({ history, trades, userId }) {
     <section className="chartPanel performancePanel">
       <div className="sectionHeader compactHeader">
         <h2>累计日收益走势</h2>
-        <span className="muted">
-          单日收益复利累计 · 当日可含估值/夜盘预计 · 投资日 {history?.started_on || "-"} 至 {latest?.date || "-"}
-        </span>
       </div>
       <div className="performanceStats">
         {renderSeriesButtons()}
@@ -1509,8 +1519,8 @@ function PerformanceLightweightChart({ points, series }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const lineSeriesRef = useRef([]);
+  const tradeMarkersRef = useRef(null);
   const pointByTimeRef = useRef(new Map());
-  const [axisMarkers, setAxisMarkers] = useState([]);
   const [tooltip, setTooltip] = useState({ visible: false, left: 0, top: 0, point: null });
 
   useEffect(() => {
@@ -1572,6 +1582,9 @@ function PerformanceLightweightChart({ points, series }) {
         lastValueVisible: true,
       });
     });
+    tradeMarkersRef.current = lineSeriesRef.current[0]
+      ? createSeriesMarkers(lineSeriesRef.current[0], [], { autoScale: false, zOrder: "aboveSeries" })
+      : null;
     chart.subscribeCrosshairMove((param) => {
       if (!param?.point || !param.time) {
         setTooltip((current) => current.visible ? { ...current, visible: false } : current);
@@ -1589,6 +1602,7 @@ function PerformanceLightweightChart({ points, series }) {
     return () => {
       chartRef.current = null;
       lineSeriesRef.current = [];
+      tradeMarkersRef.current = null;
       chart.remove();
     };
   }, [series]);
@@ -1607,33 +1621,23 @@ function PerformanceLightweightChart({ points, series }) {
       }
       line.setData(rows);
     });
-    function updateAxisMarkers() {
-      const markers = (points || [])
-        .filter((point) => point?.date && point.cash_flow_flag)
-        .map((point) => {
-          const coordinate = chart.timeScale().timeToCoordinate(point.date);
-          return Number.isFinite(coordinate) ? { date: point.date, left: coordinate } : null;
-        })
-        .filter(Boolean);
-      setAxisMarkers(markers);
-    }
+    const markerKey = series[0]?.[0];
+    tradeMarkersRef.current?.setMarkers((points || [])
+      .filter((point) => point?.date && point.cash_flow_flag && point[markerKey] != null && Number.isFinite(Number(point[markerKey])))
+      .map((point) => ({
+        time: point.date,
+        position: "inBar",
+        shape: "circle",
+        color: "#fbbf24",
+        size: 0.65,
+      })));
     if (points?.length) {
       chart.timeScale().fitContent();
-      window.requestAnimationFrame(updateAxisMarkers);
-    } else {
-      setAxisMarkers([]);
     }
-    chart.timeScale().subscribeVisibleTimeRangeChange(updateAxisMarkers);
-    return () => chart.timeScale().unsubscribeVisibleTimeRangeChange(updateAxisMarkers);
   }, [points, series]);
 
   return (
     <div className="performanceLwCanvas" ref={containerRef}>
-      <div className="performanceAxisMarkers" aria-hidden="true">
-        {axisMarkers.map((marker) => (
-          <span className="performanceAxisMarker" key={marker.date} style={{ left: marker.left }}>T</span>
-        ))}
-      </div>
       {tooltip.visible && tooltip.point ? (
         <div className="performanceTooltip" style={{ left: tooltip.left, top: tooltip.top }}>
           <strong>{tooltip.point.date}</strong>
@@ -3888,7 +3892,6 @@ function PnlBreakdownPanel({ data }) {
     <section className="pnlBreakdownPanel homePnlBreakdown" aria-label="总资产累计盈亏构成">
       <div className="pnlBreakdownHeader">
         <strong>投资组合盈亏 vs 汇率盈亏</strong>
-        <span>投资组合细分为已变现与未变现</span>
       </div>
       <div className="pnlBreakdownGrid">
         <div className="pnlBreakdownItem">
@@ -5298,10 +5301,13 @@ function Rebalance({ data, onSaved }) {
       {data.rebalance.sgov_usage_plan ? (() => {
         const plan = data.rebalance.sgov_usage_plan;
         const labels = { small: "小档", medium: "中档", large: "大档" };
+        const usageSummary = `可动用 ${fmtMoney(plan.available_usd, "USD")} · 计划 ${fmtMoney(plan.budget_usd, "USD")} · 已标记 ${plan.marked_count || 0} 笔买入 / 成交额 ${fmtMoney(plan.marked_purchase_usd || 0, "USD")}`;
         return (
           <div className="sgovUsagePlan">
-            <h3>SGOV 动用进度</h3>
-            <p className="muted">可动用 {fmtMoney(plan.available_usd, "USD")} · 计划 {fmtMoney(plan.budget_usd, "USD")} · 已标记 {plan.marked_count || 0} 笔买入 / 成交额 {fmtMoney(plan.marked_purchase_usd || 0, "USD")}</p>
+            <div className="sgovUsageHeader">
+              <h3>SGOV 动用进度</h3>
+              <span className="muted" title={usageSummary}>{usageSummary}</span>
+            </div>
             {plan.rows.length ? <div className="tableWrap"><table className="rebalanceTable sgovProgressTable">
               <thead><tr><th>QQQ 档位 / 回撤</th><th>QQQ 触发价</th><th>VOO 进度</th><th>QQQ 进度</th></tr></thead>
               <tbody>{plan.rows.map((item) => <tr key={item.tier} className={`sgovProgressRow ${tierClass(item.tier)}${item.triggered ? "" : " sgovUntriggered"}`}>
@@ -5614,9 +5620,36 @@ function RebalancePage({ data, onSaved }) {
   return <Rebalance data={data} onSaved={onSaved} />;
 }
 
+function AppLoading({ label = "正在加载投资看板" }) {
+  return (
+    <main className="appShell dashboardShell appLoading" role="status" aria-live="polite" aria-busy="true">
+      <div className="appLoadingHeading"><Activity size={20} aria-hidden="true" /><span>{label}</span></div>
+      <div className="dashboardSkeleton" aria-hidden="true">
+        <div className="skeletonBar" />
+        <div className="skeletonMetrics">{Array.from({ length: 6 }, (_, index) => <div key={index} />)}</div>
+        <div className="skeletonWorkspace"><div /><div /></div>
+      </div>
+    </main>
+  );
+}
+
+function AppError({ message, onRetry, retrying = false }) {
+  return (
+    <main className="appShell">
+      <div className="appError" role="alert">
+        <CircleAlert size={28} aria-hidden="true" />
+        <h1>暂时无法加载看板</h1>
+        <p>请检查后端服务是否运行，然后重试。</p>
+        <small>{message}</small>
+        <button type="button" className="primary" onClick={onRetry} disabled={retrying} aria-busy={retrying}><RefreshCcw size={16} className={retrying ? "refreshSpinning" : ""} aria-hidden="true" />{retrying ? "正在连接…" : "重新连接"}</button>
+      </div>
+    </main>
+  );
+}
+
 function ProfileApp({ activeUserId, profiles, onSwitch }) {
-  const { data, loading, error, load } = useDashboard(activeUserId);
-  const [page, setPage] = useState(() => String(initialAppState.page || "dashboard"));
+  const { data, loading, refreshing, error, load } = useDashboard(activeUserId);
+  const [page, setPage] = useState(() => ["dashboard", "holdings", "rebalance", "kline"].includes(initialAppState.page) ? initialAppState.page : "dashboard");
   useTableGestureScroll();
 
   useEffect(() => {
@@ -5641,19 +5674,21 @@ function ProfileApp({ activeUserId, profiles, onSwitch }) {
   }
 
   if (loading) {
-    return <main className="appShell"><div className="loading"><Activity /> 加载中</div></main>;
+    return <AppLoading />;
   }
-  if (error || !data) {
-    return (
-      <main className="appShell">
-        <div className="error">后端连接失败：{error}</div>
-        <button onClick={load}>重试</button>
-      </main>
-    );
+  if (!data) {
+    return <AppError message={`后端连接失败：${error}`} onRetry={() => load(true)} retrying={refreshing} />;
   }
   return (
     <main className={`appShell ${page === "dashboard" ? "dashboardShell" : ""}`}>
-      <Header data={data} profiles={profiles} onSwitch={onSwitch} />
+      <Header data={data} profiles={profiles} onSwitch={onSwitch} onRefresh={() => load(true)} refreshing={refreshing} />
+      {error ? (
+        <div className="connectionNotice" role="status">
+          <CircleAlert size={17} aria-hidden="true" />
+          <span>行情更新暂时中断，当前显示上次成功获取的数据。<small>{error}</small></span>
+          <button type="button" onClick={() => load(true)} disabled={refreshing}>{refreshing ? "连接中…" : "重试"}</button>
+        </div>
+      ) : null}
       <PageNav page={page} setPage={setPage} />
       {page === "dashboard" ? <DashboardPage data={data} onOpenKlineSymbol={openKlineSymbol} /> : null}
       {page === "holdings" ? <HoldingsPage data={data} onSaved={load} /> : null}
@@ -5666,12 +5701,17 @@ function ProfileApp({ activeUserId, profiles, onSwitch }) {
 export default function App() {
   const [profileState, setProfileState] = useState(null);
   const [profileError, setProfileError] = useState("");
-  useEffect(() => {
-    fetch(`${API_BASE}/api/profiles`)
-      .then((response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
-      .then(setProfileState)
-      .catch((error) => setProfileError(String(error)));
-  }, []);
+  async function loadProfiles() {
+    setProfileError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/profiles`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setProfileState(await response.json());
+    } catch (error) {
+      setProfileError(String(error));
+    }
+  }
+  useEffect(() => { loadProfiles(); }, []);
 
   async function switchUser(userId) {
     try {
@@ -5688,7 +5728,7 @@ export default function App() {
     }
   }
 
-  if (profileError) return <main className="appShell"><div className="error">档案加载失败：{profileError}</div></main>;
-  if (!profileState) return <main className="appShell"><div className="loading"><Activity /> 加载档案中</div></main>;
+  if (profileError) return <AppError message={`档案加载失败：${profileError}`} onRetry={loadProfiles} />;
+  if (!profileState) return <AppLoading label="正在加载投资档案" />;
   return <ProfileApp key={profileState.active_user_id} activeUserId={profileState.active_user_id} profiles={profileState.profiles} onSwitch={switchUser} />;
 }

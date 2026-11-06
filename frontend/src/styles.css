@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  font-family: "PingFang SC", "PingFang TC", "Microsoft YaHei", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   background: #0b2035;
   color: #f8fbff;
   --panel: rgba(255, 255, 255, 0.09);
@@ -1557,33 +1557,6 @@ h2 {
   position: relative;
   width: 100%;
   height: 100%;
-}
-
-.performanceAxisMarkers {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 23px;
-  height: 0;
-  z-index: 8;
-  pointer-events: none;
-}
-
-.performanceAxisMarker {
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  transform: translateX(-50%);
-  border: 1px solid rgba(250, 204, 21, 0.92);
-  border-radius: 999px;
-  background: rgba(11, 27, 46, 0.94);
-  color: var(--amber);
-  font-size: 0.68rem;
-  font-weight: 950;
-  line-height: 1;
-  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.14), 0 6px 16px rgba(0, 0, 0, 0.28);
 }
 
 .performanceTooltip {
@@ -3424,7 +3397,7 @@ tbody th {
 
 .summaryAssetGroup {
   display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   min-width: 0;
 }
@@ -5966,3 +5939,251 @@ tbody tr:hover th {
 .rankChartHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .rankChartHeader h2 { min-width: 0; }
 .rankClosedToggle { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 0; border: 0; background: transparent; color: var(--text-muted); line-height: 1; }
+
+/* Terminal refinements: retain the palette and density, clarify hierarchy and states. */
+.topbar,
+.pageNav,
+.chartPanel,
+.tableWrap {
+  border-radius: 10px;
+}
+
+.topbar:hover,
+.pageNav:hover,
+.chartPanel:hover,
+.tableWrap:hover {
+  background: var(--panel);
+  box-shadow: var(--glass-shadow-soft);
+}
+
+.topbar:hover { background: linear-gradient(180deg, #132b46, #10233a); }
+.pageNav:hover { background: #0d1d31; }
+
+.topbar h1 {
+  font-size: clamp(1.35rem, 2vw, 1.72rem);
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.marketStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.marketStatusDot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--cyan);
+}
+
+.marketStatus .marketProvider {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketStatus time {
+  flex-shrink: 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--line-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.profileControls select { border-radius: 8px; }
+
+.pageNav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+}
+
+.pageNav button.active:hover { background: transparent; }
+.pageNav button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -3px;
+  box-shadow: none;
+}
+
+.summaryItem strong,
+.assetMetricCard strong,
+.performanceStat strong,
+.barValue,
+.compareAmount,
+td,
+input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboardPage .summaryItem { gap: 5px; }
+.dashboardPage .summaryItem span { font-size: .74rem; }
+.dashboardTopGrid,
+.dashboardWorkspace { column-gap: 12px; }
+.dashboardInsights { gap: 10px; }
+
+.connectionNotice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, .3);
+  border-radius: 8px;
+  background: #252619;
+  color: #fde68a;
+  font-size: .8rem;
+  line-height: 1.5;
+}
+
+.connectionNotice > svg { flex-shrink: 0; }
+.connectionNotice > span { flex: 1; min-width: 0; }
+.connectionNotice small { display: block; color: #d4c58f; overflow-wrap: anywhere; }
+.connectionNotice button { flex-shrink: 0; box-shadow: none; }
+.refreshSpinning { animation: refreshSpin 1s linear infinite; }
+@keyframes refreshSpin { to { transform: rotate(360deg); } }
+
+.appLoadingHeading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 2px;
+  color: var(--text-soft);
+  font-size: .9rem;
+}
+
+.appLoadingHeading svg { color: var(--cyan); }
+.dashboardSkeleton { display: grid; gap: 12px; }
+.skeletonBar,
+.skeletonMetrics > div,
+.skeletonWorkspace > div {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(100deg, #10233a 25%, #18314c 45%, #10233a 65%);
+  background-size: 240% 100%;
+  animation: skeletonShimmer 1.8s ease-in-out infinite;
+}
+
+.skeletonBar { height: 48px; }
+.skeletonMetrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.skeletonMetrics > div { height: 66px; }
+.skeletonWorkspace { display: grid; grid-template-columns: 1.7fr 1fr; gap: 12px; }
+.skeletonWorkspace > div { height: 420px; }
+@keyframes skeletonShimmer { to { background-position: -240% 0; } }
+
+.appError {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(460px, 100%);
+  margin: min(16vh, 120px) auto 40px;
+  padding: 32px 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  text-align: center;
+}
+
+.appError > svg { color: var(--amber); }
+.appError h1 { font-size: 1.2rem; }
+.appError p { margin: 0; color: var(--text-soft); font-size: .88rem; line-height: 1.6; }
+.appError small { max-width: 100%; color: var(--text-muted); overflow-wrap: anywhere; }
+.appError button { margin-top: 6px; min-height: 42px; }
+
+@media (max-width: 720px) {
+  .topbar,
+  .dashboardShell .topbar {
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .topbar > div:first-child { flex: 1; }
+  .topbar h1,
+  .dashboardShell .topbar h1 {
+    max-width: none;
+    overflow: visible;
+    font-size: 1.08rem;
+    white-space: normal;
+  }
+  .topbar h1 > span { display: block; }
+  .topbar .marketStatus,
+  .dashboardShell .topbar .marketStatus {
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    max-width: none;
+    overflow: visible;
+    font-size: .62rem;
+  }
+  .marketStatus .marketProvider { max-width: calc(100% - 12px); }
+  .marketStatus time { flex-basis: 100%; padding-left: 12px; border: 0; }
+  .profileControls { gap: 6px; }
+  .profileControls select { min-width: 76px; width: 76px; min-height: 40px; padding: 8px; font-size: .85rem; }
+  .profileControls .iconButton { width: 40px; height: 40px; }
+
+  .summaryGrid,
+  .dashboardPage .summaryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(76px, auto)) auto;
+    gap: 8px;
+  }
+  .summaryItem,
+  .dashboardPage .summaryItem { min-height: 76px; padding: 9px 4px; gap: 6px; }
+  .summaryItem span,
+  .dashboardPage .summaryItem span { font-size: .64rem; line-height: 1.25; }
+  .summaryItem strong,
+  .dashboardPage .summaryItem strong {
+    font-size: .82rem;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+  .dashboardPage .fxSummaryItem {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 38px;
+    padding: 8px 10px;
+    background: var(--panel-soft);
+  }
+  .dashboardPage .fxSummaryItem strong { font-size: .88rem; }
+  .dashboardPage .fxSummaryItem em { font-size: .65rem; font-style: normal; }
+  .dashboardTopGrid .homePnlBreakdown { margin-top: 0; }
+  .dashboardTopGrid,
+  .dashboardWorkspace { gap: 12px; }
+  .dashboardPage .pnlBreakdownHeader { flex-wrap: wrap; gap: 4px; }
+
+  .pageNav,
+  .dashboardShell .pageNav { border-radius: 18px; }
+  .pageNav button,
+  .dashboardShell .pageNav button { gap: 4px; }
+  .connectionNotice { align-items: flex-start; font-size: .75rem; }
+  .skeletonWorkspace { grid-template-columns: 1fr; }
+  .skeletonWorkspace > div { height: 280px; }
+}
+
+@media (max-width: 360px) {
+  .topbar h1,
+  .dashboardShell .topbar h1 { font-size: .96rem; }
+  .summaryItem strong,
+  .dashboardPage .summaryItem strong { font-size: .73rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
