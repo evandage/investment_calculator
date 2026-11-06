@@ -390,12 +390,7 @@ function tierLabel(intensity) {
 }
 
 function rebalanceTierLabel(row) {
-  const label = tierLabel(row.intensity);
-  if (String(row.intensity || "").toLowerCase() === "sell") return label;
-  if (String(row.intensity || "").toLowerCase() === "manual_review_only") return label;
-  const share = Number(row.signal_multiplier || 0);
-  const formatted = share.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
-  return `${label} ${formatted}x`;
+  return tierLabel(row.intensity);
 }
 
 function globalKlineColumns(width = window.innerWidth) {
@@ -4584,7 +4579,7 @@ function Rebalance({ data, onSaved }) {
   const sortedSuggestionRows = useMemo(() => sortTableRows(suggestionRows, rebalanceSort, (row, key) => {
     if (key === "tier") {
       const rank = { sell: -1, none: 0, normal: 1, small: 2, medium: 3, large: 4, manual_review_only: 5 }[String(row.intensity || "none").toLowerCase()] ?? 0;
-      return rank * 1000 + Number(row.signal_multiplier || 0);
+      return rank;
     }
     return ({
       symbol: row.symbol,
@@ -4743,6 +4738,7 @@ function Rebalance({ data, onSaved }) {
           amount_usd: Number(item.amount_usd || 0),
           shares: item.action === "dividend" ? 0 : Number(item.shares || 0),
           intensity: item.intensity,
+          uses_sgov: item.action === "buy" && symbol !== "SGOV" && Boolean(item.uses_sgov),
         }))
         .filter((item) => item.amount_usd > 0 && (item.action === "dividend" || item.shares > 0));
       if (!executions.length) {
@@ -5296,6 +5292,28 @@ function Rebalance({ data, onSaved }) {
           </tbody>
         </table>
       </div>
+      {data.rebalance.sgov_usage_plan ? (() => {
+        const plan = data.rebalance.sgov_usage_plan;
+        const labels = { small: "小档", medium: "中档", large: "大档" };
+        return (
+          <div className="sgovUsagePlan">
+            <h3>SGOV 动用进度</h3>
+            <p className="muted">可动用 {fmtMoney(plan.available_usd, "USD")} · 计划 {fmtMoney(plan.budget_usd, "USD")} · 已标记 {plan.marked_count || 0} 笔买入 / 成交额 {fmtMoney(plan.marked_purchase_usd || 0, "USD")}</p>
+            {plan.rows.length ? <div className="tableWrap"><table className="rebalanceTable sgovProgressTable">
+              <thead><tr><th>QQQ 档位 / 回撤</th><th>QQQ 触发价</th><th>VOO 进度</th><th>QQQ 进度</th></tr></thead>
+              <tbody>{plan.rows.map((item) => <tr key={item.tier} className={`sgovProgressRow ${tierClass(item.tier)}${item.triggered ? "" : " sgovUntriggered"}`}>
+                <th><span className={`tierBadge ${tierClass(item.tier)}`}>{labels[item.tier]}</span> {Number(item.drawdown_pct).toFixed(2)}%<small> {item.triggered ? "已触发" : "未触发"}</small></th>
+                <td>{item.trigger_price == null ? "-" : fmtMoney(item.trigger_price, "USD")}</td>
+                {["voo", "qqq"].map((symbol) => {
+                  const used = Number(item[`${symbol}_used_usd`] || 0);
+                  const target = Number(item[`${symbol}_usd`] || 0);
+                  return <td key={symbol}><div className="sgovProgress"><div>{fmtMoney(used, "USD")} / 目标 {fmtMoney(target, "USD")}</div><div className="sgovProgressTrack" role="progressbar" aria-label={`${labels[item.tier]} ${symbol.toUpperCase()} 动用进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={target > 0 ? Math.min(100, Math.round(used / target * 100)) : 0}><span className={tierClass(item.tier)} style={{ width: `${target > 0 ? Math.min(100, used / target * 100) : 0}%` }} /></div></div></td>;
+                })}
+              </tr>)}</tbody>
+            </table></div> : <p className="muted">暂无可用的 QQQ 回撤档位，无法生成分档计划。</p>}
+          </div>
+        );
+      })() : null}
       <div className="tradeHistoryBlock">
         <div className="sectionHeader subHeader">
           <div>
@@ -5488,38 +5506,30 @@ function Rebalance({ data, onSaved }) {
                 <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setActiveTradeSymbol("")} disabled={saving}><X size={18} /></button>
               </div>
               <div className="singleTradeGrid">
-                <label>标的
+                <label className="tradeSymbol">标的
                   <select value={activeTradeSymbol} onChange={(event) => setActiveTradeSymbol(event.target.value)}>
                     {tradeRows.map((item) => (
                       <option key={item.symbol} value={item.symbol}>{item.symbol}{item.label && item.label !== item.symbol ? ` · ${item.label}` : ""}</option>
                     ))}
                   </select>
                 </label>
-                <label>方向
+                <label className="tradeDirection">方向
                   <select value={currentInput.action || "buy"} onChange={(event) => setInputs((prev) => ({ ...prev, [row.symbol]: { ...prev[row.symbol], action: event.target.value, amount_usd: "", shares: "" } }))}>
                     <option value="buy">买入</option>
                     <option value="sell">卖出</option>
                     {row.symbol === "SGOV" ? <option value="dividend">派息</option> : null}
                   </select>
                 </label>
-                <label>日期
+                <label className="tradeDate">日期
                   <input type="date" value={currentInput.trade_date || defaultTradeDate} onChange={(event) => update(row.symbol, "trade_date", event.target.value)} />
                 </label>
-                {!isDividend && <label>档位
-                  <select className={tierClass(currentInput.intensity || row.intensity)} value={currentInput.intensity || row.intensity} onChange={(event) => update(row.symbol, "intensity", event.target.value)}>
-                    <option value="normal">普通</option>
-                    <option value="small">小加</option>
-                    <option value="medium">中加</option>
-                    <option value="large">大加</option>
-                    {row.review_mode === "manual_review_only" ? <option value="manual_review_only">复核</option> : null}
-                  </select>
-                </label>}
-                <label>{isDividend ? "实际到账股息（USD）" : "成交金额"}
+                <label className="tradeAmount">{isDividend ? "实际到账股息（USD）" : "成交金额"}
                   <input value={currentInput.amount_usd ?? ""} onChange={(event) => update(row.symbol, "amount_usd", event.target.value)} inputMode="decimal" />
                 </label>
-                {!isDividend && <label>成交股数
+                {!isDividend && <label className="tradeShares">成交股数
                   <input value={currentInput.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" />
                 </label>}
+                {currentInput.action === "buy" && row.symbol !== "SGOV" ? <label className="sgovTradeCheck"><input type="checkbox" checked={Boolean(currentInput.uses_sgov)} onChange={(event) => update(row.symbol, "uses_sgov", event.target.checked)} /> 此次买入动用 SGOV 资金</label> : null}
                 {isDividend ? <div className="singleTradeHint">保存后增加美元现金和 SGOV 累计股息。已计入累计股息的历史派息无需重复记账。</div> : <div className="singleTradeHint">
                   <span>建议买/卖</span>
                   <strong>{fmtMoney(Number(row.suggested_sell_usd || 0) > Number(row.suggested_buy_usd || 0) ? -Number(row.suggested_sell_usd || 0) : Number(row.suggested_buy_usd || 0), row.currency || "USD")}</strong>

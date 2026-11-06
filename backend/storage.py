@@ -894,6 +894,8 @@ def load_trade_records(user_id: str | None = None) -> list[dict[str, Any]]:
                 "prev_avg_cost": prev_avg_cost,
                 "new_avg_cost": new_avg_cost,
                 "intensity": str(item.get("intensity") or "normal"),
+                "uses_sgov": item.get("uses_sgov") is True and action == "buy" and symbol != "SGOV",
+                "sgov_tier": item.get("sgov_tier") if item.get("uses_sgov") is True and action == "buy" and symbol in ("VOO", "QQQ") and item.get("sgov_tier") in ("small", "medium", "large") else None,
                 "created_at": str(item.get("created_at") or ""),
             }
         )
@@ -943,6 +945,8 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
                 "prev_avg_cost": prev_avg_cost,
                 "new_avg_cost": new_avg_cost,
                 "intensity": str(item.get("intensity") or "normal"),
+                "uses_sgov": item.get("uses_sgov") is True and action == "buy" and symbol != "SGOV",
+                "sgov_tier": item.get("sgov_tier") if item.get("uses_sgov") is True and action == "buy" and symbol in ("VOO", "QQQ") and item.get("sgov_tier") in ("small", "medium", "large") else None,
                 "created_at": str(item.get("created_at") or ""),
             }
         )

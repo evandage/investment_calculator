@@ -5932,3 +5932,33 @@ tbody tr:hover th {
     min-height: 440px;
   }
 }
+.sgovUsagePlan { margin: 20px 0; }
+.sgovUsagePlan h3 { margin: 0 0 8px; }
+.sgovUsagePlan p { margin: 6px 0; line-height: 1.5; }
+.singleTradeGrid .sgovTradeCheck { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.singleTradeGrid .sgovTradeCheck input { width: auto; }
+.sgovProgressTable .sgovUntriggered { opacity: 0.42; }
+.sgovProgressTable small { white-space: nowrap; }
+.sgovProgress { min-width: 170px; font-variant-numeric: tabular-nums; }
+.sgovProgressTrack { height: 8px; margin-top: 7px; background: rgba(140, 150, 165, 0.2); border-radius: 10px; overflow: hidden; }
+.sgovProgressTrack span { display: block; height: 100%; border: 0; border-radius: inherit; background: currentColor; }
+
+.sgovProgressTable .sgovProgressRow { background: transparent; }
+.sgovProgressTable .sgovProgressRow > th,
+.sgovProgressTable .sgovProgressRow > td { color: inherit; }
+.sgovProgressTable { table-layout: fixed; width: 100%; }
+.sgovProgressTable th:nth-child(1), .sgovProgressTable td:nth-child(1) { width: 18%; }
+.sgovProgressTable th:nth-child(2), .sgovProgressTable td:nth-child(2) { width: 14%; }
+.sgovProgressTable th:nth-child(3), .sgovProgressTable td:nth-child(3),
+.sgovProgressTable th:nth-child(4), .sgovProgressTable td:nth-child(4) { width: 34%; }
+
+@media (min-width: 721px) {
+  .singleTradeGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .singleTradeGrid .tradeSymbol { grid-area: 1 / 1; }
+  .singleTradeGrid .tradeDate { grid-area: 2 / 1; }
+  .singleTradeGrid .tradeDirection { grid-area: 1 / 2; }
+  .singleTradeGrid .sgovTradeCheck { grid-area: 2 / 2; }
+  .singleTradeGrid .tradeAmount { grid-area: 3 / 1; }
+  .singleTradeGrid .tradeShares { grid-area: 3 / 2; }
+  .singleTradeGrid .singleTradeHint { grid-area: 4 / 1 / auto / -1; }
+}

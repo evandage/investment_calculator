@@ -104,6 +104,8 @@ class ExecutionItem(BaseModel):
     amount_usd: float
     shares: float = 0.0
     intensity: str = "normal"
+    uses_sgov: bool = False
+    sgov_tier: str | None = None
 
 
 class ExecutionPayload(BaseModel):
@@ -1084,6 +1086,28 @@ def confirm_execution(payload: ExecutionPayload) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result["dashboard"] = build_dashboard(payload.user_id)
     return result
+
+
+class TradeSgovPayload(BaseModel):
+    uses_sgov: bool
+    sgov_tier: str | None = None
+
+
+@app.patch("/api/trades/{trade_id}/sgov")
+def set_trade_sgov(trade_id: str, payload: TradeSgovPayload) -> dict[str, Any]:
+    user_id = active_user_id()
+    records = load_trade_records(user_id)
+    record = next ( (item for item in records if item.get("id") == trade_id), None)
+    if record is None:
+        raise HTTPException(status_code=404, detail="交易记录不存在")
+    if record.get("action") != "buy" or record.get("symbol") == "SGOV":
+        raise HTTPException(status_code=400, detail="仅可标记非 SGOV 的买入交易")
+    if payload.sgov_tier not in (None, "small", "medium", "large") or (payload.sgov_tier and (not payload.uses_sgov or record.get("symbol") not in ("VOO", "QQQ"))):
+        raise HTTPException(status_code=400, detail="SGOV 档位无效")
+    record["uses_sgov"] = payload.uses_sgov
+    record["sgov_tier"] = payload.sgov_tier
+    storage_module.save_trade_records(user_id, records)
+    return {"saved": True}
 
 
 @app.delete("/api/trades/{trade_id}")

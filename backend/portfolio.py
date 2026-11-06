@@ -137,26 +137,30 @@ def rebalance_rules_payload(
                 "heading": "建议金额",
                 "items": [
                     "VOO、QQQ 的长期目标以持仓成本加美元现金成本基准为分母；个股以持仓成本加美元现金成本基准及后续两个月预计投入为分母。成本差值为长期目标减当前成本，实时差值为长期目标减当前市值。",
-                    "VOO 和 QQQ 的月度基准均为自设总月预算 × 标的目标比例，计划应买再乘档位倍率。个股以三个月预算为基准，加上上轮结转，财报后可手动刷新周期。",
-                    f"个股本轮建议以三个月预算乘回撤档位倍率，并受本轮剩余额度限制；{zero_target_note}",
+                    "VOO 和 QQQ 的计划应买为自设总月预算 × 标的目标比例。个股以三个月预算为基准，加上上轮结转，财报后可手动刷新周期。",
+                    f"个股本轮建议受本轮剩余额度限制；{zero_target_note}",
                     "估值/追高系数不改变计划应买金额，只影响本轮建议买入；全部标的统一按回撤周期锚定高点定档。",
                     "建议买入总额受 USD 现金与 SGOV 安全线以上可释放额度限制；可动用资金不足时按比例缩放本轮建议。",
                 ],
             },
             {
+                "heading": "SGOV 动用进度",
+                "items": [
+                    "动用进度的可动用金额为全部 SGOV 持仓市值；进度目标总额为当前 SGOV 市值加上 VOO、QQQ 尚未归还的动用额。再平衡建议本身仍遵循安全线。",
+                    "计划按当前 QQQ 回撤周期档位及高点计算触发价，小档、中档、大档分别分配 20%、35%、45%，每档 VOO 与 QQQ 目标按 4:3 分配；目标会随持仓市值变化。",
+                    "成本差值为零不代表动用了 SGOV。可在记录买入时手动标记动用 SGOV；标记不会自动卖出 SGOV 或改变现金、持仓。",
+                    "进度按手动标记的 VOO、QQQ 买入成交额分别从小档开始累计，超出该档目标的部分顺延至下一档。每次买入 SGOV，按当时各档未归还金额比例冲减进度；卖出 SGOV 则从大档起依次冲减，同一档的 VOO 和 QQQ 按已有进度比例扣减。最多冲减至零；交易按日期和录入顺序计算。标记成交额可能包含其他资金。",
+                ],
+            },
+            {
                 "heading": "档位规则",
                 "items": [
-                    "盘中价格只产生预警；只有最新完整交易日收盘价可以正式触发档位。同一回撤周期每档只确认一次。",
-                    "回撤周期开始时绑定当月档位快照；周期内冻结。月末生成的新快照只供下一个回撤周期使用。",
-                    "基础档位取全历史周期高点回撤的65% / 85% / 95%分位数；仅以上月末波动状态乘0.95 / 1.00 / 1.05，并在单次回撤周期内冻结。执行层再按独立触发频率校准档位名称。",
-                    "VOO：正常 1x，小加 -3.5% / 1.5x，中加 -6.5% / 2.5x，大加 -13% / 4x。",
-                    "QQQ：正常 1x，小加 -4% / 1.25x，中加 -9% / 2x，大加 -16.5% / 3x。",
-                    "ISRG：正常 0.1x，小加 -8.5% / 0.2x，中加 -16% / 0.3x，大加 -25% / 0.5x；-25%过去10年独立触发4次，约2.5年一次。",
-                    "TEM：复核；自身样本档位 -31% / -40.5% / -52.5% 仅供观察。同行组未确认，同行与收缩后最终档位为空，不自动控制买入。",
-                    "PLTR：正常 0.1x，小加 -20.5% / 0.2x，中加 -31% / 0.3x，大加 -40.5% / 0.5x。",
-                    "GOOGL：正常 0.1x，小加 -6.5% / 0.2x，中加 -14% / 0.3x，大加 -20% / 0.5x。",
-                    "MSFT：正常 0.1x，小加 -5.5% / 0.2x，中加 -11.5% / 0.3x，大加 -18.5% / 0.5x。",
-                    "AVGO：正常 0.1x，小加 -8% / 0.2x，中加 -14.5% / 0.3x，大加 -22% / 0.5x。",
+                    "每月使用截至上月末的历史收盘价计算周期高点回撤；以历史回撤的 65%、85%、95% 分位数分别作为小、中、大档的基础。",
+                    "根据上月末 20 日年化波动率在历史波动中的位置划分低、中、高波动，基础回撤分别乘 0.95、1.00、1.05；使用移动区块重采样的中位数，并按 0.5 个百分点取整，同时保持档位之间的最小间距。",
+                    "部分标的的特定档位另有执行层固定校准值，会覆盖统计结果；没有可用的月度重算快照时，使用系统预设档位。",
+                    "触及小档后，回撤周期绑定当月档位快照并冻结，月末新快照供下一个周期使用。盘中价格只产生预警，最新完整交易日的收盘价才可正式触发；同一回撤周期每档只确认一次。",
+                    "交易记录的档位按成交价相对该标的已知周期高点的回撤与对应快照计算；缺少可靠锚点或快照时显示未确定，不影响记账。",
+                    "回撤档位用于显示市场状态，不再放大买入预算；个股按季度额度及剩余额度计算，VOO 和 QQQ 按月预算计算。TEM 当前为人工复核，不自动触发档位。",
                 ],
             },
         ],
@@ -3090,6 +3094,66 @@ def refresh_stock_quarter(user_id: str, symbol: str) -> dict[str, Any]:
     return {"symbol": sym, "start_date": today, "carry_in_usd": carry, "previous_net_bought_usd": net_spent}
 
 
+def build_sgov_usage_plan(rows, sgov_holding_usd, qqq_signal, trade_records, today_key):
+    """Build a current-state scenario; sales do not identify the purchases they funded."""
+    snapshot = qqq_signal.get("threshold_snapshot") or {}
+    thresholds = snapshot.get("thresholds_pct") or {}
+    state = qqq_signal.get("episode_state") or {}
+    anchor = next((row.get("drawdown_anchor_price") for row in rows if row.get("symbol") == "QQQ"), None)
+    tiers = [(tier, float(thresholds[tier])) for tier in ("small", "medium", "large") if isinstance(thresholds.get(tier), (int, float))]
+    marked = [record for record in trade_records if record.get("uses_sgov") is True and record.get("action") == "buy" and str(record.get("trade_date") or "")[:10] <= today_key]
+    chronological = sorted(enumerate(trade_records), key=lambda pair: (str(pair[1].get("trade_date") or "")[:10], str(pair[1].get("created_at") or ""), pair[0]))
+    events = [record for _, record in chronological if str(record.get("trade_date") or "")[:10] <= today_key]
+    total_outstanding = 0.0
+    for record in events:
+        symbol, action = record.get("symbol"), record.get("action")
+        amount = max(0.0, float(record.get("amount_usd") or 0))
+        if symbol in ("VOO", "QQQ") and action == "buy" and record.get("uses_sgov") is True:
+            total_outstanding += amount
+        elif symbol == "SGOV" and action in ("buy", "sell"):
+            total_outstanding = max(0.0, total_outstanding - amount)
+    budget = max(0.0, sgov_holding_usd) + total_outstanding
+    tier_weights = {"small": 0.20, "medium": 0.35, "large": 0.45}
+    targets = {(symbol, tier): budget * tier_weights[tier] * fraction for tier, _ in tiers for symbol, fraction in (("VOO", 4 / 7), ("QQQ", 3 / 7))}
+    allocated = {key: 0.0 for key in targets}
+    for record in events:
+        symbol, action = record.get("symbol"), record.get("action")
+        amount = max(0.0, float(record.get("amount_usd") or 0))
+        if symbol in ("VOO", "QQQ") and action == "buy" and record.get("uses_sgov") is True:
+            for index, (tier, _) in enumerate(tiers):
+                key = (symbol, tier)
+                used = amount if index == len(tiers) - 1 else min(amount, max(0.0, targets[key] - allocated[key]))
+                allocated[key] += used
+                amount -= used
+        elif symbol == "SGOV" and action == "buy":
+            total = sum(allocated.values())
+            if total > 0:
+                fraction = max(0.0, 1.0 - amount / total)
+                allocated = {key: value * fraction for key, value in allocated.items()}
+        elif symbol == "SGOV" and action == "sell":
+            for tier, _ in reversed(tiers):
+                keys = [(asset, tier) for asset in ("VOO", "QQQ")]
+                tier_total = sum(allocated[key] for key in keys)
+                if tier_total > 0:
+                    reduction = min(amount, tier_total)
+                    for key in keys:
+                        allocated[key] *= 1.0 - reduction / tier_total
+                    amount -= reduction
+    plan_rows = []
+    for tier, threshold in tiers:
+        amount = budget * tier_weights[tier]
+        plan_rows.append({"tier": tier, "drawdown_pct": threshold,
+                          "triggered": bool(state.get("episode_active") and state.get(f"{tier}_triggered")),
+                          "trigger_price": float(anchor) * (1 + threshold / 100) if isinstance(anchor, (int, float)) and anchor > 0 else None,
+                          "voo_usd": targets[("VOO", tier)], "qqq_usd": targets[("QQQ", tier)], "total_usd": amount,
+                          "voo_used_usd": allocated[("VOO", tier)], "qqq_used_usd": allocated[("QQQ", tier)]})
+    sales = [record for record in trade_records if str(record.get("symbol", "")).upper() == "SGOV" and str(record.get("action", "")).lower() == "sell" and str(record.get("trade_date") or "")[:10] <= today_key]
+    sales.sort(key=lambda record: str(record.get("trade_date") or ""), reverse=True)
+    return {"available_usd": max(0.0, sgov_holding_usd), "budget_usd": budget if tiers else 0,
+            "marked_count": len(marked), "marked_purchase_usd": sum(float(record.get("amount_usd") or 0) for record in marked),
+            "rows": plan_rows, "latest_sale": {"trade_date": sales[0].get("trade_date"), "amount_usd": float(sales[0].get("amount_usd") or 0)} if sales else None}
+
+
 def build_rebalance_v2(
     user_id: str,
     holding_rows: list[dict[str, Any]],
@@ -3209,7 +3273,8 @@ def build_rebalance_v2(
         validation = monthly_threshold_snapshot.get("validation") or {}
         validation_alerts = list(validation.get("alerts") or [])
         confirmed_tier = str(confirmed_signal.get("tier") or "normal")
-        multiplier, action, signal, intensity = signal_for_intensity(sym, phase, confirmed_tier)
+        _, action, _, intensity = signal_for_intensity(sym, phase, confirmed_tier)
+        signal = INTENSITY_LABELS.get(normalize_intensity(intensity), action)
         rebalance_rule = REBALANCE_RULES.get(phase, {}).get(sym, {})
         review_mode = rebalance_rule.get("mode")
         tier_diagnostics = rebalance_rule.get("diagnostics")
@@ -3219,24 +3284,22 @@ def build_rebalance_v2(
             has_large_trigger = True
 
         if is_satellite:
-            tier_multiplier = float(multiplier) / 0.1 if float(multiplier) > 0 else 0.0
             base_budget = float(stock_quarters[sym].get("base_budget_usd", planned_new_cash_usd * target_pct * 3.0))
             carry_in = float(stock_quarters[sym]["carry_in_usd"])
             planned = max(0.0, base_budget + carry_in)
-            tier_plan = base_budget * tier_multiplier
             stock_monthly_budget = base_budget / 3.0
             planned_formula_parts = [
                 f"本轮额度 {_fmt_usd_compact(planned)} = 月预算 {_fmt_usd_compact(stock_monthly_budget)} x 3 + 上轮结转 {_fmt_usd_compact(carry_in)}",
-                f"周期始于 {period_start}；档位建议按季度基准 x {tier_multiplier:.0f}x，且不超过剩余额度",
+                f"周期始于 {period_start}；买入不超过本轮剩余额度",
             ]
         else:
             carry_in = 0.0
             etf_month_budget = float(saved_budget_by_month.get(selected_month, planned_new_cash_usd)) if selected_month != month_key else planned_new_cash_usd
             base_budget = etf_month_budget * target_pct
-            planned = base_budget * float(multiplier)
+            planned = base_budget
             planned_formula_parts = [
                 f"{selected_month} 月度基准 {_fmt_usd_compact(base_budget)} = 总月预算 {_fmt_usd_compact(etf_month_budget)} x 目标比例 {target_pct * 100.0:.2f}%",
-                f"计划应买 {_fmt_usd_compact(planned)} = 月度基准 x 档位 {float(multiplier):.2f}x",
+                f"计划应买 {_fmt_usd_compact(planned)} = 月度基准",
             ]
         target_usd = long_term_target_usd
         raw_gap = target_usd - cost_usd
@@ -3245,15 +3308,13 @@ def build_rebalance_v2(
         actual_gap = gap
         remaining_plan = max(0.0, planned - period_net_bought)
         if is_satellite:
-            gap_capped_plan = min(max(0.0, gap), tier_plan, remaining_plan)
+            gap_capped_plan = min(max(0.0, gap), remaining_plan)
         planned_formula_parts.append(
             f"长期目标 {_fmt_usd_compact(target_usd)} = {'持仓成本 + 美元现金成本基准 + 后续两个月预算' if is_satellite else '持仓成本 + 美元现金成本基准'} {_fmt_usd_compact(target_denominator_usd)} x 目标比例 {target_pct * 100.0:.2f}%"
         )
         planned_formula_parts.append(f"成本差值 {_fmt_usd_compact(actual_gap)} = 长期目标 - 当前成本 {_fmt_usd_compact(cost_usd)}（接近目标时按 0 处理）")
         planned_formula = "；".join(planned_formula_parts)
 
-        previous_multiplier = 0.0 if is_satellite else intensity_multiplier(sym, phase, previous)
-        additional_multiplier = max(0.0, float(multiplier) - previous_multiplier)
         already_bought_this_month = not is_satellite and previous != "none"
         fpe = item.get("forward_pe")
         split, split_note = valuation_split_for_row(sym, item)
@@ -3267,7 +3328,6 @@ def build_rebalance_v2(
         suggested_cap = gap_capped_plan * split if is_satellite else raw_suggested
         if already_bought_this_month and raw_suggested <= 1e-9:
             raw_suggested = 0.0
-            additional_multiplier = 0.0
         if gap <= 0:
             raw_suggested = 0.0
             action = "暂不买入"
@@ -3280,9 +3340,9 @@ def build_rebalance_v2(
             note_parts.append("未配置经确认的可靠同行组；自身短历史档位仅供观察，系统不会自动建议买入。")
         elif raw_suggested > 0:
             note_parts.append(
-                f"个股以三个月预算为基准，当前按 {tier_multiplier:.1f}x 计算，并扣除本轮已买。"
+                "个股按本轮预算计算，并扣除本轮净买入。"
                 if is_satellite
-                else "按月度预算、档位和本月剩余额度执行。"
+                else "按月度预算和本月剩余额度执行。"
             )
         elif already > 0:
             note_parts.append(f"本月已买 USD {already:,.2f}，当前无需系统补买；仍可手动确认。")
@@ -3296,7 +3356,7 @@ def build_rebalance_v2(
             note_parts.append(
                 f"{split_note} 估值约束仍保留，且不超过本轮剩余额度。"
                 if is_satellite
-                else f"{split_note} 计划金额仍按建仓节奏买够。"
+                else f"{split_note} 买入金额受月度预算约束。"
             )
         history_note = historical_probability_note(sym, item, intensity)
         if history_note:
@@ -3309,7 +3369,7 @@ def build_rebalance_v2(
             elif normalize_intensity(intensity) == "normal":
                 note_parts.append(f"本月已执行到{previous_label}档，当前仍为 normal，本次补齐本月 normal 剩余额度。")
             else:
-                note_parts.append(f"本月已执行到{previous_label}档；当前为{current_label}档，本次补齐当前档位的月度剩余额度。")
+                note_parts.append(f"本月已执行到{previous_label}档；当前为{current_label}档，本次补齐月度剩余额度。")
 
         rows.append(
             {
@@ -3351,7 +3411,6 @@ def build_rebalance_v2(
                 "long_term_target_usd": long_term_target_usd,
                 "target_denominator_usd": target_denominator_usd,
                 "target_future_cash_usd": stock_future_cash_usd if is_satellite else 0.0,
-                "signal_multiplier": float(multiplier),
                 "suggested_buy_usd": raw_suggested,
                 "raw_suggested_buy_usd": raw_suggested,
                 "suggested_cap_usd": suggested_cap,
@@ -3423,7 +3482,6 @@ def build_rebalance_v2(
                 "planned_buy_formula": f"目标 {_fmt_usd_compact(planned_sgov_target_usd)}，当前 {_fmt_usd_compact(sgov_current_usd)}",
                 "target_usd": planned_sgov_target_usd,
                 "base_budget_usd": 0.0,
-                "signal_multiplier": 0.0,
                 "suggested_buy_usd": 0.0,
                 "raw_suggested_buy_usd": 0.0,
                 "suggested_cap_usd": 0.0,
@@ -3491,6 +3549,7 @@ def build_rebalance_v2(
         "monthly_budget_usd": planned_new_cash_usd,
         "strategy_budget_usd": strategy_budget_usd,
         "suggestion_scale": scale,
+        "sgov_usage_plan": build_sgov_usage_plan(rows, sgov_current_usd, episode_signals.get("QQQ", {}), trade_records, today_key),
         "sgov_excess_usd": sgov_excess_usd,
         "sgov_available_usd": sgov_available_usd,
         "sgov_large_trigger_enabled": has_large_trigger,
@@ -3686,6 +3745,34 @@ def delete_fx_conversion_record(user_id: str, record_id: str) -> dict[str, Any]:
     return {"deleted": True, "record_id": record_id, "records": load_fx_conversion_records(user_id)}
 
 
+def trade_intensity_from_price(symbol: str, price: float, trade_date: str, store: dict[str, Any], today: str) -> str:
+    """Classify only when the trade belongs to the known current anchor and snapshot."""
+    rule = REBALANCE_RULES.get(REBALANCE_PHASE_BUILD, {}).get(symbol)
+    if not rule:
+        return "none"
+    if rule.get("mode") == "manual_review_only":
+        return "manual_review_only"
+    state = (store.get("episodes") or {}).get(symbol) or {}
+    anchor = state.get("anchor_price")
+    anchor_date = str(state.get("anchor_date") or "")[:10]
+    if not isinstance(anchor, (int, float)) or anchor <= 0 or price <= 0 or not anchor_date or not anchor_date <= trade_date <= today:
+        return "none"
+    snapshots = store.get("threshold_snapshots") or {}
+    snapshot = snapshots.get(state.get("threshold_snapshot_id"))
+    if not isinstance(snapshot, dict):
+        key = f"{symbol}:{REBALANCE_PHASE_BUILD}:{trade_date[:7]}:{DRAWDOWN_METRIC_VERSION}"
+        snapshot = snapshots.get((store.get("preferred_threshold_snapshots") or {}).get(key)) or snapshots.get(key)
+    if not isinstance(snapshot, dict) or snapshot.get("mode") == "manual_review_only":
+        return "none"
+    if snapshot.get("effective_month") and str(snapshot["effective_month"]) > trade_date[:7]:
+        return "none"
+    thresholds = snapshot.get("thresholds_pct") or {}
+    if not all(isinstance(thresholds.get(tier), (int, float)) for tier in ("small", "medium", "large")):
+        return "none"
+    drawdown = (price / float(anchor) - 1) * 100
+    return next((tier for tier in ("large", "medium", "small") if drawdown <= thresholds[tier]), "normal")
+
+
 def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, Any]:
     holdings, balances, _ = load_user_state(user_id)
     balances_before = dict(balances)
@@ -3764,6 +3851,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
     balances_before = dict(balances)
     now = datetime.now(TZ_SHANGHAI)
     records = load_trade_records(user_id)
+    trade_episode_store = load_drawdown_episode_store(user_id)
     usage_by_month: dict[str, dict[str, Any]] = {}
     total_bought = 0.0
     total_sold = 0.0
@@ -3792,6 +3880,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             date.fromisoformat(trade_date)
         except ValueError as exc:
             raise ValueError(f"{sym} 交易日期无效") from exc
+        trade_intensity = trade_intensity_from_price(sym, amount / shares, trade_date, trade_episode_store, now.date().isoformat()) if shares > 0 else "none"
         month_key = trade_date[:7]
         usage = usage_by_month.get(month_key)
         if usage is None:
@@ -3835,7 +3924,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
             )
             if tracks_monthly_usage:
                 amounts[sym] = float(amounts.get(sym, 0.0)) + amount
-                new_intensity = normalize_intensity(item.get("intensity", "normal"))
+                new_intensity = trade_intensity
                 old_intensity = normalize_intensity(intensities.get(sym, "none"))
                 if intensity_rank(new_intensity) > intensity_rank(old_intensity):
                     intensities[sym] = new_intensity
@@ -3857,7 +3946,9 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
                 "realized_pnl": sale_pnl,
                 "prev_avg_cost": prev_avg_cost,
                 "new_avg_cost": new_avg_cost,
-                "intensity": normalize_intensity(item.get("intensity", "normal")),
+                "intensity": trade_intensity,
+                "uses_sgov": item.get("uses_sgov") is True and action == "buy" and sym != "SGOV",
+                "sgov_tier": item.get("sgov_tier") if item.get("uses_sgov") is True and action == "buy" and sym in ("VOO", "QQQ") and item.get("sgov_tier") in ("small", "medium", "large") else None,
                 "created_at": now.isoformat(timespec="seconds"),
             }
         )
