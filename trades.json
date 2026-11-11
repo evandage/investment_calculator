@@ -1954,6 +1954,23 @@
       "uses_sgov": true,
       "sgov_tier": null,
       "created_at": "2026-11-06T10:19:51+08:00"
+    },
+    {
+      "id": "20261110084216-115-PLTR",
+      "trade_date": "2026-11-06",
+      "symbol": "PLTR",
+      "action": "buy",
+      "amount_usd": 50.0,
+      "shares": 0.3136,
+      "price": 159.4387755102041,
+      "cost_basis": 50.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 128.05614447711048,
+      "new_avg_cost": 140.51701190174728,
+      "intensity": "normal",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-10T08:42:16+08:00"
     }
   ]
 }
