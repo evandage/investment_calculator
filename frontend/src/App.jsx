@@ -259,6 +259,21 @@ function fmtChartPrice(value, symbol) {
   return num.toFixed(chartPriceDigits(symbol));
 }
 
+function BuyMarkerPnl({ marker, data }) {
+  const shares = Number(marker.buy_shares);
+  const cost = Number(marker.buy_amount);
+  const price = data?.selected_date ? NaN : Number(data?.latest_price);
+  const available = Number.isFinite(shares) && shares > 0 && Number.isFinite(cost) && cost > 0 && Number.isFinite(price) && price > 0;
+  const pnl = available ? shares * price - cost : null;
+  const currency = /^\d{6}\.(SS|SZ)$/i.test(data?.symbol || "") ? "CNY" : "USD";
+  return (
+    <>
+      <div className="klineTradeDetail"><span>浮盈亏</span><b className={available ? tone(pnl) : ""}>{available ? `${fmtSignedMoney(pnl, currency)} · ${fmtPct(pnl / cost * 100)}` : "暂无当前报价"}</b></div>
+      <div className="klineTradeNote">按原买入数量及最新报价估算，未扣除后续卖出</div>
+    </>
+  );
+}
+
 function dailyAmount(value, pct) {
   const currentValue = Number(value || 0);
   const dailyPct = Number(pct || 0);
@@ -2839,14 +2854,53 @@ function SingleLightweightChart({
     });
     seriesRef.current = { candle, tradeMarkers, volume, percent, avwapUpper, avwapLower, avwap, ema20, ma50, ma200, rsi, rsiMa, macdHist, macd, macdSignal };
     chartRef.current = chart;
+    const markerMeasureContext = document.createElement("canvas").getContext("2d");
+    if (markerMeasureContext) markerMeasureContext.font = `11px ${PLOT_FONT}`;
     const handleCrosshairMove = (param) => {
       if (drawingToolRef.current) {
         setCandleTooltip((current) => current.visible ? { visible: false } : current);
         return;
       }
       const point = param?.point;
-      const candleRow = param?.seriesData?.get(candle);
-      if (!point || !candleRow || point.x < 0 || point.y < 0 || point.x > container.clientWidth || point.y > container.clientHeight) {
+      if (!point || point.x < 0 || point.y < 0 || point.x > container.clientWidth || point.y > container.clientHeight) {
+        setCandleTooltip((current) => current.visible ? { visible: false } : current);
+        return;
+      }
+      const hoveredMarkerId = param?.hoveredInfo?.objectId ?? param?.hoveredObjectId;
+      let tradeMarker = hoveredMarkerId == null
+        ? null
+        : tradeMarkerDetailsRef.current.get(String(hoveredMarkerId)) || null;
+      if (!tradeMarker && param.paneIndex === 0 && markerMeasureContext) {
+        // The chart library hit-tests the small text box exactly. Add a few
+        // pixels of tolerance around the same rendered glyph, not the bar.
+        const spacing = chart.timeScale().options().barSpacing;
+        const roundedMargin = Math.ceil(Math.min(Math.max(spacing, 12), 30) * 0.1);
+        const margin = Math.max(roundedMargin % 2 === 0 ? roundedMargin - 1 : roundedMargin, 3);
+        let closestDistance = Infinity;
+        for (const marker of tradeMarkerDetailsRef.current.values()) {
+          const x = chart.timeScale().timeToCoordinate(marker.time);
+          if (x == null || Math.abs(point.x - x) > 18) continue;
+          const index = chart.timeScale().timeToIndex(marker.time, false);
+          const row = index == null ? null : candle.dataByIndex(index);
+          if (!row) continue;
+          const below = marker.position === "belowBar";
+          const priceY = candle.priceToCoordinate(below ? row.low : row.high);
+          if (priceY == null) continue;
+          const y = priceY + (below ? 2 * margin + 11 * 0.6 : -margin - 11 * 0.6);
+          const halfWidth = markerMeasureContext.measureText(marker.text || "").width / 2;
+          const dx = Math.abs(point.x - x);
+          const dy = Math.abs(point.y - y);
+          if (dx <= halfWidth + 3 && dy <= 11 / 2 + 3 && dx + dy < closestDistance) {
+            tradeMarker = marker;
+            closestDistance = dx + dy;
+          }
+        }
+      }
+      // A marker's glyph can extend over the adjacent bar. Use its own time,
+      // rather than the crosshair's nearest bar, for every tooltip value.
+      const markerIndex = tradeMarker ? chart.timeScale().timeToIndex(tradeMarker.time, false) : null;
+      const candleRow = markerIndex != null ? candle.dataByIndex(markerIndex) : param?.seriesData?.get(candle);
+      if (!candleRow) {
         setCandleTooltip((current) => current.visible ? { visible: false } : current);
         return;
       }
@@ -2854,18 +2908,14 @@ function SingleLightweightChart({
       const high = Number(candleRow.high);
       const low = Number(candleRow.low);
       const close = Number(candleRow.close);
-      const volumeRow = param.seriesData.get(volume);
-      const hoveredMarkerId = param?.hoveredInfo?.objectId ?? param?.hoveredObjectId;
-      const tradeMarker = hoveredMarkerId == null
-        ? null
-        : tradeMarkerDetailsRef.current.get(String(hoveredMarkerId)) || null;
+      const volumeRow = markerIndex != null ? volume.dataByIndex(markerIndex) : param.seriesData.get(volume);
       const tooltipWidth = 216;
-      const tooltipHeight = tradeMarker?.action === "trade" ? 202 : (tradeMarker ? 184 : 154);
+      const tooltipHeight = tradeMarker?.action === "trade" ? 250 : (tradeMarker?.action === "buy" ? 230 : (tradeMarker ? 184 : 154));
       setCandleTooltip({
         visible: true,
         left: Math.max(8, Math.min(container.clientWidth - tooltipWidth - 8, point.x + 14)),
         top: Math.max(8, Math.min(container.clientHeight - tooltipHeight - 8, point.y + 14)),
-        time: formatLightweightChartTime(param.time),
+        time: formatLightweightChartTime(tradeMarker?.time ?? param.time),
         open,
         high,
         low,
@@ -3124,7 +3174,7 @@ function SingleLightweightChart({
         color: TERMINAL_CHART.yellow,
         lineWidth: 1,
         lineStyle: 2,
-        axisLabelVisible: false,
+        axisLabelVisible: true,
         title: "Latest",
       });
     }
@@ -3134,7 +3184,7 @@ function SingleLightweightChart({
         color: "rgba(180, 83, 9, 0.96)",
         lineWidth: 1,
         lineStyle: 2,
-        axisLabelVisible: false,
+        axisLabelVisible: true,
         title: "Cost",
       });
     }
@@ -3247,23 +3297,28 @@ function SingleLightweightChart({
             {candleTooltip.tradeMarker ? (
               candleTooltip.tradeMarker.action === "trade" ? (
                 <>
-                  <div className="up">
+                  <div className="klineTradeRow up">
                     <span>买入 B</span>
-                    <b>{Number(candleTooltip.tradeMarker.buy_count || 0)} 笔 · {Number(candleTooltip.tradeMarker.buy_shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} 股{Number(candleTooltip.tradeMarker.buy_average_price) > 0 ? ` @ ${fmtChartPrice(candleTooltip.tradeMarker.buy_average_price, data?.symbol)}` : ""}</b>
+                    <b>{Number(candleTooltip.tradeMarker.buy_count || 0)} 笔 · {Number(candleTooltip.tradeMarker.buy_shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} 股{Number(candleTooltip.tradeMarker.buy_average_price) > 0 ? ` @ ${fmtChartPrice(candleTooltip.tradeMarker.buy_average_price, data?.symbol)}` : ""}{Number(candleTooltip.tradeMarker.buy_amount) > 0 ? ` · 总额 ${fmtMoney(candleTooltip.tradeMarker.buy_amount, /^\d{6}\.(SS|SZ)$/i.test(data?.symbol || "") ? "CNY" : "USD")}` : ""}</b>
                   </div>
-                  <div className="down">
+                  <div className="klineTradeRow down">
                     <span>卖出 S</span>
                     <b>{Number(candleTooltip.tradeMarker.sell_count || 0)} 笔 · {Number(candleTooltip.tradeMarker.sell_shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} 股{Number(candleTooltip.tradeMarker.sell_average_price) > 0 ? ` @ ${fmtChartPrice(candleTooltip.tradeMarker.sell_average_price, data?.symbol)}` : ""}</b>
                   </div>
+                  <BuyMarkerPnl marker={candleTooltip.tradeMarker} data={data} />
                 </>
               ) : (
-                <div className={candleTooltip.tradeMarker.action === "sell" ? "down" : "up"}>
+                <>
+                <div className={`klineTradeRow ${candleTooltip.tradeMarker.action === "sell" ? "down" : "up"}`}>
                   <span>{candleTooltip.tradeMarker.action === "sell" ? "卖出 S" : "买入 B"}</span>
                   <b>
                     {Number(candleTooltip.tradeMarker.count || 0)} 笔 · {Number(candleTooltip.tradeMarker.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} 股
                     {Number(candleTooltip.tradeMarker.average_price) > 0 ? ` @ ${fmtChartPrice(candleTooltip.tradeMarker.average_price, data?.symbol)}` : ""}
+                    {candleTooltip.tradeMarker.action === "buy" && Number(candleTooltip.tradeMarker.buy_amount) > 0 ? ` · 总额 ${fmtMoney(candleTooltip.tradeMarker.buy_amount, /^\d{6}\.(SS|SZ)$/i.test(data?.symbol || "") ? "CNY" : "USD")}` : ""}
                   </b>
                 </div>
+                {candleTooltip.tradeMarker.action === "buy" ? <BuyMarkerPnl marker={candleTooltip.tradeMarker} data={data} /> : null}
+                </>
               )
             ) : null}
           </div>

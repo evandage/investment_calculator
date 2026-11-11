@@ -2400,6 +2400,21 @@ body.klineFullscreenOpen .pageNav {
   grid-column: 2 / 5;
 }
 
+.klineCandleTooltip > .klineTradeDetail {
+  grid-template-columns: 42px 1fr;
+}
+
+.klineCandleTooltip > .klineTradeRow {
+  grid-template-columns: 42px minmax(0, 1fr);
+}
+
+.klineCandleTooltip > .klineTradeNote {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
 .singleKlinePercentAxis {
   right: calc(var(--single-price-axis-width) + var(--single-profile-width) + var(--single-profile-label-gutter));
 }
