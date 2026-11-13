@@ -3882,10 +3882,10 @@
       "reconstruct_from_date": "2026-11-05"
     },
     {
-      "id": "adj-20261113T095812+0800-132",
+      "id": "adj-20261110T084216+0800-132",
       "kind": "balances",
-      "effective_date": "2026-11-13",
-      "recorded_at": "2026-11-13T09:58:12+08:00",
+      "effective_date": "2026-11-10",
+      "recorded_at": "2026-11-10T08:42:16+08:00",
       "reason": "trade_batch_cash_anchor",
       "before": {
         "cash_usd": -7.045000000000073,
@@ -3898,9 +3898,37 @@
         "sgov_dividend_usd": 30.229999999999997
       },
       "after": {
-        "cash_usd": 93.47599999999993,
+        "cash_usd": -57.04500000000007,
         "cash_cny": 36880.78,
-        "cash_cost_basis_usd": 30.82549288171576,
+        "cash_cost_basis_usd": -119.66902778854183,
+        "cash_cost_basis_cny": 35807.93116096959,
+        "realized_usd": 24.414027788541826,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "reconstruct_from_date": "2026-11-06"
+    },
+    {
+      "id": "adj-20261113T095812+0800-132",
+      "kind": "balances",
+      "effective_date": "2026-11-13",
+      "recorded_at": "2026-11-13T09:58:12+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": -57.04500000000007,
+        "cash_cny": 36880.78,
+        "cash_cost_basis_usd": -119.66902778854183,
+        "cash_cost_basis_cny": 35807.93116096959,
+        "realized_usd": 24.414027788541826,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 30.229999999999997
+      },
+      "after": {
+        "cash_usd": 43.47599999999993,
+        "cash_cny": 36880.78,
+        "cash_cost_basis_usd": -19.17450711828424,
         "cash_cost_basis_cny": 35807.93116096959,
         "realized_usd": 24.44050711828424,
         "realized_cny": 1072.8488390304121,
@@ -3916,9 +3944,9 @@
       "recorded_at": "2026-11-13T09:58:55+08:00",
       "reason": "trade_batch_cash_anchor",
       "before": {
-        "cash_usd": 93.47599999999993,
+        "cash_usd": 43.47599999999993,
         "cash_cny": 36880.78,
-        "cash_cost_basis_usd": 30.82549288171576,
+        "cash_cost_basis_usd": -19.17450711828424,
         "cash_cost_basis_cny": 35807.93116096959,
         "realized_usd": 24.44050711828424,
         "realized_cny": 1072.8488390304121,
@@ -3926,9 +3954,9 @@
         "sgov_dividend_usd": 30.229999999999997
       },
       "after": {
-        "cash_usd": 63.47599999999993,
+        "cash_usd": 13.475999999999928,
         "cash_cny": 36880.78,
-        "cash_cost_basis_usd": 0.8254928817157605,
+        "cash_cost_basis_usd": -49.17450711828424,
         "cash_cost_basis_cny": 35807.93116096959,
         "realized_usd": 24.44050711828424,
         "realized_cny": 1072.8488390304121,
@@ -3944,9 +3972,9 @@
       "recorded_at": "2026-11-13T09:59:16+08:00",
       "reason": "trade_batch_cash_anchor",
       "before": {
-        "cash_usd": 63.47599999999993,
+        "cash_usd": 13.475999999999928,
         "cash_cny": 36880.78,
-        "cash_cost_basis_usd": 0.8254928817157605,
+        "cash_cost_basis_usd": -49.17450711828424,
         "cash_cost_basis_cny": 35807.93116096959,
         "realized_usd": 24.44050711828424,
         "realized_cny": 1072.8488390304121,
@@ -3954,9 +3982,9 @@
         "sgov_dividend_usd": 30.229999999999997
       },
       "after": {
-        "cash_usd": 143.47599999999994,
+        "cash_usd": 93.47599999999994,
         "cash_cny": 36880.78,
-        "cash_cost_basis_usd": 82.17055705038237,
+        "cash_cost_basis_usd": 32.17055705038237,
         "cash_cost_basis_cny": 35807.93116096959,
         "realized_usd": 23.09544294961763,
         "realized_cny": 1072.8488390304121,
