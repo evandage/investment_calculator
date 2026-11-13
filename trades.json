@@ -1954,6 +1954,57 @@
       "uses_sgov": true,
       "sgov_tier": null,
       "created_at": "2026-11-06T10:19:51+08:00"
+    },
+    {
+      "id": "20261113095812-115-SGOV",
+      "trade_date": "2026-11-12",
+      "symbol": "SGOV",
+      "action": "sell",
+      "amount_usd": 100.521,
+      "shares": 1.0,
+      "price": 100.521,
+      "cost_basis": 100.49452067025759,
+      "realized_pnl": 0.026479329742414848,
+      "prev_avg_cost": 100.49452067025759,
+      "new_avg_cost": 100.49452067025759,
+      "intensity": "none",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-13T09:58:12+08:00"
+    },
+    {
+      "id": "20261113095855-116-TEM",
+      "trade_date": "2026-11-12",
+      "symbol": "TEM",
+      "action": "buy",
+      "amount_usd": 30.0,
+      "shares": 0.3997,
+      "price": 75.05629221916438,
+      "cost_basis": 30.0,
+      "realized_pnl": 0.0,
+      "prev_avg_cost": 53.71206241399209,
+      "new_avg_cost": 56.928503619363596,
+      "intensity": "manual_review_only",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-13T09:58:55+08:00"
+    },
+    {
+      "id": "20261113095916-117-AVGO",
+      "trade_date": "2026-11-12",
+      "symbol": "AVGO",
+      "action": "sell",
+      "amount_usd": 80.0,
+      "shares": 0.2228,
+      "price": 359.0664272890485,
+      "cost_basis": 81.34506416866661,
+      "realized_pnl": -1.3450641686666103,
+      "prev_avg_cost": 365.10351960801887,
+      "new_avg_cost": 365.10351960801887,
+      "intensity": "large",
+      "uses_sgov": false,
+      "sgov_tier": null,
+      "created_at": "2026-11-13T09:59:16+08:00"
     }
   ]
 }

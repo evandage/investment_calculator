@@ -225,26 +225,30 @@
       "QQQ": "2026-11"
     },
     "2026-11": {
-      "used_budget_usd": 1643.8,
+      "used_budget_usd": 1673.8,
       "planned_new_cash_usd": 700.0,
       "planned_cash_by_month": {},
       "bought_symbols": [
         "APP",
         "QQQ",
+        "TEM",
         "VOO"
       ],
       "bought_amount_by_symbol": {
         "QQQ": 893.8,
         "APP": 50.0,
-        "VOO": 700.0
+        "VOO": 700.0,
+        "TEM": 30.0
       },
-      "sold_amount_by_symbol": {},
+      "sold_amount_by_symbol": {
+        "AVGO": 80.0
+      },
       "bought_intensity_by_symbol": {
         "QQQ": "medium",
         "APP": "normal",
         "VOO": "small"
       },
-      "updated_at": "2026-11-06T10:19:51+08:00"
+      "updated_at": "2026-11-13T09:59:16+08:00"
     }
   }
 }
