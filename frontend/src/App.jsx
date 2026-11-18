@@ -4752,6 +4752,7 @@ function Rebalance({ data, onSaved }) {
   }
 
   function openFxConversionEditor() {
+    setFxConversionMessage("");
     setFxInputs((prev) => ({
       converted_date: prev.converted_date || defaultTradeDate,
       cny_amount: prev.cny_amount ?? "",
@@ -4830,21 +4831,23 @@ function Rebalance({ data, onSaved }) {
     setSavingFxConversion(true);
     setFxConversionMessage("");
     try {
+      const cnyAmount = parseAmountInput(fxInputs.cny_amount, "人民币金额");
+      const usdAmount = parseAmountInput(fxInputs.usd_amount, "美元金额");
+      if (cnyAmount <= 0 || usdAmount <= 0) {
+        throw new Error("人民币金额和美元金额都必须大于零");
+      }
       const response = await fetch(`${API_BASE}/api/fx-conversions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: data.user_id,
           converted_date: fxInputs.converted_date || defaultTradeDate,
-          cny_amount: Number(fxInputs.cny_amount || 0),
-          usd_amount: Number(fxInputs.usd_amount || 0),
+          cny_amount: cnyAmount,
+          usd_amount: usdAmount,
           note: fxInputs.note || "",
         }),
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || `HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(await readApiError(response, `HTTP ${response.status}`));
       await onSaved();
       setFxInputs((prev) => ({ ...prev, cny_amount: "", usd_amount: "", note: "" }));
       setFxConversionOpen(false);
@@ -4871,10 +4874,7 @@ function Rebalance({ data, onSaved }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: data.user_id }),
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || `HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(await readApiError(response, `HTTP ${response.status}`));
       await onSaved();
       showTradeToast("购汇记录已撤销", "up");
     } catch (err) {
@@ -5359,7 +5359,7 @@ function Rebalance({ data, onSaved }) {
             ) : null}
           </div>
         </div>
-        {fxConversionMessage ? <div className="saveMessage down">{fxConversionMessage}</div> : null}
+        {!fxConversionOpen && fxConversionMessage ? <div className="saveMessage down">{fxConversionMessage}</div> : null}
         <div className="recordTableToolbar">
           <input
             value={fxFilter}
@@ -5425,6 +5425,7 @@ function Rebalance({ data, onSaved }) {
               <label>美元金额<input value={fxInputs.usd_amount ?? ""} onChange={(event) => updateFxInput("usd_amount", event.target.value)} inputMode="decimal" /></label>
               <label>备注<input value={fxInputs.note ?? ""} onChange={(event) => updateFxInput("note", event.target.value)} /></label>
             </div>
+            {fxConversionMessage ? <div className="saveMessage down" role="alert">{fxConversionMessage}</div> : null}
             <div className="actions">
               <button className="primary" onClick={saveFxConversion} disabled={savingFxConversion}><Save size={16} /> 保存换汇</button>
             </div>

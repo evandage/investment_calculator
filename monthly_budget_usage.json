@@ -226,8 +226,10 @@
     },
     "2026-11": {
       "used_budget_usd": 1723.8,
-      "planned_new_cash_usd": 700.0,
-      "planned_cash_by_month": {},
+      "planned_new_cash_usd": 1400.0,
+      "planned_cash_by_month": {
+        "2026-12": 1400.0
+      },
       "bought_symbols": [
         "APP",
         "PLTR",
@@ -251,7 +253,7 @@
         "VOO": "small",
         "PLTR": "normal"
       },
-      "updated_at": "2026-11-13T10:43:16+08:00"
+      "updated_at": "2026-11-18T10:50:54+08:00"
     }
   }
 }
