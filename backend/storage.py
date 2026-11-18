@@ -471,21 +471,6 @@ def load_monthly_usage_store() -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-def load_etf_budget_months(user_id: str) -> dict[str, str]:
-    user_store = load_monthly_usage_store().get(str(user_id or active_user_id()), {})
-    raw = user_store.get("etf_budget_months", {}) if isinstance(user_store, dict) else {}
-    return {sym: str(raw[sym]) for sym in ("VOO", "QQQ") if isinstance(raw, dict) and sym in raw}
-
-
-def save_etf_budget_month(user_id: str, symbol: str, month: str) -> None:
-    store = load_monthly_usage_store()
-    user_key = str(user_id or active_user_id())
-    user_store = store.setdefault(user_key, {})
-    months = user_store.setdefault("etf_budget_months", {})
-    months[symbol] = month
-    _write_json(MONTHLY_USAGE_FILE, store)
-
-
 def load_stock_quarters(user_id: str) -> dict[str, dict[str, Any]]:
     store = load_monthly_usage_store()
     user_store = store.get(str(user_id or active_user_id()).strip() or "local", {})
@@ -500,35 +485,17 @@ def load_stock_quarters(user_id: str) -> dict[str, dict[str, Any]]:
         try:
             start_date = str(cycle["start_date"])
             datetime.fromisoformat(start_date)
-            carry_in = float(cycle.get("carry_in_usd", 0.0))
         except (KeyError, TypeError, ValueError):
             continue
-        clean = {"start_date": start_date[:10], "carry_in_usd": carry_in}
+        clean = {"start_date": start_date[:10]}
         quarter_label = str(cycle.get("quarter_label") or "").upper()
         if re.fullmatch(r"Y\d{2}Q[1-4]", quarter_label):
             clean["quarter_label"] = quarter_label
-        try:
-            base_budget = float(cycle["base_budget_usd"])
-            if 0 <= base_budget < float("inf"):
-                clean["base_budget_usd"] = base_budget
-        except (KeyError, TypeError, ValueError):
-            pass
         history = cycle.get("history", [])
         if isinstance(history, list):
             clean["history"] = [item for item in history if isinstance(item, dict)]
         result[sym] = clean
     return result
-
-
-def save_stock_quarters(user_id: str, quarters: dict[str, dict[str, Any]]) -> None:
-    store = load_monthly_usage_store()
-    user_key = str(user_id or active_user_id()).strip() or "local"
-    user_store = store.get(user_key)
-    if not isinstance(user_store, dict):
-        user_store = {}
-    user_store["stock_quarters"] = quarters
-    store[user_key] = user_store
-    _write_json(MONTHLY_USAGE_FILE, store)
 
 
 def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:

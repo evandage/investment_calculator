@@ -4129,16 +4129,6 @@ function nextMonthKey(monthKey) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function quarterLabelOptions(monthKey, selected) {
-  const year = Number(String(monthKey || "").slice(0, 4)) || new Date().getFullYear();
-  const labels = [];
-  for (let y = year - 5; y <= year + 2; y += 1) {
-    for (let q = 1; q <= 4; q += 1) labels.push(`Y${String(y % 100).padStart(2, "0")}Q${q}`);
-  }
-  if (selected && !labels.includes(selected)) labels.push(selected);
-  return labels.reverse();
-}
-
 function EditableHoldingsPage({ data, onSaved }) {
   const backdropPointerStartedOnSelf = useRef(false);
   const [holdings, setHoldings] = useState({});
@@ -4354,7 +4344,7 @@ function EditableHoldingsPage({ data, onSaved }) {
         setHoldingMessage("");
         setEditingHoldings((value) => !value);
       }}>{editingHoldings ? <X size={18} /> : "编辑持仓"}</button>
-      <button className="toolButton primaryTool compactTool" onClick={() => setBudgetOpen(true)}>预算</button>
+      <button className="toolButton primaryTool compactTool" onClick={() => setBudgetOpen(true)}>未来入金</button>
       <button className="toolButton primaryTool compactTool" onClick={() => setEditingBalances(true)}>现金</button>
       <button className="toolButton primaryTool compactTool" onClick={() => setUniverseOpen(true)}>标的</button>
     </div>
@@ -4432,13 +4422,13 @@ function EditableHoldingsPage({ data, onSaved }) {
         <div className="modalBackdrop" role="presentation">
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader">
-              <h2>预算</h2>
+              <h2>未来入金</h2>
               <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setBudgetOpen(false)} disabled={savingBudget}><X size={18} /></button>
             </div>
-            <div className="muted">设置每月计划投入金额，用于计算买入预算。计划分母 {fmtMoney(data.rebalance?.planned_total_usd || 0, "USD")}</div>
+            <div className="muted">下个月预计入金用于预览下个月的差值。</div>
             <div className="budgetEditGrid">
               {Object.entries(budgetInputs).map(([month, value]) => (
-                <label key={month}>每月预算 (USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
+                <label key={month}>{month} 预计入金 (USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
               ))}
             </div>
             <div className="actions">
@@ -4530,7 +4520,7 @@ function Rebalance({ data, onSaved }) {
       : null];
   })), [suggestionRows, realtimeHoldingBySymbol]);
   const tradeRows = useMemo(() => {
-    const bySymbol = new Map((data.holdings || []).map((row) => [row.symbol, { ...row, intensity: "normal", suggested_buy_usd: 0 }]));
+    const bySymbol = new Map((data.holdings || []).map((row) => [row.symbol, { ...row, intensity: "normal" }]));
     rows.forEach((row) => {
       bySymbol.set(row.symbol, { ...(bySymbol.get(row.symbol) || {}), ...row });
     });
@@ -4543,22 +4533,17 @@ function Rebalance({ data, onSaved }) {
   const backdropPointerStartedOnSelf = useRef(false);
   const defaultTradeDate = previousTradingDateFromShanghai();
   const [activeTradeSymbol, setActiveTradeSymbol] = useState("");
-  const [budgetOpen, setBudgetOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [statisticsOpen, setStatisticsOpen] = useState(false);
   const [universeOpen, setUniverseOpen] = useState(false);
   const [fxConversionOpen, setFxConversionOpen] = useState(false);
   const [inputs, setInputs] = useState({});
-  const [budgetInputs, setBudgetInputs] = useState({});
   const [balanceInputs, setBalanceInputs] = useState({});
   const [fxInputs, setFxInputs] = useState({});
   const [universeInputs, setUniverseInputs] = useState([]);
   const [editingBalances, setEditingBalances] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savingBudget, setSavingBudget] = useState(false);
-  const [refreshingQuarterSymbol, setRefreshingQuarterSymbol] = useState("");
-  const [savingQuarterLabelSymbol, setSavingQuarterLabelSymbol] = useState("");
-  const [quarterLabelDrafts, setQuarterLabelDrafts] = useState({});
+
   const [savingBalances, setSavingBalances] = useState(false);
   const [savingFxConversion, setSavingFxConversion] = useState(false);
   const [savingUniverse, setSavingUniverse] = useState(false);
@@ -4573,35 +4558,29 @@ function Rebalance({ data, onSaved }) {
   const [fxFilter, setFxFilter] = useState("");
   const [fxSort, setFxSort] = useState({ key: "converted_date", direction: "desc" });
   const [rebalanceSort, setRebalanceSort] = useState({ key: "", direction: "asc" });
-
   const [balanceMessage, setBalanceMessage] = useState("");
   const [tradeMessage, setTradeMessage] = useState("");
   const [fxConversionMessage, setFxConversionMessage] = useState("");
   const [tradeToast, setTradeToast] = useState(null);
 
   useEffect(() => {
-    if (!budgetOpen && !savingBudget) {
-      const month = nextMonthKey(data.rebalance.month_key);
-      setBudgetInputs(month ? { [month]: Number(data.rebalance.future_cash_by_month?.[month] ?? data.rebalance.planned_new_cash_usd ?? 700).toFixed(2) } : {});
-    }
     if (!universeOpen) {
       setUniverseInputs(buildSatelliteUniverseDraft(data));
     }
     if (activeTradeSymbol) return;
     const next = {};
     tradeRows.forEach((row) => {
-      const buyAmount = Number(row.suggested_buy_usd || 0);
       const sellAmount = Number(row.suggested_sell_usd || 0);
       next[row.symbol] = {
-        action: sellAmount > buyAmount ? "sell" : "buy",
+        action: sellAmount > 0 ? "sell" : "buy",
         trade_date: defaultTradeDate,
-        amount_usd: Math.max(buyAmount, sellAmount).toFixed(2),
+        amount_usd: sellAmount > 0 ? sellAmount.toFixed(2) : "",
         shares: "",
         intensity: row.intensity || "normal",
       };
     });
     setInputs(next);
-  }, [data.rebalance.month_key, tradeRows, activeTradeSymbol, data.rebalance.future_cash_by_month, defaultTradeDate, data.satellite_universe, data.satellite_targets, data.holdings, budgetOpen, savingBudget, universeOpen]);
+  }, [tradeRows, activeTradeSymbol, defaultTradeDate, data.satellite_universe, data.satellite_targets, data.holdings, universeOpen]);
 
   useEffect(() => {
     if (!tradeToast) return undefined;
@@ -4644,17 +4623,18 @@ function Rebalance({ data, onSaved }) {
     }
     return ({
       symbol: row.symbol,
+      current_value: realtimeHoldingBySymbol[row.symbol]?.value,
+      current_pct: row.current_pct,
       cost_gap: row.buy_difference_usd,
       realtime_gap: realtimeGapBySymbol[row.symbol],
-      planned_buy: row.planned_buy_usd,
-      period_net_bought: row.period_net_bought_usd,
       drawdown_pct: row.drawdown_pct,
       valuation_factor: row.valuation_split_factor,
     })[key];
-  }), [suggestionRows, rebalanceSort, realtimeGapBySymbol]);
+  }), [suggestionRows, rebalanceSort, realtimeHoldingBySymbol, realtimeGapBySymbol]);
   const tradeTotals = useMemo(() => Object.entries(inputs).reduce(
     (totals, item) => {
       const [symbol, value] = item;
+      if (value.action === "dividend") return totals;
       const side = value.action === "sell" ? "sell" : "buy";
       const currency = currencyBySymbol[symbol] === "CNY" ? "CNY" : "USD";
       totals[`${side}_${currency}`] += Number(value.amount_usd || 0);
@@ -4662,7 +4642,6 @@ function Rebalance({ data, onSaved }) {
     },
     { buy_USD: 0, sell_USD: 0, buy_CNY: 0, sell_CNY: 0 },
   ), [inputs, currencyBySymbol]);
-  const futureBudgetTotal = useMemo(() => Object.values(budgetInputs).reduce((sum, value) => sum + Number(value || 0), 0), [budgetInputs]);
   const tradeQuarters = useMemo(() => [...new Set((data.trades || []).map((trade) => trade.quarter_label).filter(Boolean))].sort().reverse(), [data.trades]);
   const sortedTrades = useMemo(() => {
     const query = tradeFilter.trim().toLowerCase();
@@ -4723,9 +4702,6 @@ function Rebalance({ data, onSaved }) {
     setInputs((prev) => ({ ...prev, [symbol]: { ...prev[symbol], [key]: value } }));
   }
 
-  function updateBudget(month, value) {
-    setBudgetInputs((prev) => ({ ...prev, [month]: value }));
-  }
 
   function updateBalance(key, value) {
     setBalanceInputs((prev) => ({ ...prev, [key]: value }));
@@ -4910,81 +4886,6 @@ function Rebalance({ data, onSaved }) {
     }
   }
 
-  async function saveBudget() {
-    setSavingBudget(true);
-    try {
-      const planned_cash_by_month = Object.fromEntries(Object.entries(budgetInputs).map(([month, value]) => [month, Number(value || 0)]));
-      const response = await fetch(`${API_BASE}/api/rebalance/budget`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, planned_cash_by_month }) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      await onSaved();
-      setBudgetOpen(false);
-    } finally {
-      setSavingBudget(false);
-    }
-  }
-
-  async function refreshQuarter(symbol) {
-    setRefreshingQuarterSymbol(symbol);
-    try {
-      const response = await fetch(`${API_BASE}/api/rebalance/stock-quarter/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: data.user_id, symbol }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
-      await onSaved();
-      showTradeToast(`${symbol} 新一轮已开始，结转 ${fmtMoney(result.carry_in_usd, "USD")}`, "up");
-    } catch (error) {
-      showTradeToast(`${symbol} 刷新失败：${error instanceof Error ? error.message : String(error)}`, "down");
-    } finally {
-      setRefreshingQuarterSymbol("");
-    }
-  }
-
-  async function changeQuarterLabel(symbol, quarterLabel) {
-    setQuarterLabelDrafts((previous) => ({ ...previous, [symbol]: quarterLabel }));
-    setSavingQuarterLabelSymbol(symbol);
-    try {
-      const response = await fetch(`${API_BASE}/api/rebalance/stock-quarter/label`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: data.user_id, symbol, quarter_label: quarterLabel }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
-      await onSaved();
-      showTradeToast(`${symbol} 记录季度已设为 ${quarterLabel}`, "up");
-    } catch (error) {
-      showTradeToast(`${symbol} 季度保存失败：${error instanceof Error ? error.message : String(error)}`, "down");
-    } finally {
-      setQuarterLabelDrafts((previous) => {
-        const next = { ...previous };
-        delete next[symbol];
-        return next;
-      });
-      setSavingQuarterLabelSymbol("");
-    }
-  }
-
-  async function changeEtfMonth(symbol, month) {
-    setSavingQuarterLabelSymbol(symbol);
-    try {
-      const response = await fetch(`${API_BASE}/api/rebalance/etf-month`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: data.user_id, symbol, month }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
-      await onSaved();
-      showTradeToast(`${symbol} 已切换至 ${month} 预算`, "up");
-    } catch (error) {
-      showTradeToast(`${symbol} 月份保存失败：${error instanceof Error ? error.message : String(error)}`, "down");
-    } finally {
-      setSavingQuarterLabelSymbol("");
-    }
-  }
-
   async function saveBalances() {
     setSavingBalances(true);
     setBalanceMessage("");
@@ -5055,19 +4956,16 @@ function Rebalance({ data, onSaved }) {
       <div className="sectionHeader">
         <h2>再平衡建议</h2>
         <span className="muted">
-          {data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} ·
-          待买 {fmtMoney(tradeTotals.buy_USD, "USD")}{tradeTotals.buy_CNY ? ` / ${fmtMoney(tradeTotals.buy_CNY, "CNY")}` : ""} ·
-          待卖 {fmtMoney(tradeTotals.sell_USD, "USD")}{tradeTotals.sell_CNY ? ` / ${fmtMoney(tradeTotals.sell_CNY, "CNY")}` : ""}
+          {data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")}
+          {tradeTotals.buy_USD || tradeTotals.buy_CNY ? ` · 已填写买入 ${fmtMoney(tradeTotals.buy_USD, "USD")}${tradeTotals.buy_CNY ? ` / ${fmtMoney(tradeTotals.buy_CNY, "CNY")}` : ""}` : ""}
+          {tradeTotals.sell_USD || tradeTotals.sell_CNY ? ` · 待卖 ${fmtMoney(tradeTotals.sell_USD, "USD")}${tradeTotals.sell_CNY ? ` / ${fmtMoney(tradeTotals.sell_CNY, "CNY")}` : ""}` : ""}
         </span>
         <button className="toolButton primaryTool compactTool rulesButton" onClick={() => setRulesOpen(true)}>规则</button>
       </div>
       <div className="rulesToolbar">
         <span className="muted">
-          建仓到 {data.rebalance.build_target} · 未来入金 {data.rebalance.future_cash_months} 个月 · 缩放 {Number(data.rebalance.suggestion_scale || 1).toFixed(2)}
+          目标分母 {fmtMoney(data.rebalance.current_assets_usd, "USD")}
         </span>
-      </div>
-      <div className="muted rebalanceFormulaBanner">
-        VOO / QQQ 按月预算 · 个股按三个月预算，并结转上轮剩余或超支 · 财报后可手动刷新个股周期
       </div>
       {data.rebalance.monthly_recalculation ? (
         <div className={`monthlyRecalculationStatus ${data.rebalance.monthly_recalculation.status || ""}`}>
@@ -5144,28 +5042,6 @@ function Rebalance({ data, onSaved }) {
           </div>
         </div>
       ) : null}
-      {budgetOpen ? (
-        <div className="modalBackdrop" role="presentation">
-          <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <div className="sectionHeader">
-              <h2>预算设置</h2>
-              <button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setBudgetOpen(false)} disabled={savingBudget}><X size={18} /></button>
-            </div>
-            <div className="muted">
-              每月预算 {fmtMoney(futureBudgetTotal, "USD")} · 计划分母 {fmtMoney(data.rebalance.planned_total_usd, "USD")} · 个股本轮额度在开始时固定，预算调整用于下一轮 · SGOV可动用 {fmtMoney(data.rebalance.sgov_available_usd || 0, "USD")}
-              {data.rebalance.sgov_large_trigger_enabled ? " · 大档位已启用SGOV资金" : " · 普通情况SGOV保留20%"}
-            </div>
-            <div className="budgetEditGrid">
-              {Object.entries(budgetInputs).map(([month, value]) => (
-                <label key={month}>每月预算 (USD)<input value={value} onChange={(event) => updateBudget(month, event.target.value)} inputMode="decimal" /></label>
-              ))}
-            </div>
-            <div className="actions">
-              <button className="primary" onClick={saveBudget} disabled={savingBudget}><Save size={16} /> 保存每月预算并刷新建议</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       {rulesOpen ? (
         <div className="modalBackdrop" role="presentation" onPointerDown={trackBackdropPointerDown} onClick={(event) => {
           if (shouldCloseFromBackdropClick(event)) setRulesOpen(false);
@@ -5173,9 +5049,7 @@ function Rebalance({ data, onSaved }) {
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader"><h2>{data.rebalance.rules?.title || "算法规则"}</h2><button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setRulesOpen(false)}><X size={18} /></button></div>
             <div className="rebalanceRuleSummary">
-              <p>{data.rebalance.month_key} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")} · 待买 {fmtMoney(tradeTotals.buy_USD, "USD")} · 待卖 {fmtMoney(tradeTotals.sell_USD, "USD")}</p>
-              <p>建仓到 {data.rebalance.build_target} · 未来入金 {data.rebalance.future_cash_months} 个月 · 缩放 {Number(data.rebalance.suggestion_scale || 1).toFixed(2)}</p>
-              <p>VOO / QQQ 按月预算 · 个股按三个月预算，并结转上轮剩余或超支 · 财报后可手动刷新个股周期</p>
+              <p>目标分母 {fmtMoney(data.rebalance.current_assets_usd, "USD")} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")}</p>
             </div>
             {(data.rebalance.rules?.sections || []).map((section) => (
               <section className="ruleSection" key={section.heading}>
@@ -5243,13 +5117,12 @@ function Rebalance({ data, onSaved }) {
             <tr>
               <SortableTableHeader label="标的" sortKey="symbol" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="档位" sortKey="tier" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="当前市值" sortKey="current_value" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
+              <SortableTableHeader label="当前占比" sortKey="current_pct" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="成本差值" sortKey="cost_gap" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="实时差值" sortKey="realtime_gap" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
-              <SortableTableHeader label="计划应买" sortKey="planned_buy" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
-              <SortableTableHeader label="本月/本轮净买入" sortKey="period_net_bought" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="周期高点回撤" sortKey="drawdown_pct" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
               <SortableTableHeader label="估值系数" sortKey="valuation_factor" sort={rebalanceSort} onSort={(key) => toggleTableSort(setRebalanceSort, key)} />
-              <th>月份 / 季度</th>
             </tr>
           </thead>
           <tbody>
@@ -5260,17 +5133,24 @@ function Rebalance({ data, onSaved }) {
               const realtimeValue = realtimeHolding.value != null && Number.isFinite(Number(realtimeHolding.value))
                 ? Number(realtimeHolding.value)
                 : null;
+              const currentPct = row.current_pct == null ? "-" : `${Number(row.current_pct).toFixed(2)}%`;
               const realtimeMarketGap = realtimeGapBySymbol[row.symbol];
+              const cost = row.current_cost_usd ?? realtimeHolding.cost;
+              const nextMonthTarget = row.next_month_target_usd;
+              const nextMonthGaps = nextMonthTarget == null ? [] : [
+                `下个月成本差值：${cost == null ? "-" : fmtMoney(nextMonthTarget - cost, currency)}`,
+                `下个月实时差值：${realtimeValue == null ? "-" : fmtMoney(nextMonthTarget - realtimeValue, currency)}`,
+                `下个月目标分母：${fmtMoney(row.target_denominator_usd + data.rebalance.next_month_cash_usd, currency)}（含预计入金 ${fmtMoney(data.rebalance.next_month_cash_usd, currency)}）`,
+              ];
               const gapTooltip = [
                 `成本差值：${fmtMoney(row.buy_difference_usd, currency)}`,
                 `实时差值：${realtimeMarketGap == null ? "-" : fmtMoney(realtimeMarketGap, currency)}`,
+                ...nextMonthGaps,
                 `长期目标：${fmtMoney(row.target_usd, currency)}`,
-                `目标分母：${fmtMoney(row.target_denominator_usd ?? data.rebalance.planned_total_usd, currency)}${row.bought_period === "quarter" ? `（含后两个月预算 ${fmtMoney(row.target_future_cash_usd || 0, currency)}）` : row.bought_period === "month" ? "（持仓及现金成本基准）      " : ""}`,
-                `周期起始成本：${fmtMoney(row.period_start_cost_usd || 0, currency)}`,
-                `周期起始日：${row.period_start_date || "-"}`,
-                `当前成本：${fmtMoney(row.current_cost_usd ?? realtimeHolding.cost, currency)}`,
+                `目标分母：${fmtMoney(row.target_denominator_usd ?? data.rebalance.current_assets_usd, currency)}${data.rebalance.target_denominator_formula ? `（${data.rebalance.target_denominator_formula}）` : ""}`,
+                `当前成本：${fmtMoney(cost, currency)}`,
                 `\u5b9e\u65f6\u5e02\u503c\uff1a${realtimeValue == null ? "-" : fmtMoney(realtimeValue, currency)}`,
-                `\u5f53\u524d\u5e02\u503c\u5360\u6bd4\uff1a${Number(row.current_pct || 0).toFixed(2)}%`,
+                `当前市值占比：${currentPct}`,
                 `\u76ee\u6807\u5360\u6bd4\uff1a${Number(row.target_pct || 0).toFixed(2)}%`,
               ].join("\n");
               const tierReviewTooltip = row.symbol === "TEM" && row.review_mode === "manual_review_only" && diagnostics
@@ -5304,37 +5184,23 @@ function Rebalance({ data, onSaved }) {
                         ) : null}
                       </div>
                     </td>
+                    <td>{realtimeValue == null ? "-" : fmtMoney(realtimeValue, currency)}</td>
+                    <td className="hasDetailTooltip" title="当前市值 ÷ 目标分母（美元持仓市值 + 美元现金）">{currentPct}</td>
                     <td className="planCell hasDetailTooltip" title={gapTooltip}>
                       <div className={tone(row.buy_difference_usd)}>{fmtMoney(row.buy_difference_usd, currency)}</div>
                     </td>
                     <td className="planCell hasDetailTooltip" title={gapTooltip}>
                       <div className={realtimeMarketGap == null ? "" : tone(realtimeMarketGap)}>{realtimeMarketGap == null ? "-" : fmtMoney(realtimeMarketGap, currency)}</div>
                     </td>
-                    <td className="planCell hasDetailTooltip" title={row.planned_buy_formula || "-"}>
-                      <div>{fmtMoney(row.planned_buy_usd, row.currency || "USD")}</div>
-                    </td>
-                    <td title={row.bought_period === "quarter" ? `${row.symbol}：自 ${row.period_start_date} 起累计买入减卖出；上轮结转 ${fmtMoney(row.carry_in_usd || 0, "USD")}` : `${row.symbol}：${row.budget_month || data.rebalance.month_key} 累计买入减卖出，按交易日期归月`}>{fmtMoney(row.period_net_bought_usd, row.currency || "USD")}</td>
                     <td className={`${tone(row.drawdown_pct)} hasDetailTooltip`} title={`锚点：${row.drawdown_anchor_date || "-"} @ ${row.drawdown_anchor_price == null ? "-" : fmtMoney(row.drawdown_anchor_price, "USD")}\n正式确认：${row.confirmed_close_date || "-"}\n盘中回撤：${row.intraday_drawdown_pct == null ? "-" : fmtPct(row.intraday_drawdown_pct)}`}>
                       <div>{row.drawdown_pct == null ? "-" : fmtPct(row.drawdown_pct)}</div>
                       {row.intraday_warning?.active ? <small className="intradayDrawdown">盘中 {fmtPct(row.intraday_drawdown_pct)}</small> : null}
                     </td>
                     <td className={`${Number(row.valuation_split_factor || 1) < 1 ? "down" : "flat"} hasDetailTooltip`} title={valuationTooltip(row)}>{Number(row.valuation_split_factor || 1).toFixed(2)}</td>
-                    <td className="periodCell">
-                      {row.bought_period === "quarter" ? (
-                        <select className="quarterSelect" aria-label={`${row.symbol} 记录季度`} title={`本轮始于 ${row.period_start_date}；结转 ${fmtMoney(row.carry_in_usd || 0, "USD")}。可在下拉菜单中刷新季度。`} value={quarterLabelDrafts[row.symbol] ?? row.quarter_label ?? ""} onChange={(event) => event.target.value === "__refresh__" ? refreshQuarter(row.symbol) : changeQuarterLabel(row.symbol, event.target.value)} disabled={savingQuarterLabelSymbol === row.symbol || Boolean(refreshingQuarterSymbol)}>
-                          {quarterLabelOptions(data.rebalance.month_key, quarterLabelDrafts[row.symbol] ?? row.quarter_label).map((label) => <option key={label} value={label}>{label}</option>)}
-                          <option value="__refresh__">刷新季度…</option>
-                        </select>
-                      ) : row.bought_period === "month" ? (
-                        <select className="quarterSelect" aria-label={`${row.symbol} 预算月份`} title="按所选月份计算预算和交易记录" value={row.budget_month || data.rebalance.month_key} onChange={(event) => changeEtfMonth(row.symbol, event.target.value)} disabled={Boolean(savingQuarterLabelSymbol)}>
-                          {[data.rebalance.month_key, nextMonthKey(data.rebalance.month_key)].map((month) => <option key={month} value={month}>{month}</option>)}
-                        </select>
-                      ) : "—"}
-                    </td>
                   </tr>
                   {row.symbol !== "TEM" && row.review_mode === "manual_review_only" && diagnostics ? (
                     <tr className="manualReviewDetailRow">
-                      <td colSpan="9">
+                      <td colSpan="8">
                         <div className="manualReviewDetail">
                           <strong>复核</strong>
                           <span>自身样本档位：{formatThresholdSet(diagnostics.self_thresholds_pct)}</span>
@@ -5604,10 +5470,9 @@ function Rebalance({ data, onSaved }) {
                   <input value={currentInput.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" />
                 </label>}
                 {currentInput.action === "buy" && row.symbol !== "SGOV" ? <label className="sgovTradeCheck"><input type="checkbox" checked={Boolean(currentInput.uses_sgov)} onChange={(event) => update(row.symbol, "uses_sgov", event.target.checked)} /> 此次买入动用 SGOV 资金</label> : null}
-                {isDividend ? <div className="singleTradeHint">保存后增加美元现金和 SGOV 累计股息。已计入累计股息的历史派息无需重复记账。</div> : <div className="singleTradeHint">
-                  <span>建议买/卖</span>
-                  <strong>{fmtMoney(Number(row.suggested_sell_usd || 0) > Number(row.suggested_buy_usd || 0) ? -Number(row.suggested_sell_usd || 0) : Number(row.suggested_buy_usd || 0), row.currency || "USD")}</strong>
-                </div>}
+                {isDividend ? <div className="singleTradeHint">保存后增加美元现金和 SGOV 累计股息。已计入累计股息的历史派息无需重复记账。</div> : currentInput.action === "sell" && row.suggested_sell_usd > 0 ? (
+                  <div className="singleTradeHint"><span>建议卖出</span><strong>{fmtMoney(row.suggested_sell_usd, row.currency || "USD")}</strong></div>
+                ) : null}
               </div>
               <div className="actions">
                 <button onClick={() => clearPending(row.symbol)} disabled={saving}>清零</button>

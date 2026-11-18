@@ -2534,17 +2534,6 @@ table {
   cursor: help;
 }
 
-.rebalanceTable .quarterSelect {
-  display: block;
-  width: 92px;
-  min-width: 92px;
-  margin-left: auto;
-  padding: 5px 8px;
-  border-radius: 8px;
-  font-size: .8rem;
-  background: rgba(9, 25, 43, .35);
-}
-
 th,
 td {
   padding: 10px 11px;
@@ -2597,7 +2586,8 @@ tbody th {
 
 .planCell {
   vertical-align: middle;
-  text-align: center;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .formulaCell {
@@ -5509,8 +5499,7 @@ tbody tr:hover th {
 }
 
 .rebalancePage .sectionHeader > .muted,
-.rebalancePage .rulesToolbar > .muted,
-.rebalancePage .rebalanceFormulaBanner {
+.rebalancePage .rulesToolbar > .muted {
   display: none;
 }
 

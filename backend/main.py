@@ -41,8 +41,6 @@ from .portfolio import (
     delete_fx_conversion_record,
     delete_trade_record,
     save_rebalance_budget,
-    refresh_stock_quarter,
-    save_stock_quarter_label,
     start_performance_history_scheduler,
 )
 from .storage import (
@@ -116,23 +114,6 @@ class ExecutionPayload(BaseModel):
 class RebalanceBudgetPayload(BaseModel):
     user_id: str = "evan"
     planned_cash_by_month: dict[str, float]
-
-
-class RefreshStockQuarterPayload(BaseModel):
-    user_id: str = "evan"
-    symbol: str
-
-
-class StockQuarterLabelPayload(BaseModel):
-    user_id: str = "evan"
-    symbol: str
-    quarter_label: str
-
-
-class EtfBudgetMonthPayload(BaseModel):
-    user_id: str = "evan"
-    symbol: str
-    month: str
 
 
 class SwingPositionPayload(BaseModel):
@@ -1149,34 +1130,6 @@ def update_rebalance_budget(payload: RebalanceBudgetPayload) -> dict[str, Any]:
     result = save_rebalance_budget(payload.user_id, payload.planned_cash_by_month)
     result["dashboard"] = build_dashboard(payload.user_id)
     return result
-
-
-@app.post("/api/rebalance/stock-quarter/refresh")
-def refresh_rebalance_stock_quarter(payload: RefreshStockQuarterPayload) -> dict[str, Any]:
-    payload.user_id = active_user_id()
-    try:
-        result = refresh_stock_quarter(payload.user_id, payload.symbol)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    result["dashboard"] = build_dashboard(payload.user_id)
-    return result
-
-
-@app.put("/api/rebalance/stock-quarter/label")
-def update_rebalance_stock_quarter_label(payload: StockQuarterLabelPayload) -> dict[str, Any]:
-    payload.user_id = active_user_id()
-    try:
-        return save_stock_quarter_label(payload.user_id, payload.symbol, payload.quarter_label)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.put("/api/rebalance/etf-month")
-def update_rebalance_etf_month(payload: EtfBudgetMonthPayload) -> dict[str, Any]:
-    try:
-        return portfolio_module.set_etf_budget_month(active_user_id(), payload.symbol, payload.month)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.websocket("/ws/quotes")

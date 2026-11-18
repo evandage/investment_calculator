@@ -11,16 +11,6 @@ class FixedDatetime(datetime):
         return cls(2026, 10, 29, 12, 0, tzinfo=tz)
 
 
-def test_stock_quarter_state_uses_current_satellite_symbols(monkeypatch):
-    monkeypatch.setattr(portfolio, "SATELLITE_SYMBOLS", ("APP",))
-    monkeypatch.setattr(portfolio, "USD_SYMBOLS", ("APP",))
-    monkeypatch.setattr(portfolio, "load_stock_quarters", lambda *_: {})
-    monkeypatch.setattr(portfolio, "load_monthly_usage", lambda *_: {"planned_new_cash_usd": 100.0})
-    monkeypatch.setattr(portfolio, "effective_target_weights", lambda: {"APP": 1.0})
-    monkeypatch.setattr(portfolio, "save_stock_quarters", lambda *_: None)
-    assert portfolio.stock_quarter_state("evan", FixedDatetime.now())["APP"]["base_budget_usd"] == 300.0
-
-
 def test_valuation_uses_historical_metrics_and_ignores_peg(monkeypatch):
     monkeypatch.setattr(portfolio, "SATELLITE_SYMBOLS", ("APP", "TEM"))
     assert portfolio.valuation_split_for_row("APP", {"pe": 105, "forward_pe": 10, "peg": 0.1})[0] == 0.5
@@ -34,15 +24,13 @@ def trade(symbol, trade_date, amount, action="buy"):
     return {"symbol": symbol, "trade_date": trade_date, "amount_usd": amount, "action": action, "cost_basis": amount}
 
 
-def test_long_term_target_drives_gaps_while_budget_and_bought_use_period(monkeypatch):
+def test_rebalance_reports_current_and_next_month_targets_without_buy_suggestions(monkeypatch):
     monkeypatch.setattr(portfolio, "datetime", FixedDatetime)
-    monkeypatch.setattr(portfolio, "load_etf_budget_months", lambda *_: {"VOO": "2026-11"})
+    budget = {"2026-11": 900.0, "2026-12": 400.0}
     monkeypatch.setattr(portfolio, "load_monthly_usage", lambda *_: {
-        "planned_new_cash_usd": 700.0, "planned_cash_by_month": {"2026-11": 900.0, "2026-12": 400.0},
-        "bought_amount_by_symbol": {}, "sold_amount_by_symbol": {}, "bought_intensity_by_symbol": {},
-    })
-    monkeypatch.setattr(portfolio, "stock_quarter_state", lambda *_: {
-        "ISRG": {"start_date": "2026-10-15", "carry_in_usd": -15.0},
+        "planned_new_cash_usd": 700.0, "planned_cash_by_month": budget,
+        "bought_amount_by_symbol": {"VOO": 5000.0, "QQQ": 5000.0},
+        "bought_intensity_by_symbol": {"VOO": "large", "QQQ": "large"},
     })
     monkeypatch.setattr(portfolio, "load_trade_records", lambda *_: [
         trade("VOO", "2026-10-10", 50.0),
@@ -54,87 +42,59 @@ def test_long_term_target_drives_gaps_while_budget_and_bought_use_period(monkeyp
     monkeypatch.setattr(portfolio, "evaluate_drawdown_episode_signals", lambda *_args, **_kwargs: {"QQQ": {"confirmed_signal": {"tier": "medium"}}})
     monkeypatch.setattr(portfolio, "load_drawdown_episode_store", lambda *_: {})
     holdings = [
-        {"symbol": "VOO", "label": "VOO", "value_cny": 1100.0, "shares": 10.5, "avg_cost": 100.0},
+        {"symbol": "VOO", "label": "VOO", "value_cny": 1100.0, "shares": 10.5, "avg_cost": 100.0, "recent_5d_pct": 4.2},
         {"symbol": "QQQ", "label": "QQQ", "value_cny": 1080.0, "shares": 10.3, "avg_cost": 100.0},
         {"symbol": "ISRG", "label": "ISRG", "value_cny": 1090.0, "shares": 10.15, "avg_cost": 100.0},
         {"symbol": "SGOV", "label": "SGOV", "value_cny": 600.0, "shares": 5.0, "avg_cost": 100.0},
     ]
     market = {"quotes": {symbol: {"price": 100.0} for symbol in ("VOO", "QQQ", "ISRG", "SGOV")}}
-    result = portfolio.build_rebalance_v2("evan", holdings, {"cash_usd": 1000.0, "cash_cost_basis_usd": 800.0}, market, {"SGOV": 600.0}, 1.0, build_months=3)
-    assert result["current_assets_usd"] == pytest.approx(1050.0 + 1030.0 + 1015.0 + 500.0 + 800.0 )
+    holdings_value = {row["symbol"]: row["value_cny"] for row in holdings}
+    holdings_value["CNY_FUND"] = 2000.0
+
+    def rebalance(cash):
+        return portfolio.build_rebalance_v2(
+            "evan", holdings, {"cash_usd": cash, "cash_cost_basis_usd": 800.0, "cash_cny": 3000.0},
+            market, holdings_value, 1.0,
+        )
+
+    result = rebalance(1000.0)
+    assert result["current_assets_usd"] == pytest.approx(1100.0 + 1080.0 + 1090.0 + 600.0 + 1000.0)
+    assert result["next_month_cash_usd"] == 900.0
+    assert result["future_cash_by_month"] == {"2026-11": 900.0}
     rows = {row["symbol"]: row for row in result["rows"]}
     weights = portfolio.effective_target_weights()
     total = sum(weights[s] for s in portfolio.USD_SYMBOLS)
-    for symbol, bought, start_cost, market_value in (
-        ("VOO", 0.0, 1050.0, 1100.0),
-        ("QQQ", 30.0, 1000.0, 1080.0),
-        ("ISRG", 15.0, 1000.0, 1090.0),
-    ):
+    for symbol in ("VOO", "QQQ", "ISRG"):
         row = rows[symbol]
-        base = (900.0 if symbol == "VOO" else 700.0) * weights[symbol] / total
-        expected_plan = max(0.0, base * 3.0 - 15.0) if symbol == "ISRG" else base
-        assert row["planned_buy_usd"] == pytest.approx(expected_plan)
-        assert row["period_net_bought_usd"] == pytest.approx(bought)
-        expected_denominator = result["current_assets_usd"] + (1300.0 if symbol == "ISRG" else 0.0)
+        expected_denominator = result["current_assets_usd"]
         expected_target = expected_denominator * weights[symbol] / total
         expected_gap = expected_target - row["current_cost_usd"]
         if abs(expected_gap) <= max(5.0, expected_target * 0.01):
             expected_gap = 0.0
         assert row["target_usd"] == pytest.approx(expected_target)
+        assert row["next_month_target_usd"] == pytest.approx((expected_denominator + 900.0) * weights[symbol] / total)
         assert row["target_denominator_usd"] == pytest.approx(expected_denominator)
         assert row["buy_difference_usd"] == pytest.approx(expected_gap)
-        assert row["target_usd"] - market_value == pytest.approx(expected_target - market_value)
+        assert row["suggested_sell_usd"] == pytest.approx(max(0.0, -expected_gap))
+        assert row["suggested_sell_shares"] == pytest.approx(row["suggested_sell_usd"] / 100.0)
+        assert "suggested_buy_usd" not in row
+        assert "suggested_buy_shares" not in row
+        assert "planned_buy_usd" not in row
+        assert "budget_month" not in row
+        assert "period_net_bought_usd" not in row
     assert rows["QQQ"]["intensity"] == "medium"
-    assert rows["VOO"]["bought_period"] == rows["QQQ"]["bought_period"] == "month"
-    assert rows["VOO"]["budget_month"] == "2026-11"
-    assert rows["QQQ"]["budget_month"] == "2026-10"
-    assert rows["VOO"]["period_start_cost_usd"] == pytest.approx(1050.0)
-    assert rows["ISRG"]["bought_period"] == "quarter"
-    short_horizon = portfolio.build_rebalance_v2("evan", holdings, {"cash_usd": 1000.0, "cash_cost_basis_usd": 800.0}, market, {"SGOV": 600.0}, 1.0, build_months=1)
-    short_rows = {row["symbol"]: row for row in short_horizon["rows"]}
-    assert short_rows["ISRG"]["target_denominator_usd"] == pytest.approx(result["current_assets_usd"] + 1300.0)
-    assert short_rows["VOO"]["target_denominator_usd"] == pytest.approx(result["current_assets_usd"])
+    assert rows["VOO"]["valuation_split_factor"] == 0.5
+    assert "strategy_budget_usd" not in result
+    assert "suggestion_scale" not in result
+    budget["2026-11"] = 0.0
+    zero_budget = rebalance(1000.0)
+    assert zero_budget["sgov_available_usd"] == result["sgov_available_usd"]
+    for row in zero_budget["rows"]:
+        assert row["next_month_target_usd"] == row["target_usd"]
+        assert row["suggested_sell_usd"] == rows[row["symbol"]]["suggested_sell_usd"]
 
-
-@pytest.mark.parametrize("previous_spend", [50.0, 500.0])
-def test_manual_refresh_carries_surplus_or_overspend(monkeypatch, previous_spend):
-    monkeypatch.setattr(portfolio, "datetime", FixedDatetime)
-    monkeypatch.setattr(portfolio, "load_monthly_usage", lambda *_: {"planned_new_cash_usd": 700.0})
-    monkeypatch.setattr(portfolio, "load_trade_records", lambda *_: [
-        trade("ISRG", "2026-10-20", previous_spend),
-        trade("ISRG", "2026-10-29", 30.0),
-    ])
-    state = {"ISRG": {"start_date": "2026-10-01", "carry_in_usd": 10.0, "base_budget_usd": 100.0, "quarter_label": "Y26Q3"}}
-    monkeypatch.setattr(portfolio, "stock_quarter_state", lambda *_: state)
-    saved = {}
-    monkeypatch.setattr(portfolio, "save_stock_quarters", lambda _user, quarters: saved.update(quarters))
-    result = portfolio.refresh_stock_quarter("evan", "ISRG")
-    weights = portfolio.effective_target_weights()
-    total = sum(weights[s] for s in portfolio.USD_SYMBOLS)
-    expected_carry = 100.0 + 10.0 - previous_spend
-    assert result["carry_in_usd"] == pytest.approx(expected_carry)
-    assert result["previous_net_bought_usd"] == previous_spend
-    assert saved["ISRG"]["start_date"] == "2026-10-29"
-    assert saved["ISRG"]["carry_in_usd"] == pytest.approx(expected_carry)
-    assert saved["ISRG"]["base_budget_usd"] == pytest.approx(700.0 * weights["ISRG"] / total * 3)
-    assert saved["ISRG"]["history"][-1]["quarter_label"] == "Y26Q3"
-    assert saved["ISRG"]["history"][-1]["carry_out_usd"] == pytest.approx(expected_carry)
-    assert portfolio.period_trade_totals(
-        [trade("ISRG", "2026-10-20", previous_spend), trade("ISRG", "2026-10-29", 30.0)],
-        "ISRG", "2026-10-29", "2026-10-30",
-    )["bought_usd"] == 30.0
-
-
-def test_quarter_label_is_saved_without_refreshing_cycle(monkeypatch):
-    state = {"ISRG": {"start_date": "2026-10-01", "carry_in_usd": 0.0, "base_budget_usd": 100.0}}
-    monkeypatch.setattr(portfolio, "stock_quarter_state", lambda *_: state)
-    saved = {}
-    monkeypatch.setattr(portfolio, "save_stock_quarters", lambda _user, quarters: saved.update(quarters))
-    result = portfolio.save_stock_quarter_label("evan", "ISRG", "y26q3")
-    assert result == {"symbol": "ISRG", "quarter_label": "Y26Q3"}
-    assert saved["ISRG"]["start_date"] == "2026-10-01"
-    with pytest.raises(ValueError):
-        portfolio.save_stock_quarter_label("evan", "ISRG", "Y26Q5")
+    limited = rebalance(100.0)
+    assert limited["remaining_deployable_usd"] == pytest.approx(100.0)
 
 
 def test_trade_quarters_follow_stock_cycles_and_fall_back_to_calendar():
