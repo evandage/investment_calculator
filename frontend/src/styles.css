@@ -5926,7 +5926,6 @@ tbody tr:hover th {
 .singleTradeGrid .sgovTradeCheck { display: flex; flex-direction: row; align-items: center; gap: 8px; }
 .singleTradeGrid .sgovTradeCheck input { width: auto; }
 .sgovProgressTable .sgovUntriggered { opacity: 0.42; }
-.sgovProgressTable small { white-space: nowrap; }
 .sgovProgress { min-width: 170px; font-variant-numeric: tabular-nums; }
 .sgovProgressTrack { height: 8px; margin-top: 7px; background: rgba(140, 150, 165, 0.2); border-radius: 10px; overflow: hidden; }
 .sgovProgressTrack span { display: block; height: 100%; border: 0; border-radius: inherit; background: currentColor; }
@@ -5936,9 +5935,8 @@ tbody tr:hover th {
 .sgovProgressTable .sgovProgressRow > td { color: inherit; }
 .sgovProgressTable { table-layout: fixed; width: 100%; }
 .sgovProgressTable th:nth-child(1), .sgovProgressTable td:nth-child(1) { width: 18%; }
-.sgovProgressTable th:nth-child(2), .sgovProgressTable td:nth-child(2) { width: 14%; }
-.sgovProgressTable th:nth-child(3), .sgovProgressTable td:nth-child(3),
-.sgovProgressTable th:nth-child(4), .sgovProgressTable td:nth-child(4) { width: 34%; }
+.sgovProgressTable th:nth-child(2), .sgovProgressTable td:nth-child(2),
+.sgovProgressTable th:nth-child(3), .sgovProgressTable td:nth-child(3) { width: 41%; }
 
 @media (min-width: 721px) {
   .singleTradeGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

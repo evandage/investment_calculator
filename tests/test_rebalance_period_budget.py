@@ -153,15 +153,16 @@ def test_sgov_plan_uses_current_thresholds_gaps_and_recorded_sales():
     ]
     signal = {"threshold_snapshot": {"thresholds_pct": {"small": -10, "medium": -15, "large": -20}}}
     trades = [trade("SGOV", "2026-10-28", 200, "sell"), trade("SGOV", "2026-10-29", 50, "buy")]
-    plan = portfolio.build_sgov_usage_plan(rows, 1200, signal, trades, "2026-10-29")
+    plan = portfolio.build_sgov_usage_plan(rows, 1200, {"QQQ": signal}, trades, "2026-10-29")
     assert plan["budget_usd"] == 1200
-    assert plan["rows"][0]["trigger_price"] == pytest.approx(720)
+    assert plan["rows"][0]["signals"]["QQQ"]["trigger_price"] == pytest.approx(720)
+    assert plan["rows"][0]["signals"]["VOO"]["trigger_price"] is None
     assert sum(row["voo_usd"] for row in plan["rows"]) == pytest.approx(1200 * 4 / 7)
     assert sum(row["qqq_usd"] for row in plan["rows"]) == pytest.approx(1200 * 3 / 7)
     assert plan["latest_sale"]["amount_usd"] == 200
     rows[0]["buy_difference_usd"] = 0
     rows[1]["buy_difference_usd"] = -5
-    empty = portfolio.build_sgov_usage_plan(rows, 1200, signal, [], "2026-10-29")
+    empty = portfolio.build_sgov_usage_plan(rows, 1200, {"QQQ": signal}, [], "2026-10-29")
     assert empty["budget_usd"] == 1200
     assert empty["latest_sale"] is None
     assert sum(row["total_usd"] for row in empty["rows"]) == pytest.approx(1200)
@@ -188,12 +189,24 @@ def test_sgov_plan_reports_marked_purchases_without_claiming_funding_amount():
 
 
 def test_sgov_progress_allocates_marked_buys_and_uses_confirmed_episode():
-    rows = [{"symbol": "VOO", "buy_difference_usd": 400}, {"symbol": "QQQ", "buy_difference_usd": 300, "drawdown_anchor_price": 100}]
-    signal = {"threshold_snapshot": {"thresholds_pct": {"small": -5, "medium": -10, "large": -20}}, "episode_state": {"episode_active": True, "small_triggered": True}}
+    rows = [{"symbol": "VOO", "drawdown_anchor_price": 200}, {"symbol": "QQQ", "drawdown_anchor_price": 100}]
+    signals = {
+        "VOO": {
+            "threshold_snapshot": {"thresholds_pct": {"small": -4, "medium": -8, "large": -16}},
+            "episode_state": {"episode_active": True, "small_triggered": True},
+        },
+        "QQQ": {
+            "threshold_snapshot": {"thresholds_pct": {"small": -5, "medium": -10, "large": -20}},
+            "episode_state": {"episode_active": True, "small_triggered": True, "medium_triggered": True},
+        },
+    }
     trades = [{**trade("VOO", "2026-10-28", 40), "uses_sgov": True, "sgov_tier": "small"}, {**trade("QQQ", "2026-10-28", 30), "uses_sgov": True}]
-    result = portfolio.build_sgov_usage_plan(rows, 700, signal, trades, "2026-10-29")
-    assert result["rows"][0]["triggered"] is True
-    assert result["rows"][1]["triggered"] is False
+    result = portfolio.build_sgov_usage_plan(rows, 700, signals, trades, "2026-10-29")
+    small, medium, large = [row["signals"] for row in result["rows"]]
+    assert small["VOO"]["triggered"] and small["QQQ"]["triggered"]
+    assert medium["VOO"] == {"drawdown_pct": -8, "trigger_price": pytest.approx(184), "triggered": False, "eligible_usd": 0}
+    assert medium["QQQ"] == {"drawdown_pct": -10, "trigger_price": pytest.approx(90), "triggered": True, "eligible_usd": pytest.approx(result["rows"][1]["qqq_usd"])}
+    assert not large["VOO"]["triggered"] and not large["QQQ"]["triggered"]
     assert result["rows"][0]["voo_used_usd"] == 40
     assert result["rows"][0]["qqq_used_usd"] == 30
     assert sum(row["voo_usd"] for row in result["rows"]) / sum(row["qqq_usd"] for row in result["rows"]) == pytest.approx(4 / 3)
@@ -207,18 +220,18 @@ def test_sgov_repurchase_reduces_outstanding_proportionally_in_trade_order():
         trade("SGOV", "2026-10-02", 350),
         {**trade("VOO", "2026-10-03", 100), "uses_sgov": True, "sgov_tier": "small"},
     ]
-    plan = portfolio.build_sgov_usage_plan([], 500, signal, trades, "2026-10-04")
+    plan = portfolio.build_sgov_usage_plan([], 500, {"QQQ": signal}, trades, "2026-10-04")
     assert plan["available_usd"] == 500
     assert sum(row["voo_used_usd"] for row in plan["rows"]) == pytest.approx(300)
     assert sum(row["qqq_used_usd"] for row in plan["rows"]) == pytest.approx(150)
     assert plan["budget_usd"] == pytest.approx(950)
     trades.append(trade("SGOV", "2026-10-04", 1000))
-    assert all(row["voo_used_usd"] == row["qqq_used_usd"] == 0 for row in portfolio.build_sgov_usage_plan([], 500, signal, trades, "2026-10-04")["rows"])
+    assert all(row["voo_used_usd"] == row["qqq_used_usd"] == 0 for row in portfolio.build_sgov_usage_plan([], 500, {"QQQ": signal}, trades, "2026-10-04")["rows"])
 
 
 def test_sgov_budget_uses_requested_tier_weights():
     signal = {"threshold_snapshot": {"thresholds_pct": {"small": -5.5, "medium": -13.5, "large": -27}}}
-    plan = portfolio.build_sgov_usage_plan([], 1000, signal, [], "2026-11-06")
+    plan = portfolio.build_sgov_usage_plan([], 1000, {"QQQ": signal}, [], "2026-11-06")
     assert [row["total_usd"] for row in plan["rows"]] == pytest.approx([200, 350, 450])
     for row in plan["rows"]:
         assert row["voo_usd"] / row["qqq_usd"] == pytest.approx(4 / 3)
@@ -235,21 +248,21 @@ def test_trade_tier_uses_execution_price_and_known_snapshot():
 def test_sgov_overflow_moves_to_next_tier():
     signal = {"threshold_snapshot": {"thresholds_pct": {"small": -5, "medium": -10, "large": -20}}}
     trades = [{**trade("VOO", "2026-10-10", 400), "uses_sgov": True}]
-    plan = portfolio.build_sgov_usage_plan([], 600, signal, trades, "2026-10-29")
+    plan = portfolio.build_sgov_usage_plan([], 600, {"QQQ": signal}, trades, "2026-10-29")
     assert [row["voo_used_usd"] for row in plan["rows"]] == pytest.approx([1000 * .2 * 4 / 7, 1000 * .35 * 4 / 7, 400 - 1000 * .55 * 4 / 7])
 
 
 def test_sgov_sale_reduces_largest_tier_first_and_never_below_zero():
     signal = {"threshold_snapshot": {"thresholds_pct": {"small": -5, "medium": -10, "large": -20}}}
     base = [{**trade("VOO", "2026-10-01", 1200), "uses_sgov": True}, {**trade("QQQ", "2026-10-01", 900), "uses_sgov": True}]
-    before = portfolio.build_sgov_usage_plan([], 1000, signal, base, "2026-10-04")
+    before = portfolio.build_sgov_usage_plan([], 1000, {"QQQ": signal}, base, "2026-10-04")
     sale = trade("SGOV", "2026-10-02", 100, "sell")
-    after = portfolio.build_sgov_usage_plan([], 1100, signal, base + [sale], "2026-10-04")
+    after = portfolio.build_sgov_usage_plan([], 1100, {"QQQ": signal}, base + [sale], "2026-10-04")
     assert after["budget_usd"] == pytest.approx(before["budget_usd"])
     for index in (0, 1):
         assert after["rows"][index]["voo_used_usd"] == pytest.approx(before["rows"][index]["voo_used_usd"])
         assert after["rows"][index]["qqq_used_usd"] == pytest.approx(before["rows"][index]["qqq_used_usd"])
     assert sum(before["rows"][2][key] - after["rows"][2][key] for key in ("voo_used_usd", "qqq_used_usd")) == pytest.approx(100)
     huge = trade("SGOV", "2026-10-03", 10000, "sell")
-    zero = portfolio.build_sgov_usage_plan([], 1000, signal, base + [huge], "2026-10-04")
+    zero = portfolio.build_sgov_usage_plan([], 1000, {"QQQ": signal}, base + [huge], "2026-10-04")
     assert all(row["voo_used_usd"] == row["qqq_used_usd"] == 0 for row in zero["rows"])

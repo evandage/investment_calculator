@@ -5364,17 +5364,27 @@ function Rebalance({ data, onSaved }) {
               <span className="muted" title={usageSummary}>{usageSummary}</span>
             </div>
             {plan.rows.length ? <div className="tableWrap"><table className="rebalanceTable sgovProgressTable">
-              <thead><tr><th>QQQ 档位 / 回撤</th><th>QQQ 触发价</th><th>VOO 进度</th><th>QQQ 进度</th></tr></thead>
-              <tbody>{plan.rows.map((item) => <tr key={item.tier} className={`sgovProgressRow ${tierClass(item.tier)}${item.triggered ? "" : " sgovUntriggered"}`}>
-                <th><span className={`tierBadge ${tierClass(item.tier)}`}>{labels[item.tier]}</span> {Number(item.drawdown_pct).toFixed(2)}%<small> {item.triggered ? "已触发" : "未触发"}</small></th>
-                <td>{item.trigger_price == null ? "-" : fmtMoney(item.trigger_price, "USD")}</td>
-                {["voo", "qqq"].map((symbol) => {
-                  const used = Number(item[`${symbol}_used_usd`] || 0);
-                  const target = Number(item[`${symbol}_usd`] || 0);
-                  return <td key={symbol}><div className="sgovProgress"><div>{fmtMoney(used, "USD")} / 目标 {fmtMoney(target, "USD")}</div><div className="sgovProgressTrack" role="progressbar" aria-label={`${labels[item.tier]} ${symbol.toUpperCase()} 动用进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={target > 0 ? Math.min(100, Math.round(used / target * 100)) : 0}><span className={tierClass(item.tier)} style={{ width: `${target > 0 ? Math.min(100, used / target * 100) : 0}%` }} /></div></div></td>;
+              <thead><tr><th>档位</th><th>VOO 触发与进度</th><th>QQQ 触发与进度</th></tr></thead>
+              <tbody>{plan.rows.map((item) => <tr key={item.tier} className={`sgovProgressRow ${tierClass(item.tier)}`}>
+                <th scope="row"><span className={`tierBadge ${tierClass(item.tier)}`}>{labels[item.tier]}</span></th>
+                {["VOO", "QQQ"].map((symbol) => {
+                  const key = symbol.toLowerCase();
+                  const signal = item.signals?.[symbol];
+                  const used = Number(item[`${key}_used_usd`] || 0);
+                  const target = Number(item[`${key}_usd`] || 0);
+                  const progress = target > 0 ? Math.min(100, used / target * 100) : 0;
+                  return <td key={symbol} className={signal?.triggered ? "" : "sgovUntriggered"}>
+                    <div className="sgovProgress">
+                      <div>{signal?.drawdown_pct == null ? "暂无档位数据" : <>
+                        {signal.drawdown_pct.toFixed(2)}% · {signal.trigger_price == null ? "触发价暂无" : fmtMoney(signal.trigger_price, "USD")} · {signal.triggered ? "已触发" : "未触发"}
+                      </>}</div>
+                      <small>已用 {fmtMoney(used, "USD")} / 目标 {fmtMoney(target, "USD")}{signal?.triggered ? ` · 本档剩余 ${fmtMoney(signal.eligible_usd, "USD")}` : ""}</small>
+                      <div className="sgovProgressTrack" role="progressbar" aria-label={`${labels[item.tier]} ${symbol} 动用进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><span className={tierClass(item.tier)} style={{ width: `${progress}%` }} /></div>
+                    </div>
+                  </td>;
                 })}
               </tr>)}</tbody>
-            </table></div> : <p className="muted">暂无可用的 QQQ 回撤档位，无法生成分档计划。</p>}
+            </table></div> : <p className="muted">暂无可用的 VOO 或 QQQ 回撤档位。</p>}
           </div>
         );
       })() : null}

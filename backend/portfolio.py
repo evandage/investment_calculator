@@ -3094,13 +3094,19 @@ def refresh_stock_quarter(user_id: str, symbol: str) -> dict[str, Any]:
     return {"symbol": sym, "start_date": today, "carry_in_usd": carry, "previous_net_bought_usd": net_spent}
 
 
-def build_sgov_usage_plan(rows, sgov_holding_usd, qqq_signal, trade_records, today_key):
+def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals, trade_records, today_key):
     """Build a current-state scenario; sales do not identify the purchases they funded."""
-    snapshot = qqq_signal.get("threshold_snapshot") or {}
-    thresholds = snapshot.get("thresholds_pct") or {}
-    state = qqq_signal.get("episode_state") or {}
-    anchor = next((row.get("drawdown_anchor_price") for row in rows if row.get("symbol") == "QQQ"), None)
-    tiers = [(tier, float(thresholds[tier])) for tier in ("small", "medium", "large") if isinstance(thresholds.get(tier), (int, float))]
+    asset_weights = {"VOO": 4 / 7, "QQQ": 3 / 7}
+    tier_weights = {"small": 0.20, "medium": 0.35, "large": 0.45}
+    anchors = {row["symbol"]: row.get("drawdown_anchor_price") for row in rows}
+    states = {}
+    thresholds = {}
+    for symbol in asset_weights:
+        signal = episode_signals.get(symbol) or {}
+        snapshot = signal.get("threshold_snapshot") or {}
+        states[symbol] = signal.get("episode_state") or {}
+        thresholds[symbol] = snapshot.get("thresholds_pct") or {}
+    tiers = [tier for tier in tier_weights if any(isinstance(levels.get(tier), (int, float)) for levels in thresholds.values())]
     marked = [record for record in trade_records if record.get("uses_sgov") is True and record.get("action") == "buy" and str(record.get("trade_date") or "")[:10] <= today_key]
     chronological = sorted(enumerate(trade_records), key=lambda pair: (str(pair[1].get("trade_date") or "")[:10], str(pair[1].get("created_at") or ""), pair[0]))
     events = [record for _, record in chronological if str(record.get("trade_date") or "")[:10] <= today_key]
@@ -3113,14 +3119,13 @@ def build_sgov_usage_plan(rows, sgov_holding_usd, qqq_signal, trade_records, tod
         elif symbol == "SGOV" and action in ("buy", "sell"):
             total_outstanding = max(0.0, total_outstanding - amount)
     budget = max(0.0, sgov_holding_usd) + total_outstanding
-    tier_weights = {"small": 0.20, "medium": 0.35, "large": 0.45}
-    targets = {(symbol, tier): budget * tier_weights[tier] * fraction for tier, _ in tiers for symbol, fraction in (("VOO", 4 / 7), ("QQQ", 3 / 7))}
+    targets = {(symbol, tier): budget * tier_weights[tier] * fraction for tier in tiers for symbol, fraction in asset_weights.items()}
     allocated = {key: 0.0 for key in targets}
     for record in events:
         symbol, action = record.get("symbol"), record.get("action")
         amount = max(0.0, float(record.get("amount_usd") or 0))
         if symbol in ("VOO", "QQQ") and action == "buy" and record.get("uses_sgov") is True:
-            for index, (tier, _) in enumerate(tiers):
+            for index, tier in enumerate(tiers):
                 key = (symbol, tier)
                 used = amount if index == len(tiers) - 1 else min(amount, max(0.0, targets[key] - allocated[key]))
                 allocated[key] += used
@@ -3131,8 +3136,8 @@ def build_sgov_usage_plan(rows, sgov_holding_usd, qqq_signal, trade_records, tod
                 fraction = max(0.0, 1.0 - amount / total)
                 allocated = {key: value * fraction for key, value in allocated.items()}
         elif symbol == "SGOV" and action == "sell":
-            for tier, _ in reversed(tiers):
-                keys = [(asset, tier) for asset in ("VOO", "QQQ")]
+            for tier in reversed(tiers):
+                keys = [(asset, tier) for asset in asset_weights]
                 tier_total = sum(allocated[key] for key in keys)
                 if tier_total > 0:
                     reduction = min(amount, tier_total)
@@ -3140,12 +3145,22 @@ def build_sgov_usage_plan(rows, sgov_holding_usd, qqq_signal, trade_records, tod
                         allocated[key] *= 1.0 - reduction / tier_total
                     amount -= reduction
     plan_rows = []
-    for tier, threshold in tiers:
-        amount = budget * tier_weights[tier]
-        plan_rows.append({"tier": tier, "drawdown_pct": threshold,
-                          "triggered": bool(state.get("episode_active") and state.get(f"{tier}_triggered")),
-                          "trigger_price": float(anchor) * (1 + threshold / 100) if isinstance(anchor, (int, float)) and anchor > 0 else None,
-                          "voo_usd": targets[("VOO", tier)], "qqq_usd": targets[("QQQ", tier)], "total_usd": amount,
+    for tier in tiers:
+        signals = {}
+        for symbol in asset_weights:
+            threshold = thresholds[symbol].get(tier)
+            state = states[symbol]
+            anchor = anchors.get(symbol) or state.get("anchor_price")
+            has_threshold = isinstance(threshold, (int, float))
+            triggered = has_threshold and bool(state.get("episode_active") and state.get(f"{tier}_triggered"))
+            signals[symbol] = {
+                "drawdown_pct": threshold if has_threshold else None,
+                "triggered": triggered,
+                "trigger_price": anchor * (1 + threshold / 100) if has_threshold and isinstance(anchor, (int, float)) and anchor > 0 else None,
+                "eligible_usd": max(0.0, targets[(symbol, tier)] - allocated[(symbol, tier)]) if triggered else 0.0,
+            }
+        plan_rows.append({"tier": tier, "signals": signals,
+                          "voo_usd": targets[("VOO", tier)], "qqq_usd": targets[("QQQ", tier)], "total_usd": budget * tier_weights[tier],
                           "voo_used_usd": allocated[("VOO", tier)], "qqq_used_usd": allocated[("QQQ", tier)]})
     sales = [record for record in trade_records if str(record.get("symbol", "")).upper() == "SGOV" and str(record.get("action", "")).lower() == "sell" and str(record.get("trade_date") or "")[:10] <= today_key]
     sales.sort(key=lambda record: str(record.get("trade_date") or ""), reverse=True)
@@ -3549,7 +3564,7 @@ def build_rebalance_v2(
         "monthly_budget_usd": planned_new_cash_usd,
         "strategy_budget_usd": strategy_budget_usd,
         "suggestion_scale": scale,
-        "sgov_usage_plan": build_sgov_usage_plan(rows, sgov_current_usd, episode_signals.get("QQQ", {}), trade_records, today_key),
+        "sgov_usage_plan": build_sgov_usage_plan(rows, sgov_current_usd, episode_signals, trade_records, today_key),
         "sgov_excess_usd": sgov_excess_usd,
         "sgov_available_usd": sgov_available_usd,
         "sgov_large_trigger_enabled": has_large_trigger,
