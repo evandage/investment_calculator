@@ -225,7 +225,7 @@
       "QQQ": "2026-11"
     },
     "2026-11": {
-      "used_budget_usd": 1723.8,
+      "used_budget_usd": 3054.5699999999997,
       "planned_new_cash_usd": 1400.0,
       "planned_cash_by_month": {
         "2026-12": 1400.0
@@ -238,9 +238,9 @@
         "VOO"
       ],
       "bought_amount_by_symbol": {
-        "QQQ": 893.8,
+        "QQQ": 1552.07,
         "APP": 50.0,
-        "VOO": 700.0,
+        "VOO": 1372.5,
         "TEM": 30.0,
         "PLTR": 50.0
       },
@@ -253,7 +253,7 @@
         "VOO": "small",
         "PLTR": "normal"
       },
-      "updated_at": "2026-11-18T10:50:54+08:00"
+      "updated_at": "2026-11-19T09:14:21+08:00"
     }
   }
 }
