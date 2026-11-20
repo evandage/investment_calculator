@@ -4507,6 +4507,7 @@ function EditableHoldingsPage({ data, onSaved }) {
 
 function Rebalance({ data, onSaved }) {
   const rows = data.rebalance.rows;
+  const costTargetDenominator = data.rebalance.cost_target_denominator_usd ?? data.rebalance.current_assets_usd;
   const suggestionRows = useMemo(() => rows, [rows]);
   const realtimeHoldingBySymbol = useMemo(
     () => Object.fromEntries((data.holdings || []).map((row) => [row.symbol, row])),
@@ -4776,7 +4777,6 @@ function Rebalance({ data, onSaved }) {
           amount_usd: Number(item.amount_usd || 0),
           shares: item.action === "dividend" ? 0 : Number(item.shares || 0),
           intensity: item.intensity,
-          uses_sgov: item.action === "buy" && symbol !== "SGOV" && Boolean(item.uses_sgov),
         }))
         .filter((item) => item.amount_usd > 0 && (item.action === "dividend" || item.shares > 0));
       if (!executions.length) {
@@ -4964,7 +4964,7 @@ function Rebalance({ data, onSaved }) {
       </div>
       <div className="rulesToolbar">
         <span className="muted">
-          目标分母 {fmtMoney(data.rebalance.current_assets_usd, "USD")}
+          成本目标分母 {fmtMoney(costTargetDenominator, "USD")}
         </span>
       </div>
       {data.rebalance.monthly_recalculation ? (
@@ -5049,7 +5049,7 @@ function Rebalance({ data, onSaved }) {
           <div className="modalPanel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="sectionHeader"><h2>{data.rebalance.rules?.title || "算法规则"}</h2><button className="iconButton modalActionButton" title="关闭" aria-label="关闭" onClick={() => setRulesOpen(false)}><X size={18} /></button></div>
             <div className="rebalanceRuleSummary">
-              <p>目标分母 {fmtMoney(data.rebalance.current_assets_usd, "USD")} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")}</p>
+              <p>成本目标分母 {fmtMoney(costTargetDenominator, "USD")} · 可动用 {fmtMoney(data.rebalance.remaining_deployable_usd, "USD")}</p>
             </div>
             {(data.rebalance.rules?.sections || []).map((section) => (
               <section className="ruleSection" key={section.heading}>
@@ -5137,17 +5137,19 @@ function Rebalance({ data, onSaved }) {
               const realtimeMarketGap = realtimeGapBySymbol[row.symbol];
               const cost = row.current_cost_usd ?? realtimeHolding.cost;
               const nextMonthTarget = row.next_month_target_usd;
+              const nextMonthCostTarget = row.next_month_cost_target_usd ?? nextMonthTarget;
               const nextMonthGaps = nextMonthTarget == null ? [] : [
-                `下个月成本差值：${cost == null ? "-" : fmtMoney(nextMonthTarget - cost, currency)}`,
+                `下个月成本差值：${cost == null ? "-" : fmtMoney(nextMonthCostTarget - cost, currency)}`,
                 `下个月实时差值：${realtimeValue == null ? "-" : fmtMoney(nextMonthTarget - realtimeValue, currency)}`,
-                `下个月目标分母：${fmtMoney(row.target_denominator_usd + data.rebalance.next_month_cash_usd, currency)}（含预计入金 ${fmtMoney(data.rebalance.next_month_cash_usd, currency)}）`,
+                `下个月成本目标分母：${fmtMoney(costTargetDenominator + data.rebalance.next_month_cash_usd, currency)}（含预计入金 ${fmtMoney(data.rebalance.next_month_cash_usd, currency)}）`,
               ];
               const gapTooltip = [
                 `成本差值：${fmtMoney(row.buy_difference_usd, currency)}`,
                 `实时差值：${realtimeMarketGap == null ? "-" : fmtMoney(realtimeMarketGap, currency)}`,
                 ...nextMonthGaps,
-                `长期目标：${fmtMoney(row.target_usd, currency)}`,
-                `目标分母：${fmtMoney(row.target_denominator_usd ?? data.rebalance.current_assets_usd, currency)}${data.rebalance.target_denominator_formula ? `（${data.rebalance.target_denominator_formula}）` : ""}`,
+                `成本目标：${fmtMoney(row.cost_target_usd ?? row.target_usd, currency)}`,
+                `成本目标分母：${fmtMoney(costTargetDenominator, currency)}${data.rebalance.target_denominator_formula ? `（${data.rebalance.target_denominator_formula}）` : ""}`,
+                `实时目标：${fmtMoney(row.target_usd, currency)}`,
                 `当前成本：${fmtMoney(cost, currency)}`,
                 `\u5b9e\u65f6\u5e02\u503c\uff1a${realtimeValue == null ? "-" : fmtMoney(realtimeValue, currency)}`,
                 `当前市值占比：${currentPct}`,
@@ -5222,7 +5224,7 @@ function Rebalance({ data, onSaved }) {
       {data.rebalance.sgov_usage_plan ? (() => {
         const plan = data.rebalance.sgov_usage_plan;
         const labels = { small: "小档", medium: "中档", large: "大档" };
-        const usageSummary = `可动用 ${fmtMoney(plan.available_usd, "USD")} · 计划 ${fmtMoney(plan.budget_usd, "USD")} · 已标记 ${plan.marked_count || 0} 笔买入 / 成交额 ${fmtMoney(plan.marked_purchase_usd || 0, "USD")}`;
+        const usageSummary = `SGOV 市值 ${fmtMoney(plan.available_usd, "USD")} · 计划 ${fmtMoney(plan.budget_usd, "USD")} · 按成本差值已用 ${fmtMoney(plan.used_usd, "USD")}`;
         return (
           <div className="sgovUsagePlan">
             <div className="sgovUsageHeader">
@@ -5470,7 +5472,6 @@ function Rebalance({ data, onSaved }) {
                 {!isDividend && <label className="tradeShares">成交股数
                   <input value={currentInput.shares ?? ""} onChange={(event) => update(row.symbol, "shares", event.target.value)} inputMode="decimal" />
                 </label>}
-                {currentInput.action === "buy" && row.symbol !== "SGOV" ? <label className="sgovTradeCheck"><input type="checkbox" checked={Boolean(currentInput.uses_sgov)} onChange={(event) => update(row.symbol, "uses_sgov", event.target.checked)} /> 此次买入动用 SGOV 资金</label> : null}
                 {isDividend ? <div className="singleTradeHint">保存后增加美元现金和 SGOV 累计股息。已计入累计股息的历史派息无需重复记账。</div> : currentInput.action === "sell" && row.suggested_sell_usd > 0 ? (
                   <div className="singleTradeHint"><span>建议卖出</span><strong>{fmtMoney(row.suggested_sell_usd, row.currency || "USD")}</strong></div>
                 ) : null}

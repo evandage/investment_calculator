@@ -93,14 +93,14 @@ def rebalance_rules_payload() -> dict[str, Any]:
             {
                 "heading": "目标分母",
                 "items": [
-                    "当前目标分母为美元持仓市值（含 SGOV）加美元现金余额。每个标的的目标金额由该分母乘以目标占比得出。",
-                    "悬浮提示中的下个月差值，以当前目标分母加下个月预计入金计算，持仓成本和市值沿用当前数值。",
+                    "成本目标分母为美元持仓总成本（含 SGOV）加美元现金余额。实时目标分母为美元持仓市值加美元现金余额。各自的目标金额由对应分母乘以目标占比得出。",
+                    "下个月的两种目标分母分别加上下个月预计入金，持仓成本和市值沿用当前数值。",
                 ],
             },
             {
                 "heading": "差值与卖出",
                 "items": [
-                    "成本差值以目标金额减当前成本计算，接近目标时按零处理。实时差值为目标金额减当前市值。",
+                    "成本差值为成本目标金额减当前成本，接近目标时按零处理。实时差值为实时目标金额减当前市值。",
                     "回撤档位按各标的的周期高点确认。",
                     "可动用美元资金为美元现金与 SGOV 安全线以上的可释放金额。",
                 ],
@@ -108,10 +108,10 @@ def rebalance_rules_payload() -> dict[str, Any]:
             {
                 "heading": "SGOV 动用进度",
                 "items": [
-                    "动用进度的可动用金额为全部 SGOV 持仓市值；进度目标总额为当前 SGOV 市值加上 VOO、QQQ 尚未归还的动用额。再平衡建议本身仍遵循安全线。",
+                    "动用进度的计划总额为当前 SGOV 市值加上 VOO、QQQ 的已用金额。再平衡可释放的 SGOV 仍遵循安全线。",
                     "VOO 和 QQQ 分别按自己的回撤档位和周期高点计算触发价，小档、中档、大档分别分配 20%、35%、45%，每档 VOO 与 QQQ 目标按 4:3 分配；目标会随持仓市值变化。",
-                    "成本差值为零不代表动用了 SGOV。可在记录买入时手动标记动用 SGOV；标记不会自动卖出 SGOV 或改变现金、持仓。",
-                    "进度按手动标记的 VOO、QQQ 买入成交额分别从小档开始累计，超出该档目标的部分顺延至下一档。每次买入 SGOV，按当时各档未归还金额比例冲减进度；卖出 SGOV 则从大档起依次冲减，同一档的 VOO 和 QQQ 按已有进度比例扣减。最多冲减至零；交易按日期和录入顺序计算。标记成交额可能包含其他资金。",
+                    "VOO、QQQ 各自按当前成本差值计算已用金额。成本差值为负时，超出目标的部分计入已用；成本差值为零或为正时，已用金额为零。",
+                    "已用金额从小档开始填入，超出该档目标的部分顺延至下一档。账上美元现金已计入当前目标分母，入金后会随目标金额重算进度。",
                 ],
             },
             {
@@ -2916,11 +2916,16 @@ def annotate_trade_quarters(records: list[dict[str, Any]], quarters: dict[str, d
     return result
 
 
-def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals, trade_records, today_key):
-    """Build a current-state scenario; sales do not identify the purchases they funded."""
+def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals):
+    """Allocate the cost above each ETF's current target across SGOV tiers."""
     asset_weights = {"VOO": 4 / 7, "QQQ": 3 / 7}
     tier_weights = {"small": 0.20, "medium": 0.35, "large": 0.45}
     anchors = {row["symbol"]: row.get("drawdown_anchor_price") for row in rows}
+    used_by_symbol = dict.fromkeys(asset_weights, 0.0)
+    for row in rows:
+        symbol = row["symbol"]
+        if symbol in used_by_symbol:
+            used_by_symbol[symbol] = max(0.0, -row["buy_difference_usd"])
     states = {}
     thresholds = {}
     for symbol in asset_weights:
@@ -2929,43 +2934,16 @@ def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals, trade_records
         states[symbol] = signal.get("episode_state") or {}
         thresholds[symbol] = snapshot.get("thresholds_pct") or {}
     tiers = [tier for tier in tier_weights if any(isinstance(levels.get(tier), (int, float)) for levels in thresholds.values())]
-    marked = [record for record in trade_records if record.get("uses_sgov") is True and record.get("action") == "buy" and str(record.get("trade_date") or "")[:10] <= today_key]
-    chronological = sorted(enumerate(trade_records), key=lambda pair: (str(pair[1].get("trade_date") or "")[:10], str(pair[1].get("created_at") or ""), pair[0]))
-    events = [record for _, record in chronological if str(record.get("trade_date") or "")[:10] <= today_key]
-    total_outstanding = 0.0
-    for record in events:
-        symbol, action = record.get("symbol"), record.get("action")
-        amount = max(0.0, float(record.get("amount_usd") or 0))
-        if symbol in ("VOO", "QQQ") and action == "buy" and record.get("uses_sgov") is True:
-            total_outstanding += amount
-        elif symbol == "SGOV" and action in ("buy", "sell"):
-            total_outstanding = max(0.0, total_outstanding - amount)
-    budget = max(0.0, sgov_holding_usd) + total_outstanding
+    available = max(0.0, sgov_holding_usd)
+    total_used = sum(used_by_symbol.values())
+    budget = available + total_used
     targets = {(symbol, tier): budget * tier_weights[tier] * fraction for tier in tiers for symbol, fraction in asset_weights.items()}
-    allocated = {key: 0.0 for key in targets}
-    for record in events:
-        symbol, action = record.get("symbol"), record.get("action")
-        amount = max(0.0, float(record.get("amount_usd") or 0))
-        if symbol in ("VOO", "QQQ") and action == "buy" and record.get("uses_sgov") is True:
-            for index, tier in enumerate(tiers):
-                key = (symbol, tier)
-                used = amount if index == len(tiers) - 1 else min(amount, max(0.0, targets[key] - allocated[key]))
-                allocated[key] += used
-                amount -= used
-        elif symbol == "SGOV" and action == "buy":
-            total = sum(allocated.values())
-            if total > 0:
-                fraction = max(0.0, 1.0 - amount / total)
-                allocated = {key: value * fraction for key, value in allocated.items()}
-        elif symbol == "SGOV" and action == "sell":
-            for tier in reversed(tiers):
-                keys = [(asset, tier) for asset in asset_weights]
-                tier_total = sum(allocated[key] for key in keys)
-                if tier_total > 0:
-                    reduction = min(amount, tier_total)
-                    for key in keys:
-                        allocated[key] *= 1.0 - reduction / tier_total
-                    amount -= reduction
+    allocated = {}
+    for symbol, remaining in used_by_symbol.items():
+        for index, tier in enumerate(tiers):
+            key = (symbol, tier)
+            allocated[key] = remaining if index == len(tiers) - 1 else min(remaining, targets[key])
+            remaining -= allocated[key]
     plan_rows = []
     for tier in tiers:
         signals = {}
@@ -2984,11 +2962,7 @@ def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals, trade_records
         plan_rows.append({"tier": tier, "signals": signals,
                           "voo_usd": targets[("VOO", tier)], "qqq_usd": targets[("QQQ", tier)], "total_usd": budget * tier_weights[tier],
                           "voo_used_usd": allocated[("VOO", tier)], "qqq_used_usd": allocated[("QQQ", tier)]})
-    sales = [record for record in trade_records if str(record.get("symbol", "")).upper() == "SGOV" and str(record.get("action", "")).lower() == "sell" and str(record.get("trade_date") or "")[:10] <= today_key]
-    sales.sort(key=lambda record: str(record.get("trade_date") or ""), reverse=True)
-    return {"available_usd": max(0.0, sgov_holding_usd), "budget_usd": budget if tiers else 0,
-            "marked_count": len(marked), "marked_purchase_usd": sum(float(record.get("amount_usd") or 0) for record in marked),
-            "rows": plan_rows, "latest_sale": {"trade_date": sales[0].get("trade_date"), "amount_usd": float(sales[0].get("amount_usd") or 0)} if sales else None}
+    return {"available_usd": available, "budget_usd": budget, "used_usd": total_used, "rows": plan_rows}
 
 
 def build_rebalance_v2(
@@ -3006,8 +2980,6 @@ def build_rebalance_v2(
     planned_new_cash_usd = float(usage["planned_new_cash_usd"])
     next_month_key = (now.replace(day=28) + timedelta(days=4)).strftime("%Y-%m")
     next_month_cash_usd = float(usage.get("planned_cash_by_month", {}).get(next_month_key, planned_new_cash_usd))
-    trade_records = load_trade_records(user_id)
-    today_key = now.date().isoformat()
     target_weights = effective_target_weights()
 
     usd_weight_total = sum(target_weights[s] for s in USD_SYMBOLS)
@@ -3025,8 +2997,11 @@ def build_rebalance_v2(
     holding_value_usd = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS) / fx if fx > 0 else 0.0
     current_assets_usd = holding_value_usd + cash_usd
     next_month_assets_usd = current_assets_usd + next_month_cash_usd
+    holding_cost_usd = sum(cost_usd_by_symbol.values())
+    cost_target_denominator_usd = holding_cost_usd + cash_usd
+    next_month_cost_target_denominator_usd = cost_target_denominator_usd + next_month_cash_usd
     target_denominator_formula = (
-        f"美元持仓市值（含 SGOV） ${_fmt_usd_exact(holding_value_usd)} + "
+        f"美元持仓总成本（含 SGOV） ${_fmt_usd_exact(holding_cost_usd)} + "
         f"美元现金 ${_fmt_usd_exact(cash_usd)}"
     )
     sgov_target_usd = sgov_target_pct * current_assets_usd
@@ -3048,6 +3023,7 @@ def build_rebalance_v2(
         cost_usd = cost_usd_by_symbol.get(sym, 0.0)
         target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
         long_term_target_usd = target_pct * current_assets_usd
+        cost_target_usd = target_pct * cost_target_denominator_usd
         next_month_target_usd = target_pct * next_month_assets_usd
         drawdown_pct = item.get("confirmed_drawdown_pct", item.get("drawdown_pct"))
         episode_payload = episode_signals.get(sym, {})
@@ -3064,8 +3040,8 @@ def build_rebalance_v2(
         tier_diagnostics = rebalance_rule.get("diagnostics")
         has_large_trigger |= normalize_intensity(intensity) == "large"
 
-        raw_gap = long_term_target_usd - cost_usd
-        target_tolerance_usd = max(5.0, long_term_target_usd * 0.01)
+        raw_gap = cost_target_usd - cost_usd
+        target_tolerance_usd = max(5.0, cost_target_usd * 0.01)
         gap = 0.0 if abs(raw_gap) <= target_tolerance_usd else raw_gap
         fpe = item.get("forward_pe")
         split, split_note = valuation_split_for_row(sym, item)
@@ -3119,6 +3095,8 @@ def build_rebalance_v2(
                 "long_term_target_usd": long_term_target_usd,
                 "target_denominator_usd": current_assets_usd,
                 "next_month_target_usd": next_month_target_usd,
+                "cost_target_usd": cost_target_usd,
+                "next_month_cost_target_usd": target_pct * next_month_cost_target_denominator_usd,
                 "suggested_sell_usd": sell_amount,
                 "suggested_sell_shares": sell_amount / price if price > 0 else 0.0,
                 "buy_difference_usd": gap,
@@ -3136,7 +3114,7 @@ def build_rebalance_v2(
                 "recent_5d_pct": item.get("recent_5d_pct"),
                 "target_pct": target_pct * 100.0,
                 "current_pct": current_usd / current_assets_usd * 100.0 if current_assets_usd > 0 else 0.0,
-                "current_cost_pct": cost_usd / current_assets_usd * 100.0 if current_assets_usd > 0 else 0.0,
+                "current_cost_pct": cost_usd / cost_target_denominator_usd * 100.0 if cost_target_denominator_usd > 0 else 0.0,
                 "forward_pe": fpe,
                 "pe": item.get("pe"),
                 "pe_band": pe_band_text(sym),
@@ -3152,11 +3130,9 @@ def build_rebalance_v2(
 
     sgov_available_usd = sgov_excess_usd
     if sgov_available_usd > 1e-9:
-        sgov_holding = next((item for item in holding_rows if item["symbol"] == "SGOV"), {})
-        sgov_cost_usd = max(0.0, float(sgov_holding.get("shares", 0.0) or 0.0)) * max(
-            0.0, float(sgov_holding.get("avg_cost", 0.0) or 0.0)
-        )
-        sgov_cost_gap_usd = sgov_target_usd - sgov_cost_usd
+        sgov_cost_usd = cost_usd_by_symbol.get("SGOV", 0.0)
+        sgov_cost_target_usd = sgov_target_pct * cost_target_denominator_usd
+        sgov_cost_gap_usd = sgov_cost_target_usd - sgov_cost_usd
         sgov_price = float(market["quotes"].get("SGOV", {}).get("price") or 0.0)
         sgov_sell_note = (
             "大档位触发，但 SGOV 仍保留最低安全线，只释放安全线以上部分。"
@@ -3174,6 +3150,8 @@ def build_rebalance_v2(
                 "target_usd": sgov_target_usd,
                 "target_denominator_usd": current_assets_usd,
                 "next_month_target_usd": sgov_target_pct * next_month_assets_usd,
+                "cost_target_usd": sgov_cost_target_usd,
+                "next_month_cost_target_usd": sgov_target_pct * next_month_cost_target_denominator_usd,
                 "suggested_sell_usd": sgov_available_usd,
                 "suggested_sell_shares": sgov_available_usd / sgov_price if sgov_price > 0 else 0.0,
                 "buy_difference_usd": sgov_cost_gap_usd,
@@ -3200,11 +3178,12 @@ def build_rebalance_v2(
         "future_cash_by_month": {next_month_key: next_month_cash_usd},
         "next_month_cash_usd": next_month_cash_usd,
         "current_assets_usd": current_assets_usd,
+        "cost_target_denominator_usd": cost_target_denominator_usd,
         "target_denominator_formula": target_denominator_formula,
         "deployable_pool_usd": deployable_pool_usd,
         "remaining_deployable_usd": deployable_pool_usd,
         "monthly_budget_usd": planned_new_cash_usd,
-        "sgov_usage_plan": build_sgov_usage_plan(rows, sgov_current_usd, episode_signals, trade_records, today_key),
+        "sgov_usage_plan": build_sgov_usage_plan(rows, sgov_current_usd, episode_signals),
         "sgov_excess_usd": sgov_excess_usd,
         "sgov_available_usd": sgov_available_usd,
         "sgov_large_trigger_enabled": has_large_trigger,
