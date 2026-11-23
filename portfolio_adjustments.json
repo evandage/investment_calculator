@@ -4163,6 +4163,319 @@
         "sgov_dividend_usd": 39.08
       },
       "reconstruct_from_date": "2026-11-18"
+    },
+    {
+      "id": "adj-20261120T094239+0800-142",
+      "kind": "balances",
+      "effective_date": "2026-11-20",
+      "recorded_at": "2026-11-20T09:42:39+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": 2770.2859999999996,
+        "cash_cny": 10180.98,
+        "cash_cost_basis_usd": 2700.1305570503823,
+        "cash_cost_basis_cny": 9108.131160969588,
+        "realized_usd": 23.09544294961763,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 39.08
+      },
+      "after": {
+        "cash_usd": 2670.316,
+        "cash_cny": 10180.98,
+        "cash_cost_basis_usd": 2600.1605570503825,
+        "cash_cost_basis_cny": 9108.131160969588,
+        "realized_usd": 23.09544294961763,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 39.08
+      },
+      "reconstruct_from_date": "2026-11-19"
+    },
+    {
+      "id": "adj-20261120T094253+0800-143",
+      "kind": "balances",
+      "effective_date": "2026-11-20",
+      "recorded_at": "2026-11-20T09:42:53+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": 2670.316,
+        "cash_cny": 10180.98,
+        "cash_cost_basis_usd": 2600.1605570503825,
+        "cash_cost_basis_cny": 9108.131160969588,
+        "realized_usd": 23.09544294961763,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 39.08
+      },
+      "after": {
+        "cash_usd": 2572.316,
+        "cash_cny": 10180.98,
+        "cash_cost_basis_usd": 2502.1605570503825,
+        "cash_cost_basis_cny": 9108.131160969588,
+        "realized_usd": 23.09544294961763,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 39.08
+      },
+      "reconstruct_from_date": "2026-11-19"
+    },
+    {
+      "id": "adj-20261123T094358+0800-144",
+      "kind": "balances",
+      "effective_date": "2026-11-23",
+      "recorded_at": "2026-11-23T09:43:58+08:00",
+      "reason": "trade_batch_cash_anchor",
+      "before": {
+        "cash_usd": 2572.316,
+        "cash_cny": 10180.98,
+        "cash_cost_basis_usd": 2502.1605570503825,
+        "cash_cost_basis_cny": 9108.131160969588,
+        "realized_usd": 23.09544294961763,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 39.08
+      },
+      "after": {
+        "cash_usd": 64.21599999999944,
+        "cash_cny": 10180.98,
+        "cash_cost_basis_usd": 12.694470361565209,
+        "cash_cost_basis_cny": 9108.131160969588,
+        "realized_usd": 4.461529638434822,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 39.08
+      },
+      "reconstruct_from_date": "2026-11-20"
+    },
+    {
+      "id": "adj-20261123T094614+0800-145",
+      "kind": "balances",
+      "effective_date": "2026-11-23",
+      "recorded_at": "2026-11-23T09:46:14+08:00",
+      "reason": "fx_conversion_and_cash_reconciliation",
+      "before": {
+        "cash_usd": 64.21599999999944,
+        "cash_cny": 10180.98,
+        "cash_cost_basis_usd": 12.694470361565209,
+        "cash_cost_basis_cny": 9108.131160969588,
+        "realized_usd": 4.461529638434822,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 39.08
+      },
+      "after": {
+        "cash_usd": 64.47,
+        "cash_cny": 10180.98,
+        "cash_cost_basis_usd": 12.948470361565208,
+        "cash_cost_basis_cny": 9108.131160969588,
+        "realized_usd": 4.461529638434822,
+        "realized_cny": 1072.8488390304121,
+        "voo_dividend_usd": 7.98,
+        "sgov_dividend_usd": 39.08
+      },
+      "reconstruct_from_date": "2026-11-23",
+      "fx_conversion_id": "20261118103850-12-FX",
+      "fx_converted_date": "2026-11-17",
+      "fx_usd_amount_before": 3998.73,
+      "fx_usd_amount_after": 3998.81,
+      "fx_cash_delta_usd": 0.08,
+      "cash_reconciliation_delta_usd": 0.174
+    },
+    {
+      "id": "adj-20261123T102829+0800-146",
+      "kind": "holdings",
+      "effective_date": "2026-11-23",
+      "recorded_at": "2026-11-23T10:28:29+08:00",
+      "reason": "exact_holdings_anchor_reconciliation",
+      "before": {
+        "VOO": {
+          "shares": 11.4122,
+          "avg_cost": 680.7196872000374
+        },
+        "QQQ": {
+          "shares": 8.574899999999998,
+          "avg_cost": 694.0452809415208
+        },
+        "ISRG": {
+          "shares": 0.9671000000000001,
+          "avg_cost": 398.1301974976734
+        },
+        "GOOGL": {
+          "shares": 2.474299999999996,
+          "avg_cost": 324.97360546417224
+        },
+        "APP": {
+          "shares": 0.1397,
+          "avg_cost": 357.9098067287044
+        },
+        "TEM": {
+          "shares": 3.3601,
+          "avg_cost": 57.05400523793935
+        },
+        "PLTR": {
+          "shares": 1.2581999999999964,
+          "avg_cost": 152.01591375680982
+        },
+        "AVGO": {
+          "shares": 0.35250000000000004,
+          "avg_cost": 365.10351960801887
+        },
+        "ANT": {
+          "shares": 1.0,
+          "avg_cost": 98.0
+        },
+        "SGOV": {
+          "shares": 35.0,
+          "avg_cost": 100.56933861126797
+        }
+      },
+      "after": {
+        "VOO": {
+          "shares": 8.4122,
+          "avg_cost": 689.63
+        },
+        "QQQ": {
+          "shares": 8.574899999999998,
+          "avg_cost": 694.02
+        },
+        "ISRG": {
+          "shares": 0.9671000000000001,
+          "avg_cost": 398.1
+        },
+        "GOOGL": {
+          "shares": 2.4749,
+          "avg_cost": 324.94
+        },
+        "APP": {
+          "shares": 0.1397,
+          "avg_cost": 357.77
+        },
+        "TEM": {
+          "shares": 3.3601,
+          "avg_cost": 57.05400523793935
+        },
+        "PLTR": {
+          "shares": 1.2581999999999964,
+          "avg_cost": 154.2
+        },
+        "AVGO": {
+          "shares": 0.35250000000000004,
+          "avg_cost": 335.66
+        },
+        "ANT": {
+          "shares": 1.0,
+          "avg_cost": 98.0
+        },
+        "SGOV": {
+          "shares": 35.0,
+          "avg_cost": 100.59
+        }
+      },
+      "source": "broker_position_screenshot"
+    },
+    {
+      "id": "adj-20261123T102944+0800-147",
+      "kind": "holdings",
+      "effective_date": "2026-11-23",
+      "recorded_at": "2026-11-23T10:29:44+08:00",
+      "reason": "exact_holdings_anchor_reconciliation",
+      "before": {
+        "VOO": {
+          "shares": 8.4122,
+          "avg_cost": 689.63
+        },
+        "QQQ": {
+          "shares": 8.574899999999998,
+          "avg_cost": 694.02
+        },
+        "ISRG": {
+          "shares": 0.9671000000000001,
+          "avg_cost": 398.1
+        },
+        "GOOGL": {
+          "shares": 2.4749,
+          "avg_cost": 324.94
+        },
+        "APP": {
+          "shares": 0.1397,
+          "avg_cost": 357.77
+        },
+        "TEM": {
+          "shares": 3.3601,
+          "avg_cost": 57.05400523793935
+        },
+        "PLTR": {
+          "shares": 1.2581999999999964,
+          "avg_cost": 154.2
+        },
+        "AVGO": {
+          "shares": 0.35250000000000004,
+          "avg_cost": 335.66
+        },
+        "ANT": {
+          "shares": 1.0,
+          "avg_cost": 98.0
+        },
+        "SGOV": {
+          "shares": 35.0,
+          "avg_cost": 100.59
+        }
+      },
+      "after": {
+        "VOO": {
+          "shares": 11.4122,
+          "avg_cost": 680.7008715234574
+        },
+        "QQQ": {
+          "shares": 8.574899999999998,
+          "avg_cost": 694.02
+        },
+        "ISRG": {
+          "shares": 0.9671000000000001,
+          "avg_cost": 398.1
+        },
+        "GOOGL": {
+          "shares": 2.4749,
+          "avg_cost": 324.94
+        },
+        "APP": {
+          "shares": 0.1397,
+          "avg_cost": 357.77
+        },
+        "TEM": {
+          "shares": 3.3601,
+          "avg_cost": 57.05400523793935
+        },
+        "PLTR": {
+          "shares": 1.2581999999999964,
+          "avg_cost": 154.2
+        },
+        "AVGO": {
+          "shares": 0.35250000000000004,
+          "avg_cost": 335.66
+        },
+        "ANT": {
+          "shares": 1.0,
+          "avg_cost": 98.0
+        },
+        "SGOV": {
+          "shares": 35.0,
+          "avg_cost": 100.59
+        }
+      },
+      "source": "broker_position_screenshot_and_user_reported_other_broker_position",
+      "symbol": "VOO",
+      "broker_positions": [
+        {
+          "shares": 8.4122,
+          "avg_cost": 689.63
+        },
+        {
+          "shares": 3.0,
+          "avg_cost": 655.663
+        }
+      ]
     }
   ]
 }

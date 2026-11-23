@@ -4665,7 +4665,10 @@ function Rebalance({ data, onSaved }) {
       const comparison = Number.isFinite(leftNumber) && Number.isFinite(rightNumber)
         ? leftNumber - rightNumber
         : String(leftValue).localeCompare(String(rightValue), "zh-CN", { numeric: true });
-      return tradeSort.direction === "asc" ? comparison : -comparison;
+      const order = tradeSort.key === "trade_date" && comparison === 0
+        ? compareTableValues(left.id, right.id)
+        : comparison;
+      return tradeSort.direction === "asc" ? order : -order;
     });
   }, [data.trades, tradeFilter, tradeActionFilter, tradeQuarterFilter, tradeSort]);
   const visibleTrades = tradeHistoryOpen ? sortedTrades : sortedTrades.slice(0, 3);

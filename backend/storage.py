@@ -817,6 +817,16 @@ def save_portfolio_history(user_id: str, rows: list[dict[str, Any]]) -> None:
     _sync_snapshot_ledger(user_id, rows)
 
 
+def _trade_price(item: dict[str, Any], action: str, amount: float, shares: float) -> float:
+    if action == "dividend" or shares <= 0:
+        return 0.0
+    try:
+        price = float(item.get("price", 0.0))
+    except (TypeError, ValueError, OverflowError):
+        price = 0.0
+    return price if math.isfinite(price) and price > 0 else amount / shares
+
+
 def load_trade_records(user_id: str | None = None) -> list[dict[str, Any]]:
     raw = _read_json(TRADE_RECORDS_FILE, {})
     user_key = str(user_id or active_user_id()).strip() or "local"
@@ -855,7 +865,7 @@ def load_trade_records(user_id: str | None = None) -> list[dict[str, Any]]:
                 "action": action,
                 "amount_usd": amount,
                 "shares": 0.0 if action == "dividend" else shares,
-                "price": amount / shares if shares > 0 else 0.0,
+                "price": _trade_price(item, action, amount, shares),
                 "cost_basis": cost_basis,
                 "realized_pnl": realized_pnl,
                 "prev_avg_cost": prev_avg_cost,
@@ -906,7 +916,7 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
                 "action": action,
                 "amount_usd": amount,
                 "shares": 0.0 if action == "dividend" else shares,
-                "price": amount / shares if shares > 0 else 0.0,
+                "price": _trade_price(item, action, amount, shares),
                 "cost_basis": cost_basis,
                 "realized_pnl": realized_pnl,
                 "prev_avg_cost": prev_avg_cost,
