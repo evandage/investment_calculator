@@ -108,8 +108,8 @@ def rebalance_rules_payload() -> dict[str, Any]:
             {
                 "heading": "SGOV 动用进度",
                 "items": [
-                    "动用进度的计划总额为当前 SGOV 市值加上 VOO、QQQ 的已用金额。再平衡可释放的 SGOV 仍遵循安全线。",
-                    "VOO 和 QQQ 分别按自己的回撤档位和周期高点计算触发价，小档、中档、大档分别分配 20%、35%、45%，每档 VOO 与 QQQ 目标按 4:3 分配；目标会随持仓市值变化。",
+                    "动用进度的计划总额为（美元持仓总成本（含 SGOV）加美元现金余额）× 20%。再平衡可释放的 SGOV 仍遵循安全线。",
+                    "VOO 和 QQQ 分别按自己的回撤档位和周期高点计算触发价，小档、中档、大档分别分配 20%、35%、45%，每档 VOO 与 QQQ 目标按 4:3 分配。",
                     "VOO、QQQ 各自按当前成本差值计算已用金额。成本差值为负时，超出目标的部分计入已用；成本差值为零或为正时，已用金额为零。",
                     "已用金额从小档开始填入，超出该档目标的部分顺延至下一档。账上美元现金已计入当前目标分母，入金后会随目标金额重算进度。",
                 ],
@@ -2916,7 +2916,7 @@ def annotate_trade_quarters(records: list[dict[str, Any]], quarters: dict[str, d
     return result
 
 
-def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals):
+def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals, *, budget_usd: float):
     """Allocate the cost above each ETF's current target across SGOV tiers."""
     asset_weights = {"VOO": 4 / 7, "QQQ": 3 / 7}
     tier_weights = {"small": 0.20, "medium": 0.35, "large": 0.45}
@@ -2936,7 +2936,7 @@ def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals):
     tiers = [tier for tier in tier_weights if any(isinstance(levels.get(tier), (int, float)) for levels in thresholds.values())]
     available = max(0.0, sgov_holding_usd)
     total_used = sum(used_by_symbol.values())
-    budget = available + total_used
+    budget = max(0.0, budget_usd)
     targets = {(symbol, tier): budget * tier_weights[tier] * fraction for tier in tiers for symbol, fraction in asset_weights.items()}
     allocated = {}
     for symbol, remaining in used_by_symbol.items():
@@ -3183,7 +3183,9 @@ def build_rebalance_v2(
         "deployable_pool_usd": deployable_pool_usd,
         "remaining_deployable_usd": deployable_pool_usd,
         "monthly_budget_usd": planned_new_cash_usd,
-        "sgov_usage_plan": build_sgov_usage_plan(rows, sgov_current_usd, episode_signals),
+        "sgov_usage_plan": build_sgov_usage_plan(
+            rows, sgov_current_usd, episode_signals, budget_usd=cost_target_denominator_usd * 0.20,
+        ),
         "sgov_excess_usd": sgov_excess_usd,
         "sgov_available_usd": sgov_available_usd,
         "sgov_large_trigger_enabled": has_large_trigger,

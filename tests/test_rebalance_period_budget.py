@@ -54,6 +54,7 @@ def test_rebalance_reports_current_and_next_month_targets_without_buy_suggestion
     assert result["current_assets_usd"] == pytest.approx(1100.0 + 1080.0 + 1090.0 + 600.0 + 1000.0)
     cost_denominator = 1050.0 + 1030.0 + 1015.0 + 500.0 + 1000.0
     assert result["cost_target_denominator_usd"] == pytest.approx(cost_denominator)
+    assert result["sgov_usage_plan"]["budget_usd"] == pytest.approx(cost_denominator * 0.20)
     assert result["next_month_cash_usd"] == 900.0
     assert result["future_cash_by_month"] == {"2026-11": 900.0}
     rows = {row["symbol"]: row for row in result["rows"]}
@@ -94,6 +95,7 @@ def test_rebalance_reports_current_and_next_month_targets_without_buy_suggestion
 
     limited = rebalance(100.0)
     assert limited["remaining_deployable_usd"] == pytest.approx(100.0)
+    assert limited["sgov_usage_plan"]["budget_usd"] == pytest.approx((cost_denominator - 900) * 0.20)
 
     holdings[0]["avg_cost"] = 500.0
     over_target = rebalance(100.0)
@@ -102,10 +104,12 @@ def test_rebalance_reports_current_and_next_month_targets_without_buy_suggestion
         sum(max(0.0, -over_target_rows[symbol]["buy_difference_usd"]) for symbol in ("VOO", "QQQ"))
     )
     assert over_target["sgov_usage_plan"]["used_usd"] > 0
-    holdings_value["VOO"] *= 2
+    holdings_value["SGOV"] *= 2
     repriced = rebalance(100.0)
     assert repriced["current_assets_usd"] > over_target["current_assets_usd"]
     assert repriced["cost_target_denominator_usd"] == over_target["cost_target_denominator_usd"]
+    assert repriced["sgov_usage_plan"]["available_usd"] > over_target["sgov_usage_plan"]["available_usd"]
+    assert repriced["sgov_usage_plan"]["budget_usd"] == over_target["sgov_usage_plan"]["budget_usd"]
     assert repriced["sgov_usage_plan"]["used_usd"] == over_target["sgov_usage_plan"]["used_usd"]
     assert rebalance(20000.0)["sgov_usage_plan"]["used_usd"] == 0
 
@@ -125,7 +129,7 @@ def test_sgov_plan_uses_current_thresholds_and_only_counts_cost_above_target():
         {"symbol": "QQQ", "buy_difference_usd": 300, "drawdown_anchor_price": 800},
     ]
     signal = {"threshold_snapshot": {"thresholds_pct": {"small": -10, "medium": -15, "large": -20}}}
-    plan = portfolio.build_sgov_usage_plan(rows, 1200, {"QQQ": signal})
+    plan = portfolio.build_sgov_usage_plan(rows, 1200, {"QQQ": signal}, budget_usd=1200)
     assert plan["budget_usd"] == 1200
     assert plan["used_usd"] == 0
     assert plan["rows"][0]["signals"]["QQQ"]["trigger_price"] == pytest.approx(720)
@@ -134,8 +138,8 @@ def test_sgov_plan_uses_current_thresholds_and_only_counts_cost_above_target():
     assert sum(row["qqq_usd"] for row in plan["rows"]) == pytest.approx(1200 * 3 / 7)
     rows[0]["buy_difference_usd"] = 0
     rows[1]["buy_difference_usd"] = -5
-    plan = portfolio.build_sgov_usage_plan(rows, 1200, {"QQQ": signal})
-    assert plan["budget_usd"] == 1205
+    plan = portfolio.build_sgov_usage_plan(rows, 1200, {"QQQ": signal}, budget_usd=1200)
+    assert plan["budget_usd"] == 1200
     assert plan["used_usd"] == 5
     assert plan["rows"][0]["voo_used_usd"] == 0
     assert plan["rows"][0]["qqq_used_usd"] == 5
@@ -169,7 +173,7 @@ def test_sgov_progress_allocates_each_cost_gap_and_uses_confirmed_episode():
             "episode_state": {"episode_active": True, "small_triggered": True, "medium_triggered": True},
         },
     }
-    result = portfolio.build_sgov_usage_plan(rows, 700, signals)
+    result = portfolio.build_sgov_usage_plan(rows, 700, signals, budget_usd=770)
     small, medium, large = [row["signals"] for row in result["rows"]]
     assert small["VOO"]["triggered"] and small["QQQ"]["triggered"]
     assert medium["VOO"] == {"drawdown_pct": -8, "trigger_price": pytest.approx(184), "triggered": False, "eligible_usd": 0}
@@ -182,7 +186,7 @@ def test_sgov_progress_allocates_each_cost_gap_and_uses_confirmed_episode():
 
 def test_sgov_budget_uses_requested_tier_weights():
     signal = {"threshold_snapshot": {"thresholds_pct": {"small": -5.5, "medium": -13.5, "large": -27}}}
-    plan = portfolio.build_sgov_usage_plan([], 1000, {"QQQ": signal})
+    plan = portfolio.build_sgov_usage_plan([], 600, {"QQQ": signal}, budget_usd=1000)
     assert [row["total_usd"] for row in plan["rows"]] == pytest.approx([200, 350, 450])
     for row in plan["rows"]:
         assert row["voo_usd"] / row["qqq_usd"] == pytest.approx(4 / 3)
@@ -199,6 +203,6 @@ def test_trade_tier_uses_execution_price_and_known_snapshot():
 def test_sgov_overflow_moves_to_next_tier():
     signal = {"threshold_snapshot": {"thresholds_pct": {"small": -5, "medium": -10, "large": -20}}}
     rows = [{"symbol": "VOO", "buy_difference_usd": -400}, {"symbol": "QQQ", "buy_difference_usd": 600}]
-    plan = portfolio.build_sgov_usage_plan(rows, 600, {"QQQ": signal})
+    plan = portfolio.build_sgov_usage_plan(rows, 600, {"QQQ": signal}, budget_usd=1000)
     assert [row["voo_used_usd"] for row in plan["rows"]] == pytest.approx([1000 * .2 * 4 / 7, 1000 * .35 * 4 / 7, 400 - 1000 * .55 * 4 / 7])
     assert all(row["qqq_used_usd"] == 0 for row in plan["rows"])
