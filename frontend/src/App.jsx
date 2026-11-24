@@ -4,6 +4,7 @@ import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, HistogramSeries, LineSeries } from "lightweight-charts";
 import { Eye, EyeOff, Activity, BookOpen, Check, CircleAlert, Gauge, Home, Maximize2, Minimize2, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
 import TradeDistribution from "./TradeDistribution.jsx";
+import { estimateSgovSwingLots } from "./sgovSwingLots.js";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -260,17 +261,38 @@ function fmtChartPrice(value, symbol) {
   return num.toFixed(chartPriceDigits(symbol));
 }
 
-function BuyMarkerPnl({ marker, data }) {
-  const shares = Number(marker.buy_shares);
-  const cost = Number(marker.buy_amount);
-  const price = data?.selected_date ? NaN : Number(data?.latest_price);
-  const available = Number.isFinite(shares) && shares > 0 && Number.isFinite(cost) && cost > 0 && Number.isFinite(price) && price > 0;
-  const pnl = available ? shares * price - cost : null;
-  const currency = /^\d{6}\.(SS|SZ)$/i.test(data?.symbol || "") ? "CNY" : "USD";
+function TradeMarkerPnl({ marker, symbol, currentPrice, trades }) {
+  const bought = Number(marker.buy_shares || 0);
+  const sold = Number(marker.sell_shares || 0);
+  const netBought = bought - sold;
+  const average = bought > 0 ? Number(marker.buy_amount || 0) / bought : 0;
+  const price = Number(currentPrice);
+  const hasNetBuy = Number.isFinite(netBought) && netBought > 1e-9;
+  const available = hasNetBuy && [average, price].every((value) => Number.isFinite(value) && value > 0);
+  const floating = available ? netBought * (price - average) : null;
+  const currency = /^\d{6}\.(SS|SZ)$/i.test(symbol || "") ? "CNY" : "USD";
+  const postedSales = (trades || []).filter((trade) =>
+    trade.symbol === symbol && trade.trade_date === marker.trade_date &&
+    trade.action === "sell" && !trade.history_only && Number(trade.cost_basis) > 0 &&
+    Number.isFinite(Number(trade.realized_pnl)),
+  );
+  const realized = postedSales.reduce((sum, trade) => sum + Number(trade.realized_pnl), 0);
   return (
     <>
-      <div className="klineTradeDetail"><span>浮盈亏</span><b className={available ? tone(pnl) : ""}>{available ? `${fmtSignedMoney(pnl, currency)} · ${fmtPct(pnl / cost * 100)}` : "暂无当前报价"}</b></div>
-      <div className="klineTradeNote">按原买入数量及最新报价估算，未扣除后续卖出</div>
+      {postedSales.length > 0 && <div className="klineTradeDetail">
+        <span>当日已变现</span><b className={tone(realized)}>{fmtSignedMoney(realized, currency)}</b>
+      </div>}
+      {hasNetBuy && <>
+        <div className="klineTradeDetail">
+          <span>净买入浮盈亏估算</span><b className={available ? tone(floating) : ""}>{available
+            ? `${fmtSignedMoney(floating, currency)} · ${fmtPct((price / average - 1) * 100)}`
+            : "暂无报价或成本"}</b>
+        </div>
+        <div className="klineTradeNote">
+          当日净买入 {netBought.toLocaleString(undefined, { maximumFractionDigits: 4 })} 股
+          {available && ` · 买入均价 ${fmtMoney(average, currency)} · 现价 ${fmtMoney(price, currency)}`}
+        </div>
+      </>}
     </>
   );
 }
@@ -2574,6 +2596,8 @@ function drawingTimeValue(time) {
 
 function SingleLightweightChart({
   data,
+  currentPrice,
+  trades,
   viewKey,
   displayRange,
   onVisibleProfileChange,
@@ -3273,8 +3297,8 @@ function SingleLightweightChart({
             <div><span>低</span><b>{fmtChartPrice(candleTooltip.low, data?.symbol)}</b><span>收</span><b>{fmtChartPrice(candleTooltip.close, data?.symbol)}</b></div>
             <div><span>涨跌</span><b className={tone(candleTooltip.change)}>{candleTooltip.change >= 0 ? "+" : ""}{fmtChartPrice(candleTooltip.change, data?.symbol)} · {fmtPct(candleTooltip.changePct)}</b></div>
             <div><span>振幅</span><b>{Number(candleTooltip.amplitudePct || 0).toFixed(2)}%</b><span>量</span><b>{Number(candleTooltip.volume || 0).toLocaleString()}</b></div>
-            {candleTooltip.tradeMarker ? (
-              candleTooltip.tradeMarker.action === "trade" ? (
+            {candleTooltip.tradeMarker ? <>
+              {candleTooltip.tradeMarker.action === "trade" ? (
                 <>
                   <div className="klineTradeRow up">
                     <span>买入 B</span>
@@ -3284,7 +3308,6 @@ function SingleLightweightChart({
                     <span>卖出 S</span>
                     <b>{Number(candleTooltip.tradeMarker.sell_count || 0)} 笔 · {Number(candleTooltip.tradeMarker.sell_shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })} 股{Number(candleTooltip.tradeMarker.sell_average_price) > 0 ? ` @ ${fmtChartPrice(candleTooltip.tradeMarker.sell_average_price, data?.symbol)}` : ""}</b>
                   </div>
-                  <BuyMarkerPnl marker={candleTooltip.tradeMarker} data={data} />
                 </>
               ) : (
                 <>
@@ -3296,10 +3319,15 @@ function SingleLightweightChart({
                     {candleTooltip.tradeMarker.action === "buy" && Number(candleTooltip.tradeMarker.buy_amount) > 0 ? ` · 总额 ${fmtMoney(candleTooltip.tradeMarker.buy_amount, /^\d{6}\.(SS|SZ)$/i.test(data?.symbol || "") ? "CNY" : "USD")}` : ""}
                   </b>
                 </div>
-                {candleTooltip.tradeMarker.action === "buy" ? <BuyMarkerPnl marker={candleTooltip.tradeMarker} data={data} /> : null}
                 </>
-              )
-            ) : null}
+              )}
+              <TradeMarkerPnl
+                marker={candleTooltip.tradeMarker}
+                symbol={data?.symbol}
+                currentPrice={(!data?.selected_date && data?.latest_price) || currentPrice}
+                trades={trades}
+              />
+            </> : null}
           </div>
         ) : null}
         {showOpeningPercentAxis ? <div className="klinePercentAxis singleKlinePercentAxis" aria-label="以当日开盘价为零的涨跌幅坐标轴">
@@ -3350,7 +3378,7 @@ function klineSwingDefaults(symbol) {
   };
 }
 
-function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, recommendation, onSave }) {
+function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, recommendation, onSave, sgovUsedUsd, currentHolding, trades }) {
   const defaults = klineSwingDefaults(symbol);
   const normalized = { ...defaults, ...(position || {}) };
   const [editing, setEditing] = useState(false);
@@ -3363,11 +3391,18 @@ function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, rec
     setDraft(Object.fromEntries(Object.entries(normalized).map(([key, value]) => [key, String(value ?? 0)])));
   }, [symbol, position, editing]);
 
-  const shares = Math.max(0, Number(normalized.shares || 0));
-  const avgCost = Math.max(0, Number(normalized.avg_cost || 0));
-  const price = Math.max(0, Number(latestPrice || 0));
+  const autoSgov = sgovUsedUsd != null;
+  const allocation = autoSgov ? estimateSgovSwingLots(trades || [], symbol, sgovUsedUsd, currentHolding?.shares) : null;
+  const avgCost = autoSgov
+    ? (allocation.shares > 0 ? allocation.cost / allocation.shares : 0)
+    : Math.max(0, Number(normalized.avg_cost || 0));
+  const shares = autoSgov
+    ? allocation.shares
+    : Math.max(0, Number(normalized.shares || 0));
+  const price = Math.max(0, Number((autoSgov ? currentHolding?.price : latestPrice) || 0));
+  const hasValuation = !autoSgov || sgovUsedUsd <= 0 || (price > 0 && shares > 0);
   const marketValue = shares * price;
-  const costValue = shares * avgCost;
+  const costValue = autoSgov ? allocation.cost : shares * avgCost;
   const currentPct = totalAssetsUsd > 0 ? marketValue / totalAssetsUsd * 100 : 0;
   const targetPct = Math.max(0, Number(normalized.target_pct || 0));
   const targetAmount = totalAssetsUsd > 0 ? totalAssetsUsd * targetPct / 100 : 0;
@@ -3401,17 +3436,45 @@ function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, rec
   return (
     <section className="swingPositionPanel" aria-label={symbol + " \u6ce2\u6bb5\u4ed3\u7ba1\u7406"}>
       <div className="swingPositionHeader">
-        <div><span>SWING BOOK</span><h3>{symbol} {"\u6ce2\u6bb5\u4ed3\u7ba1\u7406"}</h3><small>{"\u72ec\u7acb\u4e8e\u6838\u5fc3\u4ed3\u8bb0\u5f55"}</small></div>
+        <div><span>SWING BOOK</span><h3>{symbol} {"\u6ce2\u6bb5\u4ed3\u7ba1\u7406"}</h3><small>{autoSgov ? "按最近仍持有的买入估算 SGOV 波段仓" : "\u72ec\u7acb\u4e8e\u6838\u5fc3\u4ed3\u8bb0\u5f55"}</small></div>
         <button type="button" onClick={() => { setEditing((value) => !value); setMessage(""); }}>{editing ? "\u6536\u8d77" : "\u7f16\u8f91"}</button>
       </div>
       <div className="swingMetrics">
-        <div><span>{"\u5f53\u524d\u6ce2\u6bb5\u4ed3"}</span><strong>{fmtMoney(marketValue, "USD", 0)}</strong><small>{currentPct.toFixed(2)}% {"\u603b\u8d44\u4ea7"} {"\u00b7"} {shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} {"\u80a1"}</small></div>
-        <div><span>{"\u76ee\u6807\u6ce2\u6bb5\u4ed3"}</span><strong>{fmtMoney(targetAmount, "USD", 0)}</strong><small>{targetPct.toFixed(2)}% {"\u00b7"} {"\u5dee\u989d"} {fmtMoney(targetAmount - marketValue, "USD", 0)}</small></div>
-        <div className={tone(floatingPnl)}><span>{"\u6d6e\u52a8\u76c8\u4e8f"}</span><strong>{fmtSignedMoney(floatingPnl, "USD")}</strong><small>{fmtPct(floatingPnlPct)}</small></div>
-        <div><span>{"\u6ce2\u6bb5\u6210\u672c"}</span><strong>{avgCost > 0 ? fmtMoney(avgCost, "USD") : "-"}</strong><small>{"\u6210\u672c\u91d1\u989d"} {fmtMoney(costValue, "USD", 0)}</small></div>
+        <div><span>{"\u5f53\u524d\u6ce2\u6bb5\u4ed3"}</span><strong>{hasValuation ? fmtMoney(marketValue, "USD", 0) : "—"}</strong><small>{hasValuation ? `${currentPct.toFixed(2)}% 总资产 · ` : ""}{shares.toLocaleString(undefined, { maximumFractionDigits: autoSgov ? 6 : 4 })} 股</small></div>
+        <div><span>{"\u76ee\u6807\u6ce2\u6bb5\u4ed3"}</span><strong>{fmtMoney(targetAmount, "USD", 0)}</strong><small>{targetPct.toFixed(2)}% {"\u00b7"} {"\u5dee\u989d"} {hasValuation ? fmtMoney(targetAmount - marketValue, "USD", 0) : "—"}</small></div>
+        <div className={hasValuation ? tone(floatingPnl) : undefined}><span>{"\u6d6e\u52a8\u76c8\u4e8f"}</span><strong>{hasValuation ? fmtSignedMoney(floatingPnl, "USD") : "—"}</strong><small>{hasValuation ? fmtPct(floatingPnlPct) : "—"}</small></div>
+        <div><span>{"\u6ce2\u6bb5\u6210\u672c"}</span><strong>{avgCost > 0 ? fmtMoney(avgCost, "USD") : "-"}</strong><small>成本金额 {fmtMoney(costValue, "USD", autoSgov ? 2 : 0)}</small></div>
         <div className="risk"><span>{"\u6700\u5927\u6b62\u635f\u53c2\u8003"}</span><strong>{hasRiskLevels ? `-${stopMin.toFixed(1)}% ~ -${stopMax.toFixed(1)}%` : "待设置"}</strong><small>{stopPrices.length && hasRiskLevels ? fmtMoney(stopPrices[0], "USD") + " ~ " + fmtMoney(stopPrices[1], "USD") : "-"}</small></div>
         <div className="reward"><span>{"\u5206\u6279\u6b62\u76c8\u53c2\u8003"}</span><strong>{hasRiskLevels ? `+${takeMin.toFixed(1)}% ~ +${takeMax.toFixed(1)}%` : "待设置"}</strong><small>{takePrices.length && hasRiskLevels ? fmtMoney(takePrices[0], "USD") + " ~ " + fmtMoney(takePrices[1], "USD") : "-"}</small></div>
       </div>
+      {allocation && sgovUsedUsd > 0 ? (
+        <div className="swingLots">
+          <h4>SGOV 波段买入明细</h4>
+          <p>自动动用 {fmtMoney(sgovUsedUsd)} · 按成交从近到远估算，卖出优先扣最近的买入。{price > 0 ? ` 当前报价 ${fmtMoney(price)}。` : " 暂无当前报价。"}</p>
+          {allocation.lots.length > 0 ? (
+            <div className="swingLotsTable">
+              <table aria-label="SGOV 波段买入明细">
+                <thead><tr><th scope="col">成交日期</th><th scope="col">成交价</th><th scope="col">计入股数</th><th scope="col">计入成本</th><th scope="col">浮动盈亏</th></tr></thead>
+                <tbody>
+                  {allocation.lots.map(({ trade, shares: lotShares, cost, partial }) => {
+                    const pnl = lotShares * price - cost;
+                    return (
+                      <tr key={trade.id}>
+                        <td>{trade.trade_date} {partial ? <small>部分计入</small> : null}</td>
+                        <td>{fmtMoney(trade.price, "USD", 4)}</td>
+                        <td>{lotShares.toLocaleString(undefined, { maximumFractionDigits: 6 })}</td>
+                        <td>{fmtMoney(cost)}</td>
+                        <td className={price > 0 ? tone(pnl) : undefined}>{price > 0 ? fmtSignedMoney(pnl) : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {allocation.unallocatedUsd >= 0.005 ? <p>还有 {fmtMoney(allocation.unallocatedUsd)} 未匹配到仍持有的买入，成本及盈亏汇总仅含已匹配部分。</p> : null}
+        </div>
+      ) : null}
       {recommendation ? <div className="swingRecommendation">
         <strong>统计波动参考 · 截至 {recommendation.as_of}</strong>
         <span>再平衡同口径 RV20 年化 {Number(recommendation.rv20_pct).toFixed(1)}% · 约 5 个交易日波动 {Number(recommendation.sigma_5d_pct).toFixed(1)}%</span>
@@ -3421,8 +3484,10 @@ function SwingPositionPanel({ symbol, latestPrice, totalAssetsUsd, position, rec
       <div className="swingProgress"><span style={{ width: progress.toFixed(2) + "%" }} /></div>
       {editing ? (
         <div className="swingEditor">
-          <label>{"\u6ce2\u6bb5\u6570\u91cf"}<input value={draft.shares ?? ""} onChange={(event) => updateDraft("shares", event.target.value)} inputMode="decimal" /></label>
-          <label>{"\u5e73\u5747\u6210\u672c"}<input value={draft.avg_cost ?? ""} onChange={(event) => updateDraft("avg_cost", event.target.value)} inputMode="decimal" /></label>
+          {!autoSgov && <>
+            <label>{"\u6ce2\u6bb5\u6570\u91cf"}<input value={draft.shares ?? ""} onChange={(event) => updateDraft("shares", event.target.value)} inputMode="decimal" /></label>
+            <label>{"\u5e73\u5747\u6210\u672c"}<input value={draft.avg_cost ?? ""} onChange={(event) => updateDraft("avg_cost", event.target.value)} inputMode="decimal" /></label>
+          </>}
           <label>{"\u76ee\u6807\u5360\u6bd4"}<input value={draft.target_pct ?? ""} onChange={(event) => updateDraft("target_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
           <label>{"\u6b62\u635f\u4e0b\u9650"}<input value={draft.stop_loss_min_pct ?? ""} onChange={(event) => updateDraft("stop_loss_min_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
           <label>{"\u6b62\u635f\u4e0a\u9650"}<input value={draft.stop_loss_max_pct ?? ""} onChange={(event) => updateDraft("stop_loss_max_pct", event.target.value)} inputMode="decimal" /><i>%</i></label>
@@ -3730,6 +3795,8 @@ function KlinePage({ dashboardData }) {
   const hasCurrentData = Boolean(data && dataSignatureRef.current === requestSignature);
   const activeVisibleProfile = visibleProfileState?.viewKey === singleViewKey ? visibleProfileState.profile : null;
   const swingPosition = swingPositions[symbol];
+  const currentHolding = dashboardData?.holdings?.find((row) => row.symbol === symbol);
+  const sgovUsedUsd = dashboardData?.rebalance?.sgov_usage_plan?.used_by_symbol?.[symbol];
   const swingTargetPct = Number(swingPosition?.target_pct ?? klineSwingDefaults(symbol).target_pct);
   const dashboardFx = Number(dashboardData?.summary?.fx || 0);
   const totalAssetsUsd = dashboardFx > 0
@@ -3846,6 +3913,8 @@ function KlinePage({ dashboardData }) {
         <div className={`klineAnalysisLayout ${interval !== "1d" ? "withoutInsight" : ""}`}>
           <SingleLightweightChart
             data={data}
+            currentPrice={currentHolding?.price}
+            trades={dashboardData?.trades}
             displayRange={displayRange}
             viewKey={singleViewKey}
             onVisibleProfileChange={setVisibleProfileState}
@@ -3864,7 +3933,18 @@ function KlinePage({ dashboardData }) {
         />
       )}
       {hasCurrentData && scope === "single" ? (
-        <SwingPositionPanel key={symbol} symbol={symbol} latestPrice={data.latest_price} totalAssetsUsd={totalAssetsUsd} position={swingPosition} recommendation={swingRecommendations[symbol]} onSave={saveSwingPosition} />
+        <SwingPositionPanel
+          key={symbol}
+          symbol={symbol}
+          latestPrice={data.latest_price}
+          totalAssetsUsd={totalAssetsUsd}
+          position={swingPosition}
+          recommendation={swingRecommendations[symbol]}
+          onSave={saveSwingPosition}
+          sgovUsedUsd={sgovUsedUsd}
+          currentHolding={currentHolding}
+          trades={dashboardData?.trades}
+        />
       ) : null}
       {showCheatSheet ? <TechnicalCheatSheetModal onClose={() => setShowCheatSheet(false)} /> : null}
     </section>

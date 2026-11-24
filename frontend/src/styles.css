@@ -5293,6 +5293,18 @@ tbody tr:hover th {
 .swingMetrics small { overflow:hidden; color:#9db0c2; font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
 .swingMetrics > .up strong,.swingMetrics > .up small,.swingMetrics > .reward strong { color:#34d399; }
 .swingMetrics > .down strong,.swingMetrics > .down small,.swingMetrics > .risk strong { color:#fb7185; }
+.swingLots { margin-top: 12px; font-size: 12px; color: #dbeafe; }
+.swingLots h4 { margin: 0; font-size: 13px; }
+.swingLots p { margin: 5px 0 8px; color: #9db0c2; }
+.swingLotsTable { overflow-x: auto; border: 1px solid rgba(148,163,184,.15); border-radius: 7px; }
+.swingLotsTable table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.swingLotsTable th,.swingLotsTable td { padding: 7px 10px; text-align: right; white-space: nowrap; }
+.swingLotsTable th:first-child,.swingLotsTable td:first-child { text-align: left; }
+.swingLotsTable th { background: rgba(2,12,23,.35); color: #9db0c2; font-weight: 600; }
+.swingLotsTable td { border-top: 1px solid rgba(148,163,184,.15); }
+.swingLotsTable td small { margin-left: 4px; color: #9db0c2; }
+.swingLotsTable .up { color: #34d399; }
+.swingLotsTable .down { color: #fb7185; }
 .swingRecommendation { display:grid; gap:4px; margin-top:9px; padding:9px 10px; border:1px solid rgba(45,212,191,.2); border-radius:7px; background:rgba(13,61,70,.2); color:#c5e8e5; font-size:10px; line-height:1.5; }
 .swingRecommendation strong { color:#80e8d9; font-size:10px; }
 .swingRecommendation small { color:#8fa5ba; font-size:9px; }
@@ -5437,12 +5449,6 @@ tbody tr:hover th {
   border-radius: 10px;
   background: #0b1b2e;
 }
-.tradeDistLegend {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
 .tradeDistHeader h2 { margin: 0 0 4px; }
 .tradeDistCharts { display: grid; gap: 12px; margin-top: 14px; }
 .tradeDistChart {
@@ -5452,16 +5458,25 @@ tbody tr:hover th {
   border-radius: 8px;
 }
 .tradeDistChart h3 { margin: 0; font-size: .92rem; }
+.tradeDistChartTitle { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; }
+.tradeDistCostBadge {
+  color: var(--amber);
+  background: rgba(255, 225, 115, .1);
+  border: 1px solid rgba(255, 225, 115, .35);
+  border-radius: 6px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  font-size: .74rem;
+  font-variant-numeric: tabular-nums;
+}
 @media (min-width: 1050px) {
   .tradeDistCharts { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: repeat(6, auto); }
   .tradeDistChart { display: grid; grid-row: span 6; grid-template-rows: subgrid; row-gap: 0; }
 }
-.tradeDistLegend { margin: 16px 0; color: var(--text-muted); font-size: .8rem; }
-.tradeDistLegend > :first-child { margin-right: auto; }
+.tradeDistAxisCaption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; margin: 16px 0; color: var(--text-muted); font-size: .8rem; }
+.tradeDistCostCaption { color: var(--amber); }
 .tradeDistBuy { color: var(--green); }
 .tradeDistSell { color: var(--red); }
-.tradeDistNet { color: var(--cyan); }
-.tradeDistCost { color: var(--amber); }
 .tradeDistPlot {
   position: relative;
   min-height: clamp(285px, 35vw, 380px);
@@ -5469,12 +5484,12 @@ tbody tr:hover th {
   border-bottom: 1px solid var(--line);
   border-left: 1px solid var(--line);
 }
+.tradeDistPlot.bars, .tradeDistScale.bars { margin-inline: 70px 86px; }
 .tradeDistPlot.steps { margin-right: 70px; border-right: 1px solid var(--line); }
-.tradeDistPlot.bars, .tradeDistScale.bars { margin-inline: 70px 27px; }
 .tradeDistPlot.bars { min-height: var(--trade-dist-bar-height); }
 .tradeDistScale { position: relative; height: 24px; }
 .tradeDistScale.steps { margin-inline: 56px 70px; }
-.tradeDistGrid, .tradeDistVerticalGrid, .tradeDistBarPrice, .tradeDistDateTick, .tradeDistQuantityTick {
+.tradeDistGrid, .tradeDistVerticalGrid, .tradeDistBarPrice, .tradeDistBarPnl, .tradeDistDateTick, .tradeDistQuantityTick {
   position: absolute;
   color: var(--text-muted);
   font-size: .72rem;
@@ -5486,8 +5501,25 @@ tbody tr:hover th {
 .tradeDistGrid.zero, .tradeDistVerticalGrid.zero { border-color: var(--line-strong); }
 .tradeDistGrid > span, .tradeDistBarPrice { position: absolute; right: calc(100% + 8px); white-space: nowrap; }
 .tradeDistGrid > span { transform: translateY(-50%); }
-.tradeDistBarPrice { transform: translateY(50%); }
 .tradeDistGrid > .costTick { left: calc(100% + 8px); right: auto; color: var(--amber); }
+.tradeDistBarPrice { transform: translateY(50%); }
+.tradeDistBarPnl {
+  white-space: nowrap;
+  transform: translate(5px, 50%);
+  border-radius: 3px;
+  padding-inline: 2px;
+  background: #0b1b2e;
+  z-index: 1;
+}
+.tradeDistBarPnl.before { transform: translate(calc(-100% - 5px), 50%); }
+.tradeDistBarPnl.up, .tradeDistRoundTripPnl.up { color: var(--green); }
+.tradeDistBarPnl.down, .tradeDistRoundTripPnl.down { color: var(--red); }
+.tradeDistCostReference {
+  position: absolute;
+  inset-inline: 0;
+  border-top: 2px dotted rgba(255, 225, 115, .78);
+  pointer-events: none;
+}
 .tradeDistDateTick, .tradeDistQuantityTick { top: 4px; transform: translateX(-50%); white-space: nowrap; }
 .tradeDistXAxis { margin: 2px 0 12px; text-align: center; color: var(--text-soft); font-size: .78rem; }
 .tradeDistMark {
@@ -5501,6 +5533,12 @@ tbody tr:hover th {
 .tradeDistMark.sell { background: var(--red); }
 .tradeDistMark.bars { --radius-control: 0 3px 3px 0; translate: 0 50%; min-width: 3px; height: 8px; opacity: .78; }
 .tradeDistMark.bars.sell { --radius-control: 4px 0 0 4px; }
+.tradeDistMark.bars.zero {
+  --radius-control: 2px;
+  translate: -50% 50%;
+  min-width: 4px;
+  background: var(--text-soft);
+}
 .tradeDistMark.steps { --radius-control: 50%; translate: -50% 50%; width: 11px; height: 11px; border: 2px solid #0b1b2e; background: var(--cyan); }
 .tradeDistCostPoint {
   position: absolute;
@@ -5530,6 +5568,8 @@ tbody tr:hover th {
 .tradeDistDetails li { display: flex; gap: 6px 14px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 480px) {
   .tradeDistribution { padding: 12px; }
+  .tradeDistPlot.bars, .tradeDistScale.bars { margin-inline: 58px 68px; }
+  .tradeDistBarPnl { font-size: .67rem; }
   .tradeDistDateTick:nth-child(2n of .tradeDistDateTick), .tradeDistQuantityTick:nth-child(even) { display: none; }
 }
 

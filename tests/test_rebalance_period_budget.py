@@ -100,6 +100,9 @@ def test_rebalance_reports_current_and_next_month_targets_without_buy_suggestion
     holdings[0]["avg_cost"] = 500.0
     over_target = rebalance(100.0)
     over_target_rows = {row["symbol"]: row for row in over_target["rows"]}
+    assert over_target["sgov_usage_plan"]["used_by_symbol"] == pytest.approx(
+        {symbol: max(0.0, -over_target_rows[symbol]["buy_difference_usd"]) for symbol in ("VOO", "QQQ")}
+    )
     assert over_target["sgov_usage_plan"]["used_usd"] == pytest.approx(
         sum(max(0.0, -over_target_rows[symbol]["buy_difference_usd"]) for symbol in ("VOO", "QQQ"))
     )

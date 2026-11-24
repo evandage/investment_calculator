@@ -2963,7 +2963,10 @@ def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals, *, budget_usd
         plan_rows.append({"tier": tier, "signals": signals,
                           "voo_usd": targets[("VOO", tier)], "qqq_usd": targets[("QQQ", tier)], "total_usd": budget * tier_weights[tier],
                           "voo_used_usd": allocated[("VOO", tier)], "qqq_used_usd": allocated[("QQQ", tier)]})
-    return {"available_usd": available, "budget_usd": budget, "used_usd": total_used, "rows": plan_rows}
+    return {
+        "available_usd": available, "budget_usd": budget, "used_usd": total_used,
+        "used_by_symbol": used_by_symbol, "rows": plan_rows,
+    }
 
 
 def build_rebalance_v2(
