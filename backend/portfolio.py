@@ -1295,7 +1295,7 @@ def current_portfolio_daily_pct(
     day: str,
     now: datetime,
 ) -> tuple[float, dict[str, float], float, float]:
-    trades = load_trade_records(user_id)
+    trades = [row for row in load_trade_records(user_id) if not row.get("history_only")]
     finalized_rows = [row for row in load_portfolio_history(user_id) if row.get("finalized")]
     holdings_snapshot = holdings_snapshot_for_day(day, holdings, finalized_rows, trades)
     trades_by_symbol: dict[str, list[dict[str, Any]]] = {}
@@ -1536,7 +1536,7 @@ def ensure_completed_performance_history(
     start_day = PERFORMANCE_HISTORY_START_DATE if not latest_finalized_date else (date.fromisoformat(latest_finalized_date) + timedelta(days=1)).isoformat()
 
     rows_by_date = {row["date"]: row for row in rows}
-    trades = load_trade_records(user_id)
+    trades = [row for row in load_trade_records(user_id) if not row.get("history_only")]
     adjustments = load_portfolio_adjustments(user_id)
     _, balances, _ = load_user_state(user_id)
     usd_cost_fx = float(fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx)
@@ -2311,7 +2311,8 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
     # used by cards, weights and P&L calculations.
     market = {**market, "quotes": quotes}
     carry_completed_daily = not is_weekday(history_day)
-    trades = load_trade_records(user_id)
+    trade_records = load_trade_records(user_id)
+    trades = [row for row in trade_records if not row.get("history_only")]
     holdings = raw_holdings
     for sym in ALL_SYMBOLS:
         holdings.setdefault(sym, raw_holdings.get(sym, {"shares": 0.0, "avg_cost": 0.0}))
@@ -2816,7 +2817,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
         "archived_pnl": archived_pnl,
         "performance_history": performance_history,
         "rebalance": build_rebalance_v2(user_id, rows, balances, market, value_cny_by_symbol, fx),
-        "trades": annotate_trade_quarters(annotate_trade_close_effects(trades, quotes, fx, history_day), load_stock_quarters(user_id)),
+        "trades": annotate_trade_quarters(annotate_trade_close_effects(trade_records, quotes, fx, history_day), load_stock_quarters(user_id)),
     }
 
 
@@ -3560,7 +3561,7 @@ def _rebuild_month_usage_from_records(user_id: str, month_key: str, records: lis
     sold_amounts: dict[str, float] = {}
     intensities: dict[str, str] = {}
     for record in records:
-        if str(record.get("trade_date") or "")[:7] != month_key:
+        if record.get("history_only") or str(record.get("trade_date") or "")[:7] != month_key:
             continue
         sym = str(record.get("symbol", "")).upper()
         if sym not in USD_SYMBOLS or sym == "SGOV":
@@ -3590,6 +3591,11 @@ def delete_trade_record(user_id: str, trade_id: str) -> dict[str, Any]:
     target = next((record for record in records if str(record.get("id")) == str(trade_id)), None)
     if target is None:
         raise ValueError("交易记录不存在")
+
+    if target.get("history_only"):
+        remaining = [record for record in records if record is not target]
+        save_trade_records(user_id, remaining)
+        return {"deleted": True, "trade_id": trade_id, "trades": load_trade_records(user_id)}
 
     holdings, balances, _ = load_user_state(user_id)
     balances_before = dict(balances)

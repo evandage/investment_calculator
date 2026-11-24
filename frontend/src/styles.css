@@ -5430,6 +5430,109 @@ tbody tr:hover th {
   .technicalInsightPanel { border-radius: 12px; }
 }
 
+.tradeDistribution {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, .22);
+  border-radius: 10px;
+  background: #0b1b2e;
+}
+.tradeDistLegend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.tradeDistHeader h2 { margin: 0 0 4px; }
+.tradeDistCharts { display: grid; gap: 12px; margin-top: 14px; }
+.tradeDistChart {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.tradeDistChart h3 { margin: 0; font-size: .92rem; }
+@media (min-width: 1050px) {
+  .tradeDistCharts { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: repeat(6, auto); }
+  .tradeDistChart { display: grid; grid-row: span 6; grid-template-rows: subgrid; row-gap: 0; }
+}
+.tradeDistLegend { margin: 16px 0; color: var(--text-muted); font-size: .8rem; }
+.tradeDistLegend > :first-child { margin-right: auto; }
+.tradeDistBuy { color: var(--green); }
+.tradeDistSell { color: var(--red); }
+.tradeDistNet { color: var(--cyan); }
+.tradeDistCost { color: var(--amber); }
+.tradeDistPlot {
+  position: relative;
+  min-height: clamp(285px, 35vw, 380px);
+  margin: 0 27px 0 56px;
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+.tradeDistPlot.steps { margin-right: 70px; border-right: 1px solid var(--line); }
+.tradeDistPlot.bars, .tradeDistScale.bars { margin-inline: 70px 27px; }
+.tradeDistPlot.bars { min-height: var(--trade-dist-bar-height); }
+.tradeDistScale { position: relative; height: 24px; }
+.tradeDistScale.steps { margin-inline: 56px 70px; }
+.tradeDistGrid, .tradeDistVerticalGrid, .tradeDistBarPrice, .tradeDistDateTick, .tradeDistQuantityTick {
+  position: absolute;
+  color: var(--text-muted);
+  font-size: .72rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.tradeDistGrid { inset-inline: 0; border-top: 1px solid rgba(148, 163, 184, .18); }
+.tradeDistVerticalGrid { inset-block: 0; border-left: 1px solid rgba(148, 163, 184, .18); }
+.tradeDistGrid.zero, .tradeDistVerticalGrid.zero { border-color: var(--line-strong); }
+.tradeDistGrid > span, .tradeDistBarPrice { position: absolute; right: calc(100% + 8px); white-space: nowrap; }
+.tradeDistGrid > span { transform: translateY(-50%); }
+.tradeDistBarPrice { transform: translateY(50%); }
+.tradeDistGrid > .costTick { left: calc(100% + 8px); right: auto; color: var(--amber); }
+.tradeDistDateTick, .tradeDistQuantityTick { top: 4px; transform: translateX(-50%); white-space: nowrap; }
+.tradeDistXAxis { margin: 2px 0 12px; text-align: center; color: var(--text-soft); font-size: .78rem; }
+.tradeDistMark {
+  position: absolute;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: var(--green);
+  cursor: pointer;
+}
+.tradeDistMark.sell { background: var(--red); }
+.tradeDistMark.bars { --radius-control: 0 3px 3px 0; translate: 0 50%; min-width: 3px; height: 8px; opacity: .78; }
+.tradeDistMark.bars.sell { --radius-control: 4px 0 0 4px; }
+.tradeDistMark.steps { --radius-control: 50%; translate: -50% 50%; width: 11px; height: 11px; border: 2px solid #0b1b2e; background: var(--cyan); }
+.tradeDistCostPoint {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  translate: -50% 50%;
+  border-radius: 50%;
+  background: var(--amber);
+  pointer-events: none;
+}
+.tradeDistStepLine { position: absolute; inset: 0; pointer-events: none; }
+.tradeDistStepLine span { position: absolute; background: var(--cyan); }
+.tradeDistStepLine.cost span { background: var(--amber); }
+.tradeDistStepLine.cost .estimated.horizontal { background: repeating-linear-gradient(90deg, var(--amber) 0 4px, transparent 4px 7px); }
+.tradeDistStepLine.cost .estimated.vertical { background: repeating-linear-gradient(var(--amber) 0 4px, transparent 4px 7px); }
+.tradeDistStepLine .horizontal { height: 2px; transform: translateY(50%); }
+.tradeDistStepLine .vertical { width: 2px; transform: translateX(-50%); }
+.tradeDistMark:hover, .tradeDistMark[aria-pressed="true"], .tradeDistMark:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--text-main);
+  outline-offset: 2px;
+  opacity: 1;
+}
+.tradeDistDetails { min-height: 38px; padding-top: 10px; border-top: 1px solid var(--line); font-size: .8rem; }
+.tradeDistDetails p { margin: 0 0 8px; color: var(--text-soft); }
+.tradeDistDetails ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tradeDistDetails li { display: flex; gap: 6px 14px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) {
+  .tradeDistribution { padding: 12px; }
+  .tradeDistDateTick:nth-child(2n of .tradeDistDateTick), .tradeDistQuantityTick:nth-child(even) { display: none; }
+}
+
 /* Global board: quote-list rows with lightweight sparklines. */
 .globalQuoteList {
   display: grid;

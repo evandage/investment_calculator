@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, HistogramSeries, LineSeries } from "lightweight-charts";
 import { Eye, EyeOff, Activity, BookOpen, Check, CircleAlert, Gauge, Home, Maximize2, Minimize2, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
+import TradeDistribution from "./TradeDistribution.jsx";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -3854,6 +3855,14 @@ function KlinePage({ dashboardData }) {
           {interval === "1d" ? <TechnicalInsightPanel data={data} displayRange={displayRange} visibleProfile={activeVisibleProfile} /> : null}
         </div>
       ) : null}
+      {scope === "single" && (
+        <TradeDistribution
+          key={`${dashboardData?.user_id}-${symbol}`}
+          trades={dashboardData?.trades}
+          holdings={dashboardData?.holdings}
+          symbol={symbol}
+        />
+      )}
       {hasCurrentData && scope === "single" ? (
         <SwingPositionPanel key={symbol} symbol={symbol} latestPrice={data.latest_price} totalAssetsUsd={totalAssetsUsd} position={swingPosition} recommendation={swingRecommendations[symbol]} onSave={saveSwingPosition} />
       ) : null}
@@ -4621,7 +4630,7 @@ function Rebalance({ data, onSaved }) {
         .some((value) => String(value || "").toLowerCase().includes(query));
     });
     const valueFor = (trade) => {
-      if (tradeSort.key === "trade_date") return `${trade.trade_date || trade.date || ""} ${trade.created_at || ""}`;
+      if (tradeSort.key === "trade_date") return `${trade.trade_date || trade.date || ""} ${trade.executed_at || trade.created_at || ""}`;
       return trade[tradeSort.key] ?? "";
     };
     return rows.slice().sort((left, right) => {
@@ -4772,7 +4781,8 @@ function Rebalance({ data, onSaved }) {
   async function deleteTrade(trade) {
     const tradeId = String(trade.id || "");
     if (!tradeId) return;
-    const confirmed = window.confirm(`确认撤销 ${trade.trade_date || trade.date || ""} ${trade.symbol} ${trade.action === "dividend" ? "派息" : trade.action === "sell" ? "卖出" : "买入"} 记录？`);
+    const operation = trade.history_only ? "删除" : "撤销";
+    const confirmed = window.confirm(`确认${operation} ${trade.trade_date || trade.date || ""} ${trade.symbol} ${trade.action === "dividend" ? "派息" : trade.action === "sell" ? "卖出" : "买入"} 记录？`);
     if (!confirmed) return;
     setDeletingTradeId(tradeId);
     setTradeMessage("");
@@ -4787,11 +4797,11 @@ function Rebalance({ data, onSaved }) {
         throw new Error(body.detail || `HTTP ${response.status}`);
       }
       await onSaved();
-      showTradeToast("交易已撤销", "up");
+      showTradeToast(`交易已${operation}`, "up");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setTradeMessage(message);
-      showTradeToast(`交易撤销失败：${message}`, "down");
+      showTradeToast(`交易${operation}失败：${message}`, "down");
     } finally {
       setDeletingTradeId("");
     }
@@ -5289,12 +5299,12 @@ function Rebalance({ data, onSaved }) {
                     {fmtTradeCloseEffect(trade, currencyBySymbol[trade.symbol] || "USD")}
                   </td>
                   <td className={tradeCostTone(trade)} title={fmtAvgCostChangeTitle(trade, currencyBySymbol[trade.symbol] || "USD")}>
-                    {trade.action === "dividend" ? "—" : fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}
+                    {trade.action === "dividend" || trade.history_only ? "—" : fmtCostChange(trade, currencyBySymbol[trade.symbol] || "USD")}
                   </td>
-                  <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.action === "dividend" ? "—" : tierLabel(trade.intensity)}</span></td>
+                  <td><span className={`tierBadge ${tierClass(trade.intensity)}`}>{trade.history_only ? "历史补录" : trade.action === "dividend" ? "—" : tierLabel(trade.intensity)}</span></td>
                   <td>
                     <button onClick={() => deleteTrade(trade)} disabled={deletingTradeId === trade.id}>
-                      {deletingTradeId === trade.id ? "撤销中" : "撤销"}
+                      {trade.history_only ? (deletingTradeId === trade.id ? "删除中" : "删除") : (deletingTradeId === trade.id ? "撤销中" : "撤销")}
                     </button>
                   </td>
                 </tr>

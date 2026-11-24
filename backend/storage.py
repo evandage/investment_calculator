@@ -833,50 +833,10 @@ def load_trade_records(user_id: str | None = None) -> list[dict[str, Any]]:
     rows = raw.get(user_key, []) if isinstance(raw, dict) else []
     if not isinstance(rows, list):
         return []
-    out: list[dict[str, Any]] = []
-    for item in rows:
-        if not isinstance(item, dict):
-            continue
-        symbol = str(item.get("symbol", "")).upper()
-        if symbol not in ASSET_META:
-            continue
-        action = str(item.get("action", "buy")).lower()
-        if (action not in {"buy", "sell", "dividend"} or (action == "dividend" and symbol != "SGOV")):
-            continue
-        try:
-            shares = max(0.0, float(item.get("shares", 0.0)))
-            amount = max(0.0, float(item.get("amount_usd", item.get("amount", 0.0))))
-            cost_basis = float(item.get("cost_basis", 0.0) or 0.0)
-            realized_pnl = float(item.get("realized_pnl", 0.0) or 0.0)
-            prev_avg_cost = float(item.get("prev_avg_cost", 0.0) or 0.0)
-            new_avg_cost = float(item.get("new_avg_cost", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            continue
-        if (shares <= 0 and action != "dividend") or amount <= 0:
-            continue
-        trade_date = str(item.get("trade_date") or item.get("date") or "").strip()
-        if not trade_date:
-            continue
-        out.append(
-            {
-                "id": str(item.get("id") or f"{trade_date}-{symbol}-{action}-{len(out)}"),
-                "trade_date": trade_date[:10],
-                "symbol": symbol,
-                "action": action,
-                "amount_usd": amount,
-                "shares": 0.0 if action == "dividend" else shares,
-                "price": _trade_price(item, action, amount, shares),
-                "cost_basis": cost_basis,
-                "realized_pnl": realized_pnl,
-                "prev_avg_cost": prev_avg_cost,
-                "new_avg_cost": new_avg_cost,
-                "intensity": str(item.get("intensity") or "normal"),
-                "uses_sgov": item.get("uses_sgov") is True and action == "buy" and symbol != "SGOV",
-                "sgov_tier": item.get("sgov_tier") if item.get("uses_sgov") is True and action == "buy" and symbol in ("VOO", "QQQ") and item.get("sgov_tier") in ("small", "medium", "large") else None,
-                "created_at": str(item.get("created_at") or ""),
-            }
-        )
-    return sorted(out, key=lambda row: (row["trade_date"], row["created_at"], row["id"]))
+    return sorted(
+        load_trade_records_from_rows(rows),
+        key=lambda row: (row["trade_date"], row.get("executed_at") or row["created_at"], row["id"]),
+    )
 
 
 def save_trade_records(user_id: str, rows: list[dict[str, Any]]) -> None:
@@ -894,7 +854,10 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
             continue
         symbol = str(item.get("symbol", "")).upper()
         action = str(item.get("action", "buy")).lower()
-        if symbol not in ASSET_META or (action not in {"buy", "sell", "dividend"} or (action == "dividend" and symbol != "SGOV")):
+        history_only = item.get("history_only") is True
+        if symbol not in ASSET_META:
+            continue
+        if action not in {"buy", "sell", "dividend"} or (action == "dividend" and (symbol != "SGOV" or history_only)):
             continue
         try:
             shares = max(0.0, float(item.get("shares", 0.0)))
@@ -925,6 +888,7 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
                 "uses_sgov": item.get("uses_sgov") is True and action == "buy" and symbol != "SGOV",
                 "sgov_tier": item.get("sgov_tier") if item.get("uses_sgov") is True and action == "buy" and symbol in ("VOO", "QQQ") and item.get("sgov_tier") in ("small", "medium", "large") else None,
                 "created_at": str(item.get("created_at") or ""),
+                **({"history_only": True, "executed_at": str(item.get("executed_at") or "")} if history_only else {}),
             }
         )
     return normalized
