@@ -1894,12 +1894,12 @@ function GlobalLightweightBoard({ data, viewKey, displayRange, onOpenSymbol, mar
   ]));
   return (
     <div className="globalQuoteList">
-      {charts.map((item) => <GlobalSparklineRow item={item} marketCard={marketCardBySymbol[item.symbol]} showExtended={Boolean(data?.show_extended)} onOpenSymbol={onOpenSymbol} key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
+      {charts.map((item) => <GlobalSparklineRow item={item} interval={data.interval} marketCard={marketCardBySymbol[item.symbol]} onOpenSymbol={onOpenSymbol} key={`${item.symbol}-${viewKey}-${displayRange}`} />)}
     </div>
   );
 }
 
-function GlobalSparklineRow({ item, marketCard, showExtended = false, onOpenSymbol }) {
+function GlobalSparklineRow({ item, interval, marketCard, onOpenSymbol }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const points = useMemo(() => {
@@ -1912,24 +1912,6 @@ function GlobalSparklineRow({ item, marketCard, showExtended = false, onOpenSymb
       if (lastTime != null && typeof time === typeof lastTime && time <= lastTime) continue;
       rows.push({ time, value: close });
       lastTime = time;
-    }
-    const latestTime = rows.length ? Number(rows[rows.length - 1].time) : NaN;
-    if (rows.length > 2 && Number.isFinite(latestTime) && item?.interval !== "1d") {
-      const isChina = String(item?.symbol || "").toUpperCase().endsWith(".SS") || String(item?.symbol || "").toUpperCase().endsWith(".SZ");
-      const latestDay = candleDayKey(latestTime);
-      const latestMinutes = marketLocalMinutes(latestTime, isChina);
-      let start = isChina ? 570 : 570;
-      let end = isChina ? 900 : 960;
-      if (!isChina && Number.isFinite(latestMinutes) && latestMinutes < 570) { start = 240; end = 570; }
-      if (!isChina && Number.isFinite(latestMinutes) && latestMinutes >= 960) { start = 960; end = 1200; }
-      const sessionRows = rows.filter((row) => {
-        const time = Number(row.time);
-        const day = candleDayKey(time);
-        const minutes = marketLocalMinutes(time, isChina);
-        if (day !== latestDay || !Number.isFinite(minutes)) return false;
-        return isChina ? ((minutes >= 570 && minutes <= 690) || (minutes >= 780 && minutes <= 900)) : minutes >= start && minutes <= end;
-      });
-      if (sessionRows.length >= 2) rows.splice(0, rows.length, ...sessionRows);
     }
     return rows;
   }, [item]);
@@ -1958,15 +1940,11 @@ function GlobalSparklineRow({ item, marketCard, showExtended = false, onOpenSymb
       const range = Math.max(max - min, Math.abs(max) * 0.001, 0.0001);
       const pad = 5;
       const color = globalCompositeChange(item, marketCard) >= 0 ? "#34d399" : "#fb7185";
-      const latestTime = Number(seriesPoints[seriesPoints.length - 1]?.time);
       const isChina = String(item?.symbol || "").toUpperCase().endsWith(".SS") || String(item?.symbol || "").toUpperCase().endsWith(".SZ");
-      const latestMinutes = marketLocalMinutes(latestTime, isChina);
-      let sessionStart = isChina ? 570 : 570;
-      let sessionEnd = isChina ? 900 : 960;
-      if (!isChina && Number.isFinite(latestMinutes) && latestMinutes < 570) { sessionStart = 240; sessionEnd = 570; }
-      if (!isChina && Number.isFinite(latestMinutes) && latestMinutes >= 960) { sessionStart = 960; sessionEnd = 1200; }
+      const sessionStart = 9 * 60 + 30;
+      const sessionEnd = (isChina ? 15 : 16) * 60;
       const xFor = (point, index) => {
-        const minutes = marketLocalMinutes(Number(point.time), isChina);
+        const minutes = interval === "1d" ? null : marketLocalMinutes(point.time, isChina);
         if (!Number.isFinite(minutes)) return pad + (width - pad * 2) * index / Math.max(1, values.length - 1);
         return pad + (width - pad * 2) * Math.max(0, Math.min(1, (minutes - sessionStart) / (sessionEnd - sessionStart)));
       };
@@ -1986,7 +1964,7 @@ function GlobalSparklineRow({ item, marketCard, showExtended = false, onOpenSymb
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(draw) : null;
     observer?.observe(container);
     return () => observer?.disconnect();
-  }, [item, marketCard, points]);
+  }, [item, interval, marketCard, points]);
 
   const openSymbol = () => onOpenSymbol?.(item.symbol);
   const isChina = String(item?.symbol || "").toUpperCase().endsWith(".SS") || String(item?.symbol || "").toUpperCase().endsWith(".SZ");
@@ -3609,7 +3587,7 @@ function KlinePage({ dashboardData }) {
       }
       const qs = new URLSearchParams(
         scope === "global"
-          ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
+          ? { interval, show_extended: "false", columns: String(globalColumns) }
           : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
       );
       if (scope === "single" && effectiveAvwapMode === "custom" && customAnchorDate) {
@@ -3650,7 +3628,7 @@ function KlinePage({ dashboardData }) {
     if (isEtfSymbol && effectiveAvwapMode === "earnings") effectiveAvwapMode = "high_60d";
     const qs = new URLSearchParams(
       scope === "global"
-        ? { interval, show_extended: String(showExtended), columns: String(globalColumns) }
+        ? { interval, show_extended: "false", columns: String(globalColumns) }
         : { symbol, interval, avwap_mode: effectiveAvwapMode, show_extended: String(showExtended) }
     );
     if (scope === "single" && effectiveAvwapMode === "custom" && customAnchorDate) {
@@ -3852,20 +3830,9 @@ function KlinePage({ dashboardData }) {
             </label>
           ) : null}
         </div> : null}
-        {scope === "global" && interval !== "1d" ? (
-          <div className="klineControlGroup klineAnalysisControls">
-            <label className="klineControl">
-              <span>交易时段</span>
-              <select value={showExtended ? "extended" : "regular"} onChange={(event) => setShowExtended(event.target.value === "extended")} aria-label="交易时段">
-                <option value="regular">仅常规盘</option>
-                <option value="extended">含扩展盘</option>
-              </select>
-            </label>
-          </div>
-        ) : null}
         <button className="klineGuideButton" type="button" onClick={() => setShowCheatSheet(true)}><BookOpen size={16} />指标模板</button>
       </div>
-      {data && scope === "global" ? <div className="muted globalBoardMeta">全局看板：{data.symbols?.join(" / ")} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : "实时"}</div> : null}
+      {data && scope === "global" ? <div className="muted globalBoardMeta">全局看板：{data.symbols?.join(" / ")} · {data.interval} · 常规盘 · {data.selected_date ? `${data.selected_date} 历史` : "实时"}</div> : null}
       {swingPositionError && scope === "single" ? <div className="errorInline">{"\u6ce2\u6bb5\u4ed3\u8bfb\u53d6\u5931\u8d25\uff1a"}{swingPositionError}</div> : null}
       {data && scope === "single" ? <div className="muted singleChartMeta">行情源 {data.market_provider || "-"} · {data.interval} · {data.selected_date ? `${data.selected_date} 历史` : (realtimeConnected ? "实时订阅中" : "实时连接中")}{data.avwap_mode !== "none" && data.avwap_label ? ` · AVWAP：${data.avwap_label}${data.avwap_anchor ? `（锚点 ${data.avwap_anchor}）` : ""}` : ""}{data.user_avg_cost ? ` · 成本线 ${Number(data.user_avg_cost).toFixed(2)}` : ""}{swingTargetAmount > 0 ? ` · 波段目标 ${fmtMoney(swingTargetAmount, "USD", 0)}（${swingTargetPct}%）` : ""}</div> : null}
       {loading ? <div className="muted">K线加载中</div> : null}
