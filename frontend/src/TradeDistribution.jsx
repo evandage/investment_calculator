@@ -23,25 +23,25 @@ function quantityAxis(values) {
   };
 }
 
-function barPnl(fill, day, currentCost, shareSource = "当日净买入分摊的") {
-  if (fill.opening) return { value: null, note: "期初持仓估算" };
+function barPnl(fill, day, currentPrice, shareSource = "当日净买入分摊的") {
   if (fill.action === "sell") {
     const value = Number(fill.realized_pnl);
     const recorded = !fill.history_only && Number(fill.cost_basis) > 0 && Number.isFinite(value);
     return { value: recorded ? value : null, note: recorded ? "账本已变现盈亏" : "缺少已变现盈亏记录" };
   }
-  const netBought = Math.max(0, day.bought - day.sold);
+  const netBought = fill.opening ? fill.shares : Math.max(0, day.bought - day.sold);
   if (netBought <= minShares) return { value: null, note: "当日无净买入" };
-  const pnlShares = fill.shares * netBought / day.bought;
-  const average = Number(fill.amount_usd) / fill.shares;
-  const available = [average, currentCost].every((value) => Number.isFinite(value) && value > 0);
+  const pnlShares = fill.opening ? fill.shares : fill.shares * netBought / day.bought;
+  const average = fill.opening ? fill.price : Number(fill.amount_usd) / fill.shares;
+  const available = [average, currentPrice].every((value) => Number.isFinite(value) && value > 0);
+  const sharesLabel = fill.opening ? "期初估算的" : netBought === day.bought ? "本笔买入的" : shareSource;
   return {
-    value: available ? pnlShares * (currentCost - average) : null,
-    note: available ? `按${shareSource} ${axisNumber.format(pnlShares)} 股计算成本贡献` : "缺少当前均价或买入成本",
+    value: available ? pnlShares * (currentPrice - average) : null,
+    note: available ? `按现价估算${sharesLabel} ${axisNumber.format(pnlShares)} 股的浮动盈亏` : "缺少当前报价或买入成本",
   };
 }
 
-function tradeBars(fills, currentCost) {
+function tradeBars(fills, currentCost, currentPrice) {
   const bars = fills.filter((fill) => fill.price > 0).sort((a, b) => b.price - a.price);
   if (!bars.length) return null;
   const combined = bars.filter((fill) => pltrGroupedIds.has(fill.id));
@@ -67,12 +67,12 @@ function tradeBars(fills, currentCost) {
   const groups = visibleBars.map((fill, index) => {
     const merged = Boolean(merge && fill === firstBuy);
     const quantity = signedShares(fill);
-    const realized = merged ? barPnl(combinedSell, null, currentCost) : null;
+    const realized = merged ? barPnl(combinedSell, null, currentPrice) : null;
     const pnl = merged
       ? quantity > minShares
-        ? barPnl({ ...firstBuy, shares: bought, amount_usd: buyAmount }, { bought, sold: combinedSell.shares }, currentCost, "本组净买入")
+        ? barPnl({ ...firstBuy, shares: bought, amount_usd: buyAmount }, { bought, sold: combinedSell.shares }, currentPrice, "本组净买入的")
         : realized
-      : barPnl(fill, daily.get(fill.trade_date), currentCost);
+      : barPnl(fill, daily.get(fill.trade_date), currentPrice);
     return {
       key: fill.id, side: quantity === 0 ? "zero" : quantity < 0 ? "sell" : "buy",
       price: fill.price, shares: Math.abs(quantity), netShares: quantity,
@@ -298,7 +298,7 @@ function DistributionPlot({ mode, plot, priceLabel, selectedKey, onSelect }) {
   </>;
 }
 
-function DistributionChart({ mode, plot, priceLabel, currency, hasOpening, currentCost }) {
+function DistributionChart({ mode, plot, priceLabel, currency, hasOpening, currentCost, currentPrice, holdingPnl }) {
   const [selectedKey, setSelectedKey] = useState("");
   const selected = plot?.groups.find((group) => group.key === selectedKey);
   const labels = chartLabels[mode];
@@ -315,7 +315,10 @@ function DistributionChart({ mode, plot, priceLabel, currency, hasOpening, curre
             {plot.costAt && <span className="tradeDistCostCaption">持仓均价（{currency}/股）
               {plot.groups.some((group) => group.cost != null && group.costEstimated) ? " · 虚线为历史估算" : ""}
             </span>}
-          </> : `成交价（${currency}/股）`}
+          </> : <>
+            <span>成交价（{currency}/股）</span>
+            {holdingPnl != null && <span>现价 {priceLabel.format(currentPrice)} · 持仓浮盈亏 <strong className={holdingPnl < 0 ? "down" : holdingPnl > 0 ? "up" : ""}>{formatPnl({ value: holdingPnl }, priceLabel)}</strong></span>}
+          </>}
         </div>
         <DistributionPlot mode={mode} plot={plot} priceLabel={priceLabel}
           selectedKey={selectedKey} onSelect={setSelectedKey} />
@@ -377,8 +380,12 @@ export default function TradeDistribution({ trades, holdings, symbol }) {
   const currency = holding?.currency || "USD";
   const priceLabel = new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 4 });
   const average = Number(holding?.avg_cost);
-  const currentCost = Number(holding?.shares) > minShares && Number.isFinite(average) && average > 0 ? average : null;
-  const bars = useMemo(() => tradeBars(fills, currentCost), [fills, currentCost]);
+  const holdingShares = Number(holding?.shares);
+  const currentCost = holdingShares > minShares && Number.isFinite(average) && average > 0 ? average : null;
+  const price = Number(holding?.price);
+  const currentPrice = Number.isFinite(price) && price > 0 ? price : null;
+  const holdingPnl = currentPrice != null && currentCost != null ? holdingShares * (currentPrice - currentCost) : null;
+  const bars = useMemo(() => tradeBars(fills, currentCost, currentPrice), [fills, currentCost, currentPrice]);
   const timeline = useMemo(() => tradeTimeline(fills), [fills]);
 
   return (
@@ -388,7 +395,8 @@ export default function TradeDistribution({ trades, holdings, symbol }) {
         {fills.length > 0 && <span className="muted">{fills.length - Number(hasOpening)} 笔成交{hasOpening ? " · 含一笔期初持仓估算" : ""}</span>}
       </header>
       <div className="tradeDistCharts">
-        <DistributionChart mode="bars" plot={bars} priceLabel={priceLabel} currency={currency} hasOpening={hasOpening} currentCost={currentCost} />
+        <DistributionChart mode="bars" plot={bars} priceLabel={priceLabel} currency={currency}
+          hasOpening={hasOpening} currentCost={currentCost} currentPrice={currentPrice} holdingPnl={holdingPnl} />
         <DistributionChart mode="steps" plot={timeline} priceLabel={priceLabel} currency={currency} />
       </div>
     </section>
