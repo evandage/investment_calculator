@@ -1889,11 +1889,11 @@ def _latest_earnings_date(symbol: str) -> pd.Timestamp | None:
     result: pd.Timestamp | None = None
     ctx = None
     try:
-        from backend.config import FUTU_US
+        from backend.config import market_assets
         from backend.market_data import futu_opend_config, is_futu_opend_available
         from futu import OpenQuoteContext, RET_OK
 
-        code = FUTU_US.get(symbol)
+        code = market_assets().futu_us.get(symbol)
         if code and is_futu_opend_available():
             host, port = futu_opend_config()
             ctx = OpenQuoteContext(host=host, port=port)

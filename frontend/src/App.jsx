@@ -1,15 +1,29 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, HistogramSeries, LineSeries } from "lightweight-charts";
-import { Eye, EyeOff, Activity, BookOpen, Check, CircleAlert, Gauge, Home, Maximize2, Minimize2, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Activity, BookOpen, Check, CircleAlert, Gauge, Home, Maximize2, Minimize2, Minus, Plus, RefreshCcw, Save, Trash2, TrendingUp, Undo2, X } from "lucide-react";
 import TradeDistribution from "./TradeDistribution.jsx";
+import evanAvatar from "./assets/evan.jpg";
+import naveAvatar from "./assets/nave.jpg";
+import "./profile-picker.css";
 import { estimateSgovSwingLots } from "./sgovSwingLots.js";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
   `${window.location.protocol}//${window.location.hostname}:8010`;
 const WS_BASE = API_BASE.replace(/^http/i, "ws");
+const ProfileContext = createContext(null);
+const PROFILE_AVATARS = { evan: evanAvatar, nave: naveAvatar };
+
+function useProfileFetch() {
+  const { id } = useContext(ProfileContext);
+  return useCallback((url, options) => {
+    const headers = new Headers(options?.headers);
+    headers.set("X-Portfolio-Profile", id);
+    return fetch(url, { ...options, headers, cache: "no-store" });
+  }, [id]);
+}
 const HEATMAP_LAYOUT_WIDTH = 100;
 const HEATMAP_LAYOUT_HEIGHT = 72;
 const MOBILE_HEATMAP_LAYOUT_WIDTH = 140;
@@ -488,6 +502,7 @@ function valuationBandTone(value, bandText) {
 }
 
 function useDashboard(userId) {
+  const profileFetch = useProfileFetch();
   const [data, setData] = useState(() => readDashboardCache(userId));
   const [loading, setLoading] = useState(() => !readDashboardCache(userId));
   const [refreshing, setRefreshing] = useState(false);
@@ -499,13 +514,10 @@ function useDashboard(userId) {
     loadingRef.current = true;
     setRefreshing(forceRefresh);
     try {
-      const response = await fetch(`${API_BASE}/api/dashboard?refresh=${forceRefresh ? 1 : 0}`);
+      const response = await profileFetch(`${API_BASE}/api/dashboard?refresh=${forceRefresh ? 1 : 0}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const nextData = await response.json();
-      if (nextData.user_id !== userId) {
-        window.location.reload();
-        return;
-      }
+      if (nextData.user_id !== userId) throw new Error("返回的账户与当前选择不一致");
       setData(nextData);
       setError("");
       writeJsonCache(`${DASHBOARD_CACHE_KEY}:${userId}`, { savedAt: Date.now(), data: nextData });
@@ -566,7 +578,8 @@ function useTableGestureScroll() {
   }, []);
 }
 
-function Header({ data, profiles, onSwitch, onRefresh, refreshing }) {
+function Header({ data, onSwitch, onRefresh, refreshing }) {
+  const profile = useContext(ProfileContext);
   const market = data?.market;
   const fetchedAt = market?.fetched_at ? new Date(market.fetched_at) : null;
   const updatedAt = fetchedAt && Number.isFinite(fetchedAt.getTime())
@@ -589,9 +602,10 @@ function Header({ data, profiles, onSwitch, onRefresh, refreshing }) {
         </div>
       </div>
       <div className="profileControls">
-        <select aria-label="切换用户" value={data.user_id} onChange={(event) => onSwitch(event.target.value)}>
-          {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-        </select>
+        <button type="button" className="profileSwitch" onClick={onSwitch} aria-label={`切换账户（当前 ${profile.name}）`} title="切换账户">
+          <img src={PROFILE_AVATARS[profile.id]} alt="" />
+          <span>{profile.name}</span>
+        </button>
         <button type="button" className="iconButton" onClick={onRefresh} disabled={refreshing} aria-label={refreshing ? "正在刷新行情" : "刷新行情"} aria-busy={refreshing} title={refreshing ? "正在刷新行情" : "刷新行情"}><RefreshCcw size={17} className={refreshing ? "refreshSpinning" : ""} aria-hidden="true" /></button>
       </div>
     </header>
@@ -1412,6 +1426,7 @@ function withSatellitePerformanceFallback(points) {
 }
 
 function PerformanceChart({ history, trades, userId }) {
+  const profileFetch = useProfileFetch();
   const [expanded, setExpanded] = useState(false);
   const [liveTrades, setLiveTrades] = useState(null);
   const [selectedSeriesKeys, setSelectedSeriesKeys] = useState(() => new Set([
@@ -1423,7 +1438,7 @@ function PerformanceChart({ history, trades, userId }) {
     let active = true;
     const loadTrades = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/trades`, { cache: "no-store" });
+        const response = await profileFetch(`${API_BASE}/api/trades`, { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json();
         if (active && payload.user_id === userId && Array.isArray(payload.trades)) {
@@ -3521,6 +3536,7 @@ function ChartBoardPlaceholder({ count = 1, scope }) {
 }
 
 function KlinePage({ dashboardData }) {
+  const profileFetch = useProfileFetch();
   const restoredState = useMemo(() => klinePageMemory, []);
   const [scope, setScope] = useState(() => klineMemoryExpired(restoredState) ? "global" : String(restoredState.scope || "global"));
   const [symbol, setSymbol] = useState(() => String(restoredState.symbol || "VOO"));
@@ -3555,7 +3571,7 @@ function KlinePage({ dashboardData }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(API_BASE + "/api/swing-positions")
+    profileFetch(API_BASE + "/api/swing-positions")
       .then((response) => { if (!response.ok) throw new Error("HTTP " + response.status); return response.json(); })
       .then((payload) => {
         if (!cancelled) {
@@ -3661,7 +3677,7 @@ function KlinePage({ dashboardData }) {
       }
       if (["1m", "5m", "15m"].includes(interval) && selectedDate) qs.set("selected_date", selectedDate);
       const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
-      const response = await fetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
+      const response = await profileFetch(`${API_BASE}/api/${endpoint}?${qs.toString()}`, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
       if (requestId !== loadRequestRef.current || signature !== requestSignatureRef.current) return;
@@ -3702,6 +3718,7 @@ function KlinePage({ dashboardData }) {
     }
     const endpoint = scope === "global" ? "chart-board-global-light" : "chart-board-light";
     const signature = requestSignature;
+    qs.set("profile", dashboardData.user_id);
     const socket = new WebSocket(`${WS_BASE}/ws/${endpoint}?${qs.toString()}`);
     socket.onopen = () => {
       if (requestSignatureRef.current === signature) {
@@ -3755,7 +3772,7 @@ function KlinePage({ dashboardData }) {
     : (isEtf && avwapMode === "earnings" ? "high_60d" : avwapMode);
 
   async function saveSwingPosition(positionSymbol, payload) {
-    const response = await fetch(API_BASE + "/api/swing-positions/" + encodeURIComponent(positionSymbol), {
+    const response = await profileFetch(API_BASE + "/api/swing-positions/" + encodeURIComponent(positionSymbol), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -4186,6 +4203,7 @@ function nextMonthKey(monthKey) {
 }
 
 function EditableHoldingsPage({ data, onSaved }) {
+  const profileFetch = useProfileFetch();
   const backdropPointerStartedOnSelf = useRef(false);
   const [holdings, setHoldings] = useState({});
   const [balances, setBalances] = useState({});
@@ -4298,7 +4316,7 @@ function EditableHoldingsPage({ data, onSaved }) {
     setSavingBudget(true);
     try {
       const planned_cash_by_month = Object.fromEntries(Object.entries(budgetInputs).map(([month, value]) => [month, Number(value || 0)]));
-      const response = await fetch(`${API_BASE}/api/rebalance/budget`, {
+      const response = await profileFetch(`${API_BASE}/api/rebalance/budget`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: data.user_id, planned_cash_by_month }),
@@ -4316,7 +4334,7 @@ function EditableHoldingsPage({ data, onSaved }) {
     setBalanceMessage("");
     try {
       const nextBalances = buildBalancesPayload(balanceInputs);
-      const response = await fetch(`${API_BASE}/api/balances`, {
+      const response = await profileFetch(`${API_BASE}/api/balances`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ balances: nextBalances }),
@@ -4348,7 +4366,7 @@ function EditableHoldingsPage({ data, onSaved }) {
         }
         return [row.symbol, { shares, avg_cost: avgCost }];
       }));
-      const response = await fetch(`${API_BASE}/api/holdings`, {
+      const response = await profileFetch(`${API_BASE}/api/holdings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ holdings: nextHoldings }),
@@ -4380,7 +4398,7 @@ function EditableHoldingsPage({ data, onSaved }) {
           target_pct: Number(item.target_pct || 0),
         }))
         .filter((item) => item.symbol);
-      const response = await fetch(`${API_BASE}/api/satellite-universe`, {
+      const response = await profileFetch(`${API_BASE}/api/satellite-universe`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items }),
@@ -4562,6 +4580,7 @@ function EditableHoldingsPage({ data, onSaved }) {
 }
 
 function Rebalance({ data, onSaved }) {
+  const profileFetch = useProfileFetch();
   const rows = data.rebalance.rows;
   const costTargetDenominator = data.rebalance.cost_target_denominator_usd ?? data.rebalance.current_assets_usd;
   const suggestionRows = useMemo(() => rows, [rows]);
@@ -4841,7 +4860,7 @@ function Rebalance({ data, onSaved }) {
       if (!executions.length) {
         throw new Error(inputs[symbolToSave]?.action === "dividend" ? "请填写大于零的实际到账股息" : "请填写成交金额和成交股数");
       }
-      const response = await fetch(`${API_BASE}/api/rebalance/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, executions }) });
+      const response = await profileFetch(`${API_BASE}/api/rebalance/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: data.user_id, executions }) });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.detail || `HTTP ${response.status}`);
@@ -4867,7 +4886,7 @@ function Rebalance({ data, onSaved }) {
     setDeletingTradeId(tradeId);
     setTradeMessage("");
     try {
-      const response = await fetch(`${API_BASE}/api/trades/${encodeURIComponent(tradeId)}`, {
+      const response = await profileFetch(`${API_BASE}/api/trades/${encodeURIComponent(tradeId)}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: data.user_id }),
@@ -4896,7 +4915,7 @@ function Rebalance({ data, onSaved }) {
       if (cnyAmount <= 0 || usdAmount <= 0) {
         throw new Error("人民币金额和美元金额都必须大于零");
       }
-      const response = await fetch(`${API_BASE}/api/fx-conversions`, {
+      const response = await profileFetch(`${API_BASE}/api/fx-conversions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4929,7 +4948,7 @@ function Rebalance({ data, onSaved }) {
     setDeletingFxConversionId(recordId);
     setFxConversionMessage("");
     try {
-      const response = await fetch(`${API_BASE}/api/fx-conversions/${encodeURIComponent(recordId)}`, {
+      const response = await profileFetch(`${API_BASE}/api/fx-conversions/${encodeURIComponent(recordId)}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: data.user_id }),
@@ -4951,7 +4970,7 @@ function Rebalance({ data, onSaved }) {
     setBalanceMessage("");
     try {
       const balances = buildBalancesPayload(balanceInputs);
-      const response = await fetch(`${API_BASE}/api/balances`, {
+      const response = await profileFetch(`${API_BASE}/api/balances`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ balances }),
@@ -4980,7 +4999,7 @@ function Rebalance({ data, onSaved }) {
           target_pct: Number(item.target_pct || 0),
         }))
         .filter((item) => item.symbol);
-      const response = await fetch(`${API_BASE}/api/satellite-universe`, {
+      const response = await profileFetch(`${API_BASE}/api/satellite-universe`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items }),
@@ -5612,10 +5631,11 @@ function RebalancePage({ data, onSaved }) {
   return <Rebalance data={data} onSaved={onSaved} />;
 }
 
-function AppLoading({ label = "正在加载投资看板" }) {
+function AppLoading({ label = "正在加载投资看板", onBack }) {
   return (
     <main className="appShell dashboardShell appLoading" role="status" aria-live="polite" aria-busy="true">
       <div className="appLoadingHeading"><Activity size={20} aria-hidden="true" /><span>{label}</span></div>
+      {onBack ? <button type="button" className="profileBack" onClick={onBack}>返回账户选择</button> : null}
       <div className="dashboardSkeleton" aria-hidden="true">
         <div className="skeletonBar" />
         <div className="skeletonMetrics">{Array.from({ length: 6 }, (_, index) => <div key={index} />)}</div>
@@ -5625,7 +5645,7 @@ function AppLoading({ label = "正在加载投资看板" }) {
   );
 }
 
-function AppError({ message, onRetry, retrying = false }) {
+function AppError({ message, onRetry, retrying = false, onBack }) {
   return (
     <main className="appShell">
       <div className="appError" role="alert">
@@ -5634,19 +5654,16 @@ function AppError({ message, onRetry, retrying = false }) {
         <p>请检查后端服务是否运行，然后重试。</p>
         <small>{message}</small>
         <button type="button" className="primary" onClick={onRetry} disabled={retrying} aria-busy={retrying}><RefreshCcw size={16} className={retrying ? "refreshSpinning" : ""} aria-hidden="true" />{retrying ? "正在连接…" : "重新连接"}</button>
+        {onBack ? <button type="button" className="profileBack" onClick={onBack}>返回账户选择</button> : null}
       </div>
     </main>
   );
 }
 
-function ProfileApp({ activeUserId, profiles, onSwitch }) {
+function ProfileApp({ activeUserId, onSwitch }) {
   const { data, loading, refreshing, error, load } = useDashboard(activeUserId);
-  const [page, setPage] = useState(() => ["dashboard", "holdings", "rebalance", "kline"].includes(initialAppState.page) ? initialAppState.page : "dashboard");
+  const [page, setPage] = useState("dashboard");
   useTableGestureScroll();
-
-  useEffect(() => {
-    writeJsonCache(APP_STATE_CACHE_KEY, { ...readAppState(), page });
-  }, [page]);
 
   function openKlineSymbol(symbol) {
     const rawSymbol = String(symbol || "").toUpperCase();
@@ -5666,14 +5683,14 @@ function ProfileApp({ activeUserId, profiles, onSwitch }) {
   }
 
   if (loading) {
-    return <AppLoading />;
+    return <AppLoading onBack={onSwitch} />;
   }
   if (!data) {
-    return <AppError message={`后端连接失败：${error}`} onRetry={() => load(true)} retrying={refreshing} />;
+    return <AppError message={`后端连接失败：${error}`} onRetry={() => load(true)} retrying={refreshing} onBack={onSwitch} />;
   }
   return (
     <main className={`appShell ${page === "dashboard" ? "dashboardShell" : ""}`}>
-      <Header data={data} profiles={profiles} onSwitch={onSwitch} onRefresh={() => load(true)} refreshing={refreshing} />
+      <Header data={data} onSwitch={onSwitch} onRefresh={() => load(true)} refreshing={refreshing} />
       {error ? (
         <div className="connectionNotice" role="status">
           <CircleAlert size={17} aria-hidden="true" />
@@ -5690,37 +5707,54 @@ function ProfileApp({ activeUserId, profiles, onSwitch }) {
   );
 }
 
+function ProfilePicker({ profiles, onSelect }) {
+  return (
+    <main className="profilePicker" aria-labelledby="profilePickerTitle">
+      <div className="profilePickerInner">
+        <div className="profilePickerBrand">
+          <TrendingUp size={21} aria-hidden="true" />
+          <span>Investment Dashboard</span>
+        </div>
+        <h1 id="profilePickerTitle">选择账户</h1>
+        <div className="profilePickerGrid">
+          {profiles.map((profile) => (
+            <button type="button" className="profileCard" key={profile.id} onClick={() => onSelect(profile)}>
+              <img src={PROFILE_AVATARS[profile.id]} alt="" width="1080" height="1080" />
+              <span className="profileCardFooter">
+                <span>{profile.name}</span>
+                <ArrowRight size={19} aria-hidden="true" />
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </main>
+  );
+}
+
 export default function App() {
-  const [profileState, setProfileState] = useState(null);
+  const [profiles, setProfiles] = useState(null);
+  const [selectedProfile, setSelectedProfile] = useState(null);
   const [profileError, setProfileError] = useState("");
   async function loadProfiles() {
     setProfileError("");
     try {
-      const response = await fetch(`${API_BASE}/api/profiles`);
+      const response = await fetch(`${API_BASE}/api/profiles`, { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      setProfileState(await response.json());
+      const payload = await response.json();
+      setProfiles(payload.profiles);
     } catch (error) {
       setProfileError(String(error));
     }
   }
   useEffect(() => { loadProfiles(); }, []);
 
-  async function switchUser(userId) {
-    try {
-      setProfileError("");
-      const response = await fetch(`${API_BASE}/api/profiles/active`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      setProfileState(await response.json());
-    } catch (error) {
-      setProfileError(String(error));
-    }
-  }
-
-  if (profileError) return <AppError message={`档案加载失败：${profileError}`} onRetry={loadProfiles} />;
-  if (!profileState) return <AppLoading label="正在加载投资档案" />;
-  return <ProfileApp key={profileState.active_user_id} activeUserId={profileState.active_user_id} profiles={profileState.profiles} onSwitch={switchUser} />;
+  if (profileError) return <AppError message={`账户加载失败：${profileError}`} onRetry={loadProfiles} />;
+  if (!profiles) return <AppLoading label="正在加载账户" />;
+  if (!selectedProfile) return <ProfilePicker profiles={profiles} onSelect={setSelectedProfile} />;
+  return (
+    <ProfileContext.Provider value={selectedProfile}>
+      <ProfileApp key={selectedProfile.id} activeUserId={selectedProfile.id} onSwitch={() => setSelectedProfile(null)} />
+    </ProfileContext.Provider>
+  );
 }

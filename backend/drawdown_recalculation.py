@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from analysis import drawdown_thresholds as thresholds_analysis
 
-from .config import REBALANCE_RULES, TZ_SHANGHAI
+from .config import REBALANCE_RULES, TZ_SHANGHAI, portfolio_profile
 from .drawdown_episodes import DRAWDOWN_METRIC_VERSION
 from .storage import load_drawdown_episode_store, save_drawdown_episode_store
 
@@ -257,5 +257,7 @@ def start_monthly_drawdown_scheduler(user_id: str | None = None) -> None:
         # 07:00 Shanghai is safely after the prior US regular close. If the
         # service was offline at the boundary, a later restart catches up.
         if current.hour >= 7:
-            run_monthly_recalculation(user_id or active_user_id(), now=current)
+            current_user = user_id or active_user_id()
+            with portfolio_profile(current_user):
+                run_monthly_recalculation(current_user, now=current)
         time.sleep(900)

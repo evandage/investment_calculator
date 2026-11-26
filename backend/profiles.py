@@ -3,6 +3,8 @@
 import json
 import os
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,9 +12,23 @@ STATE_FILE = ROOT / "profiles.json"
 PROFILE_DIR = ROOT / "profiles"
 PROFILES = {"evan": "Evan", "nave": "Nave"}
 _STATE_LOCK = threading.RLock()
+_REQUEST_USER = ContextVar[str | None]("request_user", default=None)
+
+
+@contextmanager
+def use_profile(user_id: str):
+    if user_id not in PROFILES:
+        raise ValueError("unknown profile")
+    token = _REQUEST_USER.set(user_id)
+    try:
+        yield
+    finally:
+        _REQUEST_USER.reset(token)
 
 
 def active_user_id() -> str:
+    if user_id := _REQUEST_USER.get():
+        return user_id
     with _STATE_LOCK:
         try:
             value = json.loads(STATE_FILE.read_text(encoding="utf-8")).get("active_user_id")

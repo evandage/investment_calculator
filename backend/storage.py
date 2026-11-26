@@ -3,20 +3,20 @@ from __future__ import annotations
 import json
 import hashlib
 import math
+import os
 import re
+import tempfile
+import threading
 from datetime import datetime
+from functools import wraps
 from typing import Any
 
 from .profiles import active_user_id, profile_path
 
 from .config import (
-    ALL_SYMBOLS,
-    ASSET_META,
     BALANCES_FILE,
     CLOSED_SATELLITE_PNL_FILE,
-    DEFAULT_SATELLITE_TARGET_PCTS,
     DRAWDOWN_EPISODES_FILE,
-    FALLBACK_PRICES,
     HOLDINGS_FILE,
     FX_CONVERSION_RECORDS_FILE,
     MONTHLY_USAGE_FILE,
@@ -24,6 +24,8 @@ from .config import (
     PORTFOLIO_SNAPSHOT_LEDGER_FILE,
     PORTFOLIO_ADJUSTMENTS_FILE,
     SATELLITE_SYMBOLS,
+    profile_assets,
+    profile_satellite_symbols,
     SATELLITE_TARGETS_FILE,
     SWING_POSITIONS_FILE,
     TZ_SHANGHAI,
@@ -40,20 +42,41 @@ def _read_json(path, default: Any) -> Any:
         return default
 
 
+_SHARED_STORE_LOCK = threading.RLock()
+
+
+def _update_shared_store(function):
+    @wraps(function)
+    def update(*args, **kwargs):
+        with _SHARED_STORE_LOCK:
+            return function(*args, **kwargs)
+    return update
+
+
 def _write_json(path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, delete=False,
+    ) as temporary:
+        try:
+            json.dump(payload, temporary, ensure_ascii=False, indent=2)
+            temporary.close()
+            os.replace(temporary.name, path)
+        finally:
+            temporary.close()
+            if os.path.exists(temporary.name):
+                os.unlink(temporary.name)
 
 
 def default_holdings() -> dict[str, dict[str, float]]:
-    return {sym: {"shares": 0.0, "avg_cost": float(FALLBACK_PRICES[sym])} for sym in ALL_SYMBOLS}
+    return {sym: {"shares": 0.0, "avg_cost": float(profile_assets().fallback_prices[sym])} for sym in profile_assets().all_symbols}
 
 
 def normalize_holdings(raw: Any) -> dict[str, dict[str, float]]:
     out = default_holdings()
     if not isinstance(raw, dict):
         return out
-    for sym in ALL_SYMBOLS:
+    for sym in profile_assets().all_symbols:
         item = raw.get(sym, {})
         if not isinstance(item, dict):
             continue
@@ -132,6 +155,7 @@ def load_portfolio_adjustments(user_id: str | None = None) -> list[dict[str, Any
     return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
 
+@_update_shared_store
 def record_portfolio_adjustment(
     user_id: str,
     kind: str,
@@ -179,6 +203,7 @@ def _snapshot_checksum(payload: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+@_update_shared_store
 def _sync_snapshot_ledger(user_id: str, rows: list[dict[str, Any]]) -> None:
     raw = _read_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, {})
     store = raw if isinstance(raw, dict) else {}
@@ -216,6 +241,7 @@ def _sync_snapshot_ledger(user_id: str, rows: list[dict[str, Any]]) -> None:
         _write_json(PORTFOLIO_SNAPSHOT_LEDGER_FILE, store)
 
 
+@_update_shared_store
 def replace_snapshot_ledger_with_corrected_history(
     user_id: str,
     rows: list[dict[str, Any]],
@@ -266,9 +292,9 @@ def replace_snapshot_ledger_with_corrected_history(
 
 
 def normalize_satellite_targets(raw: Any) -> dict[str, float]:
-    out = dict(DEFAULT_SATELLITE_TARGET_PCTS)
+    out = dict(profile_assets().default_satellite_targets)
     if isinstance(raw, dict):
-        for sym in SATELLITE_SYMBOLS:
+        for sym in profile_satellite_symbols(SATELLITE_SYMBOLS):
             try:
                 value = float(raw.get(sym, out.get(sym, 0.0)))
             except (TypeError, ValueError):
@@ -276,8 +302,8 @@ def normalize_satellite_targets(raw: Any) -> dict[str, float]:
             out[sym] = max(0.0, value)
     total = sum(out.values())
     if total <= 0:
-        return dict(DEFAULT_SATELLITE_TARGET_PCTS)
-    return {sym: value / total * 100.0 for sym, value in out.items() if sym in SATELLITE_SYMBOLS}
+        return dict(profile_assets().default_satellite_targets)
+    return {sym: value / total * 100.0 for sym, value in out.items() if sym in profile_satellite_symbols(SATELLITE_SYMBOLS)}
 
 
 def load_satellite_targets() -> dict[str, float]:
@@ -383,7 +409,7 @@ def swing_position_recommendations() -> dict[str, dict[str, float | str]]:
 
 
 def swing_position_symbols() -> tuple[str, ...]:
-    return tuple(dict.fromkeys(("VOO", "QQQ", *SATELLITE_SYMBOLS)))
+    return tuple(dict.fromkeys(("VOO", "QQQ", *profile_satellite_symbols(SATELLITE_SYMBOLS))))
 
 
 def normalize_swing_positions(raw: Any) -> dict[str, dict[str, float]]:
@@ -480,7 +506,7 @@ def load_stock_quarters(user_id: str) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for symbol, cycle in raw.items():
         sym = str(symbol).upper()
-        if sym not in SATELLITE_SYMBOLS or not isinstance(cycle, dict):
+        if sym not in profile_satellite_symbols(SATELLITE_SYMBOLS) or not isinstance(cycle, dict):
             continue
         try:
             start_date = str(cycle["start_date"])
@@ -532,7 +558,7 @@ def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:
     amounts: dict[str, float] = {}
     for sym, amount in (raw.get("bought_amount_by_symbol") or {}).items():
         usym = str(sym).upper()
-        if usym not in ASSET_META or ASSET_META[usym]["currency"] != "USD":
+        if usym not in profile_assets().asset_meta or profile_assets().asset_meta[usym]["currency"] != "USD":
             continue
         try:
             value = max(0.0, float(amount))
@@ -544,7 +570,7 @@ def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:
     sold_amounts: dict[str, float] = {}
     for sym, amount in (raw.get("sold_amount_by_symbol") or {}).items():
         usym = str(sym).upper()
-        if usym not in ASSET_META or ASSET_META[usym]["currency"] != "USD":
+        if usym not in profile_assets().asset_meta or profile_assets().asset_meta[usym]["currency"] != "USD":
             continue
         try:
             value = max(0.0, float(amount))
@@ -556,10 +582,10 @@ def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:
     intensities = {}
     for sym, intensity in (raw.get("bought_intensity_by_symbol") or {}).items():
         usym = str(sym).upper()
-        if usym in ASSET_META and ASSET_META[usym]["currency"] == "USD":
+        if usym in profile_assets().asset_meta and profile_assets().asset_meta[usym]["currency"] == "USD":
             intensities[usym] = str(intensity or "none")
     out["bought_intensity_by_symbol"] = intensities
-    symbols = set(str(s).upper() for s in raw.get("bought_symbols", []) if str(s).upper() in ASSET_META)
+    symbols = set(str(s).upper() for s in raw.get("bought_symbols", []) if str(s).upper() in profile_assets().asset_meta)
     symbols |= set(amounts) | set(intensities)
     out["bought_symbols"] = sorted(symbols)
     out["used_budget_usd"] = sum(amounts.values()) if amounts else max(0.0, float(raw.get("used_budget_usd", 0.0) or 0.0))
@@ -567,6 +593,7 @@ def load_monthly_usage(user_id: str, month_key: str) -> dict[str, Any]:
     return out
 
 
+@_update_shared_store
 def save_monthly_usage(
     user_id: str,
     month_key: str,
@@ -585,17 +612,17 @@ def save_monthly_usage(
     clean_amounts = {
         str(sym).upper(): max(0.0, float(amount))
         for sym, amount in bought_amount_by_symbol.items()
-        if str(sym).upper() in ASSET_META and ASSET_META[str(sym).upper()]["currency"] == "USD" and float(amount) > 0
+        if str(sym).upper() in profile_assets().asset_meta and profile_assets().asset_meta[str(sym).upper()]["currency"] == "USD" and float(amount) > 0
     }
     clean_intensity = {
         str(sym).upper(): str(intensity or "none")
         for sym, intensity in bought_intensity_by_symbol.items()
-        if str(sym).upper() in ASSET_META and ASSET_META[str(sym).upper()]["currency"] == "USD" and str(intensity or "none") != "none"
+        if str(sym).upper() in profile_assets().asset_meta and profile_assets().asset_meta[str(sym).upper()]["currency"] == "USD" and str(intensity or "none") != "none"
     }
     clean_sold_amounts = {
         str(sym).upper(): max(0.0, float(amount))
         for sym, amount in (sold_amount_by_symbol or {}).items()
-        if str(sym).upper() in ASSET_META and ASSET_META[str(sym).upper()]["currency"] == "USD" and float(amount) > 0
+        if str(sym).upper() in profile_assets().asset_meta and profile_assets().asset_meta[str(sym).upper()]["currency"] == "USD" and float(amount) > 0
     }
     clean_month_budget = {
         str(month): max(0.0, float(amount))
@@ -636,6 +663,7 @@ def load_drawdown_episode_store(user_id: str | None = None) -> dict[str, Any]:
     }
 
 
+@_update_shared_store
 def save_drawdown_episode_store(user_id: str, state: dict[str, Any]) -> None:
     raw = _read_json(DRAWDOWN_EPISODES_FILE, {})
     store = raw if isinstance(raw, dict) else {}
@@ -808,6 +836,7 @@ def load_portfolio_history(user_id: str | None = None) -> list[dict[str, Any]]:
     return sorted(out, key=lambda row: row["date"])
 
 
+@_update_shared_store
 def save_portfolio_history(user_id: str, rows: list[dict[str, Any]]) -> None:
     raw = _read_json(PORTFOLIO_HISTORY_FILE, {})
     store = raw if isinstance(raw, dict) else {}
@@ -839,6 +868,7 @@ def load_trade_records(user_id: str | None = None) -> list[dict[str, Any]]:
     )
 
 
+@_update_shared_store
 def save_trade_records(user_id: str, rows: list[dict[str, Any]]) -> None:
     raw = _read_json(TRADE_RECORDS_FILE, {})
     store = raw if isinstance(raw, dict) else {}
@@ -855,7 +885,7 @@ def load_trade_records_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, A
         symbol = str(item.get("symbol", "")).upper()
         action = str(item.get("action", "buy")).lower()
         history_only = item.get("history_only") is True
-        if symbol not in ASSET_META:
+        if symbol not in profile_assets().asset_meta:
             continue
         if action not in {"buy", "sell", "dividend"} or (action == "dividend" and (symbol != "SGOV" or history_only)):
             continue
@@ -931,6 +961,7 @@ def load_fx_conversion_records(user_id: str | None = None) -> list[dict[str, Any
     return sorted(out, key=lambda row: (row["converted_date"], row["created_at"], row["id"]))
 
 
+@_update_shared_store
 def save_fx_conversion_records(user_id: str, rows: list[dict[str, Any]]) -> None:
     raw = _read_json(FX_CONVERSION_RECORDS_FILE, {})
     store = raw if isinstance(raw, dict) else {}

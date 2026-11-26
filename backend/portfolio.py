@@ -17,8 +17,6 @@ from .drawdown_episodes import (
 )
 
 from .config import (
-    ALL_SYMBOLS,
-    ASSET_META,
     INTENSITY_LABELS,
     INTENSITY_ORDER,
     PE_BANDS,
@@ -27,9 +25,11 @@ from .config import (
     REBALANCE_PHASE_BUILD,
     REBALANCE_RULES,
     SATELLITE_SYMBOLS,
-    TARGET_WEIGHTS,
-    TZ_SHANGHAI,
     USD_SYMBOLS,
+    portfolio_profile,
+    profile_assets,
+    profile_satellite_symbols,
+    TZ_SHANGHAI,
     load_satellite_universe_config,
 )
 from .market_data import fetch_fx_usdcny_history, fetch_quotes
@@ -66,10 +66,10 @@ PERFORMANCE_CHART_START_DATE = "2026-07-08"
 PERFORMANCE_CHART_BASELINE_DATE = "2026-07-08"
 PERFORMANCE_HISTORY_CALCULATION_VERSION = "2026-09-eod-v12-guard-missing-previous-close"
 def effective_target_weights() -> dict[str, float]:
-    weights = dict(TARGET_WEIGHTS)
-    satellite_total = sum(TARGET_WEIGHTS.get(sym, 0.0) for sym in SATELLITE_SYMBOLS)
+    weights = dict(profile_assets().target_weights)
+    satellite_total = sum(profile_assets().target_weights.get(sym, 0.0) for sym in profile_satellite_symbols(SATELLITE_SYMBOLS))
     satellite_targets = load_satellite_targets()
-    for sym in SATELLITE_SYMBOLS:
+    for sym in profile_satellite_symbols(SATELLITE_SYMBOLS):
         weights[sym] = satellite_total * float(satellite_targets.get(sym, 0.0)) / 100.0
     return weights
 
@@ -211,7 +211,7 @@ def ps_band_text(symbol: str) -> str:
 
 def pe_judgment(symbol: str, forward_pe: float | None) -> str:
     band = PE_BANDS.get(symbol)
-    if symbol not in SATELLITE_SYMBOLS or not band:
+    if symbol not in profile_satellite_symbols(SATELLITE_SYMBOLS) or not band:
         return "-"
     if not isinstance(forward_pe, (int, float)):
         return "缺数据"
@@ -237,7 +237,7 @@ def fx_conversion_summary(records: list[dict[str, Any]], fallback_fx: float) -> 
 def valuation_split_for_row(symbol: str, item: dict[str, Any]) -> tuple[float, str]:
     pe = item.get("pe")
     band = PE_BANDS.get(symbol)
-    if symbol in SATELLITE_SYMBOLS:
+    if symbol in profile_satellite_symbols(SATELLITE_SYMBOLS):
         ps = item.get("ps")
         ps_band = PS_BANDS.get(symbol)
         high_pe = symbol not in PS_BANDS and isinstance(pe, (int, float)) and band and pe > band[1]
@@ -445,7 +445,7 @@ def _currency_value_to_cny(value: float, currency: str, fx: float) -> float:
 
 
 def _quote_price_line(symbol: str, quote: dict[str, Any]) -> str:
-    currency = ASSET_META[symbol]["currency"]
+    currency = profile_assets().asset_meta[symbol]["currency"]
     regular = float(quote.get("regular_price") or quote.get("price") or 0.0)
     decimals = 2 if currency == "USD" else 4
     symbol_prefix = "$" if currency == "USD" else "￥"
@@ -473,10 +473,10 @@ def build_visualizations(
 ) -> dict[str, Any]:
     target_weights = effective_target_weights()
     row_by_symbol = {row["symbol"]: row for row in rows}
-    usd_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS)
+    usd_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in profile_assets().usd_symbols)
     usd_cash_cny = float(balances.get("cash_usd", 0.0)) * fx
     allocation_total_cny = usd_total_cny + usd_cash_cny
-    satellite_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in SATELLITE_SYMBOLS)
+    satellite_total_cny = sum(value_cny_by_symbol.get(sym, 0.0) for sym in profile_satellite_symbols(SATELLITE_SYMBOLS))
 
     pnl_rank = []
     satellite_pnl_rank = []
@@ -484,7 +484,7 @@ def build_visualizations(
     satellite_pnl_usd = 0.0
     for row in rows:
         sym = row["symbol"]
-        if sym in SATELLITE_SYMBOLS:
+        if sym in profile_satellite_symbols(SATELLITE_SYMBOLS):
             satellite_pnl_cny += float(row["pnl_cny"])
             satellite_pnl_usd += float(row["pnl"])
             satellite_pnl_rank.append(
@@ -509,7 +509,7 @@ def build_visualizations(
                 }
             )
     for sym, archived in load_closed_satellite_pnl().items():
-        if sym in SATELLITE_SYMBOLS:
+        if sym in profile_satellite_symbols(SATELLITE_SYMBOLS):
             continue
         pnl_usd = float(archived.get("pnl_usd", 0.0) or 0.0)
         satellite_pnl_rank.append(
@@ -537,14 +537,14 @@ def build_visualizations(
     allocation_order = [
         ("VOO", "VOO", ["VOO"]),
         ("QQQ", "QQQ", ["QQQ"]),
-        ("SATELLITE", "卫星仓位", list(SATELLITE_SYMBOLS)),
+        ("SATELLITE", "卫星仓位", list(profile_satellite_symbols(SATELLITE_SYMBOLS))),
         ("SGOV", "SGOV", ["SGOV"]),
         ("CASH", "现金", []),
     ]
     target_map = {
         "VOO": target_weights["VOO"],
         "QQQ": target_weights["QQQ"],
-        "SATELLITE": sum(target_weights[sym] for sym in SATELLITE_SYMBOLS),
+        "SATELLITE": sum(target_weights[sym] for sym in profile_satellite_symbols(SATELLITE_SYMBOLS)),
         "SGOV": target_weights["SGOV"],
         "CASH": 0.0,
     }
@@ -565,9 +565,9 @@ def build_visualizations(
             }
         )
 
-    satellite_weight_total = sum(target_weights[sym] for sym in SATELLITE_SYMBOLS)
+    satellite_weight_total = sum(target_weights[sym] for sym in profile_satellite_symbols(SATELLITE_SYMBOLS))
     satellite_split = []
-    for sym in SATELLITE_SYMBOLS:
+    for sym in profile_satellite_symbols(SATELLITE_SYMBOLS):
         amount_cny = value_cny_by_symbol.get(sym, 0.0)
         row = row_by_symbol.get(sym, {})
         target_pct = target_weights[sym] / satellite_weight_total * 100.0 if satellite_weight_total > 0 else 0.0
@@ -796,7 +796,7 @@ def completed_portfolio_daily_pct(
                 old_shares -= shares
         old_shares = max(0.0, old_shares)
 
-        multiplier = 1.0 if native_usd else (fx if sym in USD_SYMBOLS else 1.0)
+        multiplier = 1.0 if native_usd else (fx if sym in profile_assets().usd_symbols else 1.0)
         remaining_old_shares = old_shares
         basis = 0.0
         pnl = 0.0
@@ -852,7 +852,7 @@ def holding_pnl_pct_for_snapshot(
         avg_cost = max(0.0, float(holding.get("avg_cost", 0.0) or 0.0))
         if price <= 0 or shares <= 0 or avg_cost <= 0:
             continue
-        multiplier = 1.0 if native_usd else (fx if sym in USD_SYMBOLS else 1.0)
+        multiplier = 1.0 if native_usd else (fx if sym in profile_assets().usd_symbols else 1.0)
         total_value += shares * price * multiplier
         total_cost += shares * avg_cost * multiplier
     total_pnl = total_value - total_cost
@@ -876,7 +876,7 @@ def historical_holding_pnl(
 ) -> dict[str, float]:
     """Include legacy dividends and dated receipts through the requested day."""
     result = holding_pnl_pct_for_snapshot(holdings_snapshot, prices, fx, symbols, native_usd)
-    includes_usd = symbols is None or bool(set(USD_SYMBOLS) & symbols)
+    includes_usd = symbols is None or bool(set(profile_assets().usd_symbols) & symbols)
     if not includes_usd:
         return result
     dividend_usd = float(balances.get("voo_dividend_usd", 0.0) or 0.0) + float(
@@ -991,7 +991,7 @@ def balances_for_history_day(
                 # Replay trades after an older anchor.
                 direction = -1.0 if action == "buy" else 1.0
                 realized_direction = 1.0
-            if symbol in USD_SYMBOLS:
+            if symbol in profile_assets().usd_symbols:
                 reconstructed["cash_usd"] += direction * amount
                 realized_key = "realized_usd"
                 basis_key = "cash_cost_basis_usd"
@@ -1031,7 +1031,7 @@ def balances_for_history_day(
         symbol = str(trade.get("symbol") or "").upper()
         amount = max(0.0, float(trade.get("amount_usd", 0.0) or 0.0))
         direction = 1.0 if str(trade.get("action") or "").lower() == "buy" else -1.0
-        if symbol in USD_SYMBOLS:
+        if symbol in profile_assets().usd_symbols:
             reconstructed["cash_usd"] += direction * amount
             realized_key = "realized_usd"
             basis_key = "cash_cost_basis_usd"
@@ -1082,13 +1082,13 @@ def total_pnl_for_history_snapshot(
         max(0.0, float(holding.get("shares", 0.0) or 0.0))
         * max(0.0, float(holding.get("avg_cost", 0.0) or 0.0))
         for symbol, holding in snapshot.items()
-        if symbol in USD_SYMBOLS
+        if symbol in profile_assets().usd_symbols
     )
     cny_holding_cost = sum(
         max(0.0, float(holding.get("shares", 0.0) or 0.0))
         * max(0.0, float(holding.get("avg_cost", 0.0) or 0.0))
         for symbol, holding in snapshot.items()
-        if symbol not in USD_SYMBOLS
+        if symbol not in profile_assets().usd_symbols
     )
     fx_rate = coerce_optional_float(row.get("fx_rate"))
     holding_cost_at_market_fx = coerce_optional_float(row.get("holding_cost_cny"))
@@ -1155,7 +1155,7 @@ def current_holdings_pnl_for_history_day(
     """Value today's book at a historical close for a continuous P&L series."""
     holding_pnl = historical_holding_pnl(holdings, prices, fx_rate, balances, trades=trades, history_day=day)
     usd_holding_pnl = historical_holding_pnl(
-        holdings, prices, fx_rate, balances, set(USD_SYMBOLS), True, trades, day
+        holdings, prices, fx_rate, balances, set(profile_assets().usd_symbols), True, trades, day
     )
     # Closed satellite positions remain part of the user's displayed P&L even
     # after their zero-share holding row is removed. Keep that frozen result
@@ -1282,7 +1282,7 @@ def annotate_trade_close_effects(
                 effect_native = shares * (close_price - trade_price)
             item["close_price"] = close_price
             item["close_effect"] = effect_native
-            item["close_effect_cny"] = effect_native * fx if sym in USD_SYMBOLS else effect_native
+            item["close_effect_cny"] = effect_native * fx if sym in profile_assets().usd_symbols else effect_native
         annotated.append(item)
     return annotated
 
@@ -1337,7 +1337,7 @@ def current_portfolio_daily_pct(
                 old_shares -= shares
         old_shares = max(0.0, old_shares)
 
-        multiplier = fx if sym in USD_SYMBOLS else 1.0
+        multiplier = fx if sym in profile_assets().usd_symbols else 1.0
         remaining_old_shares = old_shares
         basis = 0.0
         pnl = 0.0
@@ -1540,7 +1540,7 @@ def ensure_completed_performance_history(
     adjustments = load_portfolio_adjustments(user_id)
     _, balances, _ = load_user_state(user_id)
     usd_cost_fx = float(fx_conversion_summary(load_fx_conversion_records(user_id), fx)["avg_rate"] or fx)
-    symbols = (set(holdings) | {str(trade.get("symbol", "")).upper() for trade in trades} | {"VOO", "QQQ"}) & set(ASSET_META)
+    symbols = (set(holdings) | {str(trade.get("symbol", "")).upper() for trade in trades} | {"VOO", "QQQ"}) & set(profile_assets().asset_meta)
     histories = fetch_close_histories(symbols)
     merge_recorded_close_histories(histories, rows)
     fx_history = fetch_fx_usdcny_history()
@@ -1585,17 +1585,17 @@ def ensure_completed_performance_history(
                 }
                 holding_pnl = historical_holding_pnl(row["holdings_snapshot"], holding_prices, row_fx, balances, trades=trades, history_day=day)
                 usd_holding_pnl = historical_holding_pnl(
-                    row["holdings_snapshot"], holding_prices, row_fx, balances, set(USD_SYMBOLS), True, trades, day
+                    row["holdings_snapshot"], holding_prices, row_fx, balances, set(profile_assets().usd_symbols), True, trades, day
                 )
                 portfolio_daily_pct, symbol_position_pct, holding_daily_pnl_cny, holding_daily_basis_cny = completed_portfolio_daily_pct(
                     row["holdings_snapshot"], day, histories, row_fx, trades
                 )
                 symbol_market_pct = completed_market_daily_pcts(set(row["holdings_snapshot"]), day, histories)
                 usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
-                    row["holdings_snapshot"], day, histories, row_fx, trades, set(USD_SYMBOLS), True
+                    row["holdings_snapshot"], day, histories, row_fx, trades, set(profile_assets().usd_symbols), True
                 )
                 satellite_daily_pct, _, satellite_daily_pnl_usd, satellite_daily_basis_usd = completed_portfolio_daily_pct(
-                    row["holdings_snapshot"], day, histories, row_fx, trades, set(SATELLITE_SYMBOLS), True
+                    row["holdings_snapshot"], day, histories, row_fx, trades, set(profile_satellite_symbols(SATELLITE_SYMBOLS)), True
                 )
                 row.update(
                     {
@@ -1698,14 +1698,14 @@ def ensure_completed_performance_history(
             for sym in snapshot
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
-        usd_holding_pnl = historical_holding_pnl(snapshot, holding_prices, row_fx, balances, set(USD_SYMBOLS), True, trades, day)
+        usd_holding_pnl = historical_holding_pnl(snapshot, holding_prices, row_fx, balances, set(profile_assets().usd_symbols), True, trades, day)
         usd_daily_pct, _, holding_daily_pnl_usd, holding_daily_basis_usd = completed_portfolio_daily_pct(
             snapshot,
             day,
             histories,
             row_fx,
             trades,
-            set(USD_SYMBOLS),
+            set(profile_assets().usd_symbols),
             True,
         )
         row["usd_return_pct"] = usd_holding_pnl["pct"]
@@ -1746,7 +1746,7 @@ def ensure_completed_performance_history(
             histories,
             day_fx,
             trades,
-            set(USD_SYMBOLS),
+            set(profile_assets().usd_symbols),
             True,
         )
         satellite_daily_pct, _, satellite_daily_pnl_usd, satellite_daily_basis_usd = completed_portfolio_daily_pct(
@@ -1755,7 +1755,7 @@ def ensure_completed_performance_history(
             histories,
             day_fx,
             trades,
-            set(SATELLITE_SYMBOLS),
+            set(profile_satellite_symbols(SATELLITE_SYMBOLS)),
             True,
         )
         benchmark_daily_pct = {
@@ -1775,9 +1775,9 @@ def ensure_completed_performance_history(
             if (price := close_on(histories.get(sym, {}), day) or close_on_or_before(histories.get(sym, {}), day)) is not None
         }
         holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances, trades=trades, history_day=day)
-        usd_holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances, set(USD_SYMBOLS), True, trades, day)
+        usd_holding_pnl = historical_holding_pnl(holdings_snapshot, holding_prices, day_fx, balances, set(profile_assets().usd_symbols), True, trades, day)
         day_cash_flow_cny = sum(
-            max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (day_fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
+            max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (day_fx if str(trade.get("symbol", "")).upper() in profile_assets().usd_symbols else 1.0)
             for trade in trades
             if str(trade.get("trade_date") or "")[:10] == day and trade.get("action") != "dividend"
         )
@@ -1847,10 +1847,11 @@ def start_performance_history_scheduler(user_id: str | None = None) -> None:
         check_key = f"{current_user}:{now.date().isoformat()}"
         if now.hour >= PERFORMANCE_WRITE_HOUR and check_key != last_checked_day:
             try:
-                holdings, _, _ = load_user_state(current_user)
-                market = fetch_quotes()
-                fx = float((market.get("fx") or {}).get("rate") or 7.2)
-                ensure_completed_performance_history(current_user, holdings, fx, now)
+                with portfolio_profile(current_user):
+                    holdings, _, _ = load_user_state(current_user)
+                    market = fetch_quotes()
+                    fx = float((market.get("fx") or {}).get("rate") or 7.2)
+                    ensure_completed_performance_history(current_user, holdings, fx, now)
                 last_checked_day = check_key
             except Exception:
                 pass
@@ -1890,7 +1891,7 @@ def build_performance_history(
     now = datetime.now(TZ_SHANGHAI)
     today = performance_history_date(now)
     benchmark_symbols = tuple(PERFORMANCE_BENCHMARK_SOURCES)
-    required_history_symbols = list(ALL_SYMBOLS)
+    required_history_symbols = list(profile_assets().all_symbols)
     history_quotes_usable = all(is_history_quote_usable(quotes.get(sym)) for sym in required_history_symbols)
     benchmark_prices = {}
     benchmark_daily_pct: dict[str, float] = {}
@@ -2142,7 +2143,7 @@ def performance_history_date(now: datetime | None = None) -> str:
 
 
 def is_symbol_daily_history_ready(symbol: str, investment_day: str, now: datetime | None = None) -> bool:
-    if symbol in USD_SYMBOLS:
+    if symbol in profile_assets().usd_symbols:
         return is_us_daily_history_ready(symbol, investment_day, now)
     return True
 
@@ -2153,7 +2154,7 @@ def is_symbol_daily_history_estimated(
     now: datetime | None = None,
     quote: Any = None,
 ) -> bool:
-    if symbol in USD_SYMBOLS:
+    if symbol in profile_assets().usd_symbols:
         return not is_us_daily_history_ready(symbol, investment_day, now)
     return False
 
@@ -2198,14 +2199,14 @@ def coerce_optional_float(value: Any) -> float | None:
 def history_daily_pct_for_symbol(symbol: str, quote: dict[str, Any], investment_day: str, now: datetime) -> float:
     # Quote providers commonly retain Friday's change over the weekend. Do not
     # count that old move again as the current investment day's return.
-    if symbol not in USD_SYMBOLS and not is_weekday(investment_day):
+    if symbol not in profile_assets().usd_symbols and not is_weekday(investment_day):
         return 0.0
     session = str(quote.get("session") or "").lower()
     # During an extended session, use the regular-session close as the base
     # price (that close is normalized to 1). The provider's extended return is
     # already measured against that base, so it represents the current USD P&L
     # directly; do not compound it with the regular-session return.
-    if symbol in USD_SYMBOLS and session != "regular":
+    if symbol in profile_assets().usd_symbols and session != "regular":
         extended_pct = coerce_optional_float(quote.get("extended_change_pct"))
         if extended_pct is not None and session != "closed":
             return extended_pct
@@ -2252,7 +2253,7 @@ def closed_display_regular_pct(
     completed_row: dict[str, Any] | None,
 ) -> float:
     """Return the latest valid regular-session move for closed display."""
-    if symbol in USD_SYMBOLS:
+    if symbol in profile_assets().usd_symbols:
         regular_pct = coerce_optional_float(
             quote.get("regular_change_pct", quote.get("change_pct"))
         )
@@ -2269,7 +2270,7 @@ def closed_display_daily_pct(
 ) -> float:
     """Return the latest frozen regular + extended move for closed display."""
     regular_pct = closed_display_regular_pct(symbol, quote, completed_row)
-    return treemap_daily_pct(quote, regular_pct) if symbol in USD_SYMBOLS else regular_pct
+    return treemap_daily_pct(quote, regular_pct) if symbol in profile_assets().usd_symbols else regular_pct
 
 
 
@@ -2281,15 +2282,17 @@ def closed_display_daily_pct(
 
 
 def daily_pct_for_current_history_quote(symbol: str, investment_day: str, now: datetime, quote: dict[str, Any]) -> float:
-    if symbol in USD_SYMBOLS and str(quote.get("session") or "").lower() == "closed":
+    if symbol in profile_assets().usd_symbols and str(quote.get("session") or "").lower() == "closed":
         return 0.0
     return history_daily_pct_for_symbol(symbol, quote, investment_day, now)
 
 
 def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[str, Any]:
+    assets = profile_assets()
+    satellite_symbols = assets.satellite_symbols
     market = fetch_quotes(force_refresh=force_refresh)
     target_weights = effective_target_weights()
-    quotes = dict(market["quotes"])
+    quotes = {sym: market["quotes"].get(sym, {}) for sym in assets.all_symbols}
     fx = float(market["fx"]["rate"])
     holdings, balances, storage_mode = load_user_state(user_id)
     drawdown_store = load_drawdown_episode_store(user_id)
@@ -2314,7 +2317,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
     trade_records = load_trade_records(user_id)
     trades = [row for row in trade_records if not row.get("history_only")]
     holdings = raw_holdings
-    for sym in ALL_SYMBOLS:
+    for sym in assets.all_symbols:
         holdings.setdefault(sym, raw_holdings.get(sym, {"shares": 0.0, "avg_cost": 0.0}))
     forward_pe = market.get("forward_pe", {})
     valuation_metrics = market.get("valuation_metrics", {})
@@ -2322,8 +2325,8 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
     value_cny_by_symbol: dict[str, float] = {}
     total_value_cny = 0.0
     total_cost_cny = 0.0
-    for sym in ALL_SYMBOLS:
-        meta = ASSET_META[sym]
+    for sym in assets.all_symbols:
+        meta = assets.asset_meta[sym]
         holding = holdings[sym]
         quote = quotes[sym]
         shares = float(holding["shares"])
@@ -2409,9 +2412,9 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
                 "recent_5d_pct": sixty_day.get("recent_5d_pct"),
                 "forward_pe": fpe,
                 "pe": pe,
-                "pe_band": pe_band_text(sym) if sym in SATELLITE_SYMBOLS else "-",
+                "pe_band": pe_band_text(sym) if sym in satellite_symbols else "-",
                 "peg": peg,
-                "peg_band": peg_band_text(sym) if sym in SATELLITE_SYMBOLS else "-",
+                "peg_band": peg_band_text(sym) if sym in satellite_symbols else "-",
                 "forward_ps": forward_ps,
                 "ps": ps,
                 "ps_band": ps_band_text(sym) if sym in PS_BANDS else None,
@@ -2426,11 +2429,11 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
 
     daily_cards = []
     card_by_symbol: dict[str, dict[str, Any]] = {}
-    for sym in ("VOO", "QQQ", *SATELLITE_SYMBOLS, "SGOV"):
+    for sym in ("VOO", "QQQ", *satellite_symbols, "SGOV"):
         quote = quotes[sym]
         holding = holdings[sym]
         shares = float(holding["shares"])
-        currency = ASSET_META[sym]["currency"]
+        currency = assets.asset_meta[sym]["currency"]
         regular_price = float(quote.get("regular_price") or quote.get("price") or 0.0)
         regular_value = shares * regular_price
         regular_value_cny = regular_value * fx if currency == "USD" else regular_value
@@ -2458,7 +2461,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
             extended_change_cny = extended_change * fx if currency == "USD" else extended_change
         card = {
                 "symbol": sym,
-                "label": ASSET_META[sym]["label"],
+                "label": assets.asset_meta[sym]["label"],
                 "session": quote.get("session", "regular"),
                 "price_line": _quote_price_line(sym, quote),
                 "currency": currency,
@@ -2488,7 +2491,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
 
     satellite_value_cny = sum(
         float(holdings[sym]["shares"]) * float(quotes[sym].get("regular_price") or quotes[sym].get("price") or 0.0) * fx
-        for sym in SATELLITE_SYMBOLS
+        for sym in satellite_symbols
     )
     satellite_regular_pct = (
         sum(
@@ -2499,21 +2502,21 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
             )
             / satellite_value_cny
             * float(quotes[sym].get("regular_change_pct", quotes[sym].get("change_pct", 0.0)))
-            for sym in SATELLITE_SYMBOLS
+            for sym in satellite_symbols
         )
         if satellite_value_cny > 0
         else 0.0
     )
-    satellite_change_cny = sum(float(card_by_symbol[sym].get("change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
-    satellite_regular_change_cny = sum(float(card_by_symbol[sym].get("regular_change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
+    satellite_change_cny = sum(float(card_by_symbol[sym].get("change_cny") or 0.0) for sym in satellite_symbols)
+    satellite_regular_change_cny = sum(float(card_by_symbol[sym].get("regular_change_cny") or 0.0) for sym in satellite_symbols)
     satellite_summary_pct = (
-        satellite_change_cny / sum(value_cny_by_symbol.get(sym, 0.0) for sym in SATELLITE_SYMBOLS) * 100.0
-        if sum(value_cny_by_symbol.get(sym, 0.0) for sym in SATELLITE_SYMBOLS) > 0
+        satellite_change_cny / sum(value_cny_by_symbol.get(sym, 0.0) for sym in satellite_symbols) * 100.0
+        if sum(value_cny_by_symbol.get(sym, 0.0) for sym in satellite_symbols) > 0
         else 0.0
     )
     satellite_extended_change_cny = (
-        sum(float(card_by_symbol[sym].get("extended_change_cny") or 0.0) for sym in SATELLITE_SYMBOLS)
-        if any(card_by_symbol[sym].get("extended_change_cny") is not None for sym in SATELLITE_SYMBOLS)
+        sum(float(card_by_symbol[sym].get("extended_change_cny") or 0.0) for sym in satellite_symbols)
+        if any(card_by_symbol[sym].get("extended_change_cny") is not None for sym in satellite_symbols)
         else None
     )
     satellite_extended_pct = (
@@ -2548,7 +2551,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
         sum(
             (value_cny_by_symbol[s] / total_value_cny)
             * accounting_daily_pct(s)
-            for s in ALL_SYMBOLS
+            for s in assets.all_symbols
         )
         if total_value_cny > 0
         else 0.0
@@ -2556,12 +2559,12 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
     weighted_daily_pct = history_weighted_daily_pct
     weighted_daily_change_cny = sum(
         _daily_amount(value_cny_by_symbol.get(s, 0.0), accounting_daily_pct(s))
-        for s in ALL_SYMBOLS
+        for s in assets.all_symbols
     )
-    usd_value_usd = sum(value_cny_by_symbol.get(s, 0.0) / fx for s in USD_SYMBOLS) if fx > 0 else 0.0
+    usd_value_usd = sum(value_cny_by_symbol.get(s, 0.0) / fx for s in assets.usd_symbols) if fx > 0 else 0.0
     usd_cost_usd = sum(
         float(holdings[s].get("shares", 0.0) or 0.0) * float(holdings[s].get("avg_cost", 0.0) or 0.0)
-        for s in USD_SYMBOLS
+        for s in assets.usd_symbols
     )
     attributed_dividend_usd = float(balances.get("voo_dividend_usd", 0.0)) + float(
         balances.get("sgov_dividend_usd", 0.0)
@@ -2588,7 +2591,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
     usd_return_pct = usd_pnl_usd / usd_cost_usd * 100.0 if usd_cost_usd > 0 else 0.0
     usd_daily_pnl_usd = sum(
         _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, accounting_daily_pct(s))
-        for s in USD_SYMBOLS
+        for s in assets.usd_symbols
     )
     usd_daily_basis_usd = usd_value_usd
     usd_daily_pct = (
@@ -2598,9 +2601,9 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
     )
     satellite_daily_pnl_usd = sum(
         _daily_amount(value_cny_by_symbol.get(s, 0.0) / fx if fx > 0 else 0.0, accounting_daily_pct(s))
-        for s in SATELLITE_SYMBOLS
+        for s in satellite_symbols
     )
-    satellite_value_usd = sum(value_cny_by_symbol.get(s, 0.0) / fx for s in SATELLITE_SYMBOLS) if fx > 0 else 0.0
+    satellite_value_usd = sum(value_cny_by_symbol.get(s, 0.0) / fx for s in satellite_symbols) if fx > 0 else 0.0
     satellite_daily_basis_usd = satellite_value_usd - satellite_daily_pnl_usd
     satellite_daily_pct = (
         satellite_daily_pnl_usd / satellite_daily_basis_usd * 100.0
@@ -2631,7 +2634,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
         or float(target_weights.get(str(row.get("symbol", "")).upper(), 0.0) or 0.0) > 1e-9
     ]
     today_cash_flow_cny = sum(
-        max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in USD_SYMBOLS else 1.0)
+        max(0.0, float(trade.get("amount_usd", 0.0) or 0.0)) * (fx if str(trade.get("symbol", "")).upper() in assets.usd_symbols else 1.0)
         for trade in trades
         if str(trade.get("trade_date") or "")[:10] == history_day
     )
@@ -2697,7 +2700,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
                 value_cny_by_symbol.get(sym, 0.0),
                 closed_display_daily_pct(sym, quotes[sym], latest_completed_row),
             )
-            for sym in ALL_SYMBOLS
+            for sym in assets.all_symbols
         )
         closed_display_basis_cny = total_value_cny - weighted_daily_change_cny
         weighted_daily_pct = (
@@ -2710,7 +2713,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
     shanghai_now = history_now.astimezone(TZ_SHANGHAI)
     overnight_window = 5 <= shanghai_now.hour < 9
     live_daily_change_cny = 0.0
-    for sym in ALL_SYMBOLS:
+    for sym in assets.all_symbols:
         quote = quotes.get(sym) or {}
         session = str(quote.get("session") or "").lower()
         if overnight_window:
@@ -2986,19 +2989,19 @@ def build_rebalance_v2(
     next_month_cash_usd = float(usage.get("planned_cash_by_month", {}).get(next_month_key, planned_new_cash_usd))
     target_weights = effective_target_weights()
 
-    usd_weight_total = sum(target_weights[s] for s in USD_SYMBOLS)
+    usd_weight_total = sum(target_weights[s] for s in profile_assets().usd_symbols)
     cash_usd = float(balances.get("cash_usd", 0.0))
     cost_usd_by_symbol: dict[str, float] = {}
     for item in holding_rows:
         sym = str(item.get("symbol", "")).upper()
-        if sym not in USD_SYMBOLS:
+        if sym not in profile_assets().usd_symbols:
             continue
         shares = max(0.0, float(item.get("shares", 0.0) or 0.0))
         avg_cost = max(0.0, float(item.get("avg_cost", 0.0) or 0.0))
         cost_usd_by_symbol[sym] = shares * avg_cost
     sgov_target_pct = target_weights["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
     sgov_current_usd = value_cny_by_symbol.get("SGOV", 0.0) / fx if fx > 0 else 0.0
-    holding_value_usd = sum(value_cny_by_symbol.get(sym, 0.0) for sym in USD_SYMBOLS) / fx if fx > 0 else 0.0
+    holding_value_usd = sum(value_cny_by_symbol.get(sym, 0.0) for sym in profile_assets().usd_symbols) / fx if fx > 0 else 0.0
     current_assets_usd = holding_value_usd + cash_usd
     next_month_assets_usd = current_assets_usd + next_month_cash_usd
     holding_cost_usd = sum(cost_usd_by_symbol.values())
@@ -3021,7 +3024,7 @@ def build_rebalance_v2(
     has_large_trigger = False
     for item in holding_rows:
         sym = item["symbol"]
-        if sym not in USD_SYMBOLS or sym == "SGOV":
+        if sym not in profile_assets().usd_symbols or sym == "SGOV":
             continue
         current_usd = item["value_cny"] / fx if fx > 0 else 0.0
         cost_usd = cost_usd_by_symbol.get(sym, 0.0)
@@ -3355,7 +3358,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
     realized_pnl = 0.0
     for item in executions:
         sym = str(item.get("symbol", "")).upper()
-        if sym not in USD_SYMBOLS or sym == "SGOV":
+        if sym not in profile_assets().usd_symbols or sym == "SGOV":
             continue
         action = str(item.get("action", "buy")).lower()
         if action not in {"buy", "sell"}:
@@ -3429,7 +3432,7 @@ def confirm_trades(user_id: str, executions: list[dict[str, Any]]) -> dict[str, 
     available_usd = float(balances.get("cash_usd", 0.0) or 0.0)
     for item in executions:
         sym = str(item.get("symbol", "")).upper()
-        if sym not in USD_SYMBOLS:
+        if sym not in profile_assets().usd_symbols:
             continue
         tracks_monthly_usage = sym != "SGOV"
         action = str(item.get("action", "buy")).lower()
@@ -3567,7 +3570,7 @@ def _rebuild_month_usage_from_records(user_id: str, month_key: str, records: lis
         if record.get("history_only") or str(record.get("trade_date") or "")[:7] != month_key:
             continue
         sym = str(record.get("symbol", "")).upper()
-        if sym not in USD_SYMBOLS or sym == "SGOV":
+        if sym not in profile_assets().usd_symbols or sym == "SGOV":
             continue
         amount = max(0.0, float(record.get("amount_usd", 0.0) or 0.0))
         if str(record.get("action", "buy")).lower() == "sell":

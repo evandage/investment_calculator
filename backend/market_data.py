@@ -55,15 +55,15 @@ _EXTENDED_US_SESSIONS = frozenset({"premarket", "postmarket", "overnight"})
 
 
 def _usd_symbols() -> tuple[str, ...]:
-    return tuple(app_config.USD_SYMBOLS)
+    return tuple(app_config.market_assets().usd_symbols)
 
 
 def _satellite_symbols() -> tuple[str, ...]:
-    return tuple(app_config.SATELLITE_SYMBOLS)
+    return tuple(app_config.market_assets().satellite_symbols)
 
 
 def _futu_subscribe_symbols() -> tuple[str, ...]:
-    return tuple(sym for sym in _usd_symbols() if sym in app_config.FUTU_US)
+    return tuple(sym for sym in _usd_symbols() if sym in app_config.market_assets().futu_us)
 
 
 def _futu_subscription_groups(
@@ -73,7 +73,7 @@ def _futu_subscription_groups(
     us_symbols = tuple(
         sym
         for sym in symbols
-        if str(app_config.FUTU_US.get(sym, "")).upper().startswith("US.")
+        if str(app_config.market_assets().futu_us.get(sym, "")).upper().startswith("US.")
     )
     optional_symbols = tuple(sym for sym in symbols if sym not in us_symbols)
     groups: list[tuple[tuple[str, ...], bool]] = []
@@ -181,7 +181,7 @@ def _price_matches_change_pct(price: float | None, base: float | None, pct: floa
 
 def _is_us_futu_symbol(sym: str) -> bool:
     """Return whether a dashboard symbol maps to Futu's US market."""
-    return str(app_config.FUTU_US.get(sym, "")).upper().startswith("US.")
+    return str(app_config.market_assets().futu_us.get(sym, "")).upper().startswith("US.")
 
 
 def _build_futu_quote(sym: str, row: Any, state: str = "") -> dict[str, Any] | None:
@@ -298,7 +298,7 @@ def _apply_futu_ticker_price(quote: dict[str, Any], sym: str, price: float) -> d
 
 
 def _update_futu_subscription_quotes(data: Any) -> None:
-    code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
+    code_to_sym = {code: sym for sym, code in app_config.market_assets().futu_us.items()}
     now = time.time()
     next_quotes: dict[str, dict[str, Any]] = {}
     for i in range(len(data)):
@@ -321,7 +321,7 @@ def _update_futu_subscription_quotes(data: Any) -> None:
 
 
 def _update_futu_subscription_klines(data: Any) -> None:
-    code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
+    code_to_sym = {code: sym for sym, code in app_config.market_assets().futu_us.items()}
     interval_by_type = {"K_1M": "1m", "K_15M": "15m", "K_5M": "5m"}
     with _FUTU_SUB_LOCK:
         for i in range(len(data)):
@@ -344,7 +344,7 @@ def _update_futu_subscription_klines(data: Any) -> None:
 
 
 def _update_futu_subscription_tickers(data: Any) -> None:
-    code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
+    code_to_sym = {code: sym for sym, code in app_config.market_assets().futu_us.items()}
     now = time.time()
     with _FUTU_SUB_LOCK:
         for i in range(len(data)):
@@ -450,7 +450,7 @@ def start_futu_quote_subscription(force: bool = False) -> dict[str, Any]:
         fatal_quote_error = ""
         for group, required in subscription_groups:
             ret, msg = ctx.subscribe(
-                [app_config.FUTU_US[sym] for sym in group],
+                [app_config.market_assets().futu_us[sym] for sym in group],
                 [SubType.QUOTE],
                 is_first_push=True,
                 subscribe_push=True,
@@ -515,7 +515,7 @@ def _futu_subscribe_dynamic(symbols: list[str], types: list[str]) -> None:
         ctx = _FUTU_SUB_CTX
         if ctx is None or not _FUTU_SUB_STARTED:
             return
-        valid_symbols = [sym for sym in dict.fromkeys(symbols) if sym in app_config.FUTU_US]
+        valid_symbols = [sym for sym in dict.fromkeys(symbols) if sym in app_config.market_assets().futu_us]
         valid_types = [name for name in dict.fromkeys(types) if name in _FUTU_SUB_TYPE_ENUMS]
         if not valid_symbols or not valid_types:
             return
@@ -527,14 +527,14 @@ def _futu_subscribe_dynamic(symbols: list[str], types: list[str]) -> None:
                 if timer is not None:
                     timer.cancel()
                 if key not in _FUTU_ACTIVE_SUBSCRIPTIONS:
-                    is_us = str(app_config.FUTU_US[symbol]).upper().startswith("US.")
+                    is_us = str(app_config.market_assets().futu_us[symbol]).upper().startswith("US.")
                     grouped.setdefault((name, is_us), []).append(symbol)
         for (name, is_us), group in grouped.items():
             kwargs: dict[str, Any] = {"is_first_push": True, "subscribe_push": True}
             if is_us:
                 kwargs["extended_time"] = True
             ret, message = ctx.subscribe(
-                [app_config.FUTU_US[sym] for sym in group],
+                [app_config.market_assets().futu_us[sym] for sym in group],
                 [_FUTU_SUB_TYPE_ENUMS[name]],
                 **kwargs,
             )
@@ -553,7 +553,7 @@ def _futu_release_dynamic_one(symbol: str, type_name: str) -> None:
         if ctx is None or subtype is None or (symbol, type_name) not in _FUTU_ACTIVE_SUBSCRIPTIONS:
             return
         try:
-            ctx.unsubscribe([app_config.FUTU_US[symbol]], [subtype])
+            ctx.unsubscribe([app_config.market_assets().futu_us[symbol]], [subtype])
         finally:
             _FUTU_ACTIVE_SUBSCRIPTIONS.discard((symbol, type_name))
 
@@ -707,8 +707,8 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
     ctx = None
     out: dict[str, dict[str, Any]] = {}
     usd_symbols = _usd_symbols()
-    futu_codes = [app_config.FUTU_US[sym] for sym in usd_symbols if sym in app_config.FUTU_US]
-    code_to_sym = {code: sym for sym, code in app_config.FUTU_US.items()}
+    futu_codes = [app_config.market_assets().futu_us[sym] for sym in usd_symbols if sym in app_config.market_assets().futu_us]
+    code_to_sym = {code: sym for sym, code in app_config.market_assets().futu_us.items()}
     try:
         ctx = OpenQuoteContext(host=host, port=port)
         ret, snapshot = ctx.get_market_snapshot(futu_codes)
@@ -797,7 +797,7 @@ def fetch_futu_us_quotes() -> dict[str, dict[str, Any]]:
 
 
 def fetch_tencent_us_quotes() -> dict[str, dict[str, Any]]:
-    qq_us = dict(app_config.QQ_US)
+    qq_us = dict(app_config.market_assets().qq_us)
     url = "http://qt.gtimg.cn/q=" + ",".join(qq_us.values())
     try:
         r = requests.get(url, timeout=HTTP_TIMEOUT, headers=REQUEST_HEADERS)
@@ -840,7 +840,7 @@ def fetch_tencent_us_quotes() -> dict[str, dict[str, Any]]:
 
 
 def fetch_sina_us_quote(symbol: str) -> dict[str, Any] | None:
-    code = app_config.SINA_GB.get(symbol)
+    code = app_config.market_assets().sina_gb.get(symbol)
     if not code:
         return None
     try:
@@ -1001,7 +1001,7 @@ def fetch_valuation_metrics(symbols: tuple[str, ...] | None = None) -> dict[str,
     try:
         ctx = OpenQuoteContext(host=host, port=port)
         for sym in symbols:
-            code = app_config.FUTU_US.get(sym)
+            code = app_config.market_assets().futu_us.get(sym)
             if not code:
                 continue
             try:
@@ -1092,9 +1092,9 @@ def fetch_quotes(force_refresh: bool = False) -> dict[str, Any]:
             fallback = fetch_sina_us_quote(sym)
             if fallback:
                 quotes[sym] = fallback
-    for sym in app_config.ALL_SYMBOLS:
+    for sym in app_config.market_assets().all_symbols:
         if sym not in quotes:
-            price = app_config.FALLBACK_PRICES[sym]
+            price = app_config.market_assets().fallback_prices[sym]
             quotes[sym] = {
                 "symbol": sym,
                 "price": price,

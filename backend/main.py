@@ -4,7 +4,6 @@ import asyncio
 import concurrent.futures
 import copy
 import importlib
-import sys
 import threading
 import time
 from datetime import datetime
@@ -14,10 +13,11 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.datastructures import Headers, QueryParams
+from starlette.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import config as config_module
-from . import market_data as market_data_module
 from . import portfolio as portfolio_module
 from . import storage as storage_module
 from .market_data import (
@@ -61,7 +61,7 @@ from .storage import (
     record_portfolio_adjustment,
 )
 from .drawdown_recalculation import start_monthly_drawdown_scheduler
-from .profiles import PROFILES, active_user_id, switch_profile
+from .profiles import PROFILES, active_user_id
 
 TZ_SHANGHAI = config_module.TZ_SHANGHAI
 TZ_NEW_YORK = ZoneInfo("America/New_York")
@@ -139,15 +139,15 @@ class FxConversionPayload(BaseModel):
 
 
 def _chart_symbols() -> set[str]:
-    return {"VOO", "QQQ", *config_module.SATELLITE_SYMBOLS}
+    return {"VOO", "QQQ", *config_module.profile_assets().satellite_symbols}
 
 
 def _chart_labels() -> dict[str, str]:
-    symbols = ("VOO", "QQQ", *config_module.SATELLITE_SYMBOLS)
+    symbols = ("VOO", "QQQ", *config_module.profile_assets().satellite_symbols)
     labels = {
-        symbol: config_module.ASSET_META.get(symbol, {}).get("label", symbol)
+        symbol: config_module.profile_assets().asset_meta.get(symbol, {}).get("label", symbol)
         for symbol in symbols
-        if symbol in config_module.ASSET_META
+        if symbol in config_module.profile_assets().asset_meta
     }
     return labels
 
@@ -167,19 +167,50 @@ def _chart_full_labels() -> dict[str, str]:
     }
 
 
-def _refresh_satellite_runtime_config() -> None:
-    for module in (storage_module, market_data_module, portfolio_module):
-        if hasattr(module, "ALL_SYMBOLS"):
-            module.ALL_SYMBOLS = config_module.ALL_SYMBOLS
-        if hasattr(module, "SATELLITE_SYMBOLS"):
-            module.SATELLITE_SYMBOLS = config_module.SATELLITE_SYMBOLS
-        if hasattr(module, "USD_SYMBOLS"):
-            module.USD_SYMBOLS = config_module.USD_SYMBOLS
-        if hasattr(module, "DEFAULT_SATELLITE_TARGET_PCTS"):
-            module.DEFAULT_SATELLITE_TARGET_PCTS = config_module.DEFAULT_SATELLITE_TARGET_PCTS
+class ProfileMiddleware:
+    def __init__(self, app):
+        self.app = app
+        self.ledger_locks = {user_id: asyncio.Lock() for user_id in PROFILES}
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        is_http = scope["type"] == "http" and path.startswith("/api/")
+        is_socket = scope["type"] == "websocket" and path.startswith("/ws/")
+        if not (is_http or is_socket) or path in {"/api/health", "/api/profiles", "/api/quotes", "/ws/quotes"}:
+            await self.app(scope, receive, send)
+            return
+
+        if is_socket:
+            user_id = QueryParams(scope["query_string"].decode("latin-1")).get("profile")
+        else:
+            user_id = Headers(scope=scope).get("X-Portfolio-Profile")
+        if user_id not in PROFILES:
+            if is_socket:
+                await send({"type": "websocket.close", "code": 1008})
+            else:
+                await JSONResponse({"detail": "请选择投资账户"}, status_code=400)(scope, receive, send)
+            return
+
+        async def send_profile_response(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [
+                    (name, value) for name, value in message.get("headers", [])
+                    if name.lower() != b"cache-control"
+                ] + [(b"cache-control", b"no-store")]
+            await send(message)
+
+        # Dashboard reads also maintain the selected account's performance history.
+        if is_http and (scope["method"] != "GET" or path == "/api/dashboard"):
+            async with self.ledger_locks[user_id]:
+                with config_module.portfolio_profile(user_id):
+                    await self.app(scope, receive, send_profile_response)
+        else:
+            with config_module.portfolio_profile(user_id):
+                await self.app(scope, receive, send_profile_response)
 
 
 app = FastAPI(title="Investment Dashboard API")
+app.add_middleware(ProfileMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -202,9 +233,11 @@ def root() -> dict[str, str]:
 
 @app.on_event("startup")
 def startup() -> None:
+    config_module.refresh_market_assets()
     threading.Thread(target=start_futu_quote_subscription, daemon=True).start()
-    threading.Thread(target=start_performance_history_scheduler, daemon=True).start()
-    threading.Thread(target=start_monthly_drawdown_scheduler, daemon=True).start()
+    for user_id in PROFILES:
+        threading.Thread(target=start_performance_history_scheduler, args=(user_id,), daemon=True).start()
+        threading.Thread(target=start_monthly_drawdown_scheduler, args=(user_id,), daemon=True).start()
 
 
 @app.on_event("shutdown")
@@ -228,7 +261,7 @@ def quotes() -> dict[str, Any]:
 
 
 @app.get("/api/dashboard")
-def dashboard(user_id: str = "evan", refresh: bool = False) -> dict[str, Any]:
+def dashboard(refresh: bool = False) -> dict[str, Any]:
     return build_dashboard(active_user_id(), force_refresh=refresh)
 
 
@@ -240,24 +273,7 @@ def trades() -> dict[str, Any]:
 
 @app.get("/api/profiles")
 def profiles() -> dict[str, Any]:
-    return {"active_user_id": active_user_id(), "profiles": [{"id": key, "name": name} for key, name in PROFILES.items()]}
-
-
-class SwitchProfilePayload(BaseModel):
-    user_id: str
-
-
-@app.put("/api/profiles/active")
-def update_active_profile(payload: SwitchProfilePayload) -> dict[str, Any]:
-    if payload.user_id not in PROFILES:
-        raise HTTPException(status_code=400, detail="Unknown profile")
-    switch_profile(payload.user_id)
-    config_module._apply_satellite_universe()
-    _refresh_satellite_runtime_config()
-    stop_futu_quote_subscription()
-    threading.Thread(target=start_futu_quote_subscription, kwargs={"force": True}, daemon=True).start()
-    return profiles()
-
+    return {"profiles": [{"id": key, "name": name} for key, name in PROFILES.items()]}
 
 @app.get("/api/ohlcv")
 def ohlcv(
@@ -957,7 +973,7 @@ def update_balances(payload: BalancesPayload) -> dict[str, Any]:
 
 
 @app.get("/api/portfolio-audit")
-def portfolio_audit(user_id: str = "evan") -> dict[str, Any]:
+def portfolio_audit() -> dict[str, Any]:
     user_id = active_user_id()
     ledger = load_portfolio_snapshot_ledger(user_id)
     latest_by_date: dict[str, dict[str, Any]] = {}
@@ -1042,12 +1058,12 @@ def update_satellite_universe(payload: SatelliteUniversePayload) -> dict[str, An
         save_closed_satellite_pnl(archived_rows)
 
     items = config_module.save_satellite_universe_config(requested_items)
-    _refresh_satellite_runtime_config()
     save_holdings(load_holdings())
     save_satellite_targets({item["symbol"]: float(item.get("target_pct") or 0.0) for item in items})
-    if "chart_boards" in sys.modules:
-        importlib.reload(sys.modules["chart_boards"])
-    stop_futu_quote_subscription()
+    with _GLOBAL_BOARD_CACHE_LOCK:
+        for key in [key for key in _GLOBAL_BOARD_CACHE if key[-1] == user_id]:
+            del _GLOBAL_BOARD_CACHE[key]
+    config_module.refresh_market_assets()
     threading.Thread(target=start_futu_quote_subscription, kwargs={"force": True}, daemon=True).start()
     return {
         "saved": True,

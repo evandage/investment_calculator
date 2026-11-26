@@ -1,0 +1,112 @@
+.profilePicker {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: 40px 24px;
+  background:
+    radial-gradient(ellipse at 50% 20%, #172d46 0, transparent 52%),
+    #0a111d;
+}
+
+.profilePickerInner {
+  width: min(100%, 570px);
+  text-align: center;
+}
+
+.profilePickerBrand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #c0d3e9;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.profilePickerBrand svg { color: #8cd5ff; }
+
+.profilePicker h1 {
+  margin: 16px 0 32px;
+  color: #f4f8ff;
+  font-size: clamp(1.85rem, 5vw, 2.75rem);
+  letter-spacing: -0.035em;
+}
+
+.profilePickerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(12px, 4vw, 24px);
+}
+
+.profilePicker .profileCard {
+  display: block;
+  min-width: 0;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid #31445a;
+  border-radius: 18px;
+  background: #142132;
+  color: #f4f8ff;
+  box-shadow: 0 18px 36px #05080e55;
+  text-align: left;
+  transition: border-color 160ms, background 160ms, transform 160ms;
+}
+
+.profilePicker .profileCard:hover {
+  transform: translateY(-3px);
+  border-color: #77b6e3;
+  background: #1b3046;
+}
+
+.profilePicker .profileCard:focus-visible {
+  outline: 2px solid #8cd5ff;
+  outline-offset: 4px;
+}
+
+.profileCard img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.profileCardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 13px 8px 7px;
+  font-size: clamp(1rem, 3vw, 1.25rem);
+  font-weight: 650;
+}
+
+.profileCardFooter svg { flex: none; color: #9cc7e8; }
+
+.profileControls .profileSwitch {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 5px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--glass-fill-soft);
+  color: var(--text-main);
+  font-weight: 650;
+}
+
+.profileSwitch img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profileBack { margin: 0 0 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .profilePicker .profileCard { transition: none; }
+  .profilePicker .profileCard:hover { transform: none; }
+}

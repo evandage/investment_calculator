@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from .config import FUTU_US
+from .config import market_assets
 from .market_data import futu_opend_config, get_futu_subscription_kline, is_futu_opend_available
 
 Interval = Literal["1d", "15m", "5m", "1m"]
@@ -35,7 +35,7 @@ _FUTU_HISTORY_RESULTS: dict[
 
 
 def _market_tz(symbol: str) -> ZoneInfo:
-    code = FUTU_US.get(symbol, "")
+    code = market_assets().futu_us.get(symbol, "")
     return _TZ_SHANGHAI if code.startswith(("SH.", "SZ.")) else _TZ_NEW_YORK
 
 
@@ -104,7 +104,7 @@ def _futu_ts_to_lightweight(
     if interval == "1d":
         return ts.date().isoformat()
 
-    code = FUTU_US.get(symbol, "")
+    code = market_assets().futu_us.get(symbol, "")
     if code.startswith(("SH.", "SZ.")) and (ts.hour, ts.minute) in {(9, 30), (13, 0)}:
         return None
 
@@ -218,14 +218,14 @@ def _latest_trading_day_bars(symbol: str, bars: list[dict[str, Any]]) -> list[di
 
 def _in_regular_session(symbol: str, local_time: datetime) -> bool:
     minutes = local_time.hour * 60 + local_time.minute
-    if FUTU_US.get(symbol, "").startswith(("SH.", "SZ.")):
+    if market_assets().futu_us.get(symbol, "").startswith(("SH.", "SZ.")):
         return (9 * 60 + 30 <= minutes < 11 * 60 + 30) or (13 * 60 <= minutes < 15 * 60)
     return 9 * 60 + 30 <= minutes < 16 * 60
 
 
 def _in_displayed_intraday_session(symbol: str, local_time: datetime, show_extended: bool) -> bool:
     """Keep only the session range that the minute-chart time scale renders."""
-    if not show_extended or FUTU_US.get(symbol, "").startswith(("SH.", "SZ.")):
+    if not show_extended or market_assets().futu_us.get(symbol, "").startswith(("SH.", "SZ.")):
         return _in_regular_session(symbol, local_time)
     minutes = local_time.hour * 60 + local_time.minute
     # The board intentionally shows US pre-market and after-hours, not the
@@ -288,7 +288,7 @@ def _fetch_futu_ohlcv_sync(
     interval: Interval,
     selected_date: str = "",
 ) -> tuple[list[dict[str, Any]], str]:
-    if symbol not in FUTU_US or not is_futu_opend_available():
+    if symbol not in market_assets().futu_us or not is_futu_opend_available():
         return [], "futu_unavailable"
     try:
         from futu import AuType, KL_FIELD, OpenQuoteContext, RET_OK
@@ -296,7 +296,7 @@ def _fetch_futu_ohlcv_sync(
         return [], f"futu_import_failed: {exc}"
 
     host, port = futu_opend_config()
-    code = FUTU_US[symbol]
+    code = market_assets().futu_us[symbol]
     end = datetime.now()
     start = end - (timedelta(days=365 * 3 + 30) if interval == "1d" else timedelta(days=7))
     if interval != "1d" and selected_date:
@@ -446,7 +446,7 @@ def fetch_ohlcv(
     selected_date: str = "",
 ) -> dict[str, Any]:
     sym = str(symbol or "VOO").upper()
-    if sym not in FUTU_US:
+    if sym not in market_assets().futu_us:
         sym = "VOO"
     iv = interval if interval in {"1d", "15m", "5m", "1m"} else "1d"
     selected_day = selected_date[:10] if iv != "1d" else ""

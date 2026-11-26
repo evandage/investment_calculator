@@ -6,7 +6,7 @@ The application uses a FastAPI backend with a Vite/React frontend.
 
 - Backend: FastAPI on `http://127.0.0.1:8010`
 - Frontend: Vite React on `http://127.0.0.1:5173`
-- Profiles: use the top-right selector to switch between Evan and Nave. This is a local profile switch without passwords. The active profile is shared by all open tabs and devices using this server.
+- Profiles: choose Evan or Nave when opening the app. Click the account avatar in the top-right corner to return to the picker. Each tab sends its own profile with its requests. Profile selection is passwordless, so anyone with access to the app can choose either account.
 - Data files: Evan keeps the existing root JSON files. Nave's holdings, balances, satellite universe and targets, swing positions, and closed satellite P&L live under `profiles/nave/`. Trade, FX, budget, history, and audit files retain their separate user-keyed records.
 - Market data: Futu OpenD first, Tencent/Sina/Eastmoney fallback
 
