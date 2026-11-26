@@ -156,7 +156,15 @@ FUTU_US = {
 
 
 _STATIC_SATELLITE_SYMBOLS = ("ISRG", "TEM", "PLTR", "GOOGL", "MSFT", "AVGO", "NVDA")
-_SATELLITE_TOTAL_WEIGHT = sum(TARGET_WEIGHTS.get(sym, 0.0) for sym in _STATIC_SATELLITE_SYMBOLS)
+_PROFILE_ALLOCATION_WEIGHTS = {
+    "evan": {
+        "VOO": TARGET_WEIGHTS["VOO"],
+        "QQQ": TARGET_WEIGHTS["QQQ"],
+        "SATELLITE": sum(TARGET_WEIGHTS[sym] for sym in _STATIC_SATELLITE_SYMBOLS),
+        "SGOV": TARGET_WEIGHTS["SGOV"],
+    },
+    "nave": {"VOO": 0.50, "QQQ": 0.15, "SATELLITE": 0.10, "SGOV": 0.25},
+}
 _BASE_SATELLITE_TARGETS = dict(DEFAULT_SATELLITE_TARGET_PCTS)
 _BASE_CONFIG = tuple(dict(mapping) for mapping in (FALLBACK_PRICES, ASSET_META, TARGET_WEIGHTS, QQ_US, SINA_GB, FUTU_US))
 
@@ -182,7 +190,7 @@ def _normalize_satellite_universe(raw: Any) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         sym = str(item.get("symbol", "")).strip().upper()
-        if not sym or not sym.replace(".", "").replace("-", "").isalnum() or sym in seen:
+        if sym in {"VOO", "QQQ", "SGOV", "SATELLITE"} or not sym.replace(".", "").replace("-", "").isalnum() or sym in seen:
             continue
         try:
             target_pct = max(0.0, float(item.get("target_pct", 0.0) or 0.0))
@@ -208,7 +216,7 @@ def _load_satellite_universe(user_id: str | None = None) -> list[dict[str, Any]]
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             raw = None
-    elif user_id == "nave":
+    if user_id == "nave" and not isinstance(raw, list):
         # Nave starts with an empty satellite list; symbols can be added as needed.
         raw = []
     return _normalize_satellite_universe(raw)
@@ -220,13 +228,14 @@ def load_satellite_universe_config() -> list[dict[str, Any]]:
 
 def save_satellite_universe_config(items: Any) -> list[dict[str, Any]]:
     normalized = _normalize_satellite_universe(items)
-    path = profile_path(SATELLITE_UNIVERSE_FILE)
+    user_id = active_user_id()
+    path = profile_path(SATELLITE_UNIVERSE_FILE, user_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
     if _PROFILE_ASSETS.get() is None:
         _apply_satellite_universe()
     else:
-        _PROFILE_ASSETS.set(_build_assets(normalized))
+        _PROFILE_ASSETS.set(_build_assets(normalized, user_id))
     return normalized
 
 
@@ -238,14 +247,17 @@ class PortfolioAssets:
     fallback_prices: dict[str, float]
     asset_meta: dict[str, dict[str, str]]
     target_weights: dict[str, float]
+    allocation_weights: dict[str, float]
     default_satellite_targets: dict[str, float]
     qq_us: dict[str, str]
     sina_gb: dict[str, str]
     futu_us: dict[str, str]
 
 
-def _build_assets(universe: list[dict[str, Any]]) -> PortfolioAssets:
+def _build_assets(universe: list[dict[str, Any]], user_id: str) -> PortfolioAssets:
     prices, meta, weights, qq, sina, futu = (dict(mapping) for mapping in _BASE_CONFIG)
+    allocation_weights = _PROFILE_ALLOCATION_WEIGHTS[user_id].copy()
+    weights.update({sym: allocation_weights[sym] for sym in ("VOO", "QQQ", "SGOV")})
     configured = tuple(item["symbol"] for item in universe)
     for sym in set(_STATIC_SATELLITE_SYMBOLS) - set(configured):
         for mapping in (prices, meta, weights, qq, sina, futu):
@@ -257,13 +269,13 @@ def _build_assets(universe: list[dict[str, Any]]) -> PortfolioAssets:
         prices[sym] = 0.0
         meta[sym] = {"label": item["label"], "currency": "USD"}
         targets[sym] = float(item["target_pct"])
-        weights[sym] = _SATELLITE_TOTAL_WEIGHT * targets[sym] / 100.0
+        weights[sym] = allocation_weights["SATELLITE"] * targets[sym] / 100.0
         qq.pop(sym, None)
         sina.pop(sym, None)
         futu[sym] = f"US.{sym}"
 
     symbols = ("VOO", "QQQ", *configured, "SGOV")
-    return PortfolioAssets(configured, symbols, symbols, prices, {sym: meta[sym] for sym in symbols}, weights, targets, qq, sina, futu)
+    return PortfolioAssets(configured, symbols, symbols, prices, {sym: meta[sym] for sym in symbols}, weights, allocation_weights, targets, qq, sina, futu)
 
 
 _PROFILE_ASSETS = ContextVar[PortfolioAssets | None]("profile_assets", default=None)
@@ -273,7 +285,7 @@ _market_assets: PortfolioAssets | None = None
 @contextmanager
 def portfolio_profile(user_id: str):
     with use_profile(user_id):
-        token = _PROFILE_ASSETS.set(_build_assets(_load_satellite_universe(user_id)))
+        token = _PROFILE_ASSETS.set(_build_assets(_load_satellite_universe(user_id), user_id))
         try:
             yield
         finally:
@@ -300,13 +312,14 @@ def refresh_market_assets() -> None:
         for user_id in PROFILES
         for item in _load_satellite_universe(user_id)
     }
-    _market_assets = _build_assets(list(universe.values()))
+    _market_assets = _build_assets(list(universe.values()), "evan")
 
 
 def _apply_satellite_universe() -> None:
     global SATELLITE_SYMBOLS, USD_SYMBOLS, ALL_SYMBOLS, DEFAULT_SATELLITE_TARGET_PCTS, _legacy_assets
 
-    _legacy_assets = _build_assets(_load_satellite_universe())
+    user_id = active_user_id()
+    _legacy_assets = _build_assets(_load_satellite_universe(user_id), user_id)
     for mapping, updated in (
         (FALLBACK_PRICES, _legacy_assets.fallback_prices),
         (ASSET_META, _legacy_assets.asset_meta),

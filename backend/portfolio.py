@@ -65,9 +65,12 @@ PERFORMANCE_HISTORY_START_DATE = "2026-07-07"
 PERFORMANCE_CHART_START_DATE = "2026-07-08"
 PERFORMANCE_CHART_BASELINE_DATE = "2026-07-08"
 PERFORMANCE_HISTORY_CALCULATION_VERSION = "2026-09-eod-v12-guard-missing-previous-close"
+
+
 def effective_target_weights() -> dict[str, float]:
-    weights = dict(profile_assets().target_weights)
-    satellite_total = sum(profile_assets().target_weights.get(sym, 0.0) for sym in profile_satellite_symbols(SATELLITE_SYMBOLS))
+    assets = profile_assets()
+    weights = dict(assets.target_weights)
+    satellite_total = assets.allocation_weights["SATELLITE"]
     satellite_targets = load_satellite_targets()
     for sym in profile_satellite_symbols(SATELLITE_SYMBOLS):
         weights[sym] = satellite_total * float(satellite_targets.get(sym, 0.0)) / 100.0
@@ -75,8 +78,13 @@ def effective_target_weights() -> dict[str, float]:
 
 
 def rebalance_rules_payload() -> dict[str, Any]:
+    allocation = profile_assets().allocation_weights
+    allocation_total = sum(allocation.values())
+    labels = {"VOO": "VOO", "QQQ": "QQQ", "SATELLITE": "卫星仓位", "SGOV": "SGOV"}
+    allocation_summary = " / ".join(f"{label} {allocation[key] / allocation_total:.0%}" for key, label in labels.items())
+    sgov_target = allocation["SGOV"] / allocation_total
     satellite_items = load_satellite_universe_config()
-    satellite_names = " / ".join(item["symbol"] for item in satellite_items) or "-"
+    satellite_names = " / ".join(item["symbol"] for item in satellite_items) or "尚未配置个股"
     zero_target_names = " / ".join(item["symbol"] for item in satellite_items if float(item.get("target_pct") or 0.0) == 0.0)
     zero_target_note = f"{zero_target_names} 当前目标为 0%，仅观察。" if zero_target_names else "目标为 0% 的标的仅观察。"
     return {
@@ -85,8 +93,8 @@ def rebalance_rules_payload() -> dict[str, Any]:
             {
                 "heading": "长期目标",
                 "items": [
-                    "美元资产目标：VOO 40% / QQQ 30% / AI卫星仓位 10% / SGOV 20%。",
-                    f"卫星仓位内部目标：{satellite_names}；{zero_target_note}",
+                    f"美元资产目标：{allocation_summary}。",
+                    f"卫星仓位内部目标：{satellite_names}。{zero_target_note}",
                     "A股基金目标占比在 Dashboard 展示。",
                 ],
             },
@@ -108,8 +116,8 @@ def rebalance_rules_payload() -> dict[str, Any]:
             {
                 "heading": "SGOV 动用进度",
                 "items": [
-                    "动用进度的计划总额为（美元持仓总成本（含 SGOV）加美元现金余额）× 20%。再平衡可释放的 SGOV 仍遵循安全线。",
-                    "VOO 和 QQQ 分别按自己的回撤档位和周期高点计算触发价，小档、中档、大档分别分配 20%、35%、45%，每档 VOO 与 QQQ 目标按 4:3 分配。",
+                    f"动用进度的计划总额为（美元持仓总成本（含 SGOV）加美元现金余额）× {sgov_target:.0%}。再平衡可释放的 SGOV 仍遵循安全线。",
+                    "VOO 和 QQQ 分别按自己的回撤档位和周期高点计算触发价。小档、中档、大档分别分配 20%、35%、45%，每档按本账户的 VOO 与 QQQ 目标权重分配。",
                     "VOO、QQQ 各自按当前成本差值计算已用金额。成本差值为负时，超出目标的部分计入已用；成本差值为零或为正时，已用金额为零。",
                     "已用金额从小档开始填入，超出该档目标的部分顺延至下一档。账上美元现金已计入当前目标分母，入金后会随目标金额重算进度。",
                 ],
@@ -541,18 +549,12 @@ def build_visualizations(
         ("SGOV", "SGOV", ["SGOV"]),
         ("CASH", "现金", []),
     ]
-    target_map = {
-        "VOO": target_weights["VOO"],
-        "QQQ": target_weights["QQQ"],
-        "SATELLITE": sum(target_weights[sym] for sym in profile_satellite_symbols(SATELLITE_SYMBOLS)),
-        "SGOV": target_weights["SGOV"],
-        "CASH": 0.0,
-    }
+    target_map = profile_assets().allocation_weights
     allocation_target_total = sum(target_map.values())
     allocation_compare = []
     for key, label, symbols in allocation_order:
         amount_cny = usd_cash_cny if key == "CASH" else sum(value_cny_by_symbol.get(sym, 0.0) for sym in symbols)
-        normalized_target = target_map[key] / allocation_target_total if allocation_target_total > 0 else 0.0
+        normalized_target = target_map.get(key, 0.0) / allocation_target_total
         target_cny = allocation_total_cny * normalized_target if allocation_total_cny > 0 else 0.0
         allocation_compare.append(
             {
@@ -2922,7 +2924,9 @@ def annotate_trade_quarters(records: list[dict[str, Any]], quarters: dict[str, d
 
 def build_sgov_usage_plan(rows, sgov_holding_usd, episode_signals, *, budget_usd: float):
     """Allocate the cost above each ETF's current target across SGOV tiers."""
-    asset_weights = {"VOO": 4 / 7, "QQQ": 3 / 7}
+    allocation = profile_assets().allocation_weights
+    etf_total = allocation["VOO"] + allocation["QQQ"]
+    asset_weights = {symbol: allocation[symbol] / etf_total for symbol in ("VOO", "QQQ")}
     tier_weights = {"small": 0.20, "medium": 0.35, "large": 0.45}
     anchors = {row["symbol"]: row.get("drawdown_anchor_price") for row in rows}
     used_by_symbol = dict.fromkeys(asset_weights, 0.0)
@@ -2989,7 +2993,7 @@ def build_rebalance_v2(
     next_month_cash_usd = float(usage.get("planned_cash_by_month", {}).get(next_month_key, planned_new_cash_usd))
     target_weights = effective_target_weights()
 
-    usd_weight_total = sum(target_weights[s] for s in profile_assets().usd_symbols)
+    usd_weight_total = sum(profile_assets().allocation_weights.values())
     cash_usd = float(balances.get("cash_usd", 0.0))
     cost_usd_by_symbol: dict[str, float] = {}
     for item in holding_rows:
@@ -2999,7 +3003,7 @@ def build_rebalance_v2(
         shares = max(0.0, float(item.get("shares", 0.0) or 0.0))
         avg_cost = max(0.0, float(item.get("avg_cost", 0.0) or 0.0))
         cost_usd_by_symbol[sym] = shares * avg_cost
-    sgov_target_pct = target_weights["SGOV"] / usd_weight_total if usd_weight_total > 0 else 0.0
+    sgov_target_pct = target_weights["SGOV"] / usd_weight_total
     sgov_current_usd = value_cny_by_symbol.get("SGOV", 0.0) / fx if fx > 0 else 0.0
     holding_value_usd = sum(value_cny_by_symbol.get(sym, 0.0) for sym in profile_assets().usd_symbols) / fx if fx > 0 else 0.0
     current_assets_usd = holding_value_usd + cash_usd
@@ -3028,7 +3032,7 @@ def build_rebalance_v2(
             continue
         current_usd = item["value_cny"] / fx if fx > 0 else 0.0
         cost_usd = cost_usd_by_symbol.get(sym, 0.0)
-        target_pct = target_weights[sym] / usd_weight_total if usd_weight_total > 0 else 0.0
+        target_pct = target_weights[sym] / usd_weight_total
         long_term_target_usd = target_pct * current_assets_usd
         cost_target_usd = target_pct * cost_target_denominator_usd
         next_month_target_usd = target_pct * next_month_assets_usd
@@ -3191,8 +3195,9 @@ def build_rebalance_v2(
         "remaining_deployable_usd": deployable_pool_usd,
         "monthly_budget_usd": planned_new_cash_usd,
         "sgov_usage_plan": build_sgov_usage_plan(
-            rows, sgov_current_usd, episode_signals, budget_usd=cost_target_denominator_usd * 0.20,
+            rows, sgov_current_usd, episode_signals, budget_usd=cost_target_denominator_usd * sgov_target_pct,
         ),
+        "sgov_target_pct": sgov_target_pct * 100.0,
         "sgov_excess_usd": sgov_excess_usd,
         "sgov_available_usd": sgov_available_usd,
         "sgov_large_trigger_enabled": has_large_trigger,

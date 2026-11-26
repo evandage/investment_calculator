@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from backend import portfolio
+from backend import config, portfolio, profiles
 
 
 class FixedDatetime(datetime):
@@ -125,6 +125,48 @@ def test_trade_quarters_follow_stock_cycles_and_fall_back_to_calendar():
     result = portfolio.annotate_trade_quarters(records, quarters)
     assert [(item["quarter_label"], item["quarter_source"]) for item in result] == [
         ("Y26Q3", "calendar"), ("Y26Q2", "cycle"), ("Y26Q3", "cycle"), ("Y26Q4", "calendar")]
+
+def test_profile_allocation_reserves_empty_satellite_weight_and_drives_sgov(tmp_path, monkeypatch):
+    monkeypatch.setattr(profiles, "PROFILE_DIR", tmp_path / "profiles")
+    monkeypatch.setattr(config, "SATELLITE_UNIVERSE_FILE", tmp_path / "satellite_universe.json")
+    monkeypatch.setattr(portfolio, "load_monthly_usage", lambda *_: {"planned_new_cash_usd": 0.0})
+    monkeypatch.setattr(portfolio, "load_drawdown_episode_store", lambda *_: {})
+    signal = {"threshold_snapshot": {"thresholds_pct": {"small": -10}}}
+    monkeypatch.setattr(portfolio, "evaluate_drawdown_episode_signals", lambda *_, **__: {"VOO": signal})
+    rows = [
+        {"symbol": "VOO", "label": "VOO", "shares": 4, "avg_cost": 100, "value_cny": 400},
+        {"symbol": "QQQ", "label": "QQQ", "shares": 1, "avg_cost": 100, "value_cny": 100},
+        {"symbol": "SGOV", "label": "SGOV", "shares": 4, "avg_cost": 100, "value_cny": 400},
+    ]
+    balances = {"cash_usd": 100}
+    values = {row["symbol"]: row["value_cny"] for row in rows}
+
+    def check(user_id, voo, qqq, sgov):
+        viz = portfolio.build_visualizations([], balances, values, 1.0, trades=[])
+        expected = {"VOO": voo, "QQQ": qqq, "SATELLITE": 10, "SGOV": sgov, "CASH": 0}
+        assert {row["key"]: row["target_pct"] for row in viz["allocation_compare"]} == pytest.approx(expected)
+        rebalance = portfolio.build_rebalance_v2(user_id, rows, balances, {"quotes": {}}, values, 1.0)
+        assert {row["symbol"]: row["cost_target_usd"] for row in rebalance["rows"]} == pytest.approx(
+            {"VOO": 10 * voo, "QQQ": 10 * qqq, "SGOV": 10 * sgov}
+        )
+        assert rebalance["sgov_available_usd"] == pytest.approx(400 - 10 * sgov)
+        assert rebalance["sgov_target_pct"] == pytest.approx(sgov)
+        allocation_rule = rebalance["rules"]["sections"][0]["items"][0]
+        assert f"VOO {voo}% / QQQ {qqq}% / 卫星仓位 10% / SGOV {sgov}%" in allocation_rule
+        plan = rebalance["sgov_usage_plan"]
+        assert plan["budget_usd"] == pytest.approx(10 * sgov)
+        assert plan["rows"][0]["voo_usd"] == pytest.approx(2 * sgov * voo / (voo + qqq))
+
+    with config.portfolio_profile("evan"):
+        check("evan", 40, 30, 20)
+        with config.portfolio_profile("nave"):
+            assert config.profile_assets().satellite_symbols == ()
+            check("nave", 50, 15, 25)
+            config.save_satellite_universe_config([{"symbol": "AMD", "target_pct": 50}])
+            assert portfolio.effective_target_weights()["AMD"] == pytest.approx(0.10)
+            check("nave", 50, 15, 25)
+        check("evan", 40, 30, 20)
+
 
 def test_sgov_plan_uses_current_thresholds_and_only_counts_cost_above_target():
     rows = [

@@ -5304,11 +5304,15 @@ function Rebalance({ data, onSaved }) {
         const plan = data.rebalance.sgov_usage_plan;
         const labels = { small: "小档", medium: "中档", large: "大档" };
         const usageSummary = `SGOV 市值 ${fmtMoney(plan.available_usd, "USD")} · 计划额度 ${fmtMoney(plan.budget_usd, "USD")} · 按成本差值已用 ${fmtMoney(plan.used_usd, "USD")}`;
+        const sgovTargetPct = data.rebalance.sgov_target_pct;
+        const budgetFormula = Number.isFinite(sgovTargetPct)
+          ? `（${data.rebalance.target_denominator_formula}）× ${sgovTargetPct.toLocaleString()}%`
+          : undefined;
         return (
           <div className="sgovUsagePlan">
             <div className="sgovUsageHeader">
               <h3>SGOV 动用进度</h3>
-              <span className="muted" title={`（${data.rebalance.target_denominator_formula}）× 20%`}>{usageSummary}</span>
+              <span className="muted" title={budgetFormula}>{usageSummary}</span>
             </div>
             {plan.rows.length ? <div className="tableWrap"><table className="rebalanceTable sgovProgressTable">
               <thead><tr><th>档位</th><th>VOO 触发与进度</th><th>QQQ 触发与进度</th></tr></thead>
