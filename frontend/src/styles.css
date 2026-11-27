@@ -2336,7 +2336,8 @@ body.klineFullscreenOpen .pageNav {
 .singleLwLegend .legendEma { color: #f59e0b; }
 .singleLwLegend .legendMa50 { color: #c084fc; }
 .singleLwLegend .legendMa200 { color: #9ca3af; }
-.singleLwLegend .legendCost { color: #b45309; }
+.singleLwLegend .legendCost { color: #a855f7; }
+.singleLwLegend .legendBreakEven { color: #b45309; }
 .singleLwLegend .legendAvwap { color: #22d3ee; }
 .singleLwLegend .legendRsi { color: #a78bfa; }
 .singleLwLegend .legendRsiEma { color: #facc15; }

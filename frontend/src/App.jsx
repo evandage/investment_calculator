@@ -1340,8 +1340,8 @@ function Visualizations({ data }) {
   const satellitePnlRows = (viz.satellite_pnl_rank || []).filter((row) => showClosedSatellites || (!row.archived && Number(holdingsBySymbol[row.symbol]?.shares || 0) > 0));
   return (
     <section className="visualGrid">
-      <BarList title="核心仓位浮盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value, row) => fmtMoney(value, "USD")} />
-      <BarList title="卫星仓位浮盈亏排名" rows={satellitePnlRows} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} headerAction={<button type="button" className="rankClosedToggle" aria-pressed={showClosedSatellites} aria-label={showClosedSatellites ? "隐藏清仓标的" : "显示清仓标的"} title={showClosedSatellites ? "隐藏清仓标的" : "显示清仓标的"} onClick={() => setShowClosedSatellites((value) => !value)}>{showClosedSatellites ? <Eye size={15} /> : <EyeOff size={15} />}</button>} />
+      <BarList title="核心仓位总盈亏排名" rows={viz.pnl_rank || []} valueKey="pnl_usd" formatValue={(value) => fmtMoney(value, "USD")} />
+      <BarList title="卫星仓位总盈亏排名" rows={satellitePnlRows} valueKey="pnl" formatValue={(value) => fmtMoney(value, "USD")} headerAction={<button type="button" className="rankClosedToggle" aria-pressed={showClosedSatellites} aria-label={showClosedSatellites ? "隐藏清仓标的" : "显示清仓标的"} title={showClosedSatellites ? "隐藏清仓标的" : "显示清仓标的"} onClick={() => setShowClosedSatellites((value) => !value)}>{showClosedSatellites ? <Eye size={15} /> : <EyeOff size={15} />}</button>} />
       <CompareBars title="美元资产配置占比" rows={viz.allocation_compare || []} />
       <CompareBars title="卫星仓位内部占比" rows={viz.satellite_split || []} className="compactVerticalChart" alertThresholdPct={2.5} sortByTarget />
     </section>
@@ -3183,6 +3183,7 @@ function SingleLightweightChart({
       color: row.value >= 0 ? "rgba(52, 211, 153, 0.42)" : "rgba(248, 113, 113, 0.42)",
     })));
     if (priceLinesRef.current.latest) series.candle.removePriceLine(priceLinesRef.current.latest);
+    if (priceLinesRef.current.breakEven) series.candle.removePriceLine(priceLinesRef.current.breakEven);
     if (priceLinesRef.current.cost) series.candle.removePriceLine(priceLinesRef.current.cost);
     if (priceLinesRef.current.avwap) series.avwap.removePriceLine(priceLinesRef.current.avwap);
     priceLinesRef.current = {};
@@ -3199,11 +3200,21 @@ function SingleLightweightChart({
     if (Number(data?.user_avg_cost) > 0) {
       priceLinesRef.current.cost = series.candle.createPriceLine({
         price: Number(data.user_avg_cost),
-        color: "rgba(180, 83, 9, 0.96)",
+        color: "#a855f7",
         lineWidth: 1,
         lineStyle: 2,
         axisLabelVisible: true,
         title: "Cost",
+      });
+    }
+    if (Number.isFinite(data?.net_break_even_price) && data.net_break_even_price > 0) {
+      priceLinesRef.current.breakEven = series.candle.createPriceLine({
+        price: data.net_break_even_price,
+        color: "rgba(180, 83, 9, 0.96)",
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: "Breakeven",
       });
     }
     if (shouldDrawAvwap && Number.isFinite(avwapValue) && avwapValue > 0) {
@@ -3298,6 +3309,7 @@ function SingleLightweightChart({
         <span><i className="legendMa50" />MA50</span>
         <span><i className="legendMa200" />MA200</span>
         {Number(data?.user_avg_cost) > 0 ? <span><i className="legendCost" />Cost</span> : null}
+        {Number.isFinite(data?.net_break_even_price) ? <span><i className="legendBreakEven" />Breakeven {data.net_break_even_price.toFixed(2)}</span> : null}
         {Number.isFinite(avwapValue) && avwapValue > 0 ? <span><i className="legendAvwap" />AVWAP</span> : null}
         <span><i className="legendRsi" />RSI({rsiPeriod})</span>
         <span><i className="legendRsiEma" />RSI EMA</span>
@@ -4234,6 +4246,7 @@ function EditableHoldingsPage({ data, onSaved }) {
     daily_pct: row.effective_daily_pct,
     drawdown_pct: row.drawdown_pct,
     avg_cost: row.avg_cost,
+    net_break_even_price: row.net_break_even_price,
     value: row.value_cny,
     pnl: row.pnl_cny,
     pnl_pct: row.pnl_pct,
@@ -4450,6 +4463,7 @@ function EditableHoldingsPage({ data, onSaved }) {
               <SortableTableHeader label="当日涨跌" sortKey="daily_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="周期高点回撤" sortKey="drawdown_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="成本" sortKey="avg_cost" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
+              <SortableTableHeader label="净回本价" sortKey="net_break_even_price" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="市值" sortKey="value" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="盈亏" sortKey="pnl" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
               <SortableTableHeader label="盈亏%" sortKey="pnl_pct" sort={holdingSort} onSort={(key) => toggleTableSort(setHoldingSort, key)} />
@@ -4483,6 +4497,7 @@ function EditableHoldingsPage({ data, onSaved }) {
                     aria-label={`${row.symbol} 成本价`}
                   />
                 ) : fmtMoney(row.avg_cost, row.currency, row.currency === "USD" ? 2 : 4)}</td>
+                <td>{row.net_break_even_price == null ? "-" : fmtMoney(row.net_break_even_price, row.currency, row.currency === "USD" ? 2 : 4)}</td>
                 <td>{fmtMoney(row.value, row.currency)}</td>
                 <td className={tone(row.pnl)}>{fmtMoney(row.pnl, row.currency)}</td>
                 <td className={tone(row.pnl_pct)}>{fmtPct(row.pnl_pct)}</td>

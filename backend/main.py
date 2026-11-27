@@ -40,6 +40,8 @@ from .portfolio import (
     confirm_trades,
     delete_fx_conversion_record,
     delete_trade_record,
+    net_break_even_price,
+    realized_sales_by_symbol,
     save_rebalance_budget,
     start_performance_history_scheduler,
 )
@@ -661,6 +663,9 @@ def _build_chart_board_light(
     shares = float(holding.get("shares", 0.0) or 0.0)
     avg_cost = float(holding.get("avg_cost", 0.0) or 0.0)
     user_avg_cost = avg_cost if shares > 0 and avg_cost > 0 else None
+    records = load_trade_records()
+    realized_sales = realized_sales_by_symbol(records)
+    user_break_even = net_break_even_price(shares, avg_cost, realized_sales.get(sym, 0.0))
     quote = get_futu_subscription_quotes().get(sym) or {}
     latest_price = float(quote.get("price") or 0.0)
     latest_change_pct = None
@@ -719,6 +724,7 @@ def _build_chart_board_light(
                 "show_extended": show_extended,
                 "selected_date": selected_day,
                 "user_avg_cost": user_avg_cost,
+                "net_break_even_price": user_break_even,
                 "latest_price": None if selected_day else (latest_price if latest_price > 0 else None),
                 "latest_change_pct": latest_change_pct,
                 "session_open": None if selected_day else (session_open if session_open > 0 else None),
@@ -821,7 +827,7 @@ def _build_chart_board_light(
             }
             for item, (_, row) in zip(candles, df.iterrows())
         ]
-        trade_markers = _trade_markers_for_chart(sym, key, df, candles)
+        trade_markers = _trade_markers_for_chart(sym, key, df, candles, records)
         return {
             "symbol": sym,
             "label": labels.get(sym, sym),
@@ -831,6 +837,7 @@ def _build_chart_board_light(
             "show_extended": show_extended if key != "1d" else None,
             "selected_date": selected_day,
             "user_avg_cost": user_avg_cost,
+            "net_break_even_price": user_break_even,
             "avwap_mode": effective_avwap_mode,
             "avwap_label": avwap_label,
             "avwap_anchor": None if effective_avwap_mode == "none" else avwap_anchor.strftime("%Y-%m-%d"),

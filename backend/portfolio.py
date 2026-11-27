@@ -488,19 +488,17 @@ def build_visualizations(
 
     pnl_rank = []
     satellite_pnl_rank = []
-    satellite_pnl_cny = 0.0
-    satellite_pnl_usd = 0.0
+    realized_sales = realized_sales_by_symbol(trades if trades is not None else load_trade_records())
     for row in rows:
         sym = row["symbol"]
+        realized_pnl = realized_sales.get(sym, 0.0)
         if sym in profile_satellite_symbols(SATELLITE_SYMBOLS):
-            satellite_pnl_cny += float(row["pnl_cny"])
-            satellite_pnl_usd += float(row["pnl"])
             satellite_pnl_rank.append(
                 {
                     "symbol": sym,
                     "label": row["label"],
-                    "pnl": row["pnl"],
-                    "pnl_cny": row["pnl_cny"],
+                    "pnl": float(row["pnl"]) + realized_pnl,
+                    "pnl_cny": float(row["pnl_cny"]) + realized_pnl * fx,
                     "currency": row["currency"],
                 }
             )
@@ -511,8 +509,8 @@ def build_visualizations(
                 {
                     "symbol": sym,
                     "label": row["label"],
-                    "pnl_usd": pnl_usd,
-                    "pnl_cny": pnl_cny,
+                    "pnl_usd": pnl_usd + realized_pnl,
+                    "pnl_cny": pnl_cny + realized_pnl * fx,
                     "currency": "CNY",
                 }
             )
@@ -534,8 +532,8 @@ def build_visualizations(
         {
             "symbol": "SATELLITE",
             "label": "卫星仓位",
-            "pnl_usd": satellite_pnl_usd,
-            "pnl_cny": satellite_pnl_cny,
+            "pnl_usd": sum(item["pnl"] for item in satellite_pnl_rank),
+            "pnl_cny": sum(item["pnl_cny"] for item in satellite_pnl_rank),
             "currency": "CNY",
         }
     )
@@ -2289,6 +2287,25 @@ def daily_pct_for_current_history_quote(symbol: str, investment_day: str, now: d
     return history_daily_pct_for_symbol(symbol, quote, investment_day, now)
 
 
+def realized_sales_by_symbol(trades: list[dict[str, Any]]) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for trade in trades:
+        if trade.get("history_only") or trade["action"] != "sell":
+            continue
+        symbol = trade["symbol"]
+        totals[symbol] = totals.get(symbol, 0.0) + trade["realized_pnl"]
+    return totals
+
+
+def net_break_even_price(
+    shares: float, avg_cost: float, realized_sales: float
+) -> float | None:
+    """Return remaining net invested capital per share."""
+    if shares <= 1e-9:
+        return None
+    return (shares * avg_cost - realized_sales) / shares
+
+
 def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[str, Any]:
     assets = profile_assets()
     satellite_symbols = assets.satellite_symbols
@@ -2318,6 +2335,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
     carry_completed_daily = not is_weekday(history_day)
     trade_records = load_trade_records(user_id)
     trades = [row for row in trade_records if not row.get("history_only")]
+    realized_sales = realized_sales_by_symbol(trades)
     holdings = raw_holdings
     for sym in assets.all_symbols:
         holdings.setdefault(sym, raw_holdings.get(sym, {"shares": 0.0, "avg_cost": 0.0}))
@@ -2379,6 +2397,7 @@ def build_dashboard(user_id: str = "evan", force_refresh: bool = False) -> dict[
                 "currency": meta["currency"],
                 "shares": shares,
                 "avg_cost": avg_cost,
+                "net_break_even_price": net_break_even_price(shares, avg_cost, realized_sales.get(sym, 0.0)),
                 "price": price,
                 "regular_price": quote.get("regular_price"),
                 "session": quote.get("session", "regular"),
